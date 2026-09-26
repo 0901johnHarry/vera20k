@@ -18,6 +18,7 @@ pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
 pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
+mod cell_content;
 mod crash;
 pub mod edge_cell;
 mod gap_generator;
@@ -1176,13 +1177,13 @@ pub struct Simulation {
     /// edge; cell-local bridge dirtiness is deliberately a separate channel.
     #[serde(default)]
     pub(crate) playfield_revision: u64,
-    /// SHP interned IDs for bridge destruction explosions (from rules.ini BridgeExplosions=).
+    /// Interned projection of RuleSet's ordered BridgeExplosions references.
+    /// Rebuilt at map binding and snapshot restoration; not serialized authority.
     #[serde(skip)]
     pub bridge_explosions: Vec<InternedId>,
-    /// SHP interned IDs for bridge metallic-debris animations
-    /// (from `[General] MetallicDebris=`). Pre-interned at sim init so the
-    /// per-cell debris cascade in `bridge_orchestrator::spawn_bridge_debris`
-    /// runs allocation-free.
+    /// Interned projection of RuleSet's ordered MetallicDebris references,
+    /// including unread types without an SHP. Rebuilt at map binding and
+    /// snapshot restoration so per-cell selection needs no string interning.
     #[serde(skip)]
     pub metallic_debris: Vec<InternedId>,
     /// Runtime terrain cells whose radar/minimap terrain pixel needs refresh.
@@ -1805,7 +1806,7 @@ impl Simulation {
             projectile_detonations,
             wave_damage_events,
         );
-        result.consequences.finish_navigation(run.finish(self));
+        result.consequences.finish_navigation(run.finish());
         result
     }
 
@@ -1829,7 +1830,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
 
         for projectile in commit.projectile_spawns {
             let stable_id = self.allocate_stable_id();
@@ -2380,7 +2381,7 @@ impl Simulation {
             }
         }
 
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.dynamic_terrain_cells.extend(collapsed_terrain_cells);
         if let Some(terrain) = self.resolved_terrain.as_ref() {
             self.real_cell_bridge_flags_0x1180 = terrain.capture_real_cell_bridge_flags_0x1180();
@@ -2413,7 +2414,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2440,7 +2441,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2476,7 +2477,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
-    ) -> Vec<u64> {
+    ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
         let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_area(
             self,
@@ -2485,19 +2486,14 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
-        // Fatal transitions are facts of this receiver transaction. Retain
-        // them before consequence delivery can retire their objects.
-        let fatal_ids = effects.despawned_ids.clone();
-
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
-        );
-        fatal_ids
+        )
     }
 
     /// World-owned half of a non-combat damage transaction. Physical death
@@ -6098,7 +6094,9 @@ impl Simulation {
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
         if let Some(rules) = rules {
-            self.for_each_multiplayer_feedback_anim(|sim, id| sim.visit_anim(id, rules, None));
+            self.for_each_multiplayer_feedback_anim(|sim, id| {
+                sim.visit_anim(id, rules, None);
+            });
         }
         // Spawn-manager missiles that reached their target during the movement
         // pass are consumed here — the missile leaves the world at the moment

@@ -233,6 +233,10 @@ pub struct AnimTypeRuntimeConfig {
     /// False means the allocated native type has never completed ART ReadINI.
     /// It retains constructor bounds and must not load an orphan SHP.
     pub art_body_read: bool,
+    /// ObjectType::ReadINI @ 0x005F933B reads Image from the exact AnimType
+    /// section with a 25-byte buffer and the constructor's type ID default.
+    /// Keep this animation value separate from generic object-art resolution.
+    image: String,
     pub start: i32,
     pub loop_start: i32,
     pub loop_end: i32,
@@ -738,6 +742,7 @@ fn parse_anim_runtime_config(section: &IniSection) -> AnimTypeRuntimeConfig {
     let explicit_loop_end = section.get_i32("LoopEnd");
     AnimTypeRuntimeConfig {
         art_body_read: true,
+        image: section.read_string("Image", &section.name, 0x19),
         start: section.get_i32("Start").unwrap_or(0),
         loop_start: section.get_i32("LoopStart").unwrap_or(0),
         loop_end: explicit_loop_end.unwrap_or(0),
@@ -1377,6 +1382,7 @@ impl ArtRegistry {
             }
             let mut config = parse_anim_runtime_config(&IniSection::new(name.clone()));
             config.art_body_read = false;
+            config.image = name.clone();
             self.anim_runtime_configs.insert(key, config);
         }
     }
@@ -1433,7 +1439,7 @@ impl ArtRegistry {
         let mut skipped = 0;
         let mut pending: VecDeque<String> = roots
             .iter()
-            .map(|root| root.trim().to_ascii_uppercase())
+            .map(|root| root.to_ascii_uppercase())
             .filter(|name| !name.is_empty())
             .collect();
         let mut visited = BTreeSet::new();
@@ -1479,7 +1485,7 @@ impl ArtRegistry {
         if !config.art_body_read {
             return Ok(());
         }
-        let image_id = self.resolve_effective_image_id(name, name);
+        let image_id = self.resolve_anim_image_id(name);
         let candidates =
             anim_shp_candidates(Some(self), name, &image_id, theater_ext, theater_name);
         let data = candidates
@@ -1522,7 +1528,7 @@ impl ArtRegistry {
 
         let mut pending: VecDeque<String> = roots
             .iter()
-            .map(|name| name.trim().to_ascii_uppercase())
+            .map(|name| name.to_ascii_uppercase())
             .filter(|name| !name.is_empty())
             .collect();
         let mut resolved = BTreeSet::new();
@@ -1658,6 +1664,18 @@ impl ArtRegistry {
     /// Resolve the effective image id for an object.
     pub fn resolve_effective_image_id(&self, type_id: &str, rules_image: &str) -> String {
         self.resolve_object_art(type_id, rules_image).image_id
+    }
+
+    /// Animation image identity from its own exact ART body, never an Image
+    /// redirect's metadata or a whitespace-normalized type section. The native
+    /// loader @ 0x00427BA5 falls back to the literal type ID when Image is empty.
+    /// Unread types never load an image (the binding and draw gates own that).
+    pub fn resolve_anim_image_id(&self, anim_type: &str) -> String {
+        self.anim_runtime_config(anim_type)
+            .map(|config| config.image.as_str())
+            .filter(|image| !image.is_empty())
+            .unwrap_or(anim_type)
+            .to_ascii_uppercase()
     }
 
     /// Resolve the declared cameo id for an object.
@@ -1806,12 +1824,12 @@ impl ArtRegistry {
     ) -> (u32, u32) {
         // Two-pass: collect (name, image_id) under &self, then mutate via
         // get_mut. Direct iter_mut would conflict with the &self call to
-        // resolve_effective_image_id.
+        // resolve_anim_image_id.
         let pending: Vec<(String, String)> = self
             .iter_entries()
             .filter(|(_name, entry)| entry.crater || entry.scorch || entry.force_big_craters)
             .map(|(name, _entry)| {
-                let image_id: String = self.resolve_effective_image_id(name, name);
+                let image_id: String = self.resolve_anim_image_id(name);
                 (name.to_string(), image_id)
             })
             .collect();

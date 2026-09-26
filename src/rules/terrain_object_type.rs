@@ -33,7 +33,8 @@ pub struct TerrainObjectType {
     pub animation_probability_micros: u32,
     /// Inherited `Armor=`. TerrainTypeClass constructor defaults to Wood.
     pub armor: String,
-    /// Inherited `Strength=`. Missing value resolves through `[General] TreeStrength`.
+    /// Inherited `Strength=`. The constructor value and explicit -1 resolve
+    /// through `[General] TreeStrength` after successful ObjectType ReadINI.
     pub strength: i32,
     /// Inherited `Immune=`. Stock TIBTRE sets this, blocking normal terrain damage.
     pub immune: bool,
@@ -72,6 +73,11 @@ impl TerrainObjectType {
         let animation_probability_micros: u32 =
             (probability_f.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
         let is_veinhole = section.get_bool("IsVeinhole").unwrap_or(false);
+        // Terrain ctor71DBAC initializes Strength=-1. ObjectType5F94D3 reads
+        // with that current default; Terrain71DEC8..71DEDC substitutes
+        // Rules+1144 when the stored result is exactly -1, including an
+        // authored -1. Original execution: tools/spatial_oracle/terrain_strength.
+        let strength = section.get_i32("Strength").unwrap_or(-1);
 
         Self {
             name: name.to_string(),
@@ -80,7 +86,11 @@ impl TerrainObjectType {
             animation_rate: section.get_i32("AnimationRate").unwrap_or(0).clamp(0, 255) as u8,
             animation_probability_micros,
             armor: section.get("Armor").unwrap_or("wood").to_ascii_lowercase(),
-            strength: section.get_i32("Strength").unwrap_or(tree_strength),
+            strength: if strength == -1 {
+                tree_strength
+            } else {
+                strength
+            },
             immune: section.get_bool("Immune").unwrap_or(false),
             legal_target: section.get_bool("LegalTarget").unwrap_or(false) || is_veinhole,
             insignificant: section.get_bool("Insignificant").unwrap_or(true),
@@ -188,6 +198,68 @@ mod tests {
             );
             assert_eq!(terrain.strength, expected, "body={body:?}");
         }
+    }
+
+    #[test]
+    fn bridge_tree_strength_reader_matches_original_constructor_and_fallback() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/terrain_strength.json"
+        ))
+        .unwrap();
+        for row in corpus["cases"].as_array().unwrap() {
+            // This test supplies a present Terrain section, so ObjectType's
+            // absent-section refusal is native characterization only.
+            if row["read_success"] == false {
+                continue;
+            }
+            let raw = row["raw"].as_str();
+            let strength = raw
+                .map(|raw| format!("Strength={raw}\n"))
+                .unwrap_or_default();
+            let ini = IniFile::from_str(&format!(
+                "[General]\nTreeStrength={}\n[TerrainTypes]\n0=TREE01\n[TREE01]\nFixture=1\n{strength}",
+                row["tree_strength"].as_i64().unwrap()
+            ));
+            let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+            let terrain = rules
+                .terrain_object_type_case_insensitive("TREE01")
+                .unwrap();
+            assert_eq!(
+                i64::from(terrain.strength),
+                row["strength"].as_i64().unwrap(),
+                "{row}"
+            );
+        }
+
+        let Some(retail) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&retail).unwrap();
+        let general = retail
+            .section("General")
+            .unwrap()
+            .get_i32("TreeStrength")
+            .unwrap();
+        let raw = retail.section("TREE01").unwrap().get("Strength");
+        let row = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| {
+                row["read_success"] == true
+                    && row["tree_strength"] == general
+                    && row["raw"].as_str() == raw
+            })
+            .expect("the native corpus must include the actual retail TREE01 inputs");
+        assert_eq!(
+            i64::from(
+                rules
+                    .terrain_object_type_case_insensitive("TREE01")
+                    .unwrap()
+                    .strength
+            ),
+            row["strength"].as_i64().unwrap()
+        );
     }
 
     #[test]

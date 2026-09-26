@@ -1,0 +1,4678 @@
+{
+  "rows": [
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -128,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -128,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 1
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 2
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        1
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        1
+      ],
+      "retained_bytes": "800a00008014000001000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": -1,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        1
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        1
+      ],
+      "retained_bytes": "800a00008014000001000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        1
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        1
+      ],
+      "retained_bytes": "800a00008014000001000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": -1,
+        "slope": 15
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        1
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        1
+      ],
+      "retained_bytes": "800a00008014000001000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            465
+          ],
+          "point_bytes": "d4feffffd1010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000f4ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -12
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            402
+          ],
+          "point_bytes": "d4feffff92010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000fdffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -3
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 0
+      },
+      "lift_px": 0,
+      "placement": [
+        2688,
+        5248,
+        0
+      ],
+      "projected_point": [
+        -300,
+        465
+      ],
+      "projection_bytes": "d4feffffd1010000",
+      "retained": [
+        2688,
+        5248,
+        0
+      ],
+      "retained_bytes": "800a00008014000000000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 1
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 1
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 1
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 1
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 2
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 2
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            458
+          ],
+          "point_bytes": "d4feffffca010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 2
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000edffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -19
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            395
+          ],
+          "point_bytes": "d4feffff8b010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000f6ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -10
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 2
+      },
+      "lift_px": 7,
+      "placement": [
+        2688,
+        5248,
+        52
+      ],
+      "projected_point": [
+        -300,
+        458
+      ],
+      "projection_bytes": "d4feffffca010000",
+      "retained": [
+        2688,
+        5248,
+        52
+      ],
+      "retained_bytes": "800a00008014000034000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            450
+          ],
+          "point_bytes": "d4feffffc2010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000e5ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -27
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            450
+          ],
+          "point_bytes": "d4feffffc2010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000eeffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -18
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 15
+      },
+      "lift_px": 15,
+      "placement": [
+        2688,
+        5248,
+        104
+      ],
+      "projected_point": [
+        -300,
+        450
+      ],
+      "projection_bytes": "d4feffffc2010000",
+      "retained": [
+        2688,
+        5248,
+        104
+      ],
+      "retained_bytes": "800a00008014000068000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            387
+          ],
+          "point_bytes": "d4feffff83010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000e5ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -27
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            387
+          ],
+          "point_bytes": "d4feffff83010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000eeffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -18
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 0,
+        "slope": 15
+      },
+      "lift_px": 15,
+      "placement": [
+        2688,
+        5248,
+        104
+      ],
+      "projected_point": [
+        -300,
+        450
+      ],
+      "projection_bytes": "d4feffffc2010000",
+      "retained": [
+        2688,
+        5248,
+        104
+      ],
+      "retained_bytes": "800a00008014000068000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            450
+          ],
+          "point_bytes": "d4feffffc2010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000e5ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -27
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            450
+          ],
+          "point_bytes": "d4feffffc2010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000eeffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -18
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 15
+      },
+      "lift_px": 15,
+      "placement": [
+        2688,
+        5248,
+        104
+      ],
+      "projected_point": [
+        -300,
+        450
+      ],
+      "projection_bytes": "d4feffffc2010000",
+      "retained": [
+        2688,
+        5248,
+        104
+      ],
+      "retained_bytes": "800a00008014000068000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            387
+          ],
+          "point_bytes": "d4feffff83010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000e5ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -27
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            387
+          ],
+          "point_bytes": "d4feffff83010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000eeffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -18
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 0,
+        "slope": 15
+      },
+      "lift_px": 15,
+      "placement": [
+        2688,
+        5248,
+        104
+      ],
+      "projected_point": [
+        -300,
+        450
+      ],
+      "projection_bytes": "d4feffffc2010000",
+      "retained": [
+        2688,
+        5248,
+        104
+      ],
+      "retained_bytes": "800a00008014000068000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            435
+          ],
+          "point_bytes": "d4feffffb3010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000d6ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -42
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            435
+          ],
+          "point_bytes": "d4feffffb3010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000dfffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -33
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 30,
+      "placement": [
+        2688,
+        5248,
+        208
+      ],
+      "projected_point": [
+        -300,
+        435
+      ],
+      "projection_bytes": "d4feffffb3010000",
+      "retained": [
+        2688,
+        5248,
+        208
+      ],
+      "retained_bytes": "800a000080140000d0000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            372
+          ],
+          "point_bytes": "d4feffff74010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000d6ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -42
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            372
+          ],
+          "point_bytes": "d4feffff74010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000dfffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -33
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 30,
+      "placement": [
+        2688,
+        5248,
+        208
+      ],
+      "projected_point": [
+        -300,
+        435
+      ],
+      "projection_bytes": "d4feffffb3010000",
+      "retained": [
+        2688,
+        5248,
+        208
+      ],
+      "retained_bytes": "800a000080140000d0000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            435
+          ],
+          "point_bytes": "d4feffffb3010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000d6ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -42
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            435
+          ],
+          "point_bytes": "d4feffffb3010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000dfffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -33
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 30,
+      "placement": [
+        2688,
+        5248,
+        208
+      ],
+      "projected_point": [
+        -300,
+        435
+      ],
+      "projection_bytes": "d4feffffb3010000",
+      "retained": [
+        2688,
+        5248,
+        208
+      ],
+      "retained_bytes": "800a000080140000d0000000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            372
+          ],
+          "point_bytes": "d4feffff74010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000d6ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -42
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            372
+          ],
+          "point_bytes": "d4feffff74010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000dfffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -33
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 30,
+      "placement": [
+        2688,
+        5248,
+        208
+      ],
+      "projected_point": [
+        -300,
+        435
+      ],
+      "projection_bytes": "d4feffffb3010000",
+      "retained": [
+        2688,
+        5248,
+        208
+      ],
+      "retained_bytes": "800a000080140000d0000000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 1
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 1
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 1
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 1
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 2
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 2
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            428
+          ],
+          "point_bytes": "d4feffffac010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 2
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000cfffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -49
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            365
+          ],
+          "point_bytes": "d4feffff6d010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d8ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -40
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 2
+      },
+      "lift_px": 37,
+      "placement": [
+        2688,
+        5248,
+        260
+      ],
+      "projected_point": [
+        -300,
+        428
+      ],
+      "projection_bytes": "d4feffffac010000",
+      "retained": [
+        2688,
+        5248,
+        260
+      ],
+      "retained_bytes": "800a00008014000004010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            420
+          ],
+          "point_bytes": "d4feffffa4010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000c7ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -57
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            420
+          ],
+          "point_bytes": "d4feffffa4010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d0ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -48
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 15
+      },
+      "lift_px": 45,
+      "placement": [
+        2688,
+        5248,
+        312
+      ],
+      "projected_point": [
+        -300,
+        420
+      ],
+      "projection_bytes": "d4feffffa4010000",
+      "retained": [
+        2688,
+        5248,
+        312
+      ],
+      "retained_bytes": "800a00008014000038010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            357
+          ],
+          "point_bytes": "d4feffff65010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000c7ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -57
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            357
+          ],
+          "point_bytes": "d4feffff65010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d0ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -48
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 2,
+        "slope": 15
+      },
+      "lift_px": 45,
+      "placement": [
+        2688,
+        5248,
+        312
+      ],
+      "projected_point": [
+        -300,
+        420
+      ],
+      "projection_bytes": "d4feffffa4010000",
+      "retained": [
+        2688,
+        5248,
+        312
+      ],
+      "retained_bytes": "800a00008014000038010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            420
+          ],
+          "point_bytes": "d4feffffa4010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000c7ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -57
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            420
+          ],
+          "point_bytes": "d4feffffa4010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d0ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -48
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 15
+      },
+      "lift_px": 45,
+      "placement": [
+        2688,
+        5248,
+        312
+      ],
+      "projected_point": [
+        -300,
+        420
+      ],
+      "projection_bytes": "d4feffffa4010000",
+      "retained": [
+        2688,
+        5248,
+        312
+      ],
+      "retained_bytes": "800a00008014000038010000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            357
+          ],
+          "point_bytes": "d4feffff65010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e000000000000c7ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -57
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            357
+          ],
+          "point_bytes": "d4feffff65010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e000000000000d0ffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -48
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 2,
+        "slope": 15
+      },
+      "lift_px": 45,
+      "placement": [
+        2688,
+        5248,
+        312
+      ],
+      "projected_point": [
+        -300,
+        420
+      ],
+      "projection_bytes": "d4feffffa4010000",
+      "retained": [
+        2688,
+        5248,
+        312
+      ],
+      "retained_bytes": "800a00008014000038010000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1431
+          ],
+          "point_bytes": "d4feffff69faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000008cf8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1908
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1431
+          ],
+          "point_bytes": "d4feffff69faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000095f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1899
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 0
+      },
+      "lift_px": 1896,
+      "placement": [
+        2688,
+        5248,
+        13208
+      ],
+      "projected_point": [
+        -300,
+        -1431
+      ],
+      "projection_bytes": "d4feffff69faffff",
+      "retained": [
+        2688,
+        5248,
+        13208
+      ],
+      "retained_bytes": "800a00008014000098330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1494
+          ],
+          "point_bytes": "d4feffff2afaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000008cf8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1908
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1494
+          ],
+          "point_bytes": "d4feffff2afaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000095f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1899
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 0
+      },
+      "lift_px": 1896,
+      "placement": [
+        2688,
+        5248,
+        13208
+      ],
+      "projected_point": [
+        -300,
+        -1431
+      ],
+      "projection_bytes": "d4feffff69faffff",
+      "retained": [
+        2688,
+        5248,
+        13208
+      ],
+      "retained_bytes": "800a00008014000098330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1431
+          ],
+          "point_bytes": "d4feffff69faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000008cf8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1908
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1431
+          ],
+          "point_bytes": "d4feffff69faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000095f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1899
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 0
+      },
+      "lift_px": 1896,
+      "placement": [
+        2688,
+        5248,
+        13208
+      ],
+      "projected_point": [
+        -300,
+        -1431
+      ],
+      "projection_bytes": "d4feffff69faffff",
+      "retained": [
+        2688,
+        5248,
+        13208
+      ],
+      "retained_bytes": "800a00008014000098330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1494
+          ],
+          "point_bytes": "d4feffff2afaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000008cf8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1908
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1494
+          ],
+          "point_bytes": "d4feffff2afaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000095f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1899
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 0
+      },
+      "lift_px": 1896,
+      "placement": [
+        2688,
+        5248,
+        13208
+      ],
+      "projected_point": [
+        -300,
+        -1431
+      ],
+      "projection_bytes": "d4feffff69faffff",
+      "retained": [
+        2688,
+        5248,
+        13208
+      ],
+      "retained_bytes": "800a00008014000098330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 1
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 1
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 1
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 1
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 2
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 2
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1439
+          ],
+          "point_bytes": "d4feffff61faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 2
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000084f8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1916
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1502
+          ],
+          "point_bytes": "d4feffff22faffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000008df8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1907
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 2
+      },
+      "lift_px": 1904,
+      "placement": [
+        2688,
+        5248,
+        13260
+      ],
+      "projected_point": [
+        -300,
+        -1439
+      ],
+      "projection_bytes": "d4feffff61faffff",
+      "retained": [
+        2688,
+        5248,
+        13260
+      ],
+      "retained_bytes": "800a000080140000cc330000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1446
+          ],
+          "point_bytes": "d4feffff5afaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000007df8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1923
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1446
+          ],
+          "point_bytes": "d4feffff5afaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000086f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1914
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 15
+      },
+      "lift_px": 1911,
+      "placement": [
+        2688,
+        5248,
+        13312
+      ],
+      "projected_point": [
+        -300,
+        -1446
+      ],
+      "projection_bytes": "d4feffff5afaffff",
+      "retained": [
+        2688,
+        5248,
+        13312
+      ],
+      "retained_bytes": "800a00008014000000340000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1509
+          ],
+          "point_bytes": "d4feffff1bfaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000007df8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1923
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1509
+          ],
+          "point_bytes": "d4feffff1bfaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000086f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1914
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 0,
+        "level": 127,
+        "slope": 15
+      },
+      "lift_px": 1911,
+      "placement": [
+        2688,
+        5248,
+        13312
+      ],
+      "projected_point": [
+        -300,
+        -1446
+      ],
+      "projection_bytes": "d4feffff5afaffff",
+      "retained": [
+        2688,
+        5248,
+        13312
+      ],
+      "retained_bytes": "800a00008014000000340000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1446
+          ],
+          "point_bytes": "d4feffff5afaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000007df8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1923
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1446
+          ],
+          "point_bytes": "d4feffff5afaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000086f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1914
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 15
+      },
+      "lift_px": 1911,
+      "placement": [
+        2688,
+        5248,
+        13312
+      ],
+      "projected_point": [
+        -300,
+        -1446
+      ],
+      "projection_bytes": "d4feffff5afaffff",
+      "retained": [
+        2688,
+        5248,
+        13312
+      ],
+      "retained_bytes": "800a00008014000000340000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            -1509
+          ],
+          "point_bytes": "d4feffff1bfaffff",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e0000000000007df8ffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1923
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            -1509
+          ],
+          "point_bytes": "d4feffff1bfaffff",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e00000000000086f8ffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -1914
+        }
+      ],
+      "input": {
+        "flags": 256,
+        "input_z": 0,
+        "level": 127,
+        "slope": 15
+      },
+      "lift_px": 1911,
+      "placement": [
+        2688,
+        5248,
+        13312
+      ],
+      "projected_point": [
+        -300,
+        -1446
+      ],
+      "projection_bytes": "d4feffff5afaffff",
+      "retained": [
+        2688,
+        5248,
+        13312
+      ],
+      "retained_bytes": "800a00008014000000340000",
+      "viewport_y": 37
+    },
+    {
+      "dirty_y": 0,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            321
+          ],
+          "point_bytes": "d4feffff41010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000064ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -156
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            321
+          ],
+          "point_bytes": "d4feffff41010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000006dffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -147
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 999,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 144,
+      "placement": [
+        2688,
+        5248,
+        999
+      ],
+      "projected_point": [
+        -300,
+        321
+      ],
+      "projection_bytes": "d4feffff41010000",
+      "retained": [
+        2688,
+        5248,
+        999
+      ],
+      "retained_bytes": "800a000080140000e7030000",
+      "viewport_y": 0
+    },
+    {
+      "dirty_y": 100,
+      "draws": [
+        {
+          "brightness": 1000,
+          "caller": "0071C309",
+          "flags": 19968,
+          "frame": 0,
+          "gradient": 2,
+          "point": [
+            -300,
+            258
+          ],
+          "point_bytes": "d4feffff02010000",
+          "raw_args_hex": "0094012100000000ecdf0f1000c00121004e00000000000064ffffff02000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -156
+        },
+        {
+          "brightness": 1000,
+          "caller": "0071C353",
+          "flags": 19969,
+          "frame": 2,
+          "gradient": 0,
+          "point": [
+            -300,
+            258
+          ],
+          "point_bytes": "d4feffff02010000",
+          "raw_args_hex": "0094012102000000ecdf0f1000c00121014e0000000000006dffffff00000000e80300000000000000000000000000000000000000000000",
+          "z_adjust": -147
+        }
+      ],
+      "input": {
+        "flags": 0,
+        "input_z": 999,
+        "level": 2,
+        "slope": 0
+      },
+      "lift_px": 144,
+      "placement": [
+        2688,
+        5248,
+        999
+      ],
+      "projected_point": [
+        -300,
+        321
+      ],
+      "projection_bytes": "d4feffff41010000",
+      "retained": [
+        2688,
+        5248,
+        999
+      ],
+      "retained_bytes": "800a000080140000e7030000",
+      "viewport_y": 37
+    }
+  ]
+}

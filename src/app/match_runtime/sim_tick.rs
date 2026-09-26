@@ -1463,7 +1463,7 @@ mod tests {
     use crate::sim::combat::combat_weapon::WeaponSlot;
     use crate::sim::intern::{InternedId, StringInterner, test_intern};
     use crate::sim::terrain_object::{
-        TerrainObjectLifecycle, TerrainObjectState, mark_terrain_occupation,
+        TerrainObjectState, mark_terrain_occupation,
         unmark_terrain_occupation,
     };
     use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
@@ -1557,17 +1557,12 @@ mod tests {
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolved_terrain = Some(terrain);
         let mut interner = StringInterner::default();
-        let tree = TerrainObjectState {
-            stable_id: 1,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: interner.intern("TREE01"),
-            rx: 0,
-            ry: 0,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let tree = {
+            let mut terrain = TerrainObjectState::for_test(1, interner.intern("TREE01"), 0, 0);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
         {
             let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);

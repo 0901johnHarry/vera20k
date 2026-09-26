@@ -13,23 +13,17 @@ use crate::sim::projectile::{
     TargetExpiryPolicy,
 };
 use crate::sim::snapshot::{GameSnapshot, SnapshotRestoreError};
-use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+use crate::sim::terrain_object::TerrainObjectState;
 use crate::sim::terrain_spawn::construct_terrain_objects;
 use crate::sim::wave::Wave;
 use crate::sim::world::Simulation;
 
 fn terrain(stable_id: u64) -> TerrainObjectState {
-    TerrainObjectState {
-        stable_id,
-        native_unique_id: None,
-        in_logic_vector: false,
-        type_ref: InternedId::from_index(0),
-        rx: 3,
-        ry: 4,
-        health: 10,
-        max_health: 10,
-        occupation_bits: 0,
-        lifecycle: TerrainObjectLifecycle::Live,
+    {
+        let mut terrain = TerrainObjectState::for_test(stable_id, InternedId::from_index(0), 3, 4);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain
     }
 }
 

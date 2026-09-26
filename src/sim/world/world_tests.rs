@@ -2538,17 +2538,17 @@ fn gsi_04_10_terrain_object(
     cell: (u16, u16),
     occupation_bits: u8,
 ) -> crate::sim::terrain_object::TerrainObjectState {
-    crate::sim::terrain_object::TerrainObjectState {
-        stable_id,
-        native_unique_id: None,
-        in_logic_vector: false,
-        type_ref: sim.interner.intern("TREE01"),
-        rx: cell.0,
-        ry: cell.1,
-        health: 10,
-        max_health: 10,
-        occupation_bits,
-        lifecycle: crate::sim::terrain_object::TerrainObjectLifecycle::Live,
+    {
+        let mut terrain = crate::sim::terrain_object::TerrainObjectState::for_test(
+            stable_id,
+            sim.interner.intern("TREE01"),
+            cell.0,
+            cell.1,
+        );
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain.occupation_bits = occupation_bits;
+        terrain
     }
 }
 

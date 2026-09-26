@@ -66,9 +66,17 @@ fn effect_anim_shp_candidates(
     theater_ext: &str,
     theater_name: &str,
 ) -> Vec<String> {
+    if art
+        .and_then(|registry| registry.anim_runtime_config(anim_type))
+        .is_some_and(|config| !config.art_body_read)
+    {
+        // AnimType::ReadINI @ 0x00427D22 exits before the image loader for an
+        // unread type. An orphan SHP must not create an atlas entry for it.
+        return Vec::new();
+    }
     let image_id = art.map_or_else(
         || anim_type.to_ascii_uppercase(),
-        |registry| registry.resolve_effective_image_id(anim_type, anim_type),
+        |registry| registry.resolve_anim_image_id(anim_type),
     );
     art_data::anim_shp_candidates(art, anim_type, &image_id, theater_ext, theater_name)
 }
@@ -95,7 +103,7 @@ fn scan_building_anim_frame_count(
     theater_ext: &str,
     theater_name: &str,
 ) -> Option<(u16, String)> {
-    let anim_image: String = art_reg.resolve_effective_image_id(anim_type, anim_type);
+    let anim_image: String = art_reg.resolve_anim_image_id(anim_type);
     let candidates: Vec<String> = art_data::anim_shp_candidates(
         Some(art_reg),
         anim_type,

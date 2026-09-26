@@ -160,6 +160,7 @@ pub(crate) fn load_with_launch(
     let theater = theater::load_theater(&mut assets, &map.header.theater)
         .ok_or_else(|| format!("load theater {}", map.header.theater))?;
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
+    art.apply_anim_type_read_states(&rules.anim_type_art_read_states);
     rules.merge_art_data(&art);
     rules.general.resolve_art_rates(&art_ini);
     let infantry_sequences =
@@ -628,6 +629,21 @@ mod retail_construction_tests {
         let seed = 0x00C0_FFEE;
         let mut a = load(&ra2, "Dustbowl.mmx", seed).expect("first headless load");
         let mut b = load(&ra2, "Dustbowl.mmx", seed).expect("second headless load");
+
+        let rules = &a.runtime.resources.rules;
+        assert_eq!(rules.general.metallic_debris.len(), 15);
+        assert_eq!(
+            rules.general.metallic_debris.last().map(String::as_str),
+            Some("D")
+        );
+        let d = rules
+            .art_registry
+            .anim_runtime_config("D")
+            .expect("native unread type receipt");
+        assert!(!d.art_body_read);
+        assert!(!d.bouncer);
+        assert_eq!(d.raw_shp_frame_count, None);
+        assert!(rules.art_registry.scheduler_anim_types().contains("D"));
 
         assert_eq!(
             a.sim().parity_digest(),

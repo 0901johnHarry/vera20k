@@ -990,7 +990,7 @@ pub fn compute_overlay_radar_colors(
             flags
                 .and_then(|flags| flags.cell_anim.as_deref())
                 .and_then(|anim| {
-                    let image_id = art_registry.resolve_effective_image_id(anim, anim);
+                    let image_id = art_registry.resolve_anim_image_id(anim);
                     load(art_data::anim_shp_candidates(
                         Some(art_registry),
                         anim,

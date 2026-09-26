@@ -618,8 +618,10 @@ use crate::sim::world::Simulation;
 // (`+0xBC`) and marks the player's undeploy order instead of carrying the
 // undeploy's unit type, owner, cell and selection; a building keeps its AI
 // sale byte (`+0x6DC`) and a house its authored IQ (`+0x1D0`).
-// BridgeStrength retains its native signed dword (formerly narrowed to u16).
-const SNAPSHOT_VERSION: u32 = 214;
+// 213 -> 214: BridgeStrength retains its native signed dword (formerly u16).
+// 214 -> 215: Terrain objects retain their construction-time world Z instead
+// of sampling later ground changes in damage and presentation consumers.
+const SNAPSHOT_VERSION: u32 = 215;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2345,7 +2347,7 @@ mod tests {
         use crate::sim::overlay_grid::OverlayGrid;
         use crate::sim::rng::SimRng;
         use crate::sim::snapshot::{GameSnapshot, SnapshotRestoreError};
-        use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+        use crate::sim::terrain_object::TerrainObjectState;
         use crate::sim::world::Simulation;
         use std::collections::{BTreeMap, BTreeSet};
 
@@ -2450,17 +2452,11 @@ mod tests {
             let type_ref = sim.interner.intern("TREE01");
             sim.production.terrain_objects.insert(
                 stable_id,
-                TerrainObjectState {
-                    stable_id,
-                    native_unique_id: None,
-                    in_logic_vector: true,
-                    type_ref,
-                    rx: cell.0,
-                    ry: cell.1,
-                    health: 100,
-                    max_health: 100,
-                    occupation_bits: 7,
-                    lifecycle: TerrainObjectLifecycle::Live,
+                {
+                    let mut terrain = TerrainObjectState::for_test(stable_id, type_ref, cell.0, cell.1);
+                    terrain.in_logic_vector = true;
+                    terrain.occupation_bits = 7;
+                    terrain
                 },
             );
             sim.production.terrain_object_cells.insert(cell, stable_id);
@@ -3582,7 +3578,8 @@ mod tests {
         // 212 -> 213: Sell's stage in the Selling mission; no undeploy
         // spawn copy on pack-ups.
         // 213 -> 214: signed BridgeStrength in serialized bridge state.
-        assert_eq!(super::SNAPSHOT_VERSION, 214);
+        // 214 -> 215: Terrain retains its placement height across ground changes.
+        assert_eq!(super::SNAPSHOT_VERSION, 215);
     }
 
     #[test]
@@ -7756,41 +7753,33 @@ mod tests {
         let spawner_id = 3;
         let tree_type = sim.interner.intern("TREE01");
         let spawner_type = sim.interner.intern("TIBTRE01");
-        let damaged = TerrainObjectState {
-            stable_id: damaged_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: tree_type,
-            rx: damaged_cell.0,
-            ry: damaged_cell.1,
-            health: 6,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let damaged = {
+            let mut terrain =
+                TerrainObjectState::for_test(damaged_id, tree_type, damaged_cell.0, damaged_cell.1);
+            terrain.health = 6;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
-        let destroyed = TerrainObjectState {
-            stable_id: destroyed_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: sim.interner.intern("TREE01"),
-            rx: destroyed_cell.0,
-            ry: destroyed_cell.1,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let destroyed = {
+            let mut terrain = TerrainObjectState::for_test(
+                destroyed_id,
+                sim.interner.intern("TREE01"),
+                destroyed_cell.0,
+                destroyed_cell.1,
+            );
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
-        let spawner = TerrainObjectState {
-            stable_id: spawner_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: spawner_type,
-            rx: spawner_cell.0,
-            ry: spawner_cell.1,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let spawner = {
+            let mut terrain =
+                TerrainObjectState::for_test(spawner_id, spawner_type, spawner_cell.0, spawner_cell.1);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
         for terrain in [&damaged, &destroyed, &spawner] {
             sim.production

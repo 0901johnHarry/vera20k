@@ -852,3 +852,78 @@ impl Drop for AnimDimTestRoot {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+#[test]
+fn animation_binding_keeps_literal_types_and_exact_image_sections() {
+    use crate::rules::{native_processing::RulesLayerStack, ruleset::RuleSet};
+    let root = AnimDimTestRoot::new();
+    for name in ["REAL", "WRONG", "D"] {
+        std::fs::write(
+            root.path().join(format!("{name}.SHP")),
+            single_frame_shp(3, 5),
+        )
+        .unwrap();
+    }
+    let assets = crate::assets::asset_manager::AssetManager::from_loose_root_for_test(root.path());
+    let art_ini = IniFile::from_str("[ FX]\nImage=REAL\n[FX]\nImage=WRONG\n");
+    let processed = RulesLayerStack::new(IniFile::from_str(
+        "[General]\nMetallicDebris=FX, FX,D, none\n",
+    ))
+    .process_with_fixed_art(&art_ini)
+    .unwrap();
+    let rules = RuleSet::from_processed_rules(&processed).unwrap();
+    let mut art = ArtRegistry::from_ini(&art_ini);
+    art.apply_anim_type_read_states(&rules.anim_type_art_read_states);
+    assert_eq!(art.resolve_anim_image_id(" FX"), "REAL");
+    assert_eq!(art.resolve_anim_image_id("FX"), "WRONG");
+    // Generic object resolution intentionally retains its established behavior.
+    assert_eq!(art.resolve_effective_image_id(" FX", " FX"), "WRONG");
+    let roots = rules.general.metallic_debris.clone();
+    art.bind_scheduler_anim_assets(&roots, &assets, "TEM", "TEMPERATE")
+        .unwrap();
+    for name in ["FX", " FX", "D", " NONE"] {
+        assert!(art.scheduler_anim_types().contains(name));
+    }
+    assert_eq!(
+        art.anim_runtime_config(" FX").unwrap().raw_shp_frame_count,
+        Some(1)
+    );
+    let d = art.anim_runtime_config("D").unwrap();
+    assert!(!d.art_body_read);
+    assert!(!d.bouncer);
+    assert_eq!(d.raw_shp_frame_count, None, "orphan D.SHP must not bind");
+    assert_eq!((d.end, d.loop_end, d.rate_logic_frames), (0, 0, 1));
+    let mut tolerant = ArtRegistry::from_ini(&art_ini);
+    tolerant.apply_anim_type_read_states(&rules.anim_type_art_read_states);
+    assert_eq!(
+        tolerant.bind_anim_class_assets(&roots, &assets, "TEM", "TEMPERATE"),
+        0
+    );
+    assert_eq!(tolerant.scheduler_anim_types(), art.scheduler_anim_types());
+}
+
+#[test]
+fn animation_image25_matches_original_reader_and_loader_selection() {
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../tools/rules_oracle/anim_image.json")).unwrap();
+    for row in rows {
+        let name = row["type"].as_str().unwrap();
+        let mut section = IniSection::new(name.to_owned());
+        if let Some(raw) = row["raw"].as_str() {
+            section.set("Image", raw);
+        }
+        let mut ini = IniFile::empty();
+        ini.replace_first_section(section);
+        let art = ArtRegistry::from_ini(&ini);
+        assert_eq!(
+            art.anim_runtime_config(name).unwrap().image,
+            row["image"].as_str().unwrap(),
+            "{row}"
+        );
+        assert_eq!(
+            art.resolve_anim_image_id(name),
+            row["selected"].as_str().unwrap().to_ascii_uppercase(),
+            "{row}"
+        );
+    }
+}

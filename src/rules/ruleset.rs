@@ -1142,9 +1142,9 @@ pub struct GeneralRules {
     pub mutate_explosion_warhead: String,
     /// Whether MutateExplosion is enabled (MutateExplosion= in [General]). Default true.
     pub mutate_explosion: bool,
-    /// `[General] MetallicDebris=` — list of animation names to spawn (50%-RNG
-    /// gated, count-checked) on bridge-cell collapse. Default 20 entries.
-    /// Mirrors gamemd `Rules+0x140` (data ptr) / `+0x14C` (count).
+    /// Ordered `[General] MetallicDebris=` AnimType references from the native
+    /// ReadGeneral128/factory pass. Constructor default is empty, not retail's
+    /// authored list. Mirrors Rules+0x140 (data) / +0x14C (count).
     pub metallic_debris: Vec<String>,
 }
 
@@ -1515,14 +1515,7 @@ impl Default for GeneralRules {
             mutate_warhead: "Mutate".to_string(),
             mutate_explosion_warhead: "MutateExplosion".to_string(),
             mutate_explosion: true,
-            metallic_debris: vec![
-                "DBRIS1LG", "DBRIS2LG", "DBRIS3LG", "DBRIS4LG", "DBRIS5LG", "DBRIS6LG", "DBRIS7LG",
-                "DBRIS8LG", "DBRIS9LG", "DBRS10LG", "DBRIS1SM", "DBRIS2SM", "DBRIS3SM", "DBRIS4SM",
-                "DBRIS5SM", "DBRIS6SM", "DBRIS7SM", "DBRIS8SM", "DBRIS9SM", "DBRS10SM",
-            ]
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect(),
+            metallic_debris: Vec::new(),
         }
     }
 }
@@ -1638,11 +1631,8 @@ impl BridgeRules {
             .section("CombatDamage")
             .map_or(1000, |section| section.read_int("BridgeStrength", 1000));
         let destroyable_by_default = true;
-        let explosions = ini
-            .section("General")
-            .and_then(|section| section.get_list("BridgeExplosions"))
-            .map(|list| list.into_iter().map(|s| s.to_uppercase()).collect())
-            .unwrap_or_default();
+        // Published from the ordered RulesClass reader by from_processed_rules.
+        let explosions = Vec::new();
         let voxel_max = ini
             .section("General")
             .and_then(|section| section.get_i32("BridgeVoxelMax"))
@@ -2648,16 +2638,9 @@ impl GeneralRules {
                 .unwrap_or("MutateExplosion")
                 .to_string(),
             mutate_explosion: general.get_bool("MutateExplosion").unwrap_or(true),
-            metallic_debris: general
-                .get("MetallicDebris")
-                .map(|v| {
-                    v.split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<_>>()
-                })
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| Self::default().metallic_debris),
+            // The processed RulesClass vector is authoritative; a merged INI
+            // cannot reproduce successful-read replacement or factory identity.
+            metallic_debris: Vec::new(),
         }
     }
 
@@ -3120,6 +3103,8 @@ impl RuleSet {
         let mut rules = Self::from_projected_ini(processed.ini())?;
         rules.crate_rules = processed.crate_rules().clone();
         rules.powerups = processed.powerups().clone();
+        rules.general.metallic_debris = processed.metallic_debris().to_vec();
+        rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
@@ -3931,8 +3916,12 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v6".hash(&mut hasher);
+        b"rules-simulation-config-v7".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
+        // Selection order and duplicate references affect the scenario RNG's
+        // consumers, including the truncated retail pool's unread AnimType D.
+        self.general.metallic_debris.hash(&mut hasher);
+        self.bridge_rules.explosions.hash(&mut hasher);
         self.animation_sequences.hash(&mut hasher);
         self.effect_assets.hash(&mut hasher);
         self.buildup_assets.hash(&mut hasher);
@@ -5809,18 +5798,40 @@ MutateWarhead=MyMutate\n\
     }
 
     #[test]
-    fn metallic_debris_default_matches_retail() {
-        let g = GeneralRules::default();
-        assert_eq!(g.metallic_debris.len(), 20);
-        assert_eq!(g.metallic_debris[0], "DBRIS1LG");
-        assert_eq!(g.metallic_debris[19], "DBRS10SM");
+    fn bridge_animation_vectors_have_empty_constructor_defaults() {
+        assert!(GeneralRules::default().metallic_debris.is_empty());
+        assert!(BridgeRules::default().explosions.is_empty());
+        let rules = RuleSet::from_ini(&IniFile::empty()).unwrap();
+        assert!(rules.general.metallic_debris.is_empty());
+        assert!(rules.bridge_rules.explosions.is_empty());
     }
 
     #[test]
     fn metallic_debris_parses_from_ini() {
         let ini = IniFile::from_str("[General]\nMetallicDebris=ANIM1,ANIM2,ANIM3\n");
-        let g = GeneralRules::from_ini(&ini);
-        assert_eq!(g.metallic_debris, vec!["ANIM1", "ANIM2", "ANIM3"]);
+        let rules = RuleSet::from_ini(&ini).unwrap();
+        assert_eq!(
+            rules.general.metallic_debris,
+            vec!["ANIM1", "ANIM2", "ANIM3"]
+        );
+    }
+
+    #[test]
+    fn resolved_bridge_animation_order_and_duplicates_affect_simulation_hash() {
+        let mut rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nMetallicDebris=A,B,A\nBridgeExplosions=X,Y\n",
+        ))
+        .unwrap();
+        let original = rules.simulation_config_hash();
+        rules.general.metallic_debris.swap(0, 1);
+        assert_ne!(original, rules.simulation_config_hash());
+        rules.general.metallic_debris.swap(0, 1);
+        rules.general.metallic_debris.pop();
+        assert_ne!(original, rules.simulation_config_hash());
+        rules.general.metallic_debris.push("A".to_owned());
+        assert_eq!(original, rules.simulation_config_hash());
+        rules.bridge_rules.explosions.reverse();
+        assert_ne!(original, rules.simulation_config_hash());
     }
 
     #[test]

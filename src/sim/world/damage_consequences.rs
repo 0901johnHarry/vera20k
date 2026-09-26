@@ -26,9 +26,10 @@ pub(crate) struct DamageConsequences {
     delivery: DamageDelivery,
 }
 
-pub(super) struct DamageCommitReceipt {
+pub(crate) struct DamageCommitReceipt {
+    pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
-    pub(super) bridge_state_changed: bool,
+    pub(crate) bridge_state_changed: bool,
     pub(super) path_grid: Option<Arc<PathGrid>>,
 }
 
@@ -229,6 +230,7 @@ impl DamageConsequences {
                 .append(&mut effects.smudge_spawn_requests);
         }
         DamageCommitReceipt {
+            fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
             path_grid,

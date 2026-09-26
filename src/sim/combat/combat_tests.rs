@@ -8631,7 +8631,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
 fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
     use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
-    use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+    use crate::sim::terrain_object::TerrainObjectState;
 
     fn run(kind: InvulnKind, techno_distance: i32) -> i32 {
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
@@ -8666,17 +8666,10 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
         let terrain_ref = sim.interner.intern("TREE01");
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: terrain_ref,
-                rx: 5,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 4,
-                lifecycle: TerrainObjectLifecycle::Live,
+            {
+                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+                terrain.occupation_bits = 4;
+                terrain
             },
         );
         sim.production
@@ -8755,17 +8748,12 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
     let terrain_ref = sim.interner.intern("TREE01");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_ref,
-            rx: 5,
-            ry: 5,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 4,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 4;
+            terrain
         },
     );
     sim.production
