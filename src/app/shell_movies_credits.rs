@@ -269,14 +269,10 @@ impl App {
                 return;
             }
         };
-        let now_ms =
-            crate::app::match_runtime::sim_tick::monotonic_frame_pacer_ms(state, Instant::now());
-        // Stream players (the theme) and sound events pause, not stop.
+        // Stream players (the theme) pause, not stop. Sound events pause for
+        // as long as the movie runs (`pump_audio_service`).
         if let Some(music) = state.audio.music_player.as_mut() {
             music.pause_output();
-        }
-        if let Some(sfx) = state.audio.sfx_player.as_mut() {
-            sfx.set_paused(true, now_ms);
         }
         // The Bink soundtrack plays at VoiceVolume: BinkSetVolume(ftol(
         // VoiceVolume * 32768.0)) at `0x00432897` (32768 = unity gain).
@@ -303,13 +299,8 @@ impl App {
         };
         let return_to = movie.return_to();
         drop(movie);
-        let now_ms =
-            crate::app::match_runtime::sim_tick::monotonic_frame_pacer_ms(state, Instant::now());
         if let Some(music) = state.audio.music_player.as_mut() {
             music.resume_output();
-        }
-        if let Some(sfx) = state.audio.sfx_player.as_mut() {
-            sfx.set_paused(false, now_ms);
         }
         Self::return_from_fullscreen_movie(state, return_to);
     }

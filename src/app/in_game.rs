@@ -31,7 +31,7 @@ impl App {
     }
 
     pub(super) fn return_to_main_menu(state: &mut AppState) {
-        state.match_state.paused = false;
+        state.match_state.debug_pause = false;
         state.match_state.match_presentation.in_game_menu =
             crate::ui::pause_menu::InGameMenuState::Closed;
         state.match_state.match_presentation.in_game_options_anchor = None;
@@ -225,7 +225,9 @@ impl App {
                 .on_open();
         }
 
-        state.match_state.paused = next.is_open();
+        // An open modal is the pause (`MatchState::paused`); any transition
+        // ends the debug pause.
+        state.match_state.debug_pause = false;
         if next.is_open() {
             // Show the OS cursor so the modal is clickable.
             if state
@@ -253,8 +255,8 @@ impl App {
 
     /// Draw whichever in-scenario modal card is open and commit its route.
     ///
-    /// Options is the native `0xBBB` overlay, drawn earlier in the frame; this
-    /// only reconciles the machine when that overlay closes itself.
+    /// Options is the native `0xBBB` overlay, drawn earlier in the frame, which
+    /// commits its own routes.
     pub(super) fn handle_in_game_menu(state: &mut AppState) {
         use crate::ui::pause_menu::{self, InGameMenuState, ModalOutcome};
 
@@ -271,8 +273,8 @@ impl App {
                     &leave_label,
                 ))
             }
-            // Options is the native `0xBBB` overlay, drawn earlier in the frame
-            // and reconciled by `sync_in_game_menu_with_options_overlay`.
+            // Options is the native `0xBBB` overlay, drawn earlier in the frame;
+            // its Back control returns to the menu through the owner.
             InGameMenuState::Options | InGameMenuState::Sound | InGameMenuState::Keyboard | InGameMenuState::SavedGame(_) => ModalOutcome::Stay,
         };
 
@@ -286,24 +288,6 @@ impl App {
             ModalOutcome::Stay => {}
             ModalOutcome::Enter(next) => Self::enter_in_game_menu_state(state, next),
             ModalOutcome::LeaveMatch => Self::exit_match_to_shell(state),
-        }
-    }
-
-    /// Re-enter the in-game menu when the Options overlay closes itself.
-    ///
-    /// gamemd's Options dialog is a **child** of the in-game menu: when it
-    /// returns, the state machine writes state 1, so closing Options puts the
-    /// player back on the menu rather than back into the mission. The `0xBBB`
-    /// overlay in this port owns its own Back handler and clears `paused`
-    /// there, so the parent state is re-asserted here — before the frame's
-    /// simulation advance, so the child's close cannot leak a stray tick.
-    pub(super) fn sync_in_game_menu_with_options_overlay(state: &mut AppState) {
-        use crate::ui::pause_menu::InGameMenuState;
-
-        if state.match_state.match_presentation.in_game_menu == InGameMenuState::Options
-            && !state.match_state.paused
-        {
-            Self::enter_in_game_menu_state(state, InGameMenuState::Menu);
         }
     }
 
@@ -498,7 +482,7 @@ impl App {
 
         let mut info = DevOverlayInfo {
             sim_speed_tps: state.match_state.sim_speed_tps,
-            paused: state.match_state.paused,
+            paused: state.match_state.paused(),
             music_volume: state
                 .audio
                 .music_player
@@ -576,7 +560,7 @@ impl App {
                 Self::return_to_main_menu(state);
             }
             DevOverlayAction::StepOneTick => {
-                if state.match_state.paused {
+                if state.match_state.paused() {
                     state.diag.debug_frame_step_requested = true;
                 }
             }

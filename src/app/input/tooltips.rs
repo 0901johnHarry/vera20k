@@ -67,7 +67,7 @@ pub(crate) fn now_ms(state: &AppState) -> u64 {
 /// CursorMoved feed (all screens).
 pub(crate) fn on_mouse_move(state: &mut AppState) {
     let now = now_ms(state);
-    if state.match_state.paused || state.frontend.keyboard_dialog.is_some() {
+    if state.match_state.paused() || state.frontend.keyboard_dialog.is_some() {
         state.match_state.match_presentation.tooltips.on_button(now);
         return;
     }
@@ -93,7 +93,7 @@ pub(crate) fn on_button_event(state: &mut AppState) {
 pub(crate) fn update(state: &mut AppState) {
     let now = now_ms(state);
     if state.frontend.screen == GameScreen::InGame
-        && !state.match_state.paused && state.frontend.keyboard_dialog.is_none()
+        && !state.match_state.paused() && state.frontend.keyboard_dialog.is_none()
     {
         sync_in_game_regions(state);
     } else {

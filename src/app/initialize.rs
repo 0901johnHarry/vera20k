@@ -615,7 +615,7 @@ impl App {
                 configured_input_delay_ticks: input_delay_ticks,
                 local_owner_override: None,
                 sandbox_full_visibility: false,
-                paused: false,
+                debug_pause: false,
                 // KD-3: unify the two game-speed sources. `in_game_options.game_speed`
                 // (in the presentation owner) is the single source of truth; seed it
                 // from the skirmish-setup speed (internal 1) and derive

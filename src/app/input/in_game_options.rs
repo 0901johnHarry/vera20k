@@ -1,6 +1,6 @@
 //! Paused-overlay mouse routing for the active in-game Options (`0xBBB`) dialog.
 //!
-//! Part of the app layer. While `state.paused`, `handle_mouse_input` routes here
+//! Part of the app layer. While paused, `handle_mouse_input` routes here
 //! BEFORE the gadget/tactical dispatch and this consumes the click so it never
 //! reaches the tactical viewport (no unit orders behind the overlay). Interaction
 //! changes only the visual/stored state — slider thumb + stored value, checkbox

@@ -190,19 +190,15 @@ fn dispatch_in_game_options_transaction(
     true
 }
 
+/// Options is a child of the in-game menu: gamemd's state machine writes
+/// state 1 (the menu) when the Options dialog returns.
 fn finish_in_game_options_close(state: &mut AppState) {
-    state.match_state.paused = false;
-    state.platform.frame_pacer.reset_for_immediate_frame();
-    if state
-        .match_state
-        .match_presentation
-        .software_cursor
-        .is_some()
-    {
-        state.platform.window.set_cursor_visible(false);
-    }
+    crate::app::App::enter_in_game_menu_state(
+        state,
+        crate::ui::pause_menu::InGameMenuState::Menu,
+    );
     log::info!(
-        "In-game Options closed; resumed at {} tps",
+        "In-game Options closed at {} tps",
         state.match_state.sim_speed_tps
     );
 }

@@ -84,7 +84,7 @@ impl AppState {
     /// Returns false when an egui interactive panel is open so the OS cursor shows.
     pub(crate) fn use_software_cursor(&self) -> bool {
         self.match_state.match_presentation.software_cursor.is_some()
-            && (!self.match_state.paused
+            && (!self.match_state.paused()
                 || crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(self))
             && !self.match_state.match_presentation.show_save_load_panel
             && !self.main_menu_dialog_open()
