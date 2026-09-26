@@ -926,7 +926,6 @@ impl Simulation {
                 index += 1;
                 continue;
             }
-            let world = self.anim_absolute_coord(id);
             let start_sound_active = self
                 .substrate
                 .anims
@@ -934,14 +933,11 @@ impl Simulation {
                 .is_some_and(|anim| anim.start_sound_active);
             self.clear_damage_fire_anim_reference(id);
             self.release_anim_owner_reference(id);
-            if start_sound_active && let Some(world) = world {
+            if start_sound_active {
                 // `MapClass::InitCellAttributes @ 0x00568BB0` reaches the
-                // scalar-deleting Anim destructor with StopSound forced null.
-                self.sound_events.push(SimSoundEvent::AnimationStopped {
-                    anim_id: id,
-                    stop_sound_id: None,
-                    world,
-                });
+                // scalar destructor4228E0: Release406060, no StopSound.
+                self.sound_events
+                    .push(SimSoundEvent::ObjectSoundReleased { owner: id });
             }
             self.conceal_anim(id);
             self.substrate.pending_delete.retain(|queued| *queued != id);
@@ -1321,11 +1317,21 @@ impl Simulation {
             anim.runtime.inactive = true;
             anim.start_sound_active = false;
         }
-        self.sound_events.push(SimSoundEvent::AnimationStopped {
-            anim_id: id,
-            stop_sound_id: stop_sound,
-            world,
-        });
+        // Destroy4255D5 calls Release406060, leaving a one-shot Report
+        // playing; StopAndClear405D40 would cut it off. Original execution:
+        // tools/rules_oracle/bridge_child_sound.{py,json,md}.
+        self.sound_events
+            .push(SimSoundEvent::ObjectSoundReleased { owner: id });
+        if let Some(stop_sound_id) = stop_sound {
+            // Native425618 plays StopSound after releasing the Report. The
+            // preceding release removes this owner's handle, so the existing
+            // stop/play consumer cannot interrupt the released Report.
+            self.sound_events.push(SimSoundEvent::AnimationStopped {
+                anim_id: id,
+                stop_sound_id: Some(stop_sound_id),
+                world,
+            });
+        }
         if is_feedback {
             self.substrate.multiplayer_feedback_pending_delete.push(id);
         } else {
@@ -1344,17 +1350,13 @@ impl Simulation {
         // Anim VT7E3354+20 ->426590 ->4228E0 releases sound handles but
         // never reaches Destroy4255B0 or its StopSound playback. The slot was
         // cleared by the caller before these synchronous destructor effects.
-        let world = self.anim_absolute_coord(id);
         let sound_active = self.anim(id).is_some_and(|anim| anim.start_sound_active);
         self.clear_damage_fire_anim_reference(id);
         self.release_anim_owner_reference(id);
         self.clear_building_anim_reference(id);
-        if sound_active && let Some(world) = world {
-            self.sound_events.push(SimSoundEvent::AnimationStopped {
-                anim_id: id,
-                stop_sound_id: None,
-                world,
-            });
+        if sound_active {
+            self.sound_events
+                .push(SimSoundEvent::ObjectSoundReleased { owner: id });
         }
         self.conceal_anim(id);
         self.substrate.pending_delete.retain(|queued| *queued != id);
@@ -2646,10 +2648,10 @@ mod tests {
         }
         sim.process_pending_delete();
         assert!(sim.entities().get(building_id).is_none());
-        for (id, coord) in coords {
+        for (id, _) in coords {
             assert!(sim.anim(id).is_none());
             assert!(sim.sound_events.iter().any(|event| matches!(event,
-                SimSoundEvent::AnimationStopped { anim_id, world, .. } if *anim_id == id && *world == coord)));
+                SimSoundEvent::ObjectSoundReleased { owner } if *owner == id)));
         }
     }
 
@@ -3393,10 +3395,7 @@ mod tests {
                 .iter()
                 .filter(|event| matches!(
                     event,
-                    SimSoundEvent::AnimationStopped {
-                        stop_sound_id: None,
-                        ..
-                    }
+                    SimSoundEvent::ObjectSoundReleased { .. }
                 ))
                 .count(),
             2,
@@ -3932,10 +3931,34 @@ mod tests {
         assert_eq!(
             sim.sound_events
                 .iter()
-                .filter(|event| matches!(event, SimSoundEvent::AnimationStopped { .. }))
+                .filter(|event| matches!(event, SimSoundEvent::ObjectSoundReleased { .. }))
                 .count(),
             1,
         );
+    }
+
+    #[test]
+    fn destroy_releases_report_before_optional_stop_sound_once() {
+        let rules = runtime_rules(
+            "[A]\nReport=StartCue\nStopSound=EndCue\nEnd=2\nLoopCount=1\n",
+            &[("A", 2)],
+        );
+        let mut sim = Simulation::new();
+        let type_id = sim.interner.intern("A");
+        let id = sim
+            .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
+            .unwrap();
+        let world = sim.anim_absolute_coord(id).unwrap();
+        let stop = sim.interner.intern("ENDCUE");
+        sim.sound_events.clear();
+        sim.destroy_anim(id, &rules);
+        sim.destroy_anim(id, &rules);
+        // Original4255D5 releases +1A0 before425618 plays the optional
+        // StopSound. Repeated queued Destroy cannot stop the released cue.
+        assert!(matches!(sim.sound_events.as_slice(), [
+            SimSoundEvent::ObjectSoundReleased { owner },
+            SimSoundEvent::AnimationStopped { anim_id, stop_sound_id: Some(sound), world: at },
+        ] if *owner == id && *anim_id == id && *sound == stop && *at == world));
     }
 
     #[test]
@@ -4457,7 +4480,7 @@ mod tests {
         assert_eq!(
             sim.sound_events
                 .iter()
-                .filter(|event| matches!(event, SimSoundEvent::AnimationStopped { .. }))
+                .filter(|event| matches!(event, SimSoundEvent::ObjectSoundReleased { .. }))
                 .count(),
             2,
         );

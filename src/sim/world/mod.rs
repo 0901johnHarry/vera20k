@@ -297,7 +297,8 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// Animation destruction releases its current handle before optional StopSound.
+    /// Hard-stop the owner's handle, then optionally play StopSound. Anim
+    /// destruction emits ObjectSoundReleased first so its Report plays out.
     AnimationStopped {
         anim_id: crate::sim::anim_class::AnimId,
         stop_sound_id: Option<InternedId>,
@@ -319,8 +320,9 @@ pub enum SimSoundEvent {
     /// 0x00406060`): it stops repeating and plays out.
     GattlingLoopRelease { owner: u64 },
     /// `SoundEvent::Release @ 0x00406060` on an object's own sound handle
-    /// (`FootClass+0x544`, keyed by the object's id) as the object goes: the
-    /// crash sound it holds plays out (`FootClass::~FootClass`, `0x004D3677`).
+    /// (`FootClass+0x544` or `AnimClass+0x1A0`, keyed by object id). A one-shot
+    /// plays out; an uncounted loop stops repeating. Anim Destroy4255D5 and
+    /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
     AircraftPhase {

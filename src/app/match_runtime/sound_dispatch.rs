@@ -10,6 +10,10 @@ use crate::audio::sfx::SfxPlayer;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
+#[cfg(test)]
+#[path = "bridge_child_sound_tests.rs"]
+mod bridge_child_sound_tests;
+
 /// The two presentation draws used while interpreting a simulation event.
 /// Production delegates to the existing player RNG; absence of that player
 /// still suppresses the same random-dependent cues.
