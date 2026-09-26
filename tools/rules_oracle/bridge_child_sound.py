@@ -92,4 +92,3 @@ def metadata():
    'anim_read':0x427D00,'release':0x406060,'hard_stop':0x405D40})
 if __name__=='__main__':
  finish_vectors(generate,Path(__file__).with_suffix('.json'),provenance=metadata)
-
