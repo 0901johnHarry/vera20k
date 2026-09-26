@@ -5775,6 +5775,131 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     );
 }
 
+/// Pins a ship's route end to end: the Move order, the Ship's first Process
+/// and the flat search ladder with the live zone grid and blocker plane. The
+/// island leaves one channel, so the route cannot follow the straight line.
+/// The route is today's Rust result, a regression pin, not a native capture.
+#[test]
+fn a_ship_order_routes_around_an_island_through_the_live_search() {
+    use crate::map::resolved_terrain::zone_class;
+    use crate::rules::locomotor_type::SpeedType;
+    use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
+
+    let rules = real_ship_test_rules();
+    let mut sim = Simulation::new();
+    // Square, as Map Size gives the Foot precheck its native projection.
+    let mut terrain = water_terrain(9, 9);
+    let land_costs = SpeedCostProfile {
+        foot: Some(100),
+        track: Some(100),
+        wheel: Some(100),
+        float: None,
+        amphibious: Some(100),
+        float_beach: None,
+        hover: Some(100),
+    };
+    for y in 0..=5 {
+        for x in 3..=5 {
+            let cell = terrain.cell_mut(x, y).expect("island cell");
+            cell.land_type = LandType::Clear.as_index();
+            cell.yr_cell_land_type = LandType::Clear.as_index();
+            cell.base_land_type = LandType::Clear.as_index();
+            cell.base_yr_cell_land_type = LandType::Clear.as_index();
+            cell.is_water = false;
+            cell.zone_type = zone_class::GROUND;
+            cell.speed_costs = land_costs;
+            cell.base_speed_costs = land_costs;
+        }
+    }
+    install_rectangular_test_playfield(&mut sim, terrain.width(), terrain.height());
+    sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+        base: 9,
+        ..sim.playfield_bounds.unwrap()
+    });
+    sim.playfield_size_height = Some(9);
+    sim.resolved_terrain = Some(terrain);
+    // The production navigation build: path grid, terrain costs and zones.
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    assert!(sim.terrain_costs.contains_key(&SpeedType::Float));
+    let path_grid = (*sim.path_grid_snapshot().expect("navigation grid")).clone();
+
+    let ship_id = sim
+        .spawn_object("DEST", "Americans", 1, 3, 64, &rules, &BTreeMap::new())
+        .expect("spawn destroyer");
+    let cmd = cmd_envelope(
+        &sim,
+        "Americans",
+        1,
+        Command::Move {
+            entity_id: ship_id,
+            target_rx: 7,
+            target_ry: 3,
+            queue: false,
+            group_id: None,
+        },
+    );
+    // The order dispatches at this frame's EventClass tail; the Ship accepts
+    // without a route, and the next frame's first Process searches.
+    crate::sim::movement::reset_path_search_used_zone_grid_marker();
+    for commands in [vec![cmd], Vec::new()] {
+        let _ = sim.advance_tick(
+            &commands,
+            Some(&rules),
+            &BTreeMap::new(),
+            Some(&path_grid),
+            None,
+            100,
+        );
+    }
+    assert!(
+        crate::sim::movement::path_search_used_zone_grid_marker(),
+        "the ship's search must run with the live zone grid"
+    );
+    let (path, layers) = sim
+        .substrate
+        .entities
+        .get(ship_id)
+        .and_then(|ship| ship.movement_target.as_ref())
+        .map(|target| (target.path.clone(), target.path_layers.clone()))
+        .expect("the ship's first Process installs a route");
+    assert_eq!(
+        path,
+        vec![
+            (1, 3),
+            (2, 4),
+            (2, 5),
+            (3, 6),
+            (4, 6),
+            (5, 6),
+            (6, 5),
+            (7, 4),
+            (7, 3),
+        ]
+    );
+    assert!(layers.iter().all(|&layer| layer == MovementLayer::Ground));
+
+    for _ in 0..300 {
+        let _ = sim.advance_tick(
+            &[],
+            Some(&rules),
+            &BTreeMap::new(),
+            Some(&path_grid),
+            None,
+            100,
+        );
+        if sim
+            .substrate
+            .entities
+            .get(ship_id)
+            .is_some_and(|ship| ship.movement_target.is_none())
+        {
+            break;
+        }
+    }
+    let ship = sim.substrate.entities.get(ship_id).expect("ship");
+    assert_eq!((ship.position.rx, ship.position.ry), (7, 3));
+}
+
 #[test]
 fn test_spawn_multiple_entities() {
     let mut sim: Simulation = Simulation::new();
