@@ -62,12 +62,12 @@ Some examples:
 - `refresh_fog()` — updates shroud and visibility
 - `tick_power_states()` — recalculates each player's power
 - `tick_superweapon_instances()` — advances superweapon charge timers and handles power suspend and resume
-- `tick_repairs()` — heals repairing buildings and charges their owners
+- `update_repair_and_power()` — in a building's turn: the computer's auto-repair start or low-credit sale, then the repair step that heals it and charges its owner
 - `tick_ore_growth_rungs()` — grows and spreads ore in the overlay grid
 
 The frame.
 
-One production entry point runs one frame: `SimRuntime::advance_frame()`, which calls `Simulation::advance_master_frame()` in `src/sim/world/mod.rs`. It follows the original game's frame order: commands due this frame → triggers → ore growth and active superweapon effects → team scripts → the live object pass → vision → power → superweapon timers → combat → crates → production, repairs and docks → houses, defeat checks and AI → frame commit → removal of dead objects → state hash. `Simulation::advance_tick()` is only a test adapter around the same frame.
+One production entry point runs one frame: `SimRuntime::advance_frame()`, which calls `Simulation::advance_master_frame()` in `src/sim/world/mod.rs`. It follows the original game's frame order: commands due this frame → triggers → ore growth and active superweapon effects → team scripts → the live object pass → vision → power → superweapon timers → combat → crates → production and docks → houses, defeat checks and AI → frame commit → removal of dead objects → state hash. `Simulation::advance_tick()` is only a test adapter around the same frame.
 
 Output for the rest of the program leaves through per-frame batches (`SimFrameOutput`: sound events, weapon-fire events, lifecycle outputs, overlay changes, lighting events) that the app drains each frame. Inside `sim/`, some mechanisms keep their own queues and message links, such as the radio contact bus between objects (`sim/radio/`), which uses the original's radio message codes.
 

@@ -1391,11 +1391,26 @@ impl Simulation {
                 self.quit_requested = true;
                 true
             }
+            // `EventClass::Execute 0x004C6ED2..0x004C6F01`: a live target
+            // (`+0x90`) toggles (`ToggleRepair(-1)`).
             Command::ToggleRepair { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
+                if !self.entity_owned_by_id(command_owner, *entity_id)
+                    || !self
+                        .substrate
+                        .entities
+                        .get(*entity_id)
+                        .is_some_and(|entity| entity.lifecycle.object_alive)
+                {
                     return false;
                 }
-                rules.is_some_and(|rules| production::toggle_repair(self, rules, *entity_id))
+                rules.is_some_and(|rules| {
+                    production::toggle_repair(
+                        self,
+                        rules,
+                        *entity_id,
+                        production::RepairControl::Toggle,
+                    )
+                })
             }
             Command::MinerReturn {
                 entity_id,

@@ -504,6 +504,21 @@ pub(super) fn dispatch_draw_passes(
         bomb_clock_tex,
         "bomb_clocks",
     );
+    // The repair wrench follows the bomb clock in `DrawExtras`.
+    let repair_wrench_tex = state
+        .match_state
+        .match_presentation
+        .selection_overlay
+        .as_ref()
+        .and_then(|o| o.repair_wrench())
+        .map(|wrench| wrench.texture());
+    draw_pooled_no_depth(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        repair_wrench_tex,
+        "repair_wrenches",
+    );
     // Occupant pips for garrisoned buildings (pips.shp frames 6-12).
     let occupant_pip_tex = state
         .match_state

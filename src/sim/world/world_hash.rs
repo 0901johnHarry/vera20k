@@ -1193,6 +1193,11 @@ impl Simulation {
                 house.eva_funds_timer.hash(hasher);
                 house.eva_low_power_guard.hash(hasher);
             }
+            if schema.includes(HashFeature::BuildingRepair) {
+                house.repair_delay.to_bits().hash(hasher);
+                house.repair_start_latch.hash(hasher);
+                house.repair_latch_timer.hash(hasher);
+            }
         }
     }
 
@@ -1777,6 +1782,12 @@ impl Simulation {
                 && entity.category == crate::map::entities::EntityCategory::Structure
             {
                 entity.ai_sellable.hash(hasher);
+            }
+            if schema.includes(HashFeature::BuildingRepair)
+                && entity.category == crate::map::entities::EntityCategory::Structure
+            {
+                entity.repairing.hash(hasher);
+                entity.ai_repairable.hash(hasher);
             }
             if schema.includes(HashFeature::BaseDefenseResponse) {
                 b"base-defense-response-v1".hash(hasher);
@@ -3455,6 +3466,7 @@ mod rally_hash_tests {
                 house.set_difficulty(
                     HouseDifficulty::Hard,
                     &[0.8, 1.0, 1.2],
+                    &[0.02; 3],
                     0.9,
                     game_mode_nonzero,
                 );

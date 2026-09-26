@@ -481,10 +481,12 @@ impl Simulation {
                     bridge_deck: bridge_spawn,
                 },
             );
-            // The line's AI Sellable, written after the constructor
-            // (`BuildingClass::ReadFromINI` `0x0044FB5B`).
+            // The line's AI Sellable and AI Repairable, written after the
+            // constructor and before the Unlimbo (`BuildingClass::ReadFromINI`
+            // `0x0044FB5B`, `0x0044FB70`).
             if map_ent.category == EntityCategory::Structure {
                 ge.ai_sellable = map_ent.structure_ai_sellable;
+                ge.ai_repairable = map_ent.structure_ai_repairable;
             }
             let (stable_id, outcome) =
                 self.unlimbo_authored_techno(ge, map_ent.health, rules, overlay_registry);
@@ -1639,6 +1641,18 @@ impl Simulation {
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             self.discard_constructed_limbo(new_sid);
             return false;
+        }
+        // 0x007397E4..0x007397F4: a building deployed for a house other than
+        // the local player's (`IsHumanPlayer`, here whether a human controls
+        // it) is AI-repairable (`+0x6CB`; its AI-rebuildable `+0x6CA` has no
+        // building reader).
+        if !self
+            .houses
+            .get(&owner_id)
+            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero))
+            && let Some(building) = self.substrate.entities.get_mut(new_sid)
+        {
+            building.ai_repairable = true;
         }
         self.initialize_cloak_after_unlimbo(new_sid, rules);
         self.add_unit_sensor_after_unlimbo(new_sid, rules);

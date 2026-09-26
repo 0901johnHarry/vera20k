@@ -1575,6 +1575,7 @@ pub(crate) fn populate_launch_houses(
         house.set_difficulty(
             slot.difficulty,
             &rules.general.difficulty_rof,
+            &rules.general.difficulty_repair_delay,
             rules.country_rof(country_name),
             sim.session.game_mode_nonzero,
         );
@@ -2567,12 +2568,17 @@ pub(crate) fn initialize_map_roster_houses(
             sim.session.game_options.tech_level,
         );
         house_state.player_control = player_control;
-        // RESIDUAL: a map-declared house keeps the constructor's difficulty
-        // and ROF bias 1.0 (`HouseClass+0x1A8`); only launch slots pass
-        // through `set_difficulty`. Native's difficulty assignment for map
-        // houses (campaign computer houses, map civilians) is not traced.
-        // Trigger: a weapon reload of such a house. Effect: its GetROF lacks
-        // the difficulty row.
+        // RESIDUAL: a map-declared house keeps the constructor's difficulty,
+        // ROF bias 1.0 (`HouseClass+0x1A8`) and repair delay 0.0 (`+0x1C0`);
+        // only launch slots pass through `set_difficulty`. In a campaign,
+        // `HouseClass::Read_INI` passes every map house through SetDifficulty
+        // after its section (`0x00500AA4..0x00500ADE`): a human-controlled
+        // one with the scenario's player difficulty (`Scenario+0x60C`), any
+        // other with its computer difficulty (`+0x610`); VERA's campaigns do
+        // not launch yet, so neither value exists. Trigger: a weapon reload,
+        // or the computer's auto-repair start, of such a house. Effect: its
+        // GetROF lacks the difficulty row; its auto-repair latch releases at
+        // the same frame's house update.
         house_state.base_plan.percent_built = house.base_plan.percent_built;
         house_state.base_plan.nodes = house
             .base_plan
@@ -3838,6 +3844,7 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         });
         let launch = one_player_battle_launch("payload.mmx");
         let plan_a =

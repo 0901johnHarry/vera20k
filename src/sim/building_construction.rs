@@ -214,6 +214,18 @@ impl BuildingUp {
         ConstructionFrame::Building
     }
 
+    /// Whether frame `now`'s step completes the Construction mission. VERA
+    /// steps a build-up after the object pass (`Simulation::tick_building_up`,
+    /// the residual above); native steps it inside the building's own Update
+    /// and commences the queued Guard there (`0x0043FF91`), so a later reader
+    /// in that Update, such as UpdateRepairAndPower's Get_Mission
+    /// (`0x00450659`), already sees Guard on the completion frame (the
+    /// `route` rows' mission after the frame's pieces).
+    pub(crate) fn completes_at(&self, now: i32, options: &GameOptions) -> bool {
+        let mut next = *self;
+        next.frame(now, options) == ConstructionFrame::Complete
+    }
+
     /// The frames from a human player's placement at frame 0
     /// ([`BuildingUp::placed_by_player`]) to the frame whose Construction
     /// visit completes it, or `None` when none does (a one-frame Buildup at a

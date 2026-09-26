@@ -774,7 +774,14 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x9036_E050_B184_
 // each building's AI sale byte (`BuildingClass+0x6DC`). Before(213)
 // reproduces the retired-weapon pin; FINAL_STREAM_STATES, per-tick replay and
 // every older projection are unchanged.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x2511_12D7_8FFD_F103;
+// 2026-09-26 building repair (snapshot 216, composition only): schema 216
+// folds each building's repair byte (`BuildingClass+0x6E8`) and AI repair
+// byte (`+0x6CB`) and each house's repair delay (`HouseClass+0x1C0`),
+// auto-repair latch (`+0x245`) and its timer (`+0x280`). Before(216)
+// reproduces the building-sale pin; FINAL_STREAM_STATES, per-tick replay and
+// every older projection are unchanged, so the chain moved no behavior here.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x1769_4590_8E72_8527;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x2511_12D7_8FFD_F103;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x7D23_F885_0E2A_71D9;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x7EF6_3951_8D88_9E82;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_ORE_FIELD_V207: u64 = 0x5BFF_B420_B844_3E8B;
@@ -861,6 +868,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -1124,6 +1132,12 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let (_, final_scen, final_main, final_mapgen) =
         *recorded_streams.last().expect("final checkpoint recorded");
     let final_hash = *replayed.last().expect("at least one tick recorded");
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(216)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216,
+        "v216 only folds the buildings' repair bytes and the houses' repair delay, \
+         auto-repair latch and its timer"
+    );
     assert_eq!(
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(213)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213,

@@ -166,18 +166,24 @@ fn own_building_id(state: &AppState, stable_id: u64) -> Option<u64> {
     .then_some(stable_id)
 }
 
-/// Stable id of the local player's own building under the given world point, if
-/// any. Shared by the repair/sell cursor feedback (`input::cursor`) and the
-/// repair/sell click handler below so the two can never disagree about what is
-/// an eligible building target. Only OWN structures qualify — allied buildings
-/// are not repairable/sellable by the local player (the sim `ToggleRepair` /
-/// `SellBuilding` handlers also enforce ownership).
-pub(crate) fn own_building_under_point(
+/// The local player's own building under the given world point when the
+/// repair cursor takes it: `DisplayClass::DetermineAction 0x006927CD..
+/// 0x0069280D` needs its owner to be the local player (`IsHumanPlayer`) and
+/// asks the building's `Can_Repair` (`production::can_repair_building`).
+/// Shared by the repair cursor feedback (`input::cursor`) and the repair
+/// click handler below so the two never disagree about the target.
+pub(crate) fn own_repairable_building_under_point(
     state: &AppState,
     world_x: f32,
     world_y: f32,
 ) -> Option<u64> {
-    own_building_id(state, visible_object_under_point(state, world_x, world_y)?)
+    own_repairable_building_id(state, visible_object_under_point(state, world_x, world_y)?)
+}
+
+fn own_repairable_building_id(state: &AppState, stable_id: u64) -> Option<u64> {
+    let id = own_building_id(state, stable_id)?;
+    let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+    crate::sim::production::can_repair_building(sim, state.rules()?, id).then_some(id)
 }
 
 /// The local player's own building under the given world point when the sell
@@ -310,7 +316,7 @@ pub(crate) fn try_repair_sell_mode_click(state: &mut AppState) -> bool {
     let object_under_cursor = visible_object_under_point(state, world_x, world_y);
     let building = object_under_cursor.and_then(|id| {
         if repair {
-            own_building_id(state, id)
+            own_repairable_building_id(state, id)
         } else {
             own_sellable_building_id(state, id)
         }

@@ -4512,11 +4512,13 @@ impl Simulation {
             crate::sim::house_tracking::HouseTracking::add_tracking,
         );
         // `BuildingClass::ChangeOwner @ 0x00448723` marks every transferred
-        // building HasBeenCaptured (+0x6E3); survivors read it at death.
+        // building HasBeenCaptured (+0x6E3); survivors read it at death. Its
+        // repair stops without a sound (`+0x6E8 = 0`, `0x00448CE8`).
         if category == EntityCategory::Structure
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {
             entity.has_been_captured = true;
+            entity.repairing = false;
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.
@@ -5422,6 +5424,10 @@ impl Simulation {
                         HouseAiActivationOrderTestEvent::HouseActivation(owner),
                     );
                 }
+                self.houses
+                    .get_mut(&owner)
+                    .expect("represented House remains registered during its update")
+                    .release_repair_latch(self.session.binary_frame);
 
                 #[cfg(test)]
                 if self
@@ -5626,10 +5632,15 @@ impl Simulation {
             if visit != PackUpFrame::NoVisit {
                 entity.mission.set_handler_state(status);
                 entity.mission.write_dispatch_epilogue(now, 1);
-                entity.repairing = false;
             }
             visit
         };
+        // Every visit stops a repair first (`ToggleRepair(0)`, `0x00449C41`).
+        if visit != PackUpFrame::NoVisit
+            && let Some(rules) = rules
+        {
+            production::toggle_repair(self, rules, sid, production::RepairControl::Stop);
+        }
         let spawned = match visit {
             PackUpFrame::StageZero => {
                 production::sell_stage_zero(self, rules, sid);
@@ -6449,7 +6460,7 @@ impl Simulation {
                 }
             }
 
-            // --- Phase 7: Production + Repairs + Docks + Ore ---
+            // --- Phase 7: Production + Docks + Ore ---
             // DEPENDS ON: combat (dead entities removed), movement (positions stable).
             // PRODUCES: new entities (spawned units), credit changes, ore growth.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
@@ -6459,24 +6470,24 @@ impl Simulation {
             // insertion_seq (temporal) order; the spawn/placement pass below then
             // delivers completed builds and advances the queue-of-record.
             //
-            // DRIFT (same-tick transaction ordering; repair lane's to fix):
+            // DRIFT (same-tick transaction ordering; the depot repair's to fix):
             // `LogicClass::PerTickUpdate @ 0x0055AFB0` runs the object loop
             // first — every depot repair debit
-            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) and every
-            // building's own repair debit are spent inside that object's `AI`
-            // visit — then Tactical, then a SEPARATE pass over
-            // `g_FactoryClass_Array` at 0x0055B66A where each factory's
-            // per-step charge (`FactoryClass::AI`) sees the wallet, then the
-            // houses (see
+            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) is spent
+            // inside that object's `AI` visit, as a building's own repair debit
+            // already is here (`production::update_repair_and_power`) — then
+            // Tactical, then a SEPARATE pass over `g_FactoryClass_Array` at
+            // 0x0055B66A where each factory's per-step charge
+            // (`FactoryClass::AI`) sees the wallet, then the houses (see
             // docs/research/ADVANCE_TICK_PHASE_PARTITION_NATIVE_SPINE_GHIDRA_REPORT.md).
-            // So within one frame EVERY repair/depot debit precedes EVERY
-            // factory step natively; VERA charges every factory here first,
-            // then `tick_repairs` and `tick_building_docks` below. Trigger: a house whose credits fall
-            // below one factory step plus one repair step in the same frame.
-            // Player effect: which of the two stalls for that frame differs.
-            // Frequency: only while a player is nearly broke with both a
-            // factory and a repair running. Downstream risk: credit trajectory
-            // and stall cadence, no lifecycle or RNG effect.
+            // So within one frame EVERY depot debit precedes EVERY factory step
+            // natively; VERA charges every factory here first, then
+            // `tick_building_docks` below. Trigger: a house whose credits fall
+            // below one factory step plus one depot repair step in the same
+            // frame. Player effect: which of the two stalls for that frame
+            // differs. Frequency: only while a player is nearly broke with both
+            // a factory and a depot repair running. Downstream risk: credit
+            // trajectory and stall cadence, no lifecycle or RNG effect.
             production::revalidate_and_step_factories(self, rules);
             spawned_entities |= production::tick_production_with_overlay_registry(
                 self,
@@ -6489,7 +6500,6 @@ impl Simulation {
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            production::tick_repairs(self, rules);
             building_dock::tick_building_docks(self, rules, phase_six_path_grid);
             crate::sim::docking::bunker_install::tick_bunker_install(
                 self,
@@ -6908,6 +6918,10 @@ mod slave_manager_cycle_tests;
 #[cfg(test)]
 #[path = "building_sale_oracle_tests.rs"]
 mod building_sale_oracle_tests;
+
+#[cfg(test)]
+#[path = "building_repair_oracle_tests.rs"]
+mod building_repair_oracle_tests;
 
 #[cfg(test)]
 #[path = "refinery_dock_cycle_tests.rs"]
