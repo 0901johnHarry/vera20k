@@ -1,5 +1,9 @@
 //! Release-mode composition witness on unmodified retail Hills.mmx.
-//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin]
+//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin] [map-file] [game-speed]
+//! The optional map file supports an unchanged Hills payload exposed as a
+//! loose `.yrm` in the ordinary chooser. Its name is retained by save validation.
+//! Optional game-speed 0..6 uses the ordinary first-frame command; 6 leaves
+//! more wall-clock time to capture live debris after restoring in the app.
 //! Native scalar comparisons: tools/spatial_oracle/bridge_damage_admission.py.
 //! Continues 200 frames after collapse through debris flight and expiration.
 //! This uses the production headless loader/runtime; it is not rendered parity
@@ -15,27 +19,29 @@ use vera20k::sim::command::{Command, CommandEnvelope};
 fn main() {
     let retail = std::env::args().nth(1).expect("retail installation path");
     let snapshot_path = std::env::args().nth(2);
-    let mut scenario =
-        vera20k::headless_scenario::load(Path::new(&retail), "Hills.mmx", 0x0B21_D6E5)
-            .expect("load retail Hills through the production loader");
+    let map_file = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "Hills.mmx".into());
+    let game_speed = std::env::args().nth(4).map(|value| {
+        let speed: u8 = value.parse().expect("game-speed must be 0..6");
+        assert!(speed <= 6, "game-speed must be 0..6");
+        speed
+    });
+    let mut scenario = vera20k::headless_scenario::load(Path::new(&retail), &map_file, 0x0B21_D6E5)
+        .expect("load retail Hills through the production loader");
     let owner = scenario
         .sim()
         .session
-        .house_order
-        .iter()
-        .copied()
-        .find(|id| {
-            scenario
-                .sim()
-                .houses
-                .get(id)
-                .is_some_and(|house| house.is_human)
-        })
-        .expect("human launch house");
+        .current_house
+        .expect("current launch house");
     let owner_name = scenario.sim().interner.resolve(owner).to_owned();
     let map_hash = scenario.map.ini.content_hash();
     let target = (64, 69);
     let runtime = &mut scenario.runtime;
+    println!(
+        "Loaded {map_file}: map {map_hash:016x}, rules {:016x}, current house {owner_name}; requested game speed {game_speed:?}",
+        runtime.resources.rules.simulation_config_hash()
+    );
     assert_eq!(runtime.resources.rules.bridge_rules.strength, 1500);
     assert!(
         runtime
@@ -115,7 +121,7 @@ fn main() {
             .cloned(),
     );
     for frame in 0..18000 {
-        let commands = if collapsed_at.is_none()
+        let mut commands = if collapsed_at.is_none()
             && (frame == 0
                 || runtime
                     .simulation
@@ -137,6 +143,15 @@ fn main() {
         } else {
             Vec::new()
         };
+        if frame == 0
+            && let Some(speed) = game_speed
+        {
+            commands.push(CommandEnvelope::new(
+                owner,
+                runtime.simulation.session.tick + 1,
+                Command::SetGameSpeed { speed },
+            ));
+        }
         runtime
             .advance_frame_for_tooling(&commands, vera20k::headless_scenario::SIM_TICK_MS)
             .expect("advance production frame");
@@ -219,7 +234,7 @@ fn main() {
                     .is_none()
             );
             println!(
-                "Hills.mmx: {target:?} collapsed at frame {frame}; {} Cannon shells, flight and target release observed",
+                "{map_file}: {target:?} collapsed at frame {frame}; {} Cannon shells, flight and target release observed",
                 seen.len()
             );
             if let Some(path) = snapshot_path.as_deref() {

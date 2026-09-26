@@ -1,0 +1,25 @@
+{
+  "source_commit": "4682eb5b71516145c487aaed31740ca05865d7c4",
+  "binary_sha256": "26b53bc6ea531ad785a69c3c690124a5547c79700314eab6a95c57132593c167",
+  "map": "bridge-debris-hills-20260926.yrm",
+  "map_content_hash": "c045c269668aa87e",
+  "rules_config_hash": "e53d1249e5802389",
+  "route": "ordinary release, in-game Load browser, saved production collapse, normal Shift+S GPU capture",
+  "bounds": "Production composition and visible rendering only, before final live inverse/sound/Verses dependency corrections. No native pixel comparison. PNG conversion is pixel-identical to PCX.",
+  "captures": [
+    {
+      "capture": "collapse.png",
+      "source_pcx_sha256": "3c89804e6a979b6376583c34a5df4096c6536188753f07b06b84aea16b2ec36e",
+      "png_sha256": "d625ff05456ed345edf02aacb210c597eefff2f167d16b5c43472a6a16bcbf77",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "capture": "flight.png",
+      "source_pcx_sha256": "8bce1fbb8effc40dbba18c01a3f3c2336a7580b3b4764703ede596fca64cad90",
+      "png_sha256": "dce53622a0f83c88402dce4c435267266ff23e5aef76efd9f262006b1659c849",
+      "width": 1024,
+      "height": 768
+    }
+  ]
+}
