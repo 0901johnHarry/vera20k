@@ -110,8 +110,9 @@ class Machine(launch.Machine):
                     uc.mem_write(pointer+offset,struct.pack('<Q',row[key]))
                 uc.mem_write(pointer+0x35A,bytes([row['bouncer']]))
                 uc.mem_write(pointer+0x362,bytes(['normalized: true' in row['full_config_debug']]))
-                uc.mem_write(pointer+0x36B,bytes([row['crater']]))
-                uc.mem_write(pointer+0x36D,bytes([row['scorch']]))
+                # Independently distinguished by bridge_anim_inputs asymmetric controls.
+                uc.mem_write(pointer+0x36B,bytes([row['scorch']]))
+                uc.mem_write(pointer+0x36D,bytes([row['crater']]))
                 # Original image metadata suffix derives Middle=frame_count/2.
                 image=launch.MEM+0x1D000+index*0x100
                 uc.mem_write(image+6,struct.pack('<h',row['raw_shp_frame_count']))
@@ -221,6 +222,7 @@ def all_cases():
 def metadata():
  return provenance(scope='Original complete bridge fallout47DD70, actual15-entry native-read MetallicDebris and4-entry BridgeExplosions pools, all15 selected by originalScenario draws, full AnimClass constructors and immediate Start. Actual production-resolved ART and image frame metadata supplied; native AnimType constructor defaults for D. Separate original deathloop support rows. No flight/landing claim.',assumptions=[
   'Input source bridge-retail-anim-inputs.json: production headlessHills load on PR552 release, AssetManager+RuleSet ArtRegistry after binding. Retained input file accompanies harness. Fourteen DBRIS images15frames; TWLT frames17,17,17,26; absentD section/image represented by original427530 defaults. Existing production missingD is intentionally not copied as behavior.',
+  'All injected ART scalars/references/flags/rates and physical SHP counts are independently established by rules_oracle/bridge_anim_inputs.py original full427530/427D00/427B50 execution; that corpus asserts these production exports. This producer still supplies those established fields at its declared boundary.',
   'Original427530 executes for all19types with populated native registries; ART scalar fields and referencedExpireAnim pointers supplied afterward. Original427C12..427C80 executes suppliedimageframecount metadata arithmetic. Stored RandomRate suppliedfromproduction (no second900/x); constructor draws originalRNG, including no-advance equal1..1.',
   'Middle7/8/13 computed by originalimage metadata suffix. Image pixel payloads absent; no rendering claim. Normalized flags supplied; game speed index4 atA8EB60, verified constructor422209 passes this address to original5FB2E0.',
   'Only instant metallic Start executes; sibling explosion delay positive so Report/smudge behavior occurs later and is not claimed. Their sound indices remain ctor-1 boundaries; no effect on captured producer. DBRIS1LG trailerSMOKEY2 omitted from suppliedpointer binding, outside producer; no flight claim.',

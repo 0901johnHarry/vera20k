@@ -461,11 +461,16 @@ pub struct GeneralRules {
     /// (`TreeTargeting=` in `[CombatDamage]`).
     /// Default false in vanilla RA2.
     pub tree_targeting: bool,
+    /// Signed Terrain Strength fallback. Rules ctor666DF8 stores25;
+    /// General671DD2..671DF1 reads TreeStrength (retail200). Native reader
+    /// evidence: tools/rules_oracle/bridge_landing_inputs.
+    pub tree_strength: i32,
     /// Health ratio threshold below which the bar turns yellow (ConditionYellow= in [AudioVisual]).
     /// Default 0.5 (50%).
     pub condition_yellow: f64,
     /// Health ratio threshold below which the bar turns red (ConditionRed= in [AudioVisual]).
-    /// Default 0.25 (25%).
+    /// Constructor default0.5 at667568..66756E; retail authors0.25.
+    /// Native reader evidence: tools/rules_oracle/bridge_landing_inputs.
     pub condition_red: f64,
     /// `[General] CloakingStages=` — native signed progress divisor. The
     /// constructor and stock rules both use 9.
@@ -1351,8 +1356,9 @@ impl Default for GeneralRules {
             default_mirage_disguises: Vec::new(),
             infantry_blink_disguise_time: 0,
             tree_targeting: false,
+            tree_strength: 25,
             condition_yellow: 0.5,
-            condition_red: 0.25,
+            condition_red: 0.5,
             cloaking_stages: 9,
             cloak_delay_frames: 18,
             cloak_sound: None,
@@ -1800,8 +1806,8 @@ impl GeneralRules {
             .map(|s| s.read_double("ConditionYellow", 0.5))
             .unwrap_or(0.5);
         let condition_red_native = audio_visual
-            .map(|s| s.read_double("ConditionRed", 0.25))
-            .unwrap_or(0.25);
+            .map(|s| s.read_double("ConditionRed", defaults.condition_red))
+            .unwrap_or(defaults.condition_red);
         // The bomb sounds (Rules+0x20C/+0x210) come from the same pass.
         let audio_visual_sound = |key: &str| {
             audio_visual
@@ -2131,6 +2137,7 @@ impl GeneralRules {
             tree_targeting: combat_damage
                 .and_then(|section| section.get_bool("TreeTargeting"))
                 .unwrap_or(false),
+            tree_strength: general.read_int("TreeStrength", defaults.tree_strength),
             condition_yellow: condition_yellow_native,
             condition_red: condition_red_native,
             cloaking_stages: general.get_i32("CloakingStages").unwrap_or(9),
@@ -3575,10 +3582,6 @@ impl RuleSet {
         // Parse [TerrainTypes] registry → per-type sections (TIBTRE01, TREE01, etc.).
         let mut terrain_object_types: HashMap<String, TerrainObjectType> = HashMap::new();
         let terrain_names: Vec<String> = parse_registry(ini, "TerrainTypes");
-        let tree_strength = ini
-            .section("General")
-            .and_then(|section| section.get_i32("TreeStrength"))
-            .unwrap_or(200);
         for name in &terrain_names {
             if let Some(section) = ini.section(name) {
                 terrain_object_types.insert(
@@ -3586,7 +3589,7 @@ impl RuleSet {
                     TerrainObjectType::from_ini_section_with_tree_strength(
                         name,
                         section,
-                        tree_strength,
+                        general.tree_strength,
                     ),
                 );
             }
@@ -6728,7 +6731,7 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             rules.general.condition_red,
-            section.read_double("ConditionRed", 0.25)
+            section.read_double("ConditionRed", GeneralRules::default().condition_red)
         );
     }
 
@@ -6778,7 +6781,7 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             general.condition_red.to_bits(),
-            section.read_double("ConditionRed", 0.25).to_bits()
+            section.read_double("ConditionRed", GeneralRules::default().condition_red).to_bits()
         );
         assert_ne!(
             general.condition_yellow.to_bits(),

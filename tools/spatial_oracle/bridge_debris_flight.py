@@ -11,6 +11,8 @@ from unicorn.x86_const import *
 from tools.native_oracle import run_checked,finish_vectors,provenance
 from tools.spatial_oracle.bounce_height import matrices
 from tools.spatial_oracle import bridge_debris_producer as p
+from tools.rules_oracle.bridge_landing_inputs import recorded_retail_inputs
+LANDING=recorded_retail_inputs()
 l=p.launch
 TABLE=l.MEM+0x100000
 CELLS=l.MEM+0x60000
@@ -59,7 +61,9 @@ class Flight(p.Machine):
   finally:
    p.EXPLOSIONS=original;p.INPUT_PATH=prior_input;p.retail_inputs.cache_clear()
   u=self.uc
-  expanded=self.input_data
+  expanded=LANDING['rules']
+  assert self.input_data['wake']==expanded['wake']
+  assert self.input_data['splash_list']==expanded['splash_list']
   u.mem_write(l.RULES+0x94,l.dwords(self.type_by_name[expanded['wake']]))
   splashes=l.MEM+0x1A800
   u.mem_write(splashes,l.dwords(*(self.type_by_name[n] for n in expanded['splash_list'])))
@@ -90,9 +94,15 @@ class Flight(p.Machine):
   u.mem_write(l.SP,l.dwords(l.STOP));u.reg_write(UC_X86_REG_ESP,l.SP);run_checked(u,0x725850,0x725886)
   u.mem_write(0xB0F69C,l.dwords(l.MEM+0x30000,256));u.mem_write(0xB0F6A8,l.dwords(0))
   u.mem_write(0xAC1398,l.dwords(1,0x7fff7fff))
-  # HE input from production Terrain export; actualarea executes on emptyreceiver lists.
-  u.mem_write(p.WARHEAD+0x147,b'\x01');u.mem_write(p.WARHEAD+0xa0,struct.pack('<11d',1,1,1,.7,.7,.35,.75,.4,.2,.8,1));u.mem_write(p.WARHEAD+0x124,struct.pack('<f',.5));u.mem_write(p.WARHEAD+0x12c,struct.pack('<f',.5))
-  u.mem_write(l.RULES+0x16c8,l.dwords(10000));u.mem_write(l.RULES+0x1740,l.dwords(self.input_data['bridge_strength']));u.mem_write(l.SCENARIO,l.dwords(0x8000));u.mem_write(p.WARHEAD+0x144,bytes([self.input_data['he_wall']]))
+  # Independently executed original readers establish the exact injected bits.
+  he=LANDING['warheads']['HE'];rules=LANDING['rules']
+  u.mem_write(p.WARHEAD+0x147,bytes([he['wood']]))
+  u.mem_write(p.WARHEAD+0xa0,struct.pack('<11Q',*(int(x,16) for x in he['verses_bits'])))
+  u.mem_write(p.WARHEAD+0x124,struct.pack('<I',int(he['cell_spread_bits'],16)))
+  u.mem_write(p.WARHEAD+0x12c,struct.pack('<I',int(he['percent_at_max_bits'],16)))
+  assert self.input_data['bridge_strength']==rules['bridge_strength']
+  assert self.input_data['he_wall']==he['wall']
+  u.mem_write(l.RULES+0x16c8,l.dwords(rules['max_damage']));u.mem_write(l.RULES+0x1740,l.dwords(rules['bridge_strength']));u.mem_write(l.SCENARIO,l.dwords(0x8000));u.mem_write(p.WARHEAD+0x144,bytes([he['wall']]))
   u.mem_write(l.MEM+0x3C000+0x44,l.dwords(0x18))
   for address,value in ((0xAA0E28,1000),(0xABAD1C,2000),(0xABAD30,20),(0xAA1028,40)):u.mem_write(address,l.dwords(value))
   for name,ptr in self.type_by_name.items():
@@ -138,7 +148,7 @@ def metadata():
   'All24 AnimType constructors427530 execute; ART numericfields and bindings supplied from export. Originalimage suffix derivesMiddle fromactualframecounts. D remainsnativeconstructor-only, absentsection/image. Framebuffers/pixels absent.',
   'OriginalMapGetCell565730/5657A0 run on supplied32x30 realCelltable. Slopematricesretail, allcellsflat slope0; ordinarylevels4/0, 3x3level4mesa surrounded0,5x5level0pit surrounded4, or singlelevel4source surrounded12(cliff). Structuralbridge cases allcellsraw0x100; watercases CellLand2. Dummycelllevel0/overlay-1. This is boundedgeometry, notloadedmap/topologyproof.',
   'Original47B2C0/439610/421E20/489100 initialize bridge/Bounce/Anim/Area416 offsets fromsupplied104 scalars. Runtimeframe1000 then incrementsonceperprimaryAI. No otherAnimAI runs, including siblingbridgeexplosion, trailer or expiry/wake/splash; their later sound/smudge/frame RNG is outside scope.',
-  'Bridge and waterbridge cases supplyconcretefamilytile1020, base1000,middle20, sharedanchoroverlay18; originalareaA/B/C/D execute on admittedimpact. ScenarioDestroyabletrue, MaxDamage10000, HEverses/spread from productionTerrainexport. Driver callbacks, ifreached, returnfalse toexclude collapsephysics; no geometrymutation claim.',
+  'Bridge and waterbridge cases supplyconcretefamilytile1020, base1000,middle20, sharedanchoroverlay18; originalareaA/B/C/D execute on admittedimpact. ScenarioDestroyabletrue, MaxDamage/HE exact stored bits independently established by rules_oracle/bridge_landing_inputs original readers; active retail MaxDamage10000, wood0.75, spread0.5/PAM0.5. Driver callbacks, ifreached, returnfalse toexclude collapsephysics; no geometrymutation claim.',
   'PrimaryfullAnimAI uses nativecreated state fromproducer. DBRIS1LG trailerSMOKEY2 binding andseparation2 supplied andoriginalconstructor runs on cadence. WaterWake/Splash bindings followorderedproductionexport. Object/tag/audio/house/Techno observers empty. GlobalAnimvector containsconstructedobjects; commonLogicvector empty, pendingdeletebuffer hascapacity256.',
   'Report/sound indices remain nativector-1 in alltypes, despiteproduction names ininputfile: soundStart side effects intentionally notexecuted. This is a declared input substitution, not silent actualARTsound parity. Scorch/crater flags are copied but delayedchildMiddle bodies notscheduled. No cross-animation scheduler/RNGparity claim.',
  ],substitutions=[
@@ -148,6 +158,7 @@ def metadata():
   'Original725850..725886 initializespendingdeletevector beforeprovidedcapacity/buffer; terminal725C70 drainexecuteswholebody. FS:[0] suppliesvalidemptySEHchain. OriginalRTTI/classcomparisonsrun, withWindowsIsBadReadPtr importedcallat7CAA5E supplied0 aftercheckingmappedfixturememory. ScalarAnimDtor426590 returns0, pops4, andrecordscall/flags. Queuecompactionisnotstubbed.',
   'Originalexecutableinstructionsunchanged. RuntimeART/report/reference/image/observer/bufferstate suppliedasdeclaredabove. No graphics output orwholegame/nativefullschedulerclaim.',
  ],entry_points={'producer':p.ENTRY,'anim_type_ctor':0x427530,'anim_ctor':l.CTOR,'anim_ai':0x423AC0,'bounce_update':0x439B00,'bounce_result':0x423930,'anim_destroy':0x4255B0,'area_damage':0x489280,'combat_light':0x48A620,'anim_deck_init':0x421E20,'area_deck_init':0x489100,'pending_vector_init':0x725850,'pending_drain':0x725C70,'scalar_anim_dtor_boundary':0x426590})
+ result['native_landing_inputs_sha256']=hashlib.sha256((Path(__file__).parent.parent/'rules_oracle/bridge_landing_inputs.json').read_bytes()).hexdigest()
  result['fixture_input_sha256']=hashlib.sha256(Path(__file__).with_suffix('.inputs.json').read_bytes()).hexdigest()
  return result
 if __name__=='__main__':finish_vectors(generate,Path(__file__).with_suffix('.json'),provenance=metadata)

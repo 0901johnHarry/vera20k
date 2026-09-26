@@ -9,8 +9,6 @@
 use crate::rules::foundation;
 use crate::rules::ini_parser::IniSection;
 
-const DEFAULT_TREE_STRENGTH: i32 = 200;
-
 /// Type-class data for a terrain object (e.g. `[TIBTRE01]`).
 ///
 /// Only the fields the sim needs; render-only fields (LightVisibility, tints,
@@ -58,7 +56,11 @@ pub struct TerrainObjectType {
 
 impl TerrainObjectType {
     pub fn from_ini_section(name: &str, section: &IniSection) -> Self {
-        Self::from_ini_section_with_tree_strength(name, section, DEFAULT_TREE_STRENGTH)
+        Self::from_ini_section_with_tree_strength(
+            name,
+            section,
+            crate::rules::ruleset::GeneralRules::default().tree_strength,
+        )
     }
 
     pub fn from_ini_section_with_tree_strength(
@@ -133,7 +135,10 @@ mod tests {
         assert_eq!(t.animation_rate, 3);
         assert_eq!(t.animation_probability_micros, 3000);
         assert_eq!(t.armor, "wood");
-        assert_eq!(t.strength, 200);
+        assert_eq!(
+            t.strength,
+            crate::rules::ruleset::GeneralRules::default().tree_strength
+        );
         assert!(!t.immune);
         assert!(!t.legal_target);
         assert!(t.insignificant);

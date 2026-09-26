@@ -56,6 +56,211 @@ fn flight_rules(producer: &Value, inputs: &Value) -> Option<RuleSet> {
     Some(rules)
 }
 
+// Independent original readers: tools/rules_oracle/bridge_landing_inputs.
+// This compares actual production RuleSet values; VERA's exports did not seed
+// the native readers. Every HE/Super entry and sampled damage result must match.
+fn assert_native_landing_inputs(rules: &RuleSet) {
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/rules_oracle/bridge_landing_inputs.json"
+    ))
+    .unwrap();
+    let retail = corpus["layers"].as_array().unwrap().last().unwrap();
+    let globals = &retail["rules"];
+    assert_eq!(
+        serde_json::json!(rules.general.tree_strength),
+        globals["tree_strength"]
+    );
+    assert_eq!(serde_json::json!(rules.general.wake.name), globals["wake"]);
+    assert_eq!(
+        serde_json::json!(rules.combat_damage.splash_list),
+        globals["splash_list"]
+    );
+    assert_eq!(
+        serde_json::json!(rules.combat_damage.max_damage),
+        globals["max_damage"]
+    );
+    assert_eq!(
+        serde_json::json!(rules.bridge_rules.strength),
+        globals["bridge_strength"]
+    );
+    assert_eq!(
+        serde_json::json!(rules.bridge_warheads.c4_name),
+        globals["c4_warhead"]
+    );
+    for (value, key) in [
+        (rules.general.condition_red, "condition_red_bits"),
+        (rules.general.condition_yellow, "condition_yellow_bits"),
+    ] {
+        assert_eq!(format!("{:016x}", value.to_bits()), globals[key]);
+    }
+    for name in ["HE", "Super"] {
+        let actual = rules.warhead(name).unwrap();
+        let expected = &retail["warheads"][name];
+        assert_eq!(serde_json::json!(actual.wall), expected["wall"], "{name}");
+        assert_eq!(serde_json::json!(actual.wood), expected["wood"], "{name}");
+        for (value, key) in [
+            (actual.cell_spread_f64, "cell_spread_bits"),
+            (actual.percent_at_max_f64, "percent_at_max_bits"),
+        ] {
+            let native =
+                f32::from_bits(u32::from_str_radix(expected[key].as_str().unwrap(), 16).unwrap());
+            assert_eq!(value.to_bits(), f64::from(native).to_bits(), "{name}/{key}");
+        }
+        for (index, value) in actual.verses_f64.iter().enumerate() {
+            let native =
+                u64::from_str_radix(expected["verses_bits"][index].as_str().unwrap(), 16).unwrap();
+            assert_eq!(value.to_bits(), native, "{name}/armor{index}");
+        }
+    }
+    for name in ["TREE01", "TIBTRE01"] {
+        let actual = rules.terrain_object_type_case_insensitive(name).unwrap();
+        let expected = &retail["terrain_types"][name];
+        assert_eq!(
+            serde_json::json!(actual.strength),
+            expected["strength"],
+            "{name}"
+        );
+        assert_eq!(actual.armor, "wood", "native Armor6: {name}");
+        assert_eq!(expected["armor"], 6);
+        assert_eq!(
+            serde_json::json!(actual.immune),
+            expected["immune"],
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::json!(actual.spawns_tiberium),
+            expected["spawns_tiberium"],
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::json!(actual.temperate_occupation_bits),
+            expected["temperate_occupation_bits"],
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::json!(actual.snow_occupation_bits),
+            expected["snow_occupation_bits"],
+            "{name}"
+        );
+        let foundation = corpus["terrain_art"]["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == name)
+            .unwrap();
+        assert_eq!(
+            serde_json::json!(actual.foundation),
+            foundation["foundation_name"]
+        );
+        assert_eq!(foundation["occupy_offsets"][0], serde_json::json!([0, 0]));
+        assert_eq!(
+            foundation["occupy_offsets"][1],
+            serde_json::json!([32767, 32767])
+        );
+    }
+    let he = rules.warhead("HE").unwrap();
+    for row in corpus["damage_sensitivity"]["rows"].as_array().unwrap() {
+        let armor = row["armor"].as_u64().unwrap() as u8;
+        let actual = crate::sim::combat::damage::kernel::apply_warhead_damage(
+            row["damage"].as_i64().unwrap() as i32,
+            he.cell_spread_f64,
+            he.percent_at_max_f64,
+            &he.verses_f64,
+            crate::sim::combat::damage::ArmorClass(armor),
+            row["distance"].as_i64().unwrap() as i32,
+            false,
+            rules.combat_damage.max_damage,
+        );
+        let expected = row["native"].as_i64().unwrap() as i32;
+        assert_eq!(actual, expected, "native HE damage: {row}");
+    }
+}
+
+#[test]
+fn bridge_landing_constructor_and_absent_keys_use_native_defaults() {
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::ruleset::GeneralRules;
+    use crate::rules::terrain_object_type::TerrainObjectType;
+
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/rules_oracle/bridge_landing_inputs.json"
+    ))
+    .unwrap();
+    let native = &corpus["constructor"]["rules"];
+    let expected_strength = native["tree_strength"].as_i64().unwrap() as i32;
+    let expected_red =
+        u64::from_str_radix(native["condition_red_bits"].as_str().unwrap(), 16).unwrap();
+    let defaults = GeneralRules::default();
+    assert_eq!(defaults.tree_strength, expected_strength);
+    assert_eq!(defaults.condition_red.to_bits(), expected_red);
+    for additional in [
+        "",
+        "[General]\nFixtureOnly=1\n[AudioVisual]\nFixtureOnly=1\n",
+    ] {
+        let ini = IniFile::from_str(&format!(
+            "[TerrainTypes]\n0=TREE01\n[TREE01]\nFixtureOnly=1\n{additional}"
+        ));
+        let rules = RuleSet::from_ini(&ini).unwrap();
+        assert_eq!(rules.general.tree_strength, expected_strength);
+        assert_eq!(rules.general.condition_red.to_bits(), expected_red);
+        assert_eq!(
+            rules
+                .terrain_object_type_case_insensitive("TREE01")
+                .unwrap()
+                .strength,
+            expected_strength
+        );
+        assert_eq!(
+            TerrainObjectType::from_ini_section("TREE01", ini.section("TREE01").unwrap()).strength,
+            expected_strength
+        );
+    }
+}
+
+#[test]
+fn retail_bridge_landing_inputs_match_original_readers() {
+    let Some(rules) = retail_rules(&native()) else {
+        return;
+    };
+    assert_native_landing_inputs(&rules);
+}
+
+#[test]
+#[ignore = "requires the configured retail install and stock Hills.mmx"]
+fn retail_hills_layered_bridge_landing_inputs_match_original_readers() {
+    use crate::assets::asset_manager::AssetManager;
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::process_owner::NativeRulesProcessOwner;
+
+    let retail = std::env::var("RA2_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            crate::util::config::GameConfig::load()
+                .unwrap()
+                .paths
+                .ra2_dir
+        });
+    let assets = AssetManager::new(&retail).unwrap();
+    let read = |name: &str| IniFile::from_bytes(&assets.get(name).unwrap()).unwrap();
+    let root = read("RULESMD.INI");
+    let art = read("ARTMD.INI");
+    let mode = read("MPBattleMD.ini");
+    assert!(
+        assets.get("LANGRULE.INI").is_none(),
+        "native selected installation boundary"
+    );
+    let map = crate::map::map_file::load_from_path(&retail.join("Hills.mmx")).unwrap();
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(root, None, art).unwrap();
+    let (mut rules, _, art, _) = owner
+        .load_noncampaign_scenario(Some(&mode), &map.ini)
+        .unwrap()
+        .into_parts();
+    let mut registry = crate::rules::art_data::ArtRegistry::from_ini(&art);
+    registry.apply_anim_type_read_states(&rules.anim_type_art_read_states);
+    rules.merge_art_data(&registry);
+    assert_native_landing_inputs(&rules);
+}
+
 fn flight_fixture(rules: &RuleSet, input: &Value) -> (Simulation, BTreeSet<(u16, u16)>) {
     let (mut sim, source) = fixture(rules, input);
     let shape = input["terrain"].as_str().unwrap();

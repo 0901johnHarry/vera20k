@@ -102,6 +102,74 @@ fn retail_rules(corpus: &Value) -> Option<RuleSet> {
     Some(rules)
 }
 
+#[test]
+fn retail_bridge_anim_inputs_match_original_full_art_reader() {
+    let Some(ini) = retail_ini("rulesmd.ini") else {
+        return;
+    };
+    let Some(art) = retail_ini("artmd.ini") else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
+    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    // Original427530 -> full427D00/5F92E0 -> image427B50, supplied only raw
+    // physical ART strings and complete retail SHP bytes at archive I/O.
+    // This independent corpus establishes the inputs used by the producer and
+    // flight oracles; no VERA scalar value initialized its native type fields.
+    let native: Value = serde_json::from_str(include_str!(
+        "../../../tools/rules_oracle/bridge_anim_inputs.json"
+    ))
+    .unwrap();
+    let rows = native["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 24);
+    for row in rows {
+        let name = row["name"].as_str().unwrap();
+        let frames = row["raw_shp_frame_count"].as_i64().unwrap();
+        if frames > 0 {
+            // Native original header reads independently establish this asset
+            // boundary; the production release load validates actual binding.
+            rules
+                .art_registry
+                .bind_anim_frame_count_for_test(name, frames as i32);
+        }
+        let config = rules.art_registry.anim_runtime_config(name).unwrap();
+        let actual = serde_json::json!({
+            "art_body_read": config.art_body_read,
+            "image": rules.art_registry.resolve_anim_image_id(name),
+            "start": config.start,
+            "loop_start": config.loop_start,
+            "loop_end": config.loop_end,
+            "end": config.end,
+            "loop_count": config.loop_count,
+            "rate": config.rate_logic_frames,
+            "random_rate": config.random_rate_logic_frames.unwrap_or((0, 0)),
+            "raw_shp_frame_count": config.raw_shp_frame_count.unwrap_or(0),
+            "damage_f64_bits": config.damage.bits(),
+            "elasticity_f64_bits": config.elasticity.bits(),
+            "min_z_vel_f64_bits": config.min_z_vel.bits(),
+            "max_xy_vel_f64_bits": config.max_xy_vel.bits(),
+            "damage_radius": config.damage_radius,
+            "trailer_seperation": config.trailer_seperation,
+            "bouncer": config.bouncer,
+            "normalized": config.normalized,
+            "scorch": config.scorch,
+            "crater": config.crater,
+            "shadow": config.shadow,
+            "expire_anim": config.expire_anim,
+            "bounce_anim": config.bounce_anim,
+            "trailer_anim": config.trailer_anim,
+            "warhead": config.warhead,
+        });
+        for (field, value) in actual.as_object().unwrap() {
+            assert_eq!(value, &row[field], "{name}/{field}");
+        }
+        if !config.art_body_read {
+            assert_eq!(name, "D");
+            assert_eq!(config.raw_shp_frame_count, None);
+        }
+    }
+}
+
 fn fixture(rules: &RuleSet, input: &Value) -> (Simulation, BTreeSet<(u16, u16)>) {
     let mut sim = Simulation::with_seed(input["seed"].as_u64().unwrap());
     sim.intern_rule_type_ids(rules);

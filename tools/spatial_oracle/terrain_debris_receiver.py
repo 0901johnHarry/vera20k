@@ -2,11 +2,13 @@
 
 All substitutions and fixture state are declared in the companion metadata.
 """
-import json,struct
+import hashlib,json,struct
 from pathlib import Path
 from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import *
 from tools.spatial_oracle.bridge_damage_admission import *
+from tools.rules_oracle.bridge_landing_inputs import recorded_retail_inputs
+LANDING=recorded_retail_inputs()
 OBJ=MEM+0x30000
 TYPE=MEM+0x31000
 DAMAGE=MEM+0x32000
@@ -26,8 +28,15 @@ def run(case):
   u.mem_write(TABLE+((20+dy)*512+10+dx)*4,words(ptr))
  u.mem_write(0x89E7C0,words(104));u.mem_write(0x87F914,words(64,64))
  u.mem_write(0x8871E0,words(RULES));u.mem_write(0xA8B230,words(SCENARIO))
- u.mem_write(SCENARIO+0x218,seed_bytes(1));u.mem_write(RULES+0x16c8,words(10000));u.mem_write(RULES+0x1708,struct.pack('<d',0.5))
- u.mem_write(RULES+0xFA8,words(C4));u.mem_write(C4+0xa0,struct.pack('<11d',*([1.0]*11)))
+ tree=LANDING['terrain_types']['TREE01']
+ rules=LANDING['rules'];he=LANDING['warheads']['HE'];c4=LANDING['warheads']['Super']
+ u.mem_write(SCENARIO+0x218,seed_bytes(1));u.mem_write(RULES+0x16c8,words(rules['max_damage']))
+ u.mem_write(RULES+0x1708,struct.pack('<Q',int(rules['condition_red_bits'],16)))
+ u.mem_write(RULES+0x1700,struct.pack('<Q',int(rules['condition_yellow_bits'],16)))
+ assert rules['c4_warhead']=='Super'
+ u.mem_write(RULES+0xFA8,words(C4));u.mem_write(C4+0xa0,struct.pack('<11Q',*(int(x,16) for x in c4['verses_bits'])))
+ u.mem_write(C4+0x124,struct.pack('<I',int(c4['cell_spread_bits'],16)));u.mem_write(C4+0x12c,struct.pack('<I',int(c4['percent_at_max_bits'],16)))
+ u.mem_write(C4+0x144,bytes([c4['wall']]));u.mem_write(C4+0x147,bytes([c4['wood']]))
  u.mem_write(0xA8ED84,words(1000))
  u.mem_write(0xAC1398,words(1,0x7fff7fff))
  u.mem_write(0xB0F69C,words(DELETE,32));u.mem_write(0xB0F6A8,words(0))
@@ -35,8 +44,8 @@ def run(case):
  u.mem_write(OBJ+0x83,b'\x00');u.mem_write(OBJ+0x90,b'\x01');u.mem_write(OBJ+0x98,b'\x01')
  u.mem_write(0xA8E9A0,b'\x01')
  u.mem_write(OBJ+0x9c,words(2688,5248,208));u.mem_write(OBJ+0xc8,words(TYPE))
- u.mem_write(TYPE,words(0x7f5458));u.mem_write(TYPE+0x2b8,words(MEM+0x34000));u.mem_write(MEM+0x34000,words(0,0x7fff7fff));u.mem_write(TYPE+0x2a8,words(4,4));u.mem_write(TYPE+0x234,b'\x01\x01');u.mem_write(TYPE+0xa0,words(200));u.mem_write(TYPE+0x9c,words(6));u.mem_write(TYPE+0x233,bytes([case.get('immune',0)]));u.mem_write(TYPE+0x2b1,bytes([case.get('spawns',0)]))
- u.mem_write(WARHEAD+0x147,bytes([case.get('wood',1)]));u.mem_write(WARHEAD+0xa0,struct.pack('<11d',1,1,1,.7,.7,.35,.75,.4,.2,.8,1));u.mem_write(WARHEAD+0x124,struct.pack('<f',.5));u.mem_write(WARHEAD+0x12c,struct.pack('<f',.5))
+ u.mem_write(TYPE,words(0x7f5458));u.mem_write(TYPE+0x2b8,words(MEM+0x34000));u.mem_write(MEM+0x34000,words(0,0x7fff7fff));u.mem_write(TYPE+0x2a8,words(tree['temperate_occupation_bits'],tree['snow_occupation_bits']));u.mem_write(TYPE+0x234,b'\x01\x01');u.mem_write(TYPE+0xa0,words(tree['strength']));u.mem_write(TYPE+0x9c,words(tree['armor']));u.mem_write(TYPE+0x233,bytes([case.get('immune',tree['immune'])]));u.mem_write(TYPE+0x2b1,bytes([case.get('spawns',tree['spawns_tiberium'])]))
+ u.mem_write(WARHEAD+0x147,bytes([case.get('wood',he['wood'])]));u.mem_write(WARHEAD+0xa0,struct.pack('<11Q',*(int(x,16) for x in he['verses_bits'])));u.mem_write(WARHEAD+0x124,struct.pack('<I',int(he['cell_spread_bits'],16)));u.mem_write(WARHEAD+0x12c,struct.pack('<I',int(he['percent_at_max_bits'],16)))
  u.mem_write(DAMAGE,words(case.get('damage',20)));u.mem_write(CELL+0xe4,words(OBJ));u.mem_write(CELL+0x124,words(0xfc));u.mem_write(CELL+0x122,b'\x00')
  u.mem_write(0xB0CD48,struct.pack('<Q',0x3FC25E5374344960))
  if case.get('contact'):
@@ -111,10 +120,10 @@ def generate():
  return dict(cases=[run(case) for case in cases])
 
 def metadata():
- return provenance(scope='Original423930 bounce-contact admission through original71B920 Terrain receiver, Object damage kernel, immediate Limbo/Cell unlink/Logic removal/deferred deletion. Bounded plain-tree state; custom destructible SpawnsTiberium row supplies allocation failure and executes original nested C4 area body. Not full debris physics, animation, observers, pathfinding, or whole Terrain parity.', assumptions=[
+ result=provenance(scope='Original423930 bounce-contact admission through original71B920 Terrain receiver, Object damage kernel, immediate Limbo/Cell unlink/Logic removal/deferred deletion. Bounded plain-tree state; custom destructible SpawnsTiberium row supplies allocation failure and executes original nested C4 area body. Not full debris physics, animation, observers, pathfinding, or whole Terrain parity.', assumptions=[
   'Pinned retail image loaded; no executable code writes. Native x87 control word0x0E7F. Original49F2F0 initializes actual8-neighbor offsets; actual map table contains cell10,20 level2 and all8 neighboringcells. One-cell footprint; originalvtable pointers for Terrain/TerrainType/Anim/Cell/Logic; no houses/entities/bombs/animations in their global vectors.',
-  'Terrain location2688,5248,208, maxHP200, armorwood6; originalTerrainCtor defaults and production AssetManager+IniFile export tools/spatial_oracle/bridge-retail-terrain-inputs.json establish relevant stock TREE01/GeneralTreeStrength200, HE and DBRIS1LG/1SM values. Input fixtures directly supply resolved fields; this harness does not execute INI readers.',
-  'HE verses[1,1,1,.7,.7,.35,.75,.4,.2,.8,1], CellSpread.5/PercentAtMax.5; RulesMaxDamage10000 and yellow.5. Stock C4Warhead Super represented with allverses1, Woodfalse, spread0, emptyAnimList. NoDamagefalse; gameRunningtrue; frame1000; ScenarioRNG originalseed1.',
+  'Terrain location2688,5248,208, maxHP200, armorwood6; independent native rules_oracle/bridge_landing_inputs executes TerrainType ctor and selected rules/ART readers for TREE01/TreeStrength200/Armor6/Immune0/Spawns0/occupation4,6/Foundation1x1, HE and Super. Anim fields have independent rules_oracle/bridge_anim_inputs evidence. This harness consumes those results; no INI readers execute inside each contact row.',
+  'HE/Super exact scalar bits and Rules fields come from independently executed original readers in rules_oracle/bridge_landing_inputs. Active retail HE wood0.75, CellSpread/PAM0.5; MaxDamage10000; ConditionRed0.25 at+1708, Yellow0.5 at+1700. C4 Super allverses1, Woodfalse, spread0, PAM1; emptyAnimList supplied. NoDamagefalse; gameRunningtrue; frame1000; ScenarioRNG originalseed1.',
   'Second linked Terrain is a synthetic mixed-list continuation boundary, not legal map-placement proof. Both occupy suppliedsamecell; only first has neighbor contribution. Allfixtures use one-cell native footprint, terrain occupationbits4 (production retail TREE01), rawoccupation0xFC, Logic membershippresent, no tag/audio/activewarp effect state.',
   'Process initialized footprint sentinel supplied atAC1398; B0CD48 supplied native render-depth double bits0x3FC25E5374344960. Pending-delete buffer32 and Logicbuffer4 preallocated. Unrelated global vectors empty. Neighbor counts initially1; center count0.',
  ], substitutions=[
@@ -123,5 +132,7 @@ def metadata():
   '71D160 Terrain render rectangle returns supplied0,0,1,1;6D2790 TacticalDirty no-op;5F5850 ObjectMark returns1 so originalTerrainMark/ExitCell/CellRemoveContent/occupation execute.',
   '439150 empty BombListPointerGotInvalid boundary;4A9770 displayremoval boundary;47D2B0 cellrecalc,56D460 orphanZone,584550 incrementalZone,6551C0 radarDirty boundaries eachreturn0. Originalcall order logged, callees notproved.',
  ],entry_points={'contact':0x423930,'terrain_receiver':0x71B920,'object_receiver':0x5F5390,'damage_kernel':0x489180,'terrain_limbo':0x71C930,'object_limbo':0x5F4D30,'cell_remove':0x47EA90,'logic_unregister':0x55BAE0,'uninit':0x5F65F0,'area':0x489280,'neighbor_init':0x49F2F0})
+ result['native_landing_inputs_sha256']=hashlib.sha256((Path(__file__).parent.parent/'rules_oracle/bridge_landing_inputs.json').read_bytes()).hexdigest()
+ return result
 if __name__=='__main__':
  finish_vectors(generate,Path(__file__).with_suffix('.json'),provenance=metadata)
