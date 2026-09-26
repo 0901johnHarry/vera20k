@@ -22,6 +22,8 @@ mod cell_content;
 mod crash;
 pub mod edge_cell;
 mod gap_generator;
+mod ground_move;
+pub(crate) use ground_move::GroundMove;
 mod hash_schema;
 mod house_base;
 mod house_defeat;
