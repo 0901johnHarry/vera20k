@@ -28,11 +28,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::entity_store::{EntityStore, TouchedEntities};
+use crate::sim::entity_store::{EntityStore, TouchReader};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::{EntityBlockEntry, LayeredEntityBlockMap, MovingAllyOccupant};
+use crate::sim::touch_log::Touched;
 
 /// One owner's product: the cells buildings block, and the per-cell soft
 /// blockers as that owner's movers see them.
@@ -394,17 +395,17 @@ pub(crate) struct TouchedBacklog {
 }
 
 impl TouchedBacklog {
-    fn absorb(&mut self, touched: &TouchedEntities) {
+    fn absorb(&mut self, touched: &Touched) {
         match touched {
-            TouchedEntities::All => self.set_everything(),
-            TouchedEntities::Ids(ids) if !self.everything => {
+            Touched::All => self.set_everything(),
+            Touched::Ids(ids) if !self.everything => {
                 self.ids.extend(ids.iter().copied());
                 // Nobody is taking this backlog: stop growing it.
                 if self.ids.len() > 1 << 16 {
                     self.set_everything();
                 }
             }
-            TouchedEntities::Ids(_) => {}
+            Touched::Ids(_) => {}
         }
     }
 
@@ -436,6 +437,10 @@ pub(crate) struct OwnerBlockIndex {
     /// How many times the placements were rebuilt from every entity.
     #[cfg(test)]
     pub(crate) world_rebuilds: usize,
+    /// How many times an owner's sets were built from every placement
+    /// instead of brought current.
+    #[cfg(test)]
+    pub(crate) view_builds: usize,
 }
 
 /// Sets on loan to a movement pass, with the number that returns them.
@@ -445,11 +450,16 @@ pub(crate) struct LentOwnerBlockSet {
     pub(crate) sets: OwnerBlockSet,
 }
 
+/// The sets a movement pass holds, by owner. A path request the pass makes
+/// searches with its requester's owner's sets from here, brought current,
+/// because lending sets a pass already holds rebuilds them.
+pub(crate) type HeldBlockSets = BTreeMap<InternedId, LentOwnerBlockSet>;
+
 impl OwnerBlockIndex {
     /// Move the store's touch log into this index's backlog and the
     /// forwarded one.
     fn drain_log(&mut self, entities: &mut EntityStore) {
-        let touched = entities.take_touched();
+        let touched = entities.take_touched(TouchReader::BlockIndex);
         self.pending.absorb(&touched);
         self.forwarded.absorb(&touched);
     }
@@ -533,7 +543,13 @@ impl OwnerBlockIndex {
             }
             // No view yet, or its product is out with a pass that will be
             // refused: build from the placements.
-            None => view.build(placements, owner_name, alliances, interner),
+            None => {
+                #[cfg(test)]
+                {
+                    self.view_builds += 1;
+                }
+                view.build(placements, owner_name, alliances, interner)
+            }
         };
         view.loan = loan;
         debug_assert_current(&sets, entities, owner_name, alliances, interner, rules);
@@ -560,6 +576,10 @@ impl OwnerBlockIndex {
             // The view was dropped or lent again since: these sets are
             // nobody's, so rebuild them and take the loan over.
             _ => {
+                #[cfg(test)]
+                {
+                    self.view_builds += 1;
+                }
                 let view = self.owners.entry(owner).or_default();
                 view.product = None;
                 lent.sets = view.build(placements, owner_name, alliances, interner);
@@ -592,7 +612,7 @@ fn debug_assert_current(
     rules: Option<&RuleSet>,
 ) {
     debug_assert!(
-        !super::movement_occupancy::live_read_check_enabled()
+        !crate::sim::touch_log::live_read_check_enabled()
             || *product == build_owner_block_set(entities, owner, alliances, interner, rules),
         "owner block sets for {owner} diverged from a build of the whole world"
     );

@@ -39,7 +39,7 @@ use crate::util::fixed_math::{
     native_movement_frame_fraction,
 };
 
-use super::block_index::{LentOwnerBlockSet, OwnerBlockIndex};
+use super::block_index::{HeldBlockSets, LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
 use super::locomotor::{GroundMovePhase, MovementLayer};
 use super::movement_bridge::{BRIDGE_Z_OFFSET, apply_pending_bridge_render_state};
@@ -190,7 +190,7 @@ fn nav_target_object_cell(entities: &EntityStore, nav: &NavTargetRef) -> Option<
 /// re-derives only the entities touched since.
 #[allow(clippy::too_many_arguments)]
 fn refresh_owner_block_set_if_stale(
-    entity_block_sets: &mut BTreeMap<crate::sim::intern::InternedId, LentOwnerBlockSet>,
+    held_block_sets: &mut HeldBlockSets,
     built_at_gen: &mut BTreeMap<crate::sim::intern::InternedId, u64>,
     block_index: &mut OwnerBlockIndex,
     owner: crate::sim::intern::InternedId,
@@ -203,11 +203,11 @@ fn refresh_owner_block_set_if_stale(
     if built_at_gen.get(&owner).copied() == Some(current_gen) {
         return false;
     }
-    match entity_block_sets.get_mut(&owner) {
+    match held_block_sets.get_mut(&owner) {
         Some(lent) => block_index.refresh_lent(owner, lent, entities, alliances, interner, rules),
         None => {
             let lent = block_index.lend_current(owner, entities, alliances, interner, rules);
-            entity_block_sets.insert(owner, lent);
+            held_block_sets.insert(owner, lent);
         }
     }
     built_at_gen.insert(owner, current_gen);
@@ -526,7 +526,7 @@ fn process_pending_drive_arrivals(
     entity_order: &[u64],
     ctx: PathfindingContext<'_>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
-    entity_block_sets: &BTreeMap<crate::sim::intern::InternedId, LentOwnerBlockSet>,
+    held_block_sets: &HeldBlockSets,
     interner: &crate::sim::intern::StringInterner,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     cell_occupation: &mut CellOccupationGrid,
@@ -611,7 +611,7 @@ fn process_pending_drive_arrivals(
         let layered_pathing = supports_layered_bridge_pathing(loco, grid, entity.on_bridge);
         let movement_zone = Some(loco.movement_zone);
         let terrain_cost = terrain_costs.get(&loco.speed_type);
-        let (entity_blocks, entity_block_map) = entity_block_sets
+        let (entity_blocks, entity_block_map) = held_block_sets
             .get(&entity.owner())
             .map(|lent| (Some(&lent.sets.0), Some(&lent.sets.1)))
             .unwrap_or((None, None));
@@ -1040,7 +1040,7 @@ fn advance_ordinary_mover(
     let path_delay_ticks = mcfg.path_delay_ticks;
     let PreparedMovementPass {
         tube_processed,
-        entity_block_sets,
+        held_block_sets,
         block_set_built_at_gen,
         ..
     } = prepared;
@@ -1184,9 +1184,9 @@ fn advance_ordinary_mover(
     // Slice 6: refresh this owner's pathfinding snapshot if occupancy changed
     // since it was built (e.g. an earlier mover committed a move this tick).
     // Matches gamemd's live-order processing; no-op when nothing moved. Must run
-    // before the immutable refs below borrow `entity_block_sets`.
+    // before the immutable refs below borrow `held_block_sets`.
     refresh_owner_block_set_if_stale(
-        entity_block_sets,
+        held_block_sets,
         block_set_built_at_gen,
         block_index,
         snap.owner,
@@ -1200,7 +1200,7 @@ fn advance_ordinary_mover(
     let (mover_entity_blocks, mover_entity_block_map): (
         Option<&BTreeSet<(u16, u16)>>,
         Option<&crate::sim::pathfinding::LayeredEntityBlockMap>,
-    ) = entity_block_sets
+    ) = held_block_sets
         .get(&snap.owner)
         .map(|lent| (Some(&lent.sets.0), Some(&lent.sets.1)))
         .unwrap_or((None, None));
@@ -1210,12 +1210,11 @@ fn advance_ordinary_mover(
         .get(entity_id)
         .and_then(|mover| MoverBuildingEntryFacts::new(mover, rules));
     #[cfg(debug_assertions)]
-    let building_entry_skip_check =
-        super::movement_occupancy::live_read_check_enabled().then(|| {
-            super::movement_occupancy::build_live_building_entry_skip_map(
-                entities, entity_id, interner, rules,
-            )
-        });
+    let building_entry_skip_check = crate::sim::touch_log::live_read_check_enabled().then(|| {
+        super::movement_occupancy::build_live_building_entry_skip_map(
+            entities, entity_id, interner, rules,
+        )
+    });
     let deferred_entry_skips = DeferredBuildingEntrySkips {
         mover: mover_building_entry_facts.as_ref(),
         rules,
@@ -1228,7 +1227,7 @@ fn advance_ordinary_mover(
     // read live from the store while the mover is lifted out of it.
     let mover_marker_peer = bridge_marker_peer(entities, entity_id, rules, interner);
     #[cfg(debug_assertions)]
-    let marker_peer_check = super::movement_occupancy::live_read_check_enabled()
+    let marker_peer_check = crate::sim::touch_log::live_read_check_enabled()
         .then(|| super::path_markers::snapshot_bridge_marker_peers(entities, rules, interner));
     let deferred_marker = path_grid.map(|grid| DeferredBridgeMarker {
         mover_id: entity_id,
@@ -2335,6 +2334,13 @@ impl MovementPassCache {
         self.block_index.world_rebuilds
     }
 
+    /// How often an owner's sets were built from every placement instead of
+    /// brought current.
+    #[cfg(test)]
+    pub(crate) fn block_index_view_builds(&self) -> usize {
+        self.block_index.view_builds
+    }
+
     /// How often the blocker plane was rebuilt from the whole map and every
     /// entity.
     #[cfg(test)]
@@ -2384,7 +2390,8 @@ impl MovementPassCache {
             .refresh_lent(owner, lent, entities, alliances, interner, rules);
     }
 
-    /// Owner sets for a caller outside any pass; [`Self::give_back`] returns them.
+    /// Owner sets for a search whose pass holds none for this owner, or that
+    /// runs outside any pass; [`Self::give_back`] returns them.
     pub(crate) fn lend_block_set(
         &mut self,
         owner: crate::sim::intern::InternedId,
@@ -2501,7 +2508,7 @@ impl MovementPassCache {
             .expect("plane was just ensured")
             .plane;
         debug_assert!(
-            !super::movement_occupancy::live_read_check_enabled()
+            !crate::sim::touch_log::live_read_check_enabled()
                 || *plane
                     == bump_crush::build_blocker_neighbor_counts_with_overlays(
                         entities,
@@ -2529,7 +2536,7 @@ impl MovementPassCache {
 struct PreparedMovementPass {
     movers: Vec<u64>,
     tube_processed: BTreeSet<u64>,
-    entity_block_sets: BTreeMap<crate::sim::intern::InternedId, LentOwnerBlockSet>,
+    held_block_sets: HeldBlockSets,
     block_set_built_at_gen: BTreeMap<crate::sim::intern::InternedId, u64>,
 }
 
@@ -2651,21 +2658,20 @@ fn prepare_movement_pass(
     // during repath, as a build from the entities would give them now.
     // RA2 optimization: moving friendly units are passable (code-2 dynamic cost);
     // only stationary/enemy units hard-block. InternedId is Copy, so keys are cheap.
-    let entity_block_sets: BTreeMap<crate::sim::intern::InternedId, LentOwnerBlockSet> =
-        mover_owners
-            .iter()
-            .map(|&owner_id| {
-                let lent = block_index.lend_current(owner_id, entities, alliances, interner, rules);
-                (owner_id, lent)
-            })
-            .collect();
+    let held_block_sets: HeldBlockSets = mover_owners
+        .iter()
+        .map(|&owner_id| {
+            let lent = block_index.lend_current(owner_id, entities, alliances, interner, rules);
+            (owner_id, lent)
+        })
+        .collect();
     // Occupancy generation these snapshots reflect. Captured before
     // process_pending_drive_arrivals so any move it makes advances the generation
     // and forces the first consuming mover to rebuild. Each owner's snapshot is
     // lazily refreshed in the mover loop below whenever occupancy changed since it
     // was last built (gamemd processes movers in live object order).
     let block_set_build_gen = occupancy.generation();
-    let block_set_built_at_gen: BTreeMap<crate::sim::intern::InternedId, u64> = entity_block_sets
+    let block_set_built_at_gen: BTreeMap<crate::sim::intern::InternedId, u64> = held_block_sets
         .keys()
         .map(|&owner| (owner, block_set_build_gen))
         .collect();
@@ -2675,7 +2681,7 @@ fn prepare_movement_pass(
         &ordinary_entry_order,
         ctx,
         terrain_costs,
-        &entity_block_sets,
+        &held_block_sets,
         interner,
         rules,
         cell_occupation,
@@ -2701,7 +2707,7 @@ fn prepare_movement_pass(
     Ok(PreparedMovementPass {
         movers,
         tube_processed,
-        entity_block_sets,
+        held_block_sets,
         block_set_built_at_gen,
     })
 }
@@ -2938,12 +2944,9 @@ impl PendingMovementPass {
         self.effects.track_movement.take()
     }
 
-    /// The requester's owner sets this pass already holds, for its search.
-    pub(crate) fn lent_block_set(
-        &mut self,
-        owner: crate::sim::intern::InternedId,
-    ) -> Option<&mut LentOwnerBlockSet> {
-        self.prepared.entity_block_sets.get_mut(&owner)
+    /// The owner sets this pass holds, for the path requests it makes.
+    pub(crate) fn held_block_sets(&mut self) -> &mut HeldBlockSets {
+        &mut self.prepared.held_block_sets
     }
 
     /// A Drive/Ship Process_Movement that returned without head selection
@@ -3301,7 +3304,7 @@ pub(crate) fn finish_movement_pass(
         mut prepared,
         entity_order,
     } = pending;
-    for (owner, lent) in std::mem::take(&mut prepared.entity_block_sets) {
+    for (owner, lent) in std::mem::take(&mut prepared.held_block_sets) {
         caches.block_index.give_back(owner, lent);
     }
     let MovementPassEffects {
