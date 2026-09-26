@@ -618,7 +618,10 @@ use crate::sim::world::Simulation;
 // (`+0xBC`) and marks the player's undeploy order instead of carrying the
 // undeploy's unit type, owner, cell and selection; a building keeps its AI
 // sale byte (`+0x6DC`) and a house its authored IQ (`+0x1D0`).
-const SNAPSHOT_VERSION: u32 = 213;
+// 213 -> 214: a building keeps its AI repair byte (`+0x6CB`) and a house its
+// repair delay (`+0x1C0`), auto-repair latch (`+0x245`) and the latch's
+// timer (`+0x280`).
+const SNAPSHOT_VERSION: u32 = 214;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3580,7 +3583,9 @@ mod tests {
         // 211 -> 212: no copy of the last selection's weapon id.
         // 212 -> 213: Sell's stage in the Selling mission; no undeploy
         // spawn copy on pack-ups.
-        assert_eq!(super::SNAPSHOT_VERSION, 213);
+        // 213 -> 214: the building's AI repair byte; the house's repair
+        // delay, auto-repair latch and its timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 214);
     }
 
     #[test]

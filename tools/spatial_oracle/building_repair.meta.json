@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "BuildingTypeClass repair step cost 0x7120D0 with GetCost 0x45ED50; BuildingClass::ToggleRepair 0x446FF0; BuildingClass::UpdateRepairAndPower 0x450630 from entry to return (admission, the computer's auto-repair start and latch timer, the repair tick); HouseClass::Update's latch release 0x4F9302..0x4F9338",
+  "assumptions": [
+    "the slave_manager fixture refinery (Building vtables over a BuildingType-vtable type, 2x2 at NW (12, 12)) owned by the fixture House; multiplayer game mode unless `game_mode` is 0; PlayerPtr the owner only when `player`; the Scenario RNG seeded through the original seeder",
+    "Rules: RepairStep 8, RepairPercent 15% (0x3FC3333333333333) unless the row sets it, RepairRate .016f widened, ConditionYellow .5, ConditionRed .25, [IQ] RepairSell 1 and SellBack 2, [AI] CreditReserve 100 unless the row sets it; the PadAircraft= vector holds two AircraftType-vtable types (Cost 1000/1200 unless the row sets them) whose first's first Dock= is this type only when `pad_dock`; SeparateAircraft= set unless the row clears it; a FreeUnit= is a UnitType-vtable type",
+    "update rows: the owner's money interface House+0x24 holds the constructor's vtable 0x7EA834, its storage empty (Available_Money = Balance); authored IQ 2, TechLevel 10; the latch timer's unread +0x284 word preset; damage-state slots 0..3 as SLOT_OCCUPANTS/SLOT_NAMES name them; the smoke (+0x310) a ParticleSystemClass-vtable object"
+  ],
+  "substitutions": [
+    "toggle and update rows: the flash (vt+0x148 = 0x456E00), EVA 0x752700 and VocClass::PlayAt 0x7509E0 observed and answered",
+    "update rows: BuildingClass::GetCurrentFrame 0x43EF90 answered 0 (only the redraw byte +0x80 reads it), the damage-state slot anim 0x451890 observed and answered (ToggleRepair, Health_Ratio, Spend_Money, Available_Money and the smoke's vt+0xF8 native), Sell_Back 0x447110 observed and answered",
+    "release rows: the block run alone with ESI = the House"
+  ],
+  "entry_points": {
+    "repair_step_cost": "0x007120D0",
+    "toggle_repair": "0x00446FF0",
+    "update_repair_and_power": "0x00450630",
+    "house_release": "0x004F9302"
+  },
+  "payload_sha256": "9ce918388137386a29eba4272c8c9f903890b0723bb778b8f853316b4feca038"
+}

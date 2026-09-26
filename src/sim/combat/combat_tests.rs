@@ -7955,8 +7955,14 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
             .known()
             == Some(crate::sim::mission::MissionType::Selling)
     };
+    // Each building's UpdateRepairAndPower, in its LogicVector visit.
+    let repair_and_power = |sim: &mut crate::sim::world::Simulation| {
+        for id in [hostile_target, allied_target, null_target] {
+            crate::sim::production::update_repair_and_power(sim, &rules, id);
+        }
+    };
     let low_iq_rng = sim.scenario_rng.logical_state();
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         !selling(&sim, hostile_target),
         "scenario CurrentIQ 1 stays below RepairSell/SellBack 2"
@@ -7975,7 +7981,7 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
         expected_rng.next_range_u32_inclusive(0, 0x32) < 51,
         "TechLevel 51 makes every inclusive native roll win"
     );
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         selling(&sim, hostile_target),
         "the computer's Sell_Back(1) starts the Selling mission"

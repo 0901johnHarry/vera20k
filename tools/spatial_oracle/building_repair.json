@@ -1,0 +1,3193 @@
+{
+  "constants": {
+    "delay_02": "3f947ae140000000",
+    "delay_02_default": "3f947ae147ae147b",
+    "delay_05": "3fa99999a0000000",
+    "percent_15": "3fc3333333333333",
+    "percent_25": "3fd0000000000000",
+    "rate_016": "3f90624de0000000"
+  },
+  "cost": [
+    {
+      "cost": 1,
+      "input": {
+        "cost": 0,
+        "name": "k_0"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 100,
+        "name": "k_100"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 750,
+        "name": "k_750"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 800,
+        "name": "k_800"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 875,
+        "name": "k_875"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 1000,
+        "name": "k_1000"
+      }
+    },
+    {
+      "cost": 2,
+      "input": {
+        "cost": 2000,
+        "name": "k_2000"
+      }
+    },
+    {
+      "cost": 2,
+      "input": {
+        "cost": 2500,
+        "name": "k_2500"
+      }
+    },
+    {
+      "cost": 5,
+      "input": {
+        "cost": 5000,
+        "name": "k_5000"
+      }
+    },
+    {
+      "cost": 14,
+      "input": {
+        "cost": 12500,
+        "name": "k_12500"
+      }
+    },
+    {
+      "cost": 119,
+      "input": {
+        "cost": 100000,
+        "name": "k_100000"
+      }
+    },
+    {
+      "cost": 5,
+      "input": {
+        "cost": 2500,
+        "name": "k_2500_default_percent",
+        "percent": 4598175219545276416
+      }
+    },
+    {
+      "cost": 2,
+      "input": {
+        "cost": 2000,
+        "name": "k_uneven_strength",
+        "strength": 1100
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 2000,
+        "name": "k_step_one",
+        "step": 1
+      }
+    },
+    {
+      "cost": 299,
+      "input": {
+        "cost": 2000,
+        "name": "k_step_strength",
+        "step": 1000
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": -5000,
+        "name": "k_negative"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 3000,
+        "free_unit": 1400,
+        "name": "k_free_unit"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 3000,
+        "free_unit": 5000,
+        "name": "k_free_unit_exceeds"
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 3000,
+        "free_unit": 3000,
+        "name": "k_free_unit_equal"
+      }
+    },
+    {
+      "cost": 2,
+      "input": {
+        "cost": 3000,
+        "name": "k_pad_dock",
+        "pad_dock": true,
+        "separate_aircraft": false
+      }
+    },
+    {
+      "cost": 2,
+      "input": {
+        "cost": 3000,
+        "name": "k_pad_dock_odd_sum",
+        "pad_dock": true,
+        "pads": [
+          1000,
+          1201
+        ],
+        "separate_aircraft": false
+      }
+    },
+    {
+      "cost": 3,
+      "input": {
+        "cost": 3000,
+        "name": "k_pad_dock_separate",
+        "pad_dock": true
+      }
+    },
+    {
+      "cost": 3,
+      "input": {
+        "cost": 3000,
+        "name": "k_pad_other_dock",
+        "separate_aircraft": false
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 500,
+        "name": "k_pad_dock_below_zero",
+        "pad_dock": true,
+        "separate_aircraft": false
+      }
+    },
+    {
+      "cost": 1,
+      "input": {
+        "cost": 3000,
+        "free_unit": 1000,
+        "name": "k_pad_dock_free_unit",
+        "pad_dock": true,
+        "separate_aircraft": false
+      }
+    }
+  ],
+  "release": [
+    {
+      "input": {
+        "frame": 129,
+        "latched": 0,
+        "name": "r_0_100_30_129",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 130,
+        "latched": 0,
+        "name": "r_0_100_30_130",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 131,
+        "latched": 0,
+        "name": "r_0_100_30_131",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 50,
+        "latched": 0,
+        "name": "r_0_-1_0_50",
+        "timer": [
+          -1,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 50,
+        "latched": 0,
+        "name": "r_0_-1_5_50",
+        "timer": [
+          -1,
+          5
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 200,
+        "latched": 0,
+        "name": "r_0_300_30_200",
+        "timer": [
+          300,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 200,
+        "latched": 0,
+        "name": "r_0_200_0_200",
+        "timer": [
+          200,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 90,
+        "latched": 0,
+        "name": "r_0_100_-5_90",
+        "timer": [
+          100,
+          -5
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 0,
+        "latched": 0,
+        "name": "r_0_0_0_0",
+        "timer": [
+          0,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 16,
+        "latched": 0,
+        "name": "r_0_2147483632_30_16",
+        "timer": [
+          2147483632,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 129,
+        "latched": 1,
+        "name": "r_1_100_30_129",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 1
+    },
+    {
+      "input": {
+        "frame": 130,
+        "latched": 1,
+        "name": "r_1_100_30_130",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 131,
+        "latched": 1,
+        "name": "r_1_100_30_131",
+        "timer": [
+          100,
+          30
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 50,
+        "latched": 1,
+        "name": "r_1_-1_0_50",
+        "timer": [
+          -1,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 50,
+        "latched": 1,
+        "name": "r_1_-1_5_50",
+        "timer": [
+          -1,
+          5
+        ]
+      },
+      "latched": 1
+    },
+    {
+      "input": {
+        "frame": 200,
+        "latched": 1,
+        "name": "r_1_300_30_200",
+        "timer": [
+          300,
+          30
+        ]
+      },
+      "latched": 1
+    },
+    {
+      "input": {
+        "frame": 200,
+        "latched": 1,
+        "name": "r_1_200_0_200",
+        "timer": [
+          200,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 90,
+        "latched": 1,
+        "name": "r_1_100_-5_90",
+        "timer": [
+          100,
+          -5
+        ]
+      },
+      "latched": 1
+    },
+    {
+      "input": {
+        "frame": 0,
+        "latched": 1,
+        "name": "r_1_0_0_0",
+        "timer": [
+          0,
+          0
+        ]
+      },
+      "latched": 0
+    },
+    {
+      "input": {
+        "frame": 16,
+        "latched": 1,
+        "name": "r_1_2147483632_30_16",
+        "timer": [
+          2147483632,
+          30
+        ]
+      },
+      "latched": 1
+    }
+  ],
+  "source": "unicorn/gamemd.exe",
+  "toggle": [
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "health": 500,
+        "name": "t_-1_0_damaged_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "health": 500,
+        "name": "t_-1_0_damaged_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": -1,
+        "health": 1000,
+        "name": "t_-1_0_full_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          43,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": -1,
+        "health": 1000,
+        "name": "t_-1_0_full_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "health": 500,
+        "name": "t_-1_1_damaged_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "health": 500,
+        "name": "t_-1_1_damaged_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": -1,
+        "health": 1000,
+        "name": "t_-1_1_full_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": -1,
+        "health": 1000,
+        "name": "t_-1_1_full_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 0,
+        "health": 500,
+        "name": "t_0_0_damaged_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 0,
+        "health": 500,
+        "name": "t_0_0_damaged_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 0,
+        "health": 1000,
+        "name": "t_0_0_full_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 0,
+        "health": 1000,
+        "name": "t_0_0_full_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 0,
+        "health": 500,
+        "name": "t_0_1_damaged_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": 0,
+        "health": 500,
+        "name": "t_0_1_damaged_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 0,
+        "health": 1000,
+        "name": "t_0_1_full_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": 0,
+        "health": 1000,
+        "name": "t_0_1_full_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 1,
+        "health": 500,
+        "name": "t_1_0_damaged_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": 1,
+        "health": 500,
+        "name": "t_1_0_damaged_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 1,
+        "health": 1000,
+        "name": "t_1_0_full_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          43,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": 1,
+        "health": 1000,
+        "name": "t_1_0_full_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 1,
+        "health": 500,
+        "name": "t_1_1_damaged_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 1,
+        "health": 500,
+        "name": "t_1_1_damaged_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 1,
+        "health": 1000,
+        "name": "t_1_1_full_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 1,
+        "health": 1000,
+        "name": "t_1_1_full_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 2,
+        "health": 500,
+        "name": "t_2_0_damaged_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": 2,
+        "health": 500,
+        "name": "t_2_0_damaged_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 2,
+        "health": 1000,
+        "name": "t_2_0_full_other",
+        "player": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": 2,
+        "health": 1000,
+        "name": "t_2_0_full_player",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 0,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": 2,
+        "health": 500,
+        "name": "t_2_1_damaged_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": 2,
+        "health": 500,
+        "name": "t_2_1_damaged_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "control": 2,
+        "health": 1000,
+        "name": "t_2_1_full_other",
+        "player": false,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "play_at",
+          43,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1000,
+      "input": {
+        "control": 2,
+        "health": 1000,
+        "name": "t_2_1_full_player",
+        "player": true,
+        "repairing": 1
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 0
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "game_mode": 0,
+        "health": 500,
+        "human": true,
+        "name": "t_campaign_10",
+        "player_control": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "game_mode": 0,
+        "health": 500,
+        "human": false,
+        "name": "t_campaign_01",
+        "player_control": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [],
+      "health": 500,
+      "input": {
+        "control": -1,
+        "game_mode": 0,
+        "health": 500,
+        "human": false,
+        "name": "t_campaign_00",
+        "player_control": false,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    },
+    {
+      "damaged": 0,
+      "estimate": 0,
+      "events": [
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 1001,
+      "input": {
+        "control": 1,
+        "health": 1001,
+        "name": "t_above_strength",
+        "player": true,
+        "repairing": 0
+      },
+      "location": [
+        3200,
+        3200,
+        0
+      ],
+      "repairing": 1,
+      "wrench": 1
+    }
+  ],
+  "update": [
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "name": "u_start"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          18
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          18
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "name": "u_start_seed_7",
+        "seed": 7
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        18
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 300,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 300,
+      "input": {
+        "frame": 200,
+        "name": "u_start_off_cadence"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        200,
+        25
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "frame": 0,
+        "name": "u_start_frame_zero"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "latched": true,
+        "name": "u_latched"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "latched": true,
+        "name": "u_latched_repairing",
+        "repairing": true
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "name": "u_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "frame": 197,
+        "name": "u_repairing_off_cadence",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "ai_repairable": false,
+        "name": "u_not_flagged"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "ai_repairable": false,
+        "captured": true,
+        "name": "u_captured"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "ai_repairable": false,
+        "human": true,
+        "name": "u_human"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "ai_repairable": false,
+        "human": true,
+        "name": "u_human_player",
+        "player": true
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "ai_repairable": false,
+        "game_mode": 0,
+        "name": "u_campaign"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "game_mode": 0,
+        "name": "u_campaign_flagged"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "flash",
+          7
+        ],
+        [
+          "eva",
+          "EVA_Repairing",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          42,
+          [
+            3200,
+            3200,
+            0
+          ],
+          0
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "ai_repairable": false,
+        "game_mode": 0,
+        "name": "u_campaign_player_control",
+        "player_control": true
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "current_iq": 0,
+        "name": "u_iq_below"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "current_iq": 0,
+        "name": "u_iq_below_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "mission": "selling",
+        "name": "u_selling_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "mission": "construction",
+        "name": "u_construction_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 5000,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "click_repairable": false,
+        "name": "u_not_click_repairable"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 99,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 300,
+      "events": [],
+      "health": 300,
+      "input": {
+        "balance": 99,
+        "name": "u_below_reserve"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 97,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "balance": 99,
+        "name": "u_below_reserve_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 99,
+      "damaged": 1,
+      "draws": [
+        [
+          0,
+          50,
+          21
+        ]
+      ],
+      "estimate": 200,
+      "events": [
+        [
+          "random",
+          0,
+          50,
+          21
+        ]
+      ],
+      "health": 200,
+      "input": {
+        "attacked": true,
+        "balance": 99,
+        "health": 200,
+        "name": "u_below_reserve_attacked"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 98,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "balance": 100,
+        "name": "u_at_reserve"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 5000,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 1000,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "health": 1000,
+        "name": "u_full"
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 1000,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "health": 1000,
+        "name": "u_full_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 118,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 300,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 300,
+      "input": {
+        "balance": 118,
+        "cost": 100000,
+        "name": "u_cannot_afford"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 0,
+      "spent": 0,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 0,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "balance": 119,
+        "cost": 100000,
+        "credit_reserve": 0,
+        "name": "u_affords_exactly"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 119,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 0,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "balance": 119,
+        "cost": 100000,
+        "name": "u_affords_exactly_repairing",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 119,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 1000,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "health": 995,
+        "name": "u_completes",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 1000,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "health": 992,
+        "name": "u_exact",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 999,
+      "events": [],
+      "health": 999,
+      "input": {
+        "health": 991,
+        "name": "u_one_short",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 258,
+      "events": [],
+      "health": 308,
+      "input": {
+        "estimate": 250,
+        "name": "u_estimate_differs",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 1000,
+      "events": [],
+      "health": 1000,
+      "input": {
+        "estimate": 900,
+        "health": 995,
+        "name": "u_estimate_differs_completes",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 0,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 504,
+      "events": [
+        [
+          "slot_anim",
+          "N00",
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "slot_anim",
+          "N02",
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "health": 504,
+      "input": {
+        "health": 496,
+        "name": "u_crosses_yellow",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 500,
+      "events": [],
+      "health": 500,
+      "input": {
+        "health": 492,
+        "name": "u_to_yellow",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 608,
+      "events": [],
+      "health": 608,
+      "input": {
+        "health": 600,
+        "name": "u_above_yellow",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 504,
+      "events": [
+        [
+          "slot_anim",
+          "N00",
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "slot_anim",
+          "N02",
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "health": 504,
+      "input": {
+        "health": 496,
+        "name": "u_crosses_yellow_no_smoke",
+        "repairing": true,
+        "smoke": false
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 0,
+      "draws": [],
+      "estimate": 608,
+      "events": [
+        [
+          "slot_anim",
+          "N00",
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "slot_anim",
+          "N02",
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "health": 608,
+      "input": {
+        "damaged": true,
+        "health": 600,
+        "name": "u_stale_damaged_state",
+        "repairing": true
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 1,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 1
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          11,
+          90,
+          57
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          11,
+          90,
+          57
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "delay": 4587366580546961408,
+        "name": "u_delay_05"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          2,
+          105
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        57
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          36,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          36,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "delay": 4581421828931458171,
+        "name": "u_delay_default"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          0,
+          0,
+          0
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "delay": 0,
+        "name": "u_delay_zero"
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [],
+      "estimate": 308,
+      "events": [],
+      "health": 308,
+      "input": {
+        "name": "u_wrench_on",
+        "repairing": true,
+        "wrench": 1
+      },
+      "latched": 0,
+      "random_indices": {
+        "after": [
+          0,
+          103
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        0,
+        0
+      ],
+      "wrench": 0
+    },
+    {
+      "balance": 4998,
+      "damaged": 1,
+      "draws": [
+        [
+          4,
+          35,
+          25
+        ]
+      ],
+      "estimate": 308,
+      "events": [
+        [
+          "toggle_repair",
+          1
+        ],
+        [
+          "random",
+          4,
+          35,
+          25
+        ]
+      ],
+      "health": 308,
+      "input": {
+        "name": "u_timer_overwritten",
+        "timer": [
+          150,
+          0,
+          40
+        ]
+      },
+      "latched": 1,
+      "random_indices": {
+        "after": [
+          1,
+          104
+        ],
+        "before": [
+          0,
+          103
+        ]
+      },
+      "redraw": 0,
+      "repairing": 1,
+      "smoke_done": 0,
+      "spent": 2,
+      "timer": [
+        196,
+        25
+      ],
+      "wrench": 0
+    }
+  ]
+}

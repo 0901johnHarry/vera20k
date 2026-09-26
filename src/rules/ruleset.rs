@@ -285,6 +285,13 @@ pub struct GeneralRules {
     /// missing section is undefined natively; retail defines all three, and
     /// VERA reads a missing one as 1.0.
     pub difficulty_rof: [f64; 3],
+    /// The same rows' `RepairDelay=` (`+0x38`, ReadDouble with an explicit
+    /// default of .02, `0x0066D317`; retail `.02`, `.02`, `.05`).
+    /// `HouseClass::SetDifficulty` copies the house's row into `+0x1C0`; the
+    /// computer's auto-repair start draws its latch time from it
+    /// (`0x00450727`). A missing section reads as .02, like ReadDifficulty's
+    /// default.
+    pub difficulty_repair_delay: [f64; 3],
     /// Receiver-side divisor selected by the rank-specific `STRONGER`
     /// ability (`VeteranArmor=` in `[General]`).
     pub veteran_armor: f64,
@@ -723,8 +730,13 @@ pub struct GeneralRules {
     /// Generic shell click sound from [AudioVisual] GenericClick
     /// (`Rules+0x70C`, read at `0x0066AD30` through `VocClass::FindByName`;
     /// retail `MenuClick`). A human player's sale order plays it too
-    /// (`Sell_Back @ 0x00447110`).
+    /// (`Sell_Back @ 0x00447110`), and so does switching a repair off, or on
+    /// below Strength (`BuildingClass::ToggleRepair @ 0x00446FF0`).
     pub generic_click_sound: Option<String>,
+    /// `[AudioVisual] ScoldSound=` (`Rules+0x700`, read at `0x0066ABE8`
+    /// through `VocClass::FindByName`; retail `MenuScold`): ToggleRepair's
+    /// sound when a repair is switched on at full Strength (`0x00447068`).
+    pub scold_sound: Option<String>,
     /// Launcher Options Sound/Voice preview cue from [AudioVisual] GenericBeep.
     pub generic_beep_sound: Option<String>,
     /// Sound event for shell checkboxes from [AudioVisual] GUICheckboxSound.
@@ -1018,13 +1030,16 @@ pub struct GeneralRules {
     /// Ticks between applying RepairStep HP when a unit is on a repair depot.
     /// Derived from URepairRate= in [General] (minutes). Default 0.016 min ≈ 14 ticks at 15 Hz.
     pub unit_repair_rate_ticks: u32,
-    /// HP healed per repair step on a service depot (RepairStep= in [General]).
-    /// Fallback 5 matches the engine constructor default; retail rulesmd sets 8.
-    pub repair_step: u16,
-    /// Percent of build cost charged for a full unit repair (RepairPercent= in [General]).
-    /// Fallback 25 (25%) matches the engine constructor default; retail rulesmd
-    /// sets 15%. Total cost = cost * repair_percent / 100.
-    pub repair_percent: u16,
+    /// `[General] RepairStep=` — `RulesClass+0x16CC`, ReadInt over the
+    /// constructor's 5 with no clamp (retail 8). TechnoTypeClass vt+0xB4
+    /// (`0x00712120`) returns it: the health a repair tick adds, and the
+    /// divisor of Strength in the repair step cost (`0x007120EC`).
+    pub repair_step: i32,
+    /// `[General] RepairPercent=` — `RulesClass+0x16D0`, ReadDouble
+    /// (`0x00670DB7`) over the constructor's .25 (retail `15%`, stored as
+    /// 0x3FC3333333333333). The repair step cost multiplies the per-step
+    /// share of the cost by it (`0x00712101`).
+    pub repair_percent: f64,
 
     // -- Aircraft ammo reload --
     /// Ticks to reload one ammo point at an airfield (from ReloadRate= minutes in [General]).
@@ -1257,6 +1272,10 @@ fn parse_paradrop_list(
     inf.into_iter().zip(nums.into_iter()).collect()
 }
 
+/// `RulesClass::ReadDifficulty @ 0x0066D270`'s `RepairDelay=` default, the
+/// double nearest .02 (`0x3F947AE147AE147B`, pushed at `0x0066D317`).
+const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
+
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
@@ -1270,6 +1289,7 @@ impl Default for GeneralRules {
             veteran_speed: 1.0,
             veteran_rof: 1.0,
             difficulty_rof: [1.0; 3],
+            difficulty_repair_delay: [DIFFICULTY_REPAIR_DELAY_DEFAULT; 3],
             veteran_armor: 1.0,
             curley_shuffle: false,
             repair_rate_minutes: 0.016,
@@ -1399,6 +1419,7 @@ impl Default for GeneralRules {
             gui_move_in_sound: None,
             gui_move_out_sound: None,
             generic_click_sound: None,
+            scold_sound: None,
             generic_beep_sound: None,
             gui_checkbox_sound: None,
             ore_twinkle: None,
@@ -1472,7 +1493,7 @@ impl Default for GeneralRules {
             // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
             unit_repair_rate_ticks: 14,
             repair_step: 5,
-            repair_percent: 25,
+            repair_percent: 0.25,
             // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
             reload_rate_ticks: 270,
             // PathDelay=.01 min = 0.6 sec = 9 ticks at 15 Hz.
@@ -1982,6 +2003,12 @@ impl GeneralRules {
                 ini.section(name)
                     .map_or(1.0, |section| section.read_double("ROF", 1.0))
             }),
+            difficulty_repair_delay: ["Easy", "Normal", "Difficult"].map(|name| {
+                ini.section(name)
+                    .map_or(DIFFICULTY_REPAIR_DELAY_DEFAULT, |section| {
+                        section.read_double("RepairDelay", DIFFICULTY_REPAIR_DELAY_DEFAULT)
+                    })
+            }),
             veteran_armor: general.get_f64("VeteranArmor").unwrap_or(1.0),
             curley_shuffle: general
                 .get_bool("CurleyShuffle")
@@ -2297,6 +2324,11 @@ impl GeneralRules {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
+            scold_sound: audio_visual
+                .and_then(|s| s.get("ScoldSound"))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
             generic_beep_sound: audio_visual
                 .and_then(|s| s.get("GenericBeep"))
                 .map(str::trim)
@@ -2544,14 +2576,8 @@ impl GeneralRules {
                         .max(1.0) as u32
                 })
                 .unwrap_or(defaults.unit_repair_rate_ticks),
-            repair_step: general
-                .get_i32("RepairStep")
-                .unwrap_or(defaults.repair_step as i32)
-                .max(1) as u16,
-            repair_percent: general
-                .get_percent("RepairPercent")
-                .map(|frac| (frac * 100.0).round() as u16)
-                .unwrap_or(defaults.repair_percent),
+            repair_step: general.read_int("RepairStep", defaults.repair_step),
+            repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
             reload_rate_ticks: general
                 .get_f32("ReloadRate")
                 .map(|minutes| {

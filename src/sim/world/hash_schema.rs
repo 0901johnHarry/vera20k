@@ -155,6 +155,11 @@ pub(super) enum HashFeature {
     /// A building's AI sale byte (`BuildingClass+0x6DC`). Earlier schemas
     /// fold nothing.
     AiSellable = 213,
+    /// A building's repair byte (`BuildingClass+0x6E8`) and AI repair byte
+    /// (`+0x6CB`); a house's repair delay (`HouseClass+0x1C0`), auto-repair
+    /// latch (`+0x245`) and its timer (`+0x280`). Earlier schemas fold
+    /// nothing.
+    BuildingRepair = 214,
 }
 
 impl HashSchema {
@@ -193,6 +198,7 @@ impl HashSchema {
                     | HashFeature::SlaveManager
                     | HashFeature::RetiredJumpjetLegacyBlock
                     | HashFeature::AiSellable
+                    | HashFeature::BuildingRepair
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

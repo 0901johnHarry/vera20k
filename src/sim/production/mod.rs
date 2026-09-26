@@ -7,7 +7,8 @@
 //! - `production_queue`: queue views and completed mobile delivery
 //! - `production_economy`: resource harvesting and credit delivery
 //! - `production_placement`: building placement
-//! - `production_sell`: building sale and repair
+//! - `production_repair`: building repair and the computer's low-credit sale
+//! - `production_sell`: building sale
 //! - `production_tech`: tech tree, build options, factory matching, spawn cells
 
 mod factory;
@@ -16,6 +17,7 @@ mod production_economy;
 mod production_placement;
 mod production_queue;
 mod production_refinery;
+mod production_repair;
 mod production_sell;
 mod production_spawn;
 mod production_tech;
@@ -51,9 +53,11 @@ pub(crate) use self::production_sell::{
 };
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
-pub use self::production_sell::{
-    SellOrder, can_sell_building, sell_back, tick_repairs, toggle_repair,
-};
+pub use self::production_repair::{RepairControl, toggle_repair};
+pub(crate) use self::production_repair::{can_repair_building, update_repair_and_power};
+#[cfg(test)]
+pub(crate) use self::production_repair::repair_step_cost;
+pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
 pub use self::production_spawn::find_spawn_cell_for_owner;
 pub use self::production_tech::{
     building_base_foundation_cells, building_footprint_cells, building_movement_blocking_cells,

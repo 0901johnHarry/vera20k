@@ -12,7 +12,9 @@
 pub struct Economy {
     /// Sole spendable cash balance.
     pub credits: i32,
-    /// Running total charged through the factory spending path.
+    /// House `+0x2DC`: the running total `HouseClass::Spend_Money` took,
+    /// from the factory's charges and the other spenders
+    /// (`credit_income::spend_money`).
     pub spent_credits: i32,
     /// Ore-deposit x5.0 statistics accumulator.
     pub harvested_credits: i32,

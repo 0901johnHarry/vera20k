@@ -497,23 +497,45 @@ pub struct HouseState {
     /// house is the same state. Persisted and hashed (schema v133).
     #[serde(default)]
     pub eva_low_power_guard: bool,
+    /// Native `HouseClass+0x1C0`, RepairDelay: the house's difficulty row's
+    /// `RepairDelay=`, which [`HouseState::set_difficulty`] copies (the
+    /// constructor's 0.0 until then). The computer's auto-repair start draws
+    /// its latch time from it (`production::update_repair_and_power`).
+    /// Persisted and hashed (schema v214).
+    #[serde(default)]
+    pub(crate) repair_delay: f64,
+    /// Native `HouseClass+0x245`: a building's auto-repair start sets it
+    /// (`0x004506FF`), and while set no other building of the house starts
+    /// one. [`HouseState::release_repair_latch`] clears it. Persisted and
+    /// hashed (schema v214).
+    #[serde(default)]
+    pub(crate) repair_start_latch: bool,
+    /// Native `HouseClass+0x280` timer: the auto-repair start of a house no
+    /// human controls arms it (`0x00450764..0x00450779`), and the latch holds
+    /// until it expires. The constructor starts it at the construction frame
+    /// with no time left. Persisted and hashed (schema v214).
+    pub(crate) repair_latch_timer: HouseFrameTimer,
 }
 
 impl HouseState {
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
-    /// the difficulty index (`+0x184`) and the ROF bias (`+0x1A8`). Outside a
-    /// campaign the bias is the difficulty row's `ROF=` times the country's
-    /// (`FLD; FMUL; FSTP qword`, `0x004F6F6C..0x004F6F79`); in a campaign it
-    /// is the row's value alone (`0x004F7072..0x004F707B`).
+    /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`) and the
+    /// repair delay (`+0x1C0`). Outside a campaign the bias is the difficulty
+    /// row's `ROF=` times the country's (`FLD; FMUL; FSTP qword`,
+    /// `0x004F6F6C..0x004F6F79`); in a campaign it is the row's value alone
+    /// (`0x004F7072..0x004F707B`). Both copy the row's `RepairDelay=`
+    /// unchanged (`0x004F6FA5`, `0x004F70AC`).
     pub(crate) fn set_difficulty(
         &mut self,
         difficulty: HouseDifficulty,
         difficulty_rof: &[f64; 3],
+        difficulty_repair_delay: &[f64; 3],
         country_rof: f64,
         game_mode_nonzero: bool,
     ) {
         use crate::util::native_x87::MaskedX87Chop53 as X;
         self.difficulty = difficulty;
+        self.repair_delay = difficulty_repair_delay[difficulty.table_index()];
         let row = NativeF64Bits::from_bits(difficulty_rof[difficulty.table_index()].to_bits());
         self.rof_bias = HouseRofBias(if game_mode_nonzero {
             X::store_f64_masked_chop(X::mul(
@@ -542,6 +564,14 @@ impl HouseState {
     /// `HouseClass__Update @ 0x004F8440` inlines the same branch shape.
     pub(crate) const fn is_controlled_by_human(&self, game_mode_nonzero: bool) -> bool {
         self.is_human || (!game_mode_nonzero && self.player_control)
+    }
+
+    /// `HouseClass::Update 0x004F9302..0x004F9338`: the auto-repair latch
+    /// releases once its timer has expired.
+    pub(crate) fn release_repair_latch(&mut self, frame: u32) {
+        if self.repair_start_latch && self.repair_latch_timer.expired(i64::from(frame as i32)) {
+            self.repair_start_latch = false;
+        }
     }
 
     /// Co-enable the three successful AI base-unit deploy latches.
@@ -672,6 +702,12 @@ impl HouseState {
             harvester_no_ore: false,
             eva_funds_timer: HouseFrameTimer::default(),
             eva_low_power_guard: false,
+            repair_delay: 0.0,
+            repair_start_latch: false,
+            repair_latch_timer: HouseFrameTimer {
+                start_frame: 0,
+                duration: 0,
+            },
         }
     }
 }
@@ -1151,6 +1187,7 @@ mod difficulty_tests {
             house.set_difficulty(
                 difficulty,
                 &row_rof,
+                &[0.02; 3],
                 bits(&input["country_rof"]),
                 input["mode"].as_i64().unwrap() != 0,
             );

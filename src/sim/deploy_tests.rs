@@ -709,6 +709,7 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     let yard = deployed_type(&sim, "GACNST");
     assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
     assert!(yard.building_up.is_some());
+    assert!(yard.ai_repairable, "a computer's yard is AI-repairable");
     let owner = sim.interner.get("Americans").unwrap();
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, Some((19, 21)));
@@ -747,6 +748,9 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
 
         assert!(sim.deploy_mcv(mcv, &rules, &height_map));
         assert!(deployed_type(&sim, "GACNST").building_up.is_some());
+        // UnitClass::Deploy marks a computer's building AI-repairable in a
+        // campaign too (`0x007397E4..0x007397F4`); Unlimbo does not there.
+        assert_eq!(deployed_type(&sim, "GACNST").ai_repairable, !is_human);
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
         assert_eq!(house.base_plan_center, (0, 0));
@@ -773,6 +777,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
     let _replacement_constructor_word = expected_rng.next_u32();
     assert!(sim.deploy_mcv(miner, &rules, &height_map));
     assert!(deployed_type(&sim, "YAREFN").building_up.is_some());
+    assert!(deployed_type(&sim, "YAREFN").ai_repairable);
     assert_eq!(sim.houses[&owner].base_center, None);
     assert_eq!(sim.houses[&owner].base_plan_center, (0, 0));
     assert!(sim.houses[&owner].base_plan.nodes.is_empty());

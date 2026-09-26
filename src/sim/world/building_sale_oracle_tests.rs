@@ -3,7 +3,8 @@
 //! (`production::sell_stage_one`: the survivor count, the absorbed
 //! passengers, the garrison and the crew in `sim::crew_survival`, then the
 //! sounds), the sale's credit (`production::building_type_refund`, `full`
-//! clear) and the computer's low-credit sale (`production::tick_repairs`).
+//! clear) and the computer's low-credit sale
+//! (`production::update_repair_and_power`).
 //! The `route` rows are replayed by `sim::building_construction` against the
 //! visit model, and here through the frame.
 //!
@@ -504,12 +505,13 @@ fn sales_through_the_frame_visit_on_the_original_frames() {
 /// per-object tags).
 const AI_SALE_SKIPPED: &[&str] = &["s_tagged"];
 
-/// The computer's low-credit sale (`production::tick_repairs`, whose sale arm
-/// runs before its repair tick) against the `ai_sale` rows, for one building
-/// of a computer house: the Scenario RNG cursors before and after (the row's
-/// draws) and whether the building took Sell_Back's computer order. A row
-/// that stopped at the computer's auto-repair start (`0x004506B2`) takes no
-/// sale in either; that arm is the repair chain's.
+/// The computer's low-credit sale (`production::update_repair_and_power`,
+/// whose sale arm runs before its repair step) against the `ai_sale` rows,
+/// for one building of a computer house: the Scenario RNG cursors before and
+/// after (the row's draws) and whether the building took Sell_Back's
+/// computer order. A row that stopped at the computer's auto-repair start
+/// (`0x004506B2`) takes no sale in either; the building is not AI-repairable,
+/// so that start draws nothing (`building_repair_oracle_tests` replays it).
 #[test]
 fn the_computers_low_credit_sale_matches_the_original_admission() {
     let mission = |name: &Value| match name.as_str().unwrap_or("none") {
@@ -601,7 +603,7 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
             row["random_indices"]["before"],
             "{name}: seeded"
         );
-        production::tick_repairs(&mut sim, &rules);
+        production::update_repair_and_power(&mut sim, &rules, 1);
         assert_eq!(
             cursors(&sim),
             row["random_indices"]["after"],
