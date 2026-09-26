@@ -512,13 +512,14 @@ const AI_SALE_SKIPPED: &[&str] = &["s_tagged"];
 /// computer order. A row that stopped at the computer's auto-repair start
 /// (`0x004506B2`) takes no sale in either; the building is not AI-repairable,
 /// so that start draws nothing (`building_repair_oracle_tests` replays it).
+/// VERA keeps a build-up in `building_up` without the Construction mission:
+/// a row's Construction is a build-up that completes on the next frame.
 #[test]
 fn the_computers_low_credit_sale_matches_the_original_admission() {
     let mission = |name: &Value| match name.as_str().unwrap_or("none") {
         "guard" => MissionId::from_known(MissionType::Guard),
-        "construction" => MissionId::from_known(MissionType::Construction),
         "selling" => MissionId::from_known(MissionType::Selling),
-        "none" => MissionId::NONE,
+        "none" | "construction" => MissionId::NONE,
         other => panic!("mission {other}"),
     };
     let mut compared = 0;
@@ -580,6 +581,12 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
         building.in_playfield = true;
         building.was_attacked_by_enemy = input["attacked"] == true;
         building.ai_sellable = input["ai_sellable"] == true;
+        if input["mission"] == "construction" || input["queued"] == "construction" {
+            building.building_up = Some(crate::sim::components::BuildingUp::completing_in_ticks(
+                2,
+                sim.session.binary_frame as i32,
+            ));
+        }
         building.mission.apply_test_fixture(MissionTestFixture {
             current: mission(&input["mission"]),
             suspended: MissionId::NONE,

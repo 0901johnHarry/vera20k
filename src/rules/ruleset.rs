@@ -289,8 +289,10 @@ pub struct GeneralRules {
     /// default of .02, `0x0066D317`; retail `.02`, `.02`, `.05`).
     /// `HouseClass::SetDifficulty` copies the house's row into `+0x1C0`; the
     /// computer's auto-repair start draws its latch time from it
-    /// (`0x00450727`). A missing section reads as .02, like ReadDifficulty's
-    /// default.
+    /// (`0x00450727`). A missing section skips every read
+    /// (`0x0066D27C..0x0066D288`) and leaves the row the constructor never
+    /// writes, undefined natively as the ROF rows are; VERA reads a missing
+    /// one as the key's default .02.
     pub difficulty_repair_delay: [f64; 3],
     /// Receiver-side divisor selected by the rank-specific `STRONGER`
     /// ability (`VeteranArmor=` in `[General]`).

@@ -23,6 +23,9 @@
 //! damage-state and smoke tail in `building_art_transition.json`'s repair
 //! rows.
 //!
+//! The repair byte's other reader is the wrench `TechnoClass::DrawExtras`
+//! draws over a repairing building (`app::presentation::ui_overlays`).
+//!
 //! RESIDUALS:
 //! - The wrench byte (`+0x6DE`: set when a repair starts below Strength,
 //!   flipped by every repair step) is read only by the Building CRC
@@ -30,6 +33,18 @@
 //! - Presentation: ToggleRepair's flash for the owner's player (vt+0x148 =
 //!   `0x00456E00` -> `TechnoClass::Flash(7)`) and the repair step's redraw
 //!   byte (`+0x80`, from `BuildingClass::GetCurrentFrame 0x0043EF90`).
+//! - Combat order: native fire and its damage land inside each attacker's
+//!   own LogicVector visit, VERA's in the combat phase after the object
+//!   pass. Trigger: a repairing building under fire. Effect: a hit landing
+//!   before the building's visit natively lands after its repair step in
+//!   VERA, so within the frame the step reads the pre-hit health and a
+//!   building killed that frame has still paid for its step. Frequency: every
+//!   repair step of a building under fire. Risk: the owner's credits and the
+//!   frame a kill lands; the fire order is the combat pass's own mechanism.
+//! - ToggleRepair's sounds and EVA play only for the owner's local player
+//!   (the app's `audible_to` gate), which is `IsHumanPlayer` outside
+//!   campaigns; in a campaign it reads `+0x1EC`/`+0x1ED` instead (dormant
+//!   while campaigns do not launch).
 //! - `TechnoClass::EngineerRepair`'s `ToggleRepair(0)` (`0x00701448`): VERA has
 //!   no engineer building repair.
 //! - The REPAIR event resolves any target (`0x004C6ED5`) and needs only its
@@ -47,6 +62,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::credit_income::{available_money, spend_money};
+use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionType;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering, NativeF64Bits};
@@ -125,22 +141,22 @@ pub fn toggle_repair(
 /// Health (`+0x6C`), of a `ClickRepairable=` type (`+0x157A`) that is not a
 /// 1x1 `UndeploysInto=` type (`BuildingTypeClass 0x00465D40`), whose
 /// `Repairable=` type (TechnoType `+0xCCC`) has it below Strength
-/// (`0x00701140`).
+/// (`0x00701140`). Every building of a computer house asks each frame, so
+/// the undeploy test's type lookup runs last.
 pub(crate) fn can_repair_building(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return false;
     };
+    if entity.category != EntityCategory::Structure || entity.health.current == 0 {
+        return false;
+    }
     let Some(object) = sim.object_type(entity.type_ref(), rules) else {
         return false;
     };
-    let one_cell_undeploy =
-        undeploys(rules, object) && foundation_dimensions(&object.foundation) == (1, 1);
-    entity.category == EntityCategory::Structure
-        && entity.health.current != 0
-        && object.click_repairable
-        && !one_cell_undeploy
+    object.click_repairable
         && object.repairable
         && entity.health.current != object.strength
+        && !(foundation_dimensions(&object.foundation) == (1, 1) && undeploys(rules, object))
 }
 
 /// A BuildingType's repair step cost, TechnoTypeClass vt+0xB0 (`0x007120D0`):
@@ -172,10 +188,11 @@ pub(crate) fn repair_step_cost(rules: &RuleSet, object: &ObjectType) -> i32 {
 /// `BuildingClass::UpdateRepairAndPower @ 0x00450630`, in the building's
 /// LogicVector visit. A building of an owner whose CurrentIQ (`+0x24C`)
 /// reaches `[IQ] RepairSell=`, on neither Construction nor Selling
-/// (Get_Mission), that the house can repair ([`can_repair_building`]) takes
-/// the computer's low-credit sale while the owner's available money is below
-/// `[AI] CreditReserve=` (`0x00450781`), else the computer's auto-repair start
-/// (`0x004506B2`). Every building then takes the repair step (`0x00450813`).
+/// ([`constructing_or_selling`]), that the house can repair
+/// ([`can_repair_building`]) takes the computer's low-credit sale while the
+/// owner's available money is below `[AI] CreditReserve=` (`0x00450781`),
+/// else the computer's auto-repair start (`0x004506B2`). Every building then
+/// takes the repair step (`0x00450813`).
 pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -185,10 +202,7 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
         .houses
         .get(&owner)
         .is_some_and(|house| house.current_iq >= rules.general.iq_repair_sell)
-        && !matches!(
-            entity.mission.effective().known(),
-            Some(MissionType::Construction | MissionType::Selling)
-        )
+        && !constructing_or_selling(sim, entity)
         && can_repair_building(sim, rules, id);
     if admitted {
         if available_money(sim, owner) < rules.general.credit_reserve {
@@ -198,6 +212,19 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
         }
     }
     repair_step(sim, rules, id);
+}
+
+/// Get_Mission (vt+0x184) is Construction or Selling (`0x00450659..
+/// 0x00450679`). VERA keeps a build-up in `building_up` without the
+/// Construction mission and steps it after the object pass, where native
+/// completes it earlier in the building's own Update and commences the queued
+/// Guard (`0x0043FF91`): the completion frame reads Guard
+/// ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)). A sale
+/// commences Selling (`production_sell::begin_selling`).
+fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
+    entity.building_up.is_some_and(|build_up| {
+        !build_up.completes_at(sim.session.binary_frame as i32, &sim.session.game_options)
+    }) || entity.mission.effective().known() == Some(MissionType::Selling)
 }
 
 /// The computer's low-credit sale (`0x00450781..0x0045080D`): a campaign

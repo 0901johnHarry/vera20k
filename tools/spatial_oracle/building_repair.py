@@ -31,6 +31,20 @@ and HouseClass::Update's release of the owner's auto-repair latch.
   Available_Money, HouseClass::Spend_Money 0x4F9790, RepairStep added to
   Health +0x6C and the estimate +0x70, the clamp at Strength that ends the
   repair, the damage-state slots and the smoke's retirement).
+- `build` rows: a damaged building's build-up on the routes of
+  building_construction's `route` rows (a deploy, a computer house's
+  placement, a human player's placement), per frame BuildingClass::Update's
+  construction pieces then UpdateRepairAndPower, until two frames after
+  Grand_Opening: Get_Mission reads Construction (current, or only queued
+  before a human player's placement commences) through the build-up and
+  Guard on the completion frame, whose UpdateRepairAndPower starts the
+  repair. The fixture's observers also see the pieces' calls and the Guard
+  mission's draws; each frame keeps only what UpdateRepairAndPower calls and
+  draws.
+- `wrench` rows: TechnoClass::DrawExtras' repair wrench frame (0x6F52D8..
+  0x6F532D) over the stored game speed (0xA8EB60) and Frame: the cycle
+  SpeedNormalize(14) / 4 (signed, at least 2) and WRENCH.SHP's frame
+  ((Frame % cycle) * 6) / (cycle - 1).
 - `release` rows: HouseClass::Update's release of the latch (0x4F9302..
   0x4F9338): the latch clears once its timer expired (Start -1: TimeLeft 0;
   otherwise Frame - Start >= TimeLeft, signed).
@@ -59,6 +73,9 @@ PLAY_AT, PLAY_EVA, BUILDING_FLASH = 0x7509E0, 0x752700, 0x456E00
 # the damage-state slot anim and Sell_Back.
 CURRENT_FRAME, CREATE_ANIM_FOR_SLOT, SELL_BACK = 0x43EF90, 0x451890, 0x447110
 PLAYER_PTR, FRAME = 0xA83D4C, 0xA8ED84
+# TechnoClass::DrawExtras' wrench frame and the stored game speed
+# (GameOptionsClass 0xA8EB60, SpeedNormalize's receiver).
+WRENCH_FRAME, GAME_SPEED = (0x6F52D8, 0x6F532D), 0xA8EB60
 HOUSE_MONEY_VTABLE = 0x7EA834
 # AircraftTypeClass and UnitTypeClass vtables (GetCost vt+0xAC = 0x711EB0) for
 # the PadAircraft= pair and the FreeUnit=; ParticleSystemClass's for the smoke
@@ -235,16 +252,17 @@ SLOT_OCCUPANTS = {0: True, 1: True, 2: True, 3: False}
 SLOT_NAMES = {0: True, 1: False, 2: True, 3: True}
 
 
-def update(case):
-    """UpdateRepairAndPower (module doc) from its entry to its return."""
-    u, _call, read32, events = fixture(case)
+def prepare_update(u, read32, events, case):
+    """The update rows' building, owner and Rules at the row's frame, with
+    UpdateRepairAndPower's callees observed; returns the draws and the hook's
+    state (GetCurrentFrame is answered only inside UpdateRepairAndPower)."""
     building, kind = sm.YAREFN, sm.YTYPE
     frame = case.get('frame', 196)
     u.mem_write(FRAME, dwords(frame))
     health = case.get('health', 300)
     u.mem_write(building + 0x6C, dwords(health, case.get('estimate', health)))
     u.mem_write(building + 0xAC, dwords(MISSION[case.get('mission', 'guard')]))
-    u.mem_write(building + 0xB4, dwords(-1))
+    u.mem_write(building + 0xB4, dwords(MISSION[case.get('queue', 'none')]))
     u.mem_write(building + 0x6E8, bytes([case.get('repairing', False)]))
     u.mem_write(building + 0x6DE, bytes([case.get('wrench', 0)]))
     u.mem_write(building + 0x6E3, bytes([case.get('captured', False)]))
@@ -294,6 +312,7 @@ def update(case):
     u.mem_write(RULES + 0x70C, dwords(GENERIC_CLICK))
     observe_toggle(u, read32, events)
     draws = []
+    state = dict(in_update=False)
 
     def hook(_u, address, _size, _data):
         sp = u.reg_read(UC_X86_REG_ESP)
@@ -303,7 +322,7 @@ def update(case):
             draws[-1].append(u.reg_read(UC_X86_REG_EAX))
         elif address == TOGGLE_REPAIR:
             events.append(['toggle_repair', signed(u, sp + 4)])
-        elif address == CURRENT_FRAME:
+        elif address == CURRENT_FRAME and state['in_update']:
             ret(u, read32, 0, 0)
         elif address == CREATE_ANIM_FOR_SLOT:
             name = bytes(u.mem_read(read32(sp + 4), 16)).split(b'\0')[0].decode('ascii')
@@ -314,14 +333,34 @@ def update(case):
             ret(u, read32, 4, 1)
 
     u.hook_add(UC_HOOK_CODE, hook)
-    before = [read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]
-    bc.invoke(u, UPDATE_REPAIR_AND_POWER, building)
-    return dict(input=case, draws=draws, events=events, **building_state(u, read32),
-                balance=signed(u, HOUSE + 0x30C), spent=signed(u, HOUSE + 0x2DC),
+    return draws, state
+
+
+def run_update(u, state):
+    state['in_update'] = True
+    bc.invoke(u, UPDATE_REPAIR_AND_POWER, sm.YAREFN)
+    state['in_update'] = False
+
+
+def owner_state(u, read32):
+    return dict(balance=signed(u, HOUSE + 0x30C), spent=signed(u, HOUSE + 0x2DC),
                 latched=u.mem_read(HOUSE + 0x245, 1)[0],
-                timer=[signed(u, HOUSE + 0x280), signed(u, HOUSE + 0x288)],
-                smoke_done=u.mem_read(SMOKE + 0xF8, 1)[0], redraw=u.mem_read(building + 0x80, 1)[0],
-                random_indices=dict(before=before, after=[read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]))
+                timer=[signed(u, HOUSE + 0x280), signed(u, HOUSE + 0x288)])
+
+
+def random_indices(read32):
+    return [read32(SCENARIO + 0x21C), read32(SCENARIO + 0x220)]
+
+
+def update(case):
+    """UpdateRepairAndPower (module doc) from its entry to its return."""
+    u, _call, read32, events = fixture(case)
+    draws, state = prepare_update(u, read32, events, case)
+    before = random_indices(read32)
+    run_update(u, state)
+    return dict(input=case, draws=draws, events=events, **building_state(u, read32), **owner_state(u, read32),
+                smoke_done=u.mem_read(SMOKE + 0xF8, 1)[0], redraw=u.mem_read(sm.YAREFN + 0x80, 1)[0],
+                random_indices=dict(before=before, after=random_indices(read32)))
 
 
 def update_cases():
@@ -353,6 +392,11 @@ def update_cases():
         dict(name='u_iq_below_repairing', current_iq=0, repairing=True),
         dict(name='u_selling_repairing', mission='selling', repairing=True),
         dict(name='u_construction_repairing', mission='construction', repairing=True),
+        # Construction or Selling, current or only queued (Get_Mission),
+        # holds the start (0x450679 -> 0x450813).
+        dict(name='u_construction_start', mission='construction'),
+        dict(name='u_construction_queued_start', mission='none', queue='construction'),
+        dict(name='u_selling_start', mission='selling'),
         dict(name='u_not_click_repairable', click_repairable=False),
         dict(name='u_below_reserve', balance=99),
         dict(name='u_below_reserve_repairing', balance=99, repairing=True),
@@ -393,6 +437,125 @@ def update_cases():
     ]
 
 
+# --- build ---------------------------------------------------------------
+
+
+def build(case):
+    """A damaged building's build-up (the `build` rows): the update rows'
+    building, owner and Rules at the row's start frame, created there on the
+    row's route as building_construction's `route` rows create it, then per
+    frame BuildingClass::Update's construction pieces (bc.building_update)
+    followed by UpdateRepairAndPower, until two frames after Grand_Opening."""
+    u, _call, read32, events = fixture(case)
+    building, kind = sm.YAREFN, sm.YTYPE
+    start = case['frame']
+    draws, state = prepare_update(u, read32, events, dict(case, mission='none'))
+    calls = []
+
+    def hook(_u, address, _size, _data):
+        sp = u.reg_read(UC_X86_REG_ESP)
+        if address in bc.PRESENTATION:
+            ret(u, read32, bc.PRESENTATION[address])
+        elif address in (bc.RADIO_BROADCAST, bc.RADIO_BROADCAST_ALL):
+            calls.append(['radio', read32(sp + 4)])
+            ret(u, read32, 4)
+        elif address == bc.GRAND_OPENING:
+            calls.append(['grand_opening', read32(sp + 4)])
+            ret(u, read32, 4)
+        elif address in (bc.LOOP_UPDATE, bc.SOUND_RELEASE):
+            ret(u, read32, 0)
+        elif address == bc.TECHNO_RECEIVE_RADIO:
+            ret(u, read32, 12, 1)
+
+    u.hook_add(UC_HOOK_CODE, hook)
+    # The route rows' creation state (building_construction.building_fixture
+    # and route): the control, no UndeploysInto, the TechnoClass
+    # constructor's stage state, BState and queued BState -1, in play, +0x6E9.
+    u.mem_write(kind + 0xF04, dwords(*case['control']))
+    u.mem_write(building + 0xBC, dwords(0))
+    u.mem_write(building + 0x218, dwords(0))
+    u.mem_write(building + 0x534, dwords(-1))
+    u.mem_write(building + 0x538, dwords(-1))
+    u.mem_write(building + 0x6DD, bytes([0]))
+    u.mem_write(building + 0xF8, dwords(0))
+    u.mem_write(building + 0x100, dwords(start, 0, 0, 0, 1))
+    u.mem_write(building + 0xC8, dwords(start, 0, 0))
+    u.mem_write(building + 0x90, bytes([1]))
+    u.mem_write(building + 0x6E9, bytes([1]))
+    u.mem_write(bc.SCENARIO_INIT, dwords(0))
+    u.mem_write(bc.SCENARIO_FLAG_ED6B, bytes([0]))
+    route = case['route']
+    bc.invoke(u, bc.ENTER_CONSTRUCTION, building, 1, 1)
+    if route == 'computer':
+        bc.invoke(u, bc.COMMENCE, building)
+    elif route == 'player':
+        bc.invoke(u, bc.RECEIVE_RADIO, building, sm.YAREFN + 0x1000, 3, 0)
+    elif route == 'deploy':
+        bc.invoke(u, bc.QUEUE_MISSION, building, 0x12, 0)
+        u.mem_write(building + 0x6DD, bytes([1]))
+    frames = []
+    completed = None
+    # A deployed building's first Update is in its creation frame.
+    k = 0 if route == 'deploy' else 1
+    while completed is None or k <= completed + 2:
+        assert k <= case['frames'], case['name']
+        u.mem_write(FRAME, dwords(start + k))
+        first_call = len(calls)
+        bc.building_update(u, building)
+        grand = any(call[0] == 'grand_opening' for call in calls[first_call:])
+        if grand:
+            completed = k
+        # Get_Mission's two words as UpdateRepairAndPower reads them, and
+        # what it calls and draws (the fixture's observers also see the
+        # pieces' calls and the Guard mission's draws).
+        mission = [signed(u, building + 0xAC), signed(u, building + 0xB4)]
+        first_event, first_draw, before = len(events), len(draws), random_indices(read32)
+        run_update(u, state)
+        frames.append(dict(frame=start + k, mission=mission, grand_opening=grand, events=events[first_event:],
+                           draws=draws[first_draw:], random_indices=dict(before=before, after=random_indices(read32)),
+                           **building_state(u, read32), **owner_state(u, read32)))
+        k += 1
+    return dict(input=case, frames=frames)
+
+
+def build_cases():
+    return [
+        # A computer's deployed yard: complete at D + 1 + (count - 1) * rate,
+        # here 196, a repair-step frame (196 % 14 == 0).
+        dict(name='b_deploy_3x2', route='deploy', control=[0, 3, 2], frame=191, frames=12),
+        dict(name='b_deploy_1x0', route='deploy', control=[0, 1, 0], frame=191, frames=12),
+        # A computer house's factory placement: complete at N + 1 +
+        # (count - 1) * rate, off the step period.
+        dict(name='b_computer_3x2', route='computer', control=[0, 3, 2], frame=190, frames=12),
+        dict(name='b_computer_4x1', route='computer', control=[0, 4, 1], frame=190, frames=12),
+        # A human player's placement (IsControlledByHuman starts it without
+        # the timer; the local player hears it): complete at N + 2 +
+        # (count - 1) * rate.
+        dict(name='b_player_3x2', route='player', control=[0, 3, 2], frame=190, frames=12, human=True,
+             ai_repairable=False, player=True),
+    ]
+
+
+# --- wrench --------------------------------------------------------------
+
+
+def wrench(case):
+    """TechnoClass::DrawExtras' repair wrench frame (0x6F52D8..0x6F532D): the
+    cycle SpeedNormalize(14) / 4 (signed), at least 2, and WRENCH.SHP's frame
+    ((Frame % cycle) * 6) / (cycle - 1), both signed IDIVs."""
+    u, _call, _read32, _events = fixture(case)
+    u.mem_write(GAME_SPEED, dwords(case['speed']))
+    u.mem_write(FRAME, dwords(case['frame']))
+    bc.run_block(u, sm.YAREFN, WRENCH_FRAME)
+    return dict(input=case, frame_index=struct.unpack('<i', dwords(u.reg_read(UC_X86_REG_EAX)))[0])
+
+
+def wrench_cases():
+    return [dict(name=f'w_{speed}_{frame}', speed=speed, frame=frame)
+            for speed in range(8)
+            for frame in (0, 1, 2, 3, 4, 5, 6, 13, 14, 27, 28, 55, 196, 1000, 123457, 0x7FFFFFFF, -1, -30)]
+
+
 # --- release -------------------------------------------------------------
 
 
@@ -426,6 +589,8 @@ def generate():
             'cost': [cost(case) for case in cost_cases()],
             'toggle': [toggle(case) for case in toggle_cases()],
             'update': [update(case) for case in update_cases()],
+            'build': [build(case) for case in build_cases()],
+            'wrench': [wrench(case) for case in wrench_cases()],
             'release': [release(case) for case in release_cases()]}
 
 
@@ -435,11 +600,18 @@ def main(argv=None):
         provenance=lambda: provenance(
             scope='BuildingTypeClass repair step cost 0x7120D0 with GetCost 0x45ED50; BuildingClass::'
                   'ToggleRepair 0x446FF0; BuildingClass::UpdateRepairAndPower 0x450630 from entry to return '
-                  '(admission, the computer\'s auto-repair start and latch timer, the repair tick); '
-                  'HouseClass::Update\'s latch release 0x4F9302..0x4F9338',
+                  '(admission, the computer\'s auto-repair start and latch timer, the repair tick), alone and '
+                  'after BuildingClass::Update\'s construction pieces through a build-up; '
+                  'HouseClass::Update\'s latch release 0x4F9302..0x4F9338; TechnoClass::DrawExtras\' repair '
+                  'wrench frame 0x6F52D8..0x6F532D',
             entry_points={'repair_step_cost': REPAIR_STEP_COST, 'toggle_repair': TOGGLE_REPAIR,
                           'update_repair_and_power': UPDATE_REPAIR_AND_POWER,
-                          'house_release': HOUSE_RELEASE[0]},
+                          'house_release': HOUSE_RELEASE[0], 'enter_construction': bc.ENTER_CONSTRUCTION,
+                          'commence': bc.COMMENCE, 'queue_mission': bc.QUEUE_MISSION,
+                          'receive_radio': bc.RECEIVE_RADIO, 'update_animation': bc.UPDATE_ANIMATION,
+                          'mission_ai': bc.MISSION_AI, 'update_ready_commence_unless_building': 0x43FE27,
+                          'update_ready_commence': 0x43FF91, 'update_queued_bstate': 0x43FFB4,
+                          'draw_extras_wrench_frame': WRENCH_FRAME[0]},
             assumptions=['the slave_manager fixture refinery (Building vtables over a BuildingType-vtable '
                          'type, 2x2 at NW (12, 12)) owned by the fixture House; multiplayer game mode unless '
                          '`game_mode` is 0; PlayerPtr the owner only when `player`; the Scenario RNG seeded '
@@ -453,14 +625,24 @@ def main(argv=None):
                          'update rows: the owner\'s money interface House+0x24 holds the constructor\'s vtable '
                          '0x7EA834, its storage empty (Available_Money = Balance); authored IQ 2, TechLevel 10; '
                          'the latch timer\'s unread +0x284 word preset; damage-state slots 0..3 as SLOT_OCCUPANTS/'
-                         'SLOT_NAMES name them; the smoke (+0x310) a ParticleSystemClass-vtable object'],
+                         'SLOT_NAMES name them; the smoke (+0x310) a ParticleSystemClass-vtable object',
+                         'build rows: the update rows\' state with no mission, then building_construction\'s route '
+                         'creation (the control at Type+0xF04, the TechnoClass constructor stage state, BState and '
+                         'queued BState -1, +0x90 and +0x6E9 set) at the row\'s start frame'],
             substitutions=['toggle and update rows: the flash (vt+0x148 = 0x456E00), EVA 0x752700 and '
                            'VocClass::PlayAt 0x7509E0 observed and answered',
                            'update rows: BuildingClass::GetCurrentFrame 0x43EF90 answered 0 (only the redraw '
                            'byte +0x80 reads it), the damage-state slot anim 0x451890 observed and answered '
                            '(ToggleRepair, Health_Ratio, Spend_Money, Available_Money and the smoke\'s vt+0xF8 '
                            'native), Sell_Back 0x447110 observed and answered',
-                           'release rows: the block run alone with ESI = the House']),
+                           'build rows: UpdateRepairAndPower invoked after the queued-BState block (0x440042), '
+                           'the rest of BuildingClass::Update before 0x4401B6 and of TechnoClass::AI not run; '
+                           'the route rows\' substitutions (UpdateAnimation presentation callees, the radio '
+                           'broadcasts 0x65ACB0/0x65ACE0, Grand_Opening 0x445F80, the loop update 0x750D40, '
+                           'SoundEvent::Release 0x406060, TechnoClass::Receive_Radio 0x6F4AB0 answered 1); '
+                           'GetCurrentFrame answered only inside UpdateRepairAndPower',
+                           'release rows: the block run alone with ESI = the House',
+                           'wrench rows: the block run alone (SpeedNormalize 0x5FB2E0 native)']),
         argv=argv)
 
 

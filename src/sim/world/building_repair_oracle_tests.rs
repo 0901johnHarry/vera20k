@@ -13,6 +13,8 @@
 //!   damage state, the smoke's done byte, the owner's balance and spending
 //!   statistic, the auto-repair latch and its timer, the Scenario RNG cursors,
 //!   the sounds and Sell_Back;
+//! - `build` rows: the same, frame by frame through a build-up, with
+//!   `Simulation::tick_building_up` after it;
 //! - `release` rows: `HouseState::release_repair_latch`.
 //!
 //! Not compared: the wrench byte (`+0x6DE`, read only by the Building CRC),
@@ -24,7 +26,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::Health;
+use crate::sim::components::{BuildingUp, Health};
 use crate::sim::estimated_health::EstimatedHealth;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::{HouseDifficulty, HouseFrameTimer, HouseState};
@@ -242,7 +244,9 @@ fn toggle_repair_matches_the_original() {
 /// The row's scene: the row's rules, its computer (or human) house, and the
 /// refinery YAREFN with the row's health, estimate, mission, repair and AI
 /// repair bytes, capture, retained damage state and smoke, with the Scenario
-/// RNG seeded last.
+/// RNG seeded last. VERA keeps a build-up in `building_up` without the
+/// Construction mission: a row's Construction, current or queued, is a
+/// build-up that completes on the next frame.
 fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u64>) {
     let int = |key: &str, default: i64| input[key].as_i64().unwrap_or(default) as i32;
     let flag = |key: &str, default: bool| input[key].as_bool().unwrap_or(default);
@@ -324,16 +328,22 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
     building.ai_repairable = flag("ai_repairable", true);
     building.was_attacked_by_enemy = flag("attacked", false);
     building.building_damage_state_active = flag("damaged", health * 2 <= 1000);
-    let mission = match input["mission"].as_str().unwrap_or("guard") {
-        "guard" => MissionType::Guard,
-        "construction" => MissionType::Construction,
-        "selling" => MissionType::Selling,
+    let mission = |key: &str, default: &str| match input[key].as_str().unwrap_or(default) {
+        "guard" => MissionId::from_known(MissionType::Guard),
+        "selling" => MissionId::from_known(MissionType::Selling),
+        "none" | "construction" => MissionId::NONE,
         other => panic!("mission {other}"),
     };
+    if input["mission"] == "construction" || input["queue"] == "construction" {
+        building.building_up = Some(BuildingUp::completing_in_ticks(
+            2,
+            sim.session.binary_frame as i32,
+        ));
+    }
     building.mission.apply_test_fixture(MissionTestFixture {
-        current: MissionId::from_known(mission),
+        current: mission("mission", "guard"),
         suspended: MissionId::NONE,
-        queued: MissionId::NONE,
+        queued: mission("queue", "none"),
         movement_bypass_latch: 0,
         handler_state: 0,
         mission_start_frame: 0,
@@ -366,6 +376,12 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
     (sim, rules, smoke)
 }
 
+/// The Scenario RNG's cursors as the oracle records them.
+fn cursors(sim: &Simulation) -> Value {
+    let view = sim.scenario_rng.logical_view();
+    json!([view.index_a, view.index_b])
+}
+
 /// `BuildingClass::UpdateRepairAndPower @ 0x00450630` from its entry.
 #[test]
 fn update_repair_and_power_matches_the_original() {
@@ -375,10 +391,6 @@ fn update_repair_and_power_matches_the_original() {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
         let (mut sim, rules, smoke) = update_scene(&corpus, input);
-        let cursors = |sim: &Simulation| {
-            let view = sim.scenario_rng.logical_view();
-            json!([view.index_a, view.index_b])
-        };
         assert_eq!(
             cursors(&sim),
             row["random_indices"]["before"],
@@ -463,7 +475,89 @@ fn update_repair_and_power_matches_the_original() {
         }
         compared += 1;
     }
-    assert_eq!(compared, 44);
+    assert_eq!(compared, 47);
+}
+
+/// The `build` rows: a damaged building's build-up on each route, frame by
+/// frame [`production::update_repair_and_power`] in the object visit, then
+/// the build-up's step (`Simulation::tick_building_up`, after the object
+/// pass). VERA completes the build-up on the frame native calls
+/// Grand_Opening, and the repair starts on that frame, not before (native
+/// Get_Mission reads Guard there): after each frame the health, repair byte,
+/// balance, latch and its timer, the draws and the local player's sounds.
+#[test]
+fn a_build_up_holds_the_repair_until_its_completion_frame() {
+    let corpus = corpus();
+    let mut compared = 0;
+    for row in corpus["build"].as_array().unwrap() {
+        let input = &row["input"];
+        let name = input["name"].as_str().unwrap();
+        let (mut sim, rules, _smoke) = update_scene(&corpus, input);
+        let owner = sim.interner.get("AI").unwrap();
+        let control: [i32; 3] = serde_json::from_value(input["control"].clone()).unwrap();
+        let start = input["frame"].as_i64().unwrap() as i32;
+        sim.substrate.entities.get_mut(1).unwrap().building_up =
+            Some(match input["route"].as_str().unwrap() {
+                "deploy" => BuildingUp::deployed(control, start),
+                "computer" => BuildingUp::placed_by_computer(control, start),
+                "player" => BuildingUp::placed_by_player(control, start),
+                other => panic!("route {other}"),
+            });
+        for frame in row["frames"].as_array().unwrap() {
+            let now = frame["frame"].as_u64().unwrap();
+            sim.session.binary_frame = now as u32;
+            sim.sound_events.clear();
+            let before = cursors(&sim);
+            production::update_repair_and_power(&mut sim, &rules, 1);
+            let after = cursors(&sim);
+            let completed = sim.tick_building_up() == [1];
+            assert_eq!(
+                completed, frame["grand_opening"],
+                "{name} {now}: the build-up completes"
+            );
+            let building = sim.substrate.entities.get(1).unwrap();
+            let house = &sim.houses[&owner];
+            assert_eq!(
+                json!([
+                    building.health.current,
+                    u8::from(building.repairing),
+                    house.economy.credits,
+                    u8::from(house.repair_start_latch),
+                    [
+                        house.repair_latch_timer.start_frame,
+                        house.repair_latch_timer.duration
+                    ],
+                ]),
+                json!([
+                    frame["health"],
+                    frame["repairing"],
+                    frame["balance"],
+                    frame["latched"],
+                    frame["timer"]
+                ]),
+                "{name} {now}: health, +0x6E8, balance, latch, timer"
+            );
+            // The Guard mission's draws the fixture runs after completion
+            // precede later frames' visits; the start's draw is the row's
+            // first.
+            assert_eq!(
+                before == after,
+                frame["random_indices"]["before"] == frame["random_indices"]["after"],
+                "{name} {now}: draws"
+            );
+            if before != after {
+                assert_eq!(after, frame["random_indices"]["after"], "{name} {now}");
+            }
+            let native = native_sounds(frame);
+            if local_player(input) {
+                assert_eq!(sounds(&sim, owner), native, "{name} {now}: sounds");
+            } else {
+                assert!(native.is_empty(), "{name} {now}: not the local player");
+            }
+        }
+        compared += 1;
+    }
+    assert_eq!(compared, 5);
 }
 
 /// `HouseClass::Update`'s latch release (`0x004F9302..0x004F9338`).
