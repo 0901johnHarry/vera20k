@@ -340,10 +340,51 @@ impl ProcessedRulesLayers {
             })
     }
 
+    pub(crate) fn warhead_anim_states(
+        &self,
+    ) -> impl Iterator<Item = (&str, bool, bool, &[String])> {
+        self.native_type_construction_trace
+            .registry_state()
+            .families
+            .get(&RulesTypeFamily::Warhead)
+            .into_iter()
+            .flatten()
+            .map(|member| {
+                (
+                    &*member.native_stored_id,
+                    member.warhead_anim.conventional,
+                    member.warhead_anim.em_effect,
+                    member.warhead_anim.anim_list.as_slice(),
+                )
+            })
+    }
+
+    pub(crate) fn select_anim_rules(&self) -> (&str, &str, &str, &[String]) {
+        let state = &self
+            .native_type_construction_trace
+            .registry_state()
+            .select_anim;
+        (
+            &state.lightning_warhead,
+            &state.weather_con_bolt_explosion,
+            &state.weapon_nullify_anim,
+            &state.splash_list,
+        )
+    }
+
     pub(crate) fn gravity(&self) -> i32 {
         self.native_type_construction_trace
             .registry_state()
             .rules_gravity
+    }
+
+    pub(crate) fn projectile_rule_controls(&self) -> (f64, i32, [u8; 3]) {
+        let state = self.native_type_construction_trace.registry_state();
+        (
+            state.rules_missile_rot_var,
+            state.rules_safety_altitude,
+            state.rules_line_trail_override,
+        )
     }
 
     /// Consume only the typed-reader compatibility projection and deliberately
@@ -507,6 +548,10 @@ pub(crate) struct NativeRulesRegistryState {
     families: HashMap<RulesTypeFamily, Vec<ProcessedType>>,
     tiberiums: Vec<ProcessedType>,
     rules_gravity: i32,
+    rules_missile_rot_var: f64,
+    rules_safety_altitude: i32,
+    rules_line_trail_override: [u8; 3],
+    select_anim: SelectAnimRulesState,
 }
 
 impl Default for NativeRulesRegistryState {
@@ -516,6 +561,10 @@ impl Default for NativeRulesRegistryState {
             tiberiums: Vec::new(),
             // RulesClass665650 initializes +16B8 before any AudioVisual read.
             rules_gravity: 3,
+            rules_missile_rot_var: 0.25,
+            rules_safety_altitude: 500,
+            rules_line_trail_override: [0; 3],
+            select_anim: SelectAnimRulesState::default(),
         }
     }
 }
@@ -548,11 +597,21 @@ impl NativeRulesRegistryState {
     /// reset and return an owner with empty Type registries. RulesClass itself
     /// survives 6686C0, so its Gravity is retained for the first postpass.
     ///
+    /// Original reset retires every referenced Type: LightningWarhead detaches
+    /// to null, while these Rules Anim references/list retain freed addresses.
+    /// Rust clears all affected references at deletion rather than rebinding
+    /// retired Types by name. This is a deterministic safety policy for native
+    /// stale-pointer state; authored post-reset Process reads rebuild bindings.
+    /// Evidence: tools/rules_oracle/select_anim_inputs.md.
+    ///
     /// Numeric-ID history is intentionally not represented here and therefore
     /// cannot be rewound by this operation.
     pub(crate) fn destructive_reset(self) -> Self {
         Self {
             rules_gravity: self.rules_gravity,
+            rules_missile_rot_var: self.rules_missile_rot_var,
+            rules_safety_altitude: self.rules_safety_altitude,
+            rules_line_trail_override: self.rules_line_trail_override,
             ..Self::default()
         }
     }
@@ -645,6 +704,24 @@ impl RulesTypeFamily {
     }
 }
 
+/// Resolved names preserve native factory spelling and vector order. These
+/// pointer bindings belong to the retained Rules object, not merged INI text.
+/// Native reader corpus: tools/rules_oracle/select_anim_inputs.
+#[derive(Debug, Default)]
+struct SelectAnimRulesState {
+    lightning_warhead: String,
+    weather_con_bolt_explosion: String,
+    weapon_nullify_anim: String,
+    splash_list: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct WarheadAnimReadState {
+    conventional: bool,
+    em_effect: bool,
+    anim_list: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 struct ProcessedType {
     native_stored_id: String,
@@ -655,6 +732,7 @@ struct ProcessedType {
     /// One owner for Bullet's two-phase Image/ART reads across rules passes.
     projectile_art: ProjectileArtState,
     weapon: WeaponReadState,
+    warhead_anim: WarheadAnimReadState,
 }
 
 /// Fields needed by Weapon7729F0, retained on the same live Weapon object.
@@ -675,6 +753,7 @@ impl ProcessedType {
             native_stored_id,
             anim_art_read: false,
             weapon: WeaponReadState::default(),
+            warhead_anim: WarheadAnimReadState::default(),
         }
     }
 }
@@ -691,6 +770,10 @@ struct RulesPassProcessor {
     colors: Vec<(String, String)>,
     prerequisite_groups: HashMap<&'static str, Vec<String>>,
     rules_gravity: i32,
+    rules_missile_rot_var: f64,
+    rules_safety_altitude: i32,
+    rules_line_trail_override: [u8; 3],
+    select_anim: SelectAnimRulesState,
 }
 
 impl Default for RulesPassProcessor {
@@ -706,6 +789,11 @@ impl Default for RulesPassProcessor {
             colors: Vec::new(),
             prerequisite_groups: HashMap::new(),
             rules_gravity: NativeRulesRegistryState::default().rules_gravity,
+            rules_missile_rot_var: NativeRulesRegistryState::default().rules_missile_rot_var,
+            rules_safety_altitude: NativeRulesRegistryState::default().rules_safety_altitude,
+            rules_line_trail_override: NativeRulesRegistryState::default()
+                .rules_line_trail_override,
+            select_anim: SelectAnimRulesState::default(),
         }
     }
 }
@@ -716,6 +804,10 @@ impl RulesPassProcessor {
             families: registry_state.families,
             tiberiums: registry_state.tiberiums,
             rules_gravity: registry_state.rules_gravity,
+            rules_missile_rot_var: registry_state.rules_missile_rot_var,
+            rules_safety_altitude: registry_state.rules_safety_altitude,
+            rules_line_trail_override: registry_state.rules_line_trail_override,
+            select_anim: registry_state.select_anim,
             ..Self::default()
         }
     }
@@ -1029,6 +1121,13 @@ impl RulesPassProcessor {
         let Some(section) = pass.section("General") else {
             return;
         };
+        // General66EC37/66EC57 read current RulesClass values as defaults.
+        // Both survive empty/missing later passes and destructive Type resets.
+        self.rules_missile_rot_var =
+            section.read_double("MissileROTVar", self.rules_missile_rot_var);
+        self.rules_safety_altitude =
+            section.read_int("MissileSafetyAltitude", self.rules_safety_altitude);
+
         for &(key, family, is_list) in SITES {
             if matches!(key, "MetallicDebris" | "BridgeExplosions") {
                 if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
@@ -1036,6 +1135,26 @@ impl RulesPassProcessor {
                         self.general_anim_lists.metallic_debris = resolved;
                     } else {
                         self.general_anim_lists.bridge_explosions = resolved;
+                    }
+                }
+            } else if matches!(
+                key,
+                "LightningWarhead" | "WeatherConBoltExplosion" | "WeaponNullifyAnim"
+            ) {
+                // General671053/66DF19/66E2AF: empty ReadString128 retains the
+                // current pointer; exact none clears it through the factory.
+                let incoming = section.read_string(key, "", 0x80);
+                if !incoming.is_empty() {
+                    let resolved = self
+                        .find_or_allocate(family, &incoming)
+                        .map(|index| self.families[&family][index].native_stored_id.clone())
+                        .unwrap_or_default();
+                    if key == "LightningWarhead" {
+                        self.select_anim.lightning_warhead = resolved;
+                    } else if key == "WeatherConBoltExplosion" {
+                        self.select_anim.weather_con_bolt_explosion = resolved;
+                    } else {
+                        self.select_anim.weapon_nullify_anim = resolved;
                     }
                 }
             } else if is_list {
@@ -1453,7 +1572,19 @@ impl RulesPassProcessor {
                 self.begin_rules_member_read(RulesTypeFamily::Warhead, index, pass)
             {
                 self.allocate_scalar_from(&raw, "Particle", RulesTypeFamily::ParticleSystem, 0x80);
-                self.allocate_list_from(&raw, "AnimList", RulesTypeFamily::Animation, 0x80);
+                // Warhead ctor75CF89/75CFB3 initializes both false. The
+                // original reader uses the live field as its ReadBool default.
+                let current = &mut self.family_mut(RulesTypeFamily::Warhead)[index].warhead_anim;
+                current.conventional = raw.read_bool("Conventional", current.conventional);
+                if let Some(list) =
+                    self.resolve_list_from(&raw, "AnimList", RulesTypeFamily::Animation, 0x80)
+                {
+                    self.family_mut(RulesTypeFamily::Warhead)[index]
+                        .warhead_anim
+                        .anim_list = list;
+                }
+                let current = &mut self.family_mut(RulesTypeFamily::Warhead)[index].warhead_anim;
+                current.em_effect = raw.read_bool("EMEffect", current.em_effect);
                 self.allocate_list_from(&raw, "DebrisTypes", RulesTypeFamily::VoxelAnimation, 0x80);
             }
             index += 1;
@@ -1537,7 +1668,13 @@ impl RulesPassProcessor {
         ] {
             self.allocate_list_from(section, key, RulesTypeFamily::Smudge, 0x80);
         }
-        self.allocate_list_from(section, "SplashList", RulesTypeFamily::Animation, 0x80);
+        // CombatDamage66C184..66C287: ctor-empty vector, nonempty
+        // ReadString128 replaces it using untrimmed strtok tokens/factories.
+        if let Some(list) =
+            self.resolve_list_from(section, "SplashList", RulesTypeFamily::Animation, 0x80)
+        {
+            self.select_anim.splash_list = list;
+        }
         for key in [
             "FlameDamage",
             "FlameDamage2",
@@ -1590,6 +1727,9 @@ impl RulesPassProcessor {
         // Full AudioVisual6691E0's 66B3C4 read uses the retained signed dword
         // default. Cold startup52D132 calls the same reader before Process.
         self.rules_gravity = section.read_int("Gravity", self.rules_gravity);
+        // AudioVisual66B77D..66B7A7, after Gravity, retains the RGB default.
+        self.rules_line_trail_override =
+            section.read_color_rgb("LineTrailColorOverride", self.rules_line_trail_override);
         for key in ["DropPodPuff", "VeinAttack", "Dig", "AtmosphereEntry"] {
             self.allocate_scalar_from(section, key, RulesTypeFamily::Animation, 0x80);
         }
@@ -1740,6 +1880,10 @@ impl RulesPassProcessor {
                     families: self.families,
                     tiberiums: self.tiberiums,
                     rules_gravity: self.rules_gravity,
+                    rules_missile_rot_var: self.rules_missile_rot_var,
+                    rules_safety_altitude: self.rules_safety_altitude,
+                    rules_line_trail_override: self.rules_line_trail_override,
+                    select_anim: self.select_anim,
                 },
             },
             self.crate_rules.finish(),
@@ -1771,3 +1915,11 @@ mod projectile_art_tests;
 #[cfg(test)]
 #[path = "weapon_speed_tests.rs"]
 mod weapon_speed_tests;
+
+#[cfg(test)]
+#[path = "guided_controls_tests.rs"]
+mod guided_controls_tests;
+
+#[cfg(test)]
+#[path = "select_anim_rules_tests.rs"]
+mod select_anim_rules_tests;

@@ -444,11 +444,24 @@ mod tests {
 
     #[test]
     fn from_descriptor_equals_with_seed_widened() {
-        let a = Simulation::from_descriptor(&ScenarioDescriptor {
+        let mut a = Simulation::from_descriptor(&ScenarioDescriptor {
             seed: 0xDEAD_BEEF,
             ..Default::default()
         });
         let b = Simulation::with_seed(0xDEAD_BEEF);
+        assert_eq!(a.session.seed, 0xDEAD_BEEF_u64);
+        assert_eq!(a.scenario_rng.state(), b.scenario_rng.state());
+        assert_eq!(a.main_rng.state(), b.main_rng.state());
+        assert_eq!(a.mapgen_rng.state(), b.mapgen_rng.state());
+        // A production descriptor awaits its native Full_Init prefix; the
+        // test/dev constructor explicitly supplies a synthetic cursor. That
+        // authoritative difference must remain hashed. Compare the remaining
+        // constructor state only after declaring the same fixture boundary.
+        assert!(a.native_unique_ids.is_none());
+        assert_eq!(b.native_unique_ids.as_ref().unwrap().current_raw(), 0);
+        assert_ne!(a.state_hash(), b.state_hash());
+        a.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         assert_eq!(a.state_hash(), b.state_hash());
     }
 
@@ -509,6 +522,9 @@ mod tests {
                 seed,
                 ..Default::default()
             });
+            // This synthetic fixture omits the production native Rules prefix.
+            sim.native_unique_ids =
+                Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
             let entity = MapEntity {
                 owner: "Americans".to_string(),
                 type_id: "MTNK".to_string(),

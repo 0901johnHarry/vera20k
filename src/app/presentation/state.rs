@@ -67,6 +67,7 @@ pub(crate) struct MatchPresentationState {
     /// (`0x00688094`). `None` for launches without a skirmish session.
     pub(crate) local_player_handle: Option<String>,
     pub(crate) lighting: super::lighting::MatchLighting,
+    pub(crate) line_trails: super::line_trails::LineTrails,
     pub(crate) combat_lights: crate::app::presentation::combat_lights::CombatLightRuntime,
     pub(crate) minimap: Option<MinimapRenderer>,
     /// Animated radar chrome — plays 33-frame open/close animation when radar gained/lost.

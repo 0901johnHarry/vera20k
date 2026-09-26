@@ -780,7 +780,13 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x9036_E050_B184_
 // auto-repair latch (`+0x245`) and its timer (`+0x280`). Before(216)
 // reproduces the building-sale pin; FINAL_STREAM_STATES, per-tick replay and
 // every older projection are unchanged, so the chain moved no behavior here.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x1769_4590_8E72_8527;
+// Schema217 composition only for this fixture: the native constructor cursor,
+// native object IDs and retained fallback-cell Land now enter the hash. The
+// repair diagnostic reproduced the prior current pin with Before(217), and
+// all earlier projections, replay/behavior checks and RNG receipts still passed.
+// These Rust regression receipts do not establish native gameplay parity.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x8FB7_37CA_A441_7DBE;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0x1769_4590_8E72_8527;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0x2511_12D7_8FFD_F103;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x7D23_F885_0E2A_71D9;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x7EF6_3951_8D88_9E82;
@@ -1328,6 +1334,11 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     assert_eq!(
         before_release_hash, GLOBAL_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186,
         "restoring only the absent release-tail fold must reproduce the prior fixture"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
+        "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

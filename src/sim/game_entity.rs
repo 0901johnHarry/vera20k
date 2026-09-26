@@ -315,6 +315,7 @@ pub(crate) struct GeneratedTechnoInit {
     pub techno_type: String,
     pub cell: (u16, u16),
     pub techno_ctor_random_word: u16,
+    pub native_unique_id: i32,
 }
 
 /// The three evidence-backed ways a live Techno obtains its persistent
@@ -362,6 +363,10 @@ pub struct GameEntity {
     pub(crate) stable_id: u64,
     #[cfg(not(test))]
     stable_id: u64,
+    /// AbstractClass+10, assigned by the concrete constructor after the base
+    /// Techno Scenario word (Unit735454 / Building43BA15). May wrap or duplicate;
+    /// stable handles remain the reference and storage authority.
+    pub(crate) native_unique_id: i32,
     /// Low word of the one raw Scenario RNG draw performed by the active-retail
     /// `TechnoClass` constructor (`0x006F3254`, stored at native `+0x3C8`).
     /// Later report-selection consumers read this persistent value; placement
@@ -1426,6 +1431,7 @@ impl GameEntity {
     /// render, and diagnostic code cannot silently invent the native word.
     pub(in crate::sim) fn new_at_frame_from_constructor_word(
         stable_id: u64,
+        native_unique_id: i32,
         rx: u16,
         ry: u16,
         z: u8,
@@ -1456,6 +1462,7 @@ impl GameEntity {
             dont_score: false,
             tracking_facts: Default::default(),
             stable_id,
+            native_unique_id,
             techno_ctor_random_word,
             discovery: TechnoDiscoveryHistory::default(),
             structure_upgrade_link: None,
@@ -1679,6 +1686,7 @@ impl GameEntity {
     ) -> Self {
         Self::new_at_frame_from_constructor_word(
             stable_id,
+            0,
             rx,
             ry,
             z,

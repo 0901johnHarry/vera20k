@@ -271,7 +271,13 @@ const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 34445618767192306
 // the dropped `None` and schema 202's zero rearm timer are both eight zero
 // bytes in one run of zero bytes, which the unframed stream cannot tell apart.
 // Old values: the commit that moved them.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xB586_50E0_619A_A412;
+// Schema217 composition only for this fixture: the native constructor cursor,
+// native object IDs and retained fallback-cell Land now enter the hash. The
+// repair diagnostic reproduced the prior current pin with Before(217), and
+// all earlier projections, replay/behavior checks and RNG receipts still passed.
+// These Rust regression receipts do not establish native gameplay parity.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x742C_838B_7E43_EECF;
+const BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB586_50E0_619A_A412;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xD647_5869_EE05_41D7;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xF2A5_29CE_BDD0_47F6;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 13377637447152312575;
@@ -897,6 +903,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(208)),
         BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208,
         "v208 only folds the crash latch, its AI edge and the Fly fall counter"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
+        BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
+        "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
     );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,

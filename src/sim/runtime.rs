@@ -457,6 +457,7 @@ mod tests {
             techno_type: "MTNK".to_string(),
             cell: (7, 9),
             techno_ctor_random_word: 0xA55A,
+            native_unique_id: 0,
         }])
         .expect("one exact generated binding");
         let mut sim = Simulation::with_seed(0xC701_0412);

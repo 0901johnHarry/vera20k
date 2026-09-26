@@ -210,7 +210,7 @@ fn assert_collapsed_bridge_restores(
 /// Follow the saved live Bullet through the same restoration transaction as
 /// collapse/debris. Native load restarts Scenario RNG and the Bullet arm timer;
 /// compare two restored futures rather than comparing with the unsaved future.
-fn assert_live_cannon_restore_continuation(
+fn assert_live_projectile_restore_continuation(
     scenario: &mut HeadlessScenario,
     template: &crate::map::resolved_terrain::ResolvedTerrainGrid,
     projectile_id: u64,
@@ -221,7 +221,7 @@ fn assert_live_cannon_restore_continuation(
         .sim()
         .projectiles
         .get(projectile_id)
-        .expect("save contains the already-moved live Cannon")
+        .expect("save contains the already-moved live Bullet")
         .clone();
     assert_ne!(saved_shell.position, saved_shell.launch_origin);
     assert!(saved_shell.in_logic_vector);
@@ -236,16 +236,26 @@ fn assert_live_cannon_restore_continuation(
         scenario.sim(),
         scenario.map.ini.content_hash(),
         rules_hash,
-        "Retail Cannon in flight toward bridge",
+        "Retail Bullet in flight toward bridge",
         0,
     );
     let first = restore_saved_scenario(scenario, template, &bytes);
     let mut second = restore_saved_scenario(scenario, template, &bytes);
     for restored in [&first, &second] {
+        assert_eq!(
+            restored.native_unique_ids.as_ref().unwrap().current_raw(),
+            scenario
+                .sim()
+                .native_unique_ids
+                .as_ref()
+                .unwrap()
+                .current_raw(),
+            "the restored Bullet's future siblings share the saved native cursor"
+        );
         let mut retained = restored
             .projectiles
             .get(projectile_id)
-            .expect("saved live Cannon restores")
+            .expect("saved live Bullet restores")
             .clone();
         // Original BulletLoad46AE9C..46AEB0 restarts the timer. Every other
         // retained field, including binary64 motion, visual bytes and target,
@@ -278,7 +288,7 @@ fn assert_live_cannon_restore_continuation(
         let first_output = scenario
             .runtime
             .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
-            .expect("first restored Cannon continuation frame");
+            .expect("first restored Bullet continuation frame");
         assert!(first_output.tick.frame_committed);
         if let Some(shell) = scenario.sim().projectiles.get(projectile_id) {
             moved |= shell.position != saved_shell.position;
@@ -287,17 +297,17 @@ fn assert_live_cannon_restore_continuation(
         let second_output = scenario
             .runtime
             .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
-            .expect("second restored Cannon continuation frame");
+            .expect("second restored Bullet continuation frame");
         assert!(second_output.tick.frame_committed);
         assert_eq!(
             scenario.sim().state_hash(),
             second.state_hash(),
-            "restored Cannon continuation frame {frame}"
+            "restored Bullet continuation frame {frame}"
         );
         assert_eq!(
             scenario.sim().projectiles.get(projectile_id),
             second.projectiles.get(projectile_id),
-            "same restored Cannon fields at frame {frame}"
+            "same restored Bullet fields at frame {frame}"
         );
         if scenario.sim().projectiles.get(projectile_id).is_none() {
             for restored in [scenario.sim(), &second] {
@@ -307,7 +317,7 @@ fn assert_live_cannon_restore_continuation(
                         .display_layers()
                         .ordered_ids()
                         .any(|&id| id == projectile_id),
-                    "retired Cannon leaves every Display vector"
+                    "retired Bullet leaves every Display vector"
                 );
             }
             retired_at = Some(frame);
@@ -322,10 +332,10 @@ fn assert_live_cannon_restore_continuation(
         rules_hash,
         "restored continuations retain the bound rules"
     );
-    assert!(moved, "restored Cannon must move beyond its saved position");
-    let retired_at = retired_at.expect("restored Cannon must retire within 300 frames");
+    assert!(moved, "restored Bullet must move beyond its saved position");
+    let retired_at = retired_at.expect("restored Bullet must retire within 300 frames");
     println!(
-        "saved Cannon {projectile_id} at {:?} resumed flight and retired after {retired_at} ordinary frames; both restored state-hash sequences matched, Display membership was removed, original live frame preserved",
+        "saved Bullet {projectile_id} at {:?} resumed flight and retired after {retired_at} ordinary frames; both restored state-hash sequences matched, Display membership was removed, original live frame preserved",
         saved_shell.position
     );
 }
@@ -404,6 +414,16 @@ fn assert_debris_restore_continuation(
 #[test]
 #[ignore = "requires the configured retail install and stock Hills.mmx"]
 fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target() {
+    retail_bridge_forcefire_chain("MTNK", "105mm", "Cannon");
+}
+
+#[test]
+#[ignore = "requires the configured retail install and stock Hills.mmx"]
+fn retail_ifv_forcefire_guidance_survives_restore_and_collapses_live_bridge() {
+    retail_bridge_forcefire_chain("FV", "HoverMissile", "AAHeatSeeker2");
+}
+
+fn retail_bridge_forcefire_chain(vehicle_name: &str, weapon_name: &str, projectile_name: &str) {
     let retail = std::env::var("RA2_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| {
@@ -444,7 +464,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             resources,
         } = &mut scenario.runtime;
         if let Some(attacker) = simulation.spawn_object(
-            "MTNK",
+            vehicle_name,
             &owner_name,
             bank.0,
             bank.1,
@@ -456,16 +476,14 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             break;
         }
     }
-    let (attacker, bank, target) = selected.expect("place a Grizzly on a loaded bank");
+    let (attacker, bank, target) = selected.expect("place the selected vehicle on a loaded bank");
     let SimRuntime {
         simulation,
         resources,
     } = &mut scenario.runtime;
     simulation.resolve_type_handles(&resources.rules);
-    let vehicle = resources.rules.object("MTNK").unwrap();
-    assert_eq!(vehicle.primary.as_deref(), Some("105mm"));
-    let weapon = resources.rules.weapon("105mm").unwrap();
-    assert_eq!(weapon.projectile.as_deref(), Some("Cannon"));
+    let weapon = resources.rules.weapon(weapon_name).unwrap();
+    assert_eq!(weapon.projectile.as_deref(), Some(projectile_name));
     assert!(
         resources
             .rules
@@ -479,7 +497,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
         target.1,
     );
     println!(
-        "retail bridge shot: MTNK {attacker}, {bank:?} -> {target:?}, aim {expected_aim:?}, BridgeStrength {}",
+        "retail bridge shot: {vehicle_name} {attacker}, {bank:?} -> {target:?}, aim {expected_aim:?}, BridgeStrength {}",
         resources.rules.bridge_rules.strength
     );
 
@@ -492,6 +510,9 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
     let mut first_launch = None;
     let mut issued = false;
     let mut last_state = None;
+    let guided = resources.rules.projectile(projectile_name).unwrap().rot > 0;
+    let mut trails = std::collections::BTreeSet::new();
+    let mut detached_trails = 0;
     for frame in 0..18000_u64 {
         let commands = if !issued
             || scenario
@@ -523,13 +544,35 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             output.tick.frame_committed,
             "scenario exited before the bridge chain completed"
         );
+        for event in &output.lifecycle_outputs {
+            use crate::sim::world::LifecycleOutput;
+            match event {
+                LifecycleOutput::LineTrailConstructed { stable_id, .. }
+                    if scenario
+                        .sim()
+                        .projectiles
+                        .get(*stable_id)
+                        .is_some_and(|bullet| bullet.source_id == attacker) =>
+                {
+                    assert!(trails.insert(*stable_id), "one trail per Bullet lifetime");
+                }
+                LifecycleOutput::LineTrailDetached { stable_id } if trails.contains(stable_id) => {
+                    detached_trails += 1;
+                    assert!(
+                        scenario.sim().projectiles.get(*stable_id).is_none(),
+                        "trail detach follows the physical deferred Bullet destructor"
+                    );
+                }
+                _ => {}
+            }
+        }
         for fire in output
             .fire_events
             .iter()
             .filter(|fire| fire.attacker_id == attacker)
         {
             assert_eq!(fire.target, TargetKind::Cell(target.0, target.1));
-            assert_eq!(scenario.sim().interner.resolve(fire.weapon_id), "105mm");
+            assert_eq!(scenario.sim().interner.resolve(fire.weapon_id), weapon_name);
             shots += 1;
         }
         for (&id, &(launched_at, previous)) in &live {
@@ -537,7 +580,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
                 flight_observed |= shell.position != previous;
                 assert!(
                     frame - launched_at < 300,
-                    "Cannon remains in flight for 300 frames: id={id}, launch={:?}, aim={:?}, now={:?}, velocity={:?}, trajectory={:?}",
+                    "{projectile_name} remains in flight for 300 frames: id={id}, launch={:?}, aim={:?}, now={:?}, velocity={:?}, trajectory={:?}",
                     shell.launch_origin,
                     shell.launch_target,
                     shell.position,
@@ -569,7 +612,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             });
         }
         if !live_flight_restore_checked {
-            let moved_cannon = scenario.sim().projectiles.iter().find_map(|(&id, shell)| {
+            let moved_projectile = scenario.sim().projectiles.iter().find_map(|(&id, shell)| {
                 (shell.source_id == attacker
                     && shell.position != shell.launch_origin
                     && scenario
@@ -578,11 +621,11 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
                         .rules
                         .weapon(scenario.sim().interner.resolve(shell.payload.weapon))
                         .and_then(|weapon| weapon.projectile.as_deref())
-                        == Some("Cannon"))
+                        == Some(projectile_name))
                 .then_some(id)
             });
-            if let Some(id) = moved_cannon {
-                assert_live_cannon_restore_continuation(&mut scenario, &pristine_terrain, id);
+            if let Some(id) = moved_projectile {
+                assert_live_projectile_restore_continuation(&mut scenario, &pristine_terrain, id);
                 live_flight_restore_checked = true;
             }
         }
@@ -619,6 +662,12 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             assert!(shots > 0 && disappeared > 0 && flight_observed);
             assert!(bridge_change_observed);
             assert!(live_flight_restore_checked);
+            if guided {
+                assert!(
+                    trails.len() >= 2 && detached_trails > 0,
+                    "both burst shots construct trails and completed bullets detach them"
+                );
+            }
             assert!(
                 !scenario
                     .sim()
@@ -638,7 +687,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
                 "successful bridge destruction must detach the force-fire Cell target"
             );
             println!(
-                "retail Hills ordinary MTNK chain reached frame {frame}: {shots} shots, {disappeared} ended bullets, flight + bridge mutation + collapse + target release; validating save/restore"
+                "retail Hills ordinary {vehicle_name} chain reached frame {frame}: {shots} shots, {disappeared} ended bullets, flight + bridge mutation + collapse + target release; validating save/restore"
             );
             assert_debris_restore_continuation(&mut scenario, &pristine_terrain, target, attacker);
             println!(

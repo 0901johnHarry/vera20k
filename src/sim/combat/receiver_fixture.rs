@@ -15,6 +15,31 @@ pub(crate) struct BaseDefenseResponseTraceEntry {
 #[derive(Default)]
 pub(crate) struct FixtureTrace {
     pub(crate) entries: Vec<BaseDefenseResponseTraceEntry>,
+    pub(crate) constructed_anims: Vec<ConstructedAnimObservation>,
+}
+
+/// Read-only observations of objects the real inline constructor admitted.
+/// These are never deferred spawn requests and cannot construct a second anim.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ConstructedAnimObservation {
+    pub(crate) stable_id: u64,
+    pub(crate) native_unique_id: i32,
+    pub(crate) type_id: InternedId,
+    pub(crate) world_coord: crate::sim::anim_class::AnimWorldCoord,
+}
+
+fn constructed_anims(world: &Simulation) -> Vec<ConstructedAnimObservation> {
+    world
+        .substrate
+        .anims
+        .iter()
+        .map(|(_, anim)| ConstructedAnimObservation {
+            stable_id: anim.stable_id,
+            native_unique_id: anim.native_unique_id,
+            type_id: anim.type_id,
+            world_coord: anim.world_coord,
+        })
+        .collect()
 }
 
 /// Fixture omissions, never serialized or installed on a returned world.
@@ -130,6 +155,7 @@ fn with_world<R>(
     );
     if let Some(trace) = trace {
         trace.entries.extend(policy.trace.entries);
+        trace.constructed_anims.extend(constructed_anims(&world));
     }
     if let Some(area) = terrain_area {
         area.swap_authority(
@@ -756,6 +782,7 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             if let Some(radiation) = radiation {
                 *radiation = std::mem::take(&mut world.radiation);
             }
+            result.fixture_anims = constructed_anims(world);
             result
         },
     )

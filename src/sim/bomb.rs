@@ -508,30 +508,18 @@ impl Simulation {
         );
         self.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
 
-        let mut explosions = Vec::new();
-        crate::sim::combat::emit_warhead_detonation_effects(
-            warhead,
-            damage,
-            position.rx,
-            position.ry,
-            position.sub_x,
-            position.sub_y,
-            position.z,
+        // Bomb43884A selects after AreaDamage, using the attached object's
+        // saved coordinate and that coordinate's current Cell land.
+        let coordinate = crate::sim::projectile::ProjectileCoord::new(
+            i32::from(position.rx) * 256 + position.sub_x.to_num::<i32>(),
+            i32::from(position.ry) * 256 + position.sub_y.to_num::<i32>(),
             world_z_leptons,
-            &mut self.interner,
-            &mut explosions,
         );
-        for fx in &explosions {
-            self.spawn_combat_explosion_anim(
-                rules,
-                fx.shp_name,
-                fx.rx,
-                fx.ry,
-                fx.sub_x,
-                fx.sub_y,
-                fx.z,
-                fx.world_z,
-            );
+        let land = crate::sim::combat::detonation_anim::land_at(self, coordinate);
+        if let Some(effect) = crate::sim::combat::detonation_anim::effect(
+            self, rules, warhead, damage, land, coordinate, coordinate,
+        ) {
+            crate::sim::world::damage_consequences::admit_explosion_effect(self, rules, effect);
         }
         if blast.bridge_hut {
             crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(

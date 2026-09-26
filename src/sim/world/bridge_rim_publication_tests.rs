@@ -285,3 +285,6 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
             .is_some()
     );
 }
+
+#[path = "bridge_ifv_impact_tests.rs"]
+mod ifv_impact;

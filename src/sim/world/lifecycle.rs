@@ -268,13 +268,36 @@ pub(crate) enum ConcealOutcome {
 /// but the stream preserves the verified native relative ordering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LifecycleOutput {
-    RevealDisplay { stable_id: u64 },
-    DisplayRemove { stable_id: u64 },
-    DetachAttachedAnims { stable_id: u64 },
-    StopVoc { stable_id: u64 },
-    DirtyTacticalRect { stable_id: u64 },
-    ClearDrawnState { stable_id: u64 },
-    ClearRedraw { stable_id: u64 },
+    /// ObjectUnlimbo5F517A/5F5207 constructs and attaches a presentation trail.
+    LineTrailConstructed {
+        stable_id: u64,
+        style: crate::sim::projectile::ProjectileLineTrail,
+    },
+    /// ObjectDtor5F3D56 detaches; its fading registry entry remains alive.
+    LineTrailDetached {
+        stable_id: u64,
+    },
+    RevealDisplay {
+        stable_id: u64,
+    },
+    DisplayRemove {
+        stable_id: u64,
+    },
+    DetachAttachedAnims {
+        stable_id: u64,
+    },
+    StopVoc {
+        stable_id: u64,
+    },
+    DirtyTacticalRect {
+        stable_id: u64,
+    },
+    ClearDrawnState {
+        stable_id: u64,
+    },
+    ClearRedraw {
+        stable_id: u64,
+    },
 }
 
 #[cfg(test)]
@@ -3392,9 +3415,16 @@ impl Simulation {
 
     /// Match the retained target identity, preserving Cell/Techno distinction.
     fn listener_targets(&self, listener_id: u64, target: TargetKind) -> bool {
-        self.substrate.entities.get(listener_id).is_some_and(|listener| {
-            listener.attack_target.as_ref().map(|current| current.target) == Some(target)
-        })
+        self.substrate
+            .entities
+            .get(listener_id)
+            .is_some_and(|listener| {
+                listener
+                    .attack_target
+                    .as_ref()
+                    .map(|current| current.target)
+                    == Some(target)
+            })
     }
 
     /// Infantry PerCell repair519D17..519D36 calls each registered Infantry
@@ -4202,6 +4232,10 @@ impl Simulation {
             }
         }
         let projectile = self.projectiles.remove(stable_id);
+        if projectile.is_some() {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::LineTrailDetached { stable_id });
+        }
         let wave = self.waves.remove(stable_id);
         if let Some(wave) = wave.as_ref()
             && let Some(owner_id) = wave.owner_id

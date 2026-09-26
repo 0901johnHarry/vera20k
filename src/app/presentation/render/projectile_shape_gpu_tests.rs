@@ -1,4 +1,4 @@
-//! Physical retail Cannon/120MM → production atlas → retained object builder →
+//! Physical retail Cannon/120MM and IFV/DRAGON → production atlas → retained object builder →
 //! layer lowering/upload/replay versus full original Object/Bullet/CCShape pixels.
 //! Retained positions and flat cells are explicit fixture inputs, not a launch or
 //! flight simulation claim. This supplements the independent GPU leaf checks.
@@ -61,20 +61,28 @@ fn fixture(row: &Value, kind: &crate::rules::projectile_type::ProjectileType) ->
         xyz[1].as_i64().unwrap() as i32,
         xyz[2].as_i64().unwrap() as i32,
     );
-    let mut cell = test_flat_cell(10, 20);
+    let cell_xy = input["mapped_cell"].as_array().map_or((10, 20), |xy| {
+        (
+            u16::try_from(xy[0].as_i64().unwrap()).unwrap(),
+            u16::try_from(xy[1].as_i64().unwrap()).unwrap(),
+        )
+    });
+    let mut cell = test_flat_cell(cell_xy.0, cell_xy.1);
     cell.level = input["level"].as_i64().unwrap() as u8;
     cell.bridge_facts.raw_flags = input["flags"].as_u64().unwrap() as u32;
     let mut sim = Simulation::with_seed(31);
     let mut terrain = test_flat_ground_grid(32);
-    terrain.test_set_native_allocated_cells(&[(10, 20)]);
-    *terrain.cell_mut(10, 20).unwrap() = cell;
+    terrain.test_set_native_allocated_cells(&[cell_xy]);
+    *terrain.cell_mut(cell_xy.0, cell_xy.1).unwrap() = cell;
     sim.install_resolved_terrain_for_new_map(terrain);
-    let weapon = sim.interner.intern("105mm");
-    let warhead = sim.interner.intern("AP");
+    let weapon = sim.interner.intern("FIXTURE_UNUSED_WEAPON");
+    let warhead = sim.interner.intern("FIXTURE_UNUSED_WARHEAD");
     let id = sim.allocate_stable_id();
     sim.admit_projectile(
         id,
         ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
             flat: kind.flat,
             source_id: 0,
             origin: coord,
@@ -86,7 +94,16 @@ fn fixture(row: &Value, kind: &crate::rules::projectile_type::ProjectileType) ->
                 weapon,
             },
             speed_leptons_per_frame: 0,
-            velocity: ProjectileVelocity::new(0, 0, 0),
+            velocity: input["velocity"].as_array().map_or_else(
+                || ProjectileVelocity::new(0, 0, 0),
+                |velocity| {
+                    ProjectileVelocity::from_native(std::array::from_fn(|axis| {
+                        crate::util::native_x87::NativeF64Bits::from_bits(
+                            velocity[axis].as_f64().unwrap().to_bits(),
+                        )
+                    }))
+                },
+            ),
             trajectory: ProjectileTrajectory::Straight,
             guidance: None,
             visual: ProjectileVisualState::new(
@@ -126,7 +143,34 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
     let control_rules = physical_rules(&assets, true);
     assert!(!rules.projectile("Cannon").unwrap().anim_palette);
     assert!(control_rules.projectile("Cannon").unwrap().anim_palette);
-    let kind = rules.projectile("Cannon").unwrap();
+    let rows: Vec<_> = native["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(native["canonical_depth_rows"].as_array().unwrap())
+        .collect();
+    assert_eq!(rows.len(), 40);
+    compare_shape_corpus(
+        &assets,
+        &native,
+        &rules,
+        &control_rules,
+        "Cannon",
+        "120mm.shp",
+        &rows,
+    );
+}
+
+fn compare_shape_corpus(
+    assets: &AssetManager,
+    native: &Value,
+    rules: &RuleSet,
+    control_rules: &RuleSet,
+    type_id: &str,
+    shape_name: &str,
+    rows: &[&Value],
+) {
+    let kind = rules.projectile(type_id).unwrap();
     let selected = &native["selected_native_type"];
     assert_eq!(kind.image.as_deref(), selected["image"].as_str());
     for (key, actual) in [
@@ -141,11 +185,11 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
         assert_eq!(
             actual,
             selected[key].as_bool().unwrap(),
-            "physical Cannon {key}"
+            "physical {type_id} {key}"
         );
     }
     assert_eq!(
-        crate::util::sha256::sha256_hex(assets.get_ref("120mm.shp").unwrap()),
+        crate::util::sha256::sha256_hex(assets.get_ref(shape_name).unwrap()),
         native["shp_sha256"].as_str().unwrap()
     );
     for source in native["palette_loads"].as_array().unwrap() {
@@ -162,12 +206,6 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
         native["surface"]["width"].as_u64().unwrap() as u32,
         native["surface"]["height"].as_u64().unwrap() as u32,
     ];
-    let rows = native["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .chain(native["canonical_depth_rows"].as_array().unwrap());
-    assert_eq!(rows.clone().count(), 40);
     for format in [
         wgpu::TextureFormat::Bgra8UnormSrgb,
         wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -176,13 +214,13 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
         // Append the independently selected AnimPalette context through the
         // production atlas refresh, preserving the ordinary resident entry.
         let mut atlas = None;
-        for current_rules in [&rules, &control_rules] {
+        for current_rules in [rules, control_rules] {
             atlas = build_sprite_atlas(
                 &gpu.device,
                 &gpu.queue,
                 &batch,
                 &crate::sim::entity_store::EntityStore::new(),
-                &assets,
+                assets,
                 &palette,
                 "tem",
                 "TEMPERATE",
@@ -197,7 +235,7 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
                 None,
             );
         }
-        let atlas = atlas.expect("physical Cannon atlas");
+        let atlas = atlas.expect("physical projectile atlas");
         let missing = SpriteAtlas::from_test_pages(Vec::new());
         let color = gpu.target(size, format);
         let cv = color.create_view(&Default::default());
@@ -205,13 +243,12 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
         let dv = depth.create_view(&Default::default());
         let mut renderer = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
         let mut pool = InstanceBufferPool::new();
-        for row in rows.clone() {
+        for &row in rows {
             let input = &row["input"];
-            let type_id = "Cannon";
             let current_rules = if input["anim_palette"].as_i64() == Some(1) {
-                &control_rules
+                control_rules
             } else {
-                &rules
+                rules
             };
             let mut kind = current_rules.projectile(type_id).unwrap().clone();
             if let Some(value) = input["shadow"].as_i64() {
@@ -397,4 +434,55 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires GPU and physical retail archives; production DRAGON atlas/frame/builder/layer replay versus166 original full shape draws"]
+fn retail_ifv_dragon_all_frames_and_flight_match_original_shape_pixels() {
+    let root = std::env::var("RA2_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            crate::util::config::GameConfig::load()
+                .unwrap()
+                .paths
+                .ra2_dir
+        });
+    let assets = AssetManager::new(&root).unwrap();
+    let original = IniFile::from_bytes(assets.get_ref("rulesmd.ini").unwrap()).unwrap();
+    let art = IniFile::from_bytes(assets.get_ref("artmd.ini").unwrap()).unwrap();
+    let weapon_name = original.section("FV").unwrap().get("Weapon1").unwrap();
+    assert_eq!(weapon_name, "HoverMissile");
+    let weapon = original.section(weapon_name).unwrap();
+    let type_id = weapon.get("Projectile").unwrap();
+    assert_eq!(type_id, "AAHeatSeeker2");
+    // The selected weapon/type were established by the independent full native
+    // IFV launch fixture. Keep only this atlas dependency in the registry, with
+    // its complete physical Bullet keys and fixed ART. No FV mode selection is
+    // claimed by this presentation test.
+    let mut text = format!(
+        "[VehicleTypes]\n0=FV\n[FV]\nPrimary={weapon_name}\n[{weapon_name}]\nProjectile={type_id}\n[{type_id}]\n"
+    );
+    let section = original.section(type_id).unwrap();
+    for key in section.keys() {
+        text.push_str(&format!("{key}={}\n", section.get(key).unwrap()));
+    }
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&text), &art).unwrap();
+    rules.merge_art_data(&ArtRegistry::from_ini(&art));
+    let native: Value = serde_json::from_str(include_str!(
+        "../../../../tools/projectile_oracle/ifv_render.json"
+    ))
+    .unwrap();
+    let rows: Vec<_> = native["draws"].as_array().unwrap().iter().collect();
+    assert_eq!(rows.len(), 166);
+    assert_eq!(native["selected_native_type"]["frame_count"], 32);
+    compare_shape_corpus(
+        &assets,
+        &native,
+        &rules,
+        &rules,
+        type_id,
+        "dragon.shp",
+        &rows,
+    );
 }

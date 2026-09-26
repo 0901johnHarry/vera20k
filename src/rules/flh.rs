@@ -20,7 +20,7 @@
 /// turret pivot (or body center for turretless units).
 ///
 /// Values are in leptons (256 leptons = 1 cell).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Flh {
     /// Distance along the unit's facing direction. Positive = forward.
     pub forward: i32,

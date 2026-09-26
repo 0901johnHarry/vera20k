@@ -239,6 +239,9 @@ impl Simulation {
             .expect("fresh Techno constructor initialization cannot fail");
         let entity = GameEntity::new_at_frame_from_constructor_word(
             stable_id,
+            // This deliberately lifecycle-free diagnostic is not a native
+            // concrete constructor and must not spend the gameplay cursor.
+            0,
             rx,
             ry,
             z,
@@ -440,19 +443,18 @@ impl Simulation {
                     )
                 }),
             )?;
-            if generated_inits.is_none() && self.native_unique_ids.is_some() {
-                // Authored map readers construct each Techno after consuming
-                // its unconditional Scenario word. The class-specific
-                // constructor then assigns the shared native identity before
-                // Unlimbo can succeed or fail.
-                let _ = self
-                    .next_native_load_id()
-                    .expect("authored Techno native cursor was checked above");
-            }
+            // Concrete constructors assign after the base Techno Scenario word
+            // and before Unlimbo. Generated rows already spent both effects at
+            // their original construction point; projection must not repeat it.
+            let native_unique_id = generated_inits.as_ref().map_or_else(
+                || self.next_native_runtime_id(),
+                |inits| inits[entity_index].native_unique_id,
+            );
 
             // Build the GameEntity with all required fields.
             let mut ge = GameEntity::new_at_frame_from_constructor_word(
                 stable_id,
+                native_unique_id,
                 map_ent.cell_x,
                 map_ent.cell_y,
                 z,
@@ -535,7 +537,6 @@ impl Simulation {
                             z,
                             map_ent.facing,
                             ruleset,
-                            generated_inits.is_none(),
                         )
                         .is_some()
                     {
@@ -580,15 +581,9 @@ impl Simulation {
         z: u8,
         facing: u8,
         rules: &RuleSet,
-        consume_native_load_id: bool,
     ) -> Option<u64> {
         let stable_id =
             self.construct_object_limbo_at_height(type_id, owner, rx, ry, facing, z, rules)?;
-        if consume_native_load_id && self.native_unique_ids.is_some() {
-            let _ = self
-                .next_native_load_id()
-                .expect("authored upgrade native cursor was checked above");
-        }
         {
             let upgrade = self.substrate.entities.get_mut(stable_id)?;
             upgrade.structure_upgrade_link = Some(StructureUpgradeLink {

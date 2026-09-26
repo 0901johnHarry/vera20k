@@ -623,7 +623,10 @@ use crate::sim::world::Simulation;
 // 215 -> 216: a building keeps its AI repair byte (`+0x6CB`) and a house its
 // repair delay (`+0x1C0`), auto-repair latch (`+0x245`) and the latch's
 // timer (`+0x280`).
-const SNAPSHOT_VERSION: u32 = 216;
+// 216 -> 217: runtime constructors retain native Abstract IDs; guided bullets
+// use those IDs with global frame, native binary64 velocity and signed course/
+// closing counters. Removed approximate heading/age/phase cannot be recovered.
+const SNAPSHOT_VERSION: u32 = 217;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2452,15 +2455,12 @@ mod tests {
         fn add_live_terrain_object(sim: &mut Simulation, cell: (u16, u16)) {
             let stable_id = sim.allocate_stable_id();
             let type_ref = sim.interner.intern("TREE01");
-            sim.production.terrain_objects.insert(
-                stable_id,
-                {
-                    let mut terrain = TerrainObjectState::for_test(stable_id, type_ref, cell.0, cell.1);
-                    terrain.in_logic_vector = true;
-                    terrain.occupation_bits = 7;
-                    terrain
-                },
-            );
+            sim.production.terrain_objects.insert(stable_id, {
+                let mut terrain = TerrainObjectState::for_test(stable_id, type_ref, cell.0, cell.1);
+                terrain.in_logic_vector = true;
+                terrain.occupation_bits = 7;
+                terrain
+            });
             sim.production.terrain_object_cells.insert(cell, stable_id);
             sim.substrate
                 .logic
@@ -3580,7 +3580,8 @@ mod tests {
         // 214 -> 215: Terrain retains its placement height across ground changes.
         // 215 -> 216: the building's AI repair byte; the house's repair
         // delay, auto-repair latch and its timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 216);
+        // 216 -> 217: native constructor IDs and signed guided control state.
+        assert_eq!(super::SNAPSHOT_VERSION, 217);
     }
 
     #[test]
@@ -6617,6 +6618,8 @@ mod tests {
         };
 
         ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
             flat: false,
             source_id,
             origin: ProjectileCoord::new(0, 0, 0),
@@ -7773,8 +7776,12 @@ mod tests {
             terrain
         };
         let spawner = {
-            let mut terrain =
-                TerrainObjectState::for_test(spawner_id, spawner_type, spawner_cell.0, spawner_cell.1);
+            let mut terrain = TerrainObjectState::for_test(
+                spawner_id,
+                spawner_type,
+                spawner_cell.0,
+                spawner_cell.1,
+            );
             terrain.health = 10;
             terrain.max_health = 10;
             terrain.occupation_bits = 7;

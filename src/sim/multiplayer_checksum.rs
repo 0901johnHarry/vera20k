@@ -422,6 +422,8 @@ mod tests {
 
     fn test_projectile(origin: ProjectileCoord) -> ProjectileSpawn {
         ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
             flat: false,
             source_id: 0,
             origin,
@@ -480,15 +482,13 @@ mod tests {
         });
 
         let terrain_id = sim.allocate_stable_id();
-        sim.production.terrain_objects.insert(
-            terrain_id,
-            {
-                let mut terrain = TerrainObjectState::for_test(terrain_id, InternedId::from_index(0), 7, 9);
-                terrain.health = 10;
-                terrain.max_health = 10;
-                terrain
-            },
-        );
+        sim.production.terrain_objects.insert(terrain_id, {
+            let mut terrain =
+                TerrainObjectState::for_test(terrain_id, InternedId::from_index(0), 7, 9);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
+        });
 
         let bullet_id = sim.allocate_stable_id();
         sim.projectiles.spawn(

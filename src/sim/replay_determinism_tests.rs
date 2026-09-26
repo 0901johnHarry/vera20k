@@ -127,6 +127,9 @@ fn replay_reapplies_header_seed() {
 
     fn sim_with_unit(desc: &ScenarioDescriptor) -> Simulation {
         let mut sim = Simulation::from_descriptor(desc);
+        // This synthetic fixture omits the production native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let entity = MapEntity {
             owner: "Americans".to_string(),
             type_id: "MTNK".to_string(),

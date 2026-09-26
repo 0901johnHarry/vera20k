@@ -157,7 +157,8 @@ pub(crate) fn render_game(
         state.match_state.input.zoom_level,
     );
     let composition_view = state.renderer.combat_light_renderer.composition_view();
-    let (_, tactical_y, _, _) = crate::app::input::camera::tactical_viewport_px(state);
+    let (tactical_x, tactical_y, tactical_w, tactical_h) =
+        crate::app::input::camera::tactical_viewport_px(state);
     // Shader row coordinates are unscaled world pixels; scissor uses target
     // pixels. Native zoom1 is exact, and scaled views preserve that unit frame.
     let native_z_origin_y = tactical_y as f32 / state.match_state.input.zoom_level;
@@ -170,6 +171,53 @@ pub(crate) fn render_game(
         state.renderer.combat_light_renderer.composition_texture(),
         &state.renderer.depth_view,
         state.renderer.batch_renderer.camera_uniform(),
+    );
+
+    // Tactical6D4673 -> LineTrail556D40 updates once per actual composite.
+    // It reads committed Bullet coordinates even when no simulation tick ran.
+    // The ring belongs to presentation and survives only until it fades or loads.
+    let camera = [
+        state.match_state.input.camera_x,
+        state.match_state.input.camera_y,
+    ];
+    let sim = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .map(|runtime| runtime.view().simulation());
+    let presentation = &mut state.match_state.match_presentation;
+    let segments = presentation.line_trails.composite(|id| {
+        sim.and_then(|sim| sim.projectiles.get(id))
+            .map(|bullet| bullet.position)
+    });
+    let shroud = presentation.shroud_buffer.as_ref();
+    let sandbox = state.match_state.sandbox_full_visibility;
+    state.renderer.terrain_draw_renderer.prepare_line_trails(
+        &state.renderer.gpu.device,
+        &state.renderer.gpu.queue,
+        segments,
+        crate::render::line_trail::LineTrailViewport {
+            camera: camera.map(|v| v.floor() as i32),
+            clip: [tactical_x, tactical_y, tactical_w, tactical_h].map(|v| (v as f32 / z) as i32),
+            z_origin_y: native_z_origin_y as i32,
+            zoom: z,
+        },
+        |point| {
+            if sandbox {
+                127
+            } else {
+                shroud
+                    .and_then(|buffer| {
+                        buffer.sample_world(
+                            point[0] as f32 + camera[0].floor(),
+                            point[1] as f32 + camera[1].floor(),
+                            camera[0],
+                            camera[1],
+                        )
+                    })
+                    .map_or(127, u16::from)
+            }
+        },
     );
 
     // Phase 7: Dispatch draw calls in render order.
@@ -221,7 +269,12 @@ fn upload_to_gpu(
     pool.upload(&state.renderer.gpu, "terrain", &world.terrain.normal);
     pool.upload(&state.renderer.gpu, "overlay", &world.overlay);
     for (layer, objects) in world.object_layers.iter().enumerate() {
-        pool.upload_page(&state.renderer.gpu, "object_layer", layer, &objects.instances);
+        pool.upload_page(
+            &state.renderer.gpu,
+            "object_layer",
+            layer,
+            &objects.instances,
+        );
     }
     pool.upload(
         &state.renderer.gpu,

@@ -184,12 +184,36 @@ pub(crate) fn commit_area(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> (DeathEffects, Vec<UnderAttackEvent>) {
+    let (effects, pings, _) =
+        commit_area_with_dispatch(world, run, receivers, rules, overlay_registry);
+    (effects, pings)
+}
+
+/// Apply_area_damage48935C initializes its receiver flag to zero, sets it
+/// after each dispatched virtual ReceiveDamage489ABC (including ReturnZero),
+/// and returns its inverse at48A47E. Keep this receipt transaction-local;
+/// nested areas must not overwrite their parent's dispatched status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AreaDamageResult {
+    ReceiverDispatched = 0,
+    NoReceiver = 1,
+    IronCurtain = 2,
+}
+
+pub(crate) fn commit_area_with_dispatch(
+    world: &mut Simulation,
+    run: &mut ReceiverRun,
+    receivers: &[combat_aoe::AreaDamageReceiver],
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) -> (DeathEffects, Vec<UnderAttackEvent>, AreaDamageResult) {
     let current_tick = receiver_tick(world);
 
     let isolation_armed =
         area_near_center_ic_isolation_armed(receivers, &mut world.substrate.entities, current_tick);
     let mut effects = DeathEffects::default();
     let mut under_attack_events = Vec::new();
+    let mut dispatched = false;
 
     for receiver in receivers {
         match *receiver {
@@ -197,11 +221,15 @@ pub(crate) fn commit_area(
                 if !area_record_dispatches(world, rules, &event) {
                     continue;
                 }
+                if !area_isolation_dispatches(world, &event, isolation_armed, current_tick) {
+                    continue;
+                }
+                dispatched = true;
                 let (nested, mut pings) = commit_entities(
                     world,
                     run,
                     std::slice::from_ref(&event),
-                    Some(isolation_armed),
+                    Some(false),
                     rules,
                     overlay_registry,
                 );
@@ -212,6 +240,15 @@ pub(crate) fn commit_area(
                 if isolation_armed && event.near_center_ic_isolation_eligible {
                     continue;
                 }
+                if !world
+                    .production
+                    .terrain_objects
+                    .get(&event.stable_id)
+                    .is_some_and(|terrain| terrain.is_live() && terrain.health > 0)
+                {
+                    continue;
+                }
+                dispatched = true;
                 let (nested, mut pings) =
                     commit_terrain(world, run, event, false, rules, overlay_registry);
                 effects.append(nested);
@@ -220,7 +257,29 @@ pub(crate) fn commit_area(
         }
     }
 
-    (effects, under_attack_events)
+    let result = if isolation_armed {
+        AreaDamageResult::IronCurtain
+    } else if dispatched {
+        AreaDamageResult::ReceiverDispatched
+    } else {
+        AreaDamageResult::NoReceiver
+    };
+    (effects, under_attack_events, result)
+}
+
+fn area_isolation_dispatches(
+    world: &Simulation,
+    event: &EntityDamageEvent,
+    isolation_armed: bool,
+    current_tick: u64,
+) -> bool {
+    !isolation_armed
+        || !event.near_center_ic_isolation_eligible
+        || world
+            .substrate
+            .entities
+            .get(event.target_id)
+            .is_some_and(|target| has_active_area_invulnerability(target, current_tick))
 }
 
 /// `Apply_area_damage @ 0x00489280`'s per-record dispatch gates
@@ -232,7 +291,7 @@ pub(crate) fn commit_area(
 /// `0x00489A79`), be marked on the map (`+0x74`, `0x00489A80`) and be out of
 /// limbo (`+0x81`, `0x00489A87`). The distance bound (`0x00489A91`) and the
 /// airborne-aircraft halving (`0x00489A59..0x00489A77`) are fixed at
-/// collection; the near-centre Iron Curtain filter is `commit_entities`'.
+/// collection; the near-centre Iron Curtain filter is `area_isolation_dispatches`.
 fn area_record_dispatches(world: &Simulation, rules: &RuleSet, event: &EntityDamageEvent) -> bool {
     world
         .substrate
@@ -322,7 +381,8 @@ pub(crate) fn commit_terrain(
         effects
             .cell_target_detaches
             .extend(aoe.cell_target_detaches);
-        let (nested, mut pings) = commit_area(world, run, &aoe.receivers, rules, overlay_registry);
+        let (nested, mut pings, area_result) =
+            commit_area_with_dispatch(world, run, &aoe.receivers, rules, overlay_registry);
         effects.append(nested);
         under_attack_events.append(&mut pings);
         effects.bridge_state_changed |= continue_area_bridge_damage(
@@ -334,6 +394,7 @@ pub(crate) fn commit_terrain(
             c4_id,
             world_z,
             routed_wall,
+            area_result,
         );
     }
 
@@ -382,24 +443,22 @@ pub(crate) fn commit_entities(
     });
 
     for event in damage_events {
-        if near_center_ic_isolation
-            && event.near_center_ic_isolation_eligible
-            && !world
-                .substrate
-                .entities
-                .get(event.target_id)
-                .is_some_and(|target| has_active_area_invulnerability(target, current_tick))
-        {
+        if !area_isolation_dispatches(world, event, near_center_ic_isolation, current_tick) {
             continue;
         }
         let target_id = event.target_id;
         let attacker_id = event.attacker_id;
         run.selected_units.retain(|&id| id != target_id);
-        if world.substrate.entities.get(target_id).is_some_and(|target| {
-            target.category == EntityCategory::Unit
-                && target.selected
-                && world.session.current_house == Some(target.owner())
-        }) {
+        if world
+            .substrate
+            .entities
+            .get(target_id)
+            .is_some_and(|target| {
+                target.category == EntityCategory::Unit
+                    && target.selected
+                    && world.session.current_house == Some(target.owner())
+            })
+        {
             run.selected_units.push(target_id);
         }
         match apply_building_receive_prelude(
@@ -1127,6 +1186,7 @@ pub(crate) fn handle_death(
                     center,
                     world_z_leptons,
                     &mut world.scenario_rng,
+                    &mut world.native_unique_ids,
                     &mut voxel_debris,
                     &mut explosion_effects,
                 );
@@ -1275,8 +1335,8 @@ pub(crate) fn handle_death(
             // One native Apply_area_damage owns the whole fixed record vector.
             // The commit loop still enters ReceiveDamage/death effects inline
             // per record, while retaining transaction-wide IC isolation.
-            let (mut nested, mut pings) =
-                commit_area(world, run, &aoe.receivers, rules, overlay_registry);
+            let (mut nested, mut pings, area_result) =
+                commit_area_with_dispatch(world, run, &aoe.receivers, rules, overlay_registry);
             despawned_ids.append(&mut nested.despawned_ids);
             immediate_uninit_ids.append(&mut nested.immediate_uninit_ids);
             structure_destroyed |= nested.structure_destroyed;
@@ -1309,19 +1369,21 @@ pub(crate) fn handle_death(
                 *wh_id,
                 *world_z_leptons,
                 routed_wall,
+                area_result,
             );
-            emit_warhead_detonation_effects(
-                warhead,
-                *dmg,
-                *rx,
-                *ry,
-                *sub_x,
-                *sub_y,
-                *z,
+            let coordinate = ProjectileCoord::new(
+                i32::from(*rx) * 256 + sub_x.to_num::<i32>(),
+                i32::from(*ry) * 256 + sub_y.to_num::<i32>(),
                 *world_z_leptons,
-                &mut world.interner,
-                &mut explosion_effects,
             );
+            let land = detonation_anim::land_at(world, coordinate);
+            if let Some(effect) =
+                detonation_anim::effect(world, rules, warhead, *dmg, land, coordinate, coordinate)
+            {
+                crate::sim::world::damage_consequences::admit_explosion_effect(
+                    world, rules, effect,
+                );
+            }
             // `0x0043896A`/`0x00438982`: a bombed bridge-repair hut drops
             // its bridge after the blast.
             if *bridge_hut {
@@ -1735,8 +1797,10 @@ pub(crate) fn continue_area_bridge_damage(
     warhead_ref: InternedId,
     impact_z_leptons: i32,
     routed_wall: bool,
+    area_result: AreaDamageResult,
 ) -> bool {
-    if world.session.no_damage
+    if area_result == AreaDamageResult::IronCurtain
+        || world.session.no_damage
         || damage == 0
         || routed_wall
         || !rules
@@ -1848,6 +1912,7 @@ fn emit_detonation_receivers(
                 world.resolved_terrain.as_ref(),
                 &world.house_alliances,
                 &mut world.scenario_rng,
+                &mut world.native_unique_ids,
                 out,
             );
 
@@ -1908,17 +1973,19 @@ fn emit_detonation_receivers(
 /// their receivers: an `Inviso=` bullet first scatters the anim coordinate
 /// by one raw Scenario draw (`0x0049F420`, radius 0x20; the damage keeps the
 /// impact), then the AnimList anim and its smudge.
+#[allow(clippy::too_many_arguments)]
 fn emit_detonation_anim(
     world: &mut Simulation,
+    rules: &RuleSet,
     detonation: &ProjectileDetonation,
     warhead: &WarheadType,
     inviso: bool,
     bright: bool,
+    area_result: Option<AreaDamageResult>,
     out: &mut CombatEmit,
 ) {
     let (impact_rx, impact_ry, impact_sub_x, impact_sub_y, world_z_leptons) =
         projectile_impact_cell(detonation.impact);
-    let impact_z = world_z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32);
     let (rx, ry, sub_x, sub_y) = if inviso {
         inviso_scatter::scatter_inviso_effect_coord(
             &mut world.scenario_rng,
@@ -1930,12 +1997,42 @@ fn emit_detonation_anim(
     } else {
         (impact_rx, impact_ry, impact_sub_x, impact_sub_y)
     };
+    // 469AF0..469BCF reads the still-live Bullet, not the damage/animation
+    // coordinate copied at469AA4. The terrain here includes the synchronous
+    // bridge continuation, so a collapsed deck can now select SplashList.
+    let (selection_coordinate, on_bridge) = world
+        .projectiles
+        .get(detonation.projectile_id)
+        .map(|bullet| (bullet.position, bullet.on_bridge))
+        .unwrap_or((detonation.impact, false));
+    let land = detonation_anim::bullet_land(
+        world,
+        rules,
+        selection_coordinate,
+        on_bridge,
+        area_result == Some(AreaDamageResult::ReceiverDispatched),
+    );
+    let placement = ProjectileCoord::new(
+        i32::from(rx) * 256 + sub_x.to_num::<i32>(),
+        i32::from(ry) * 256 + sub_y.to_num::<i32>(),
+        world_z_leptons,
+    );
+    // Selection still runs for an isolated Iron Curtain impact, including
+    // EMEffect RNG. Only afterward469BEA replaces its constructor type.
+    let selected = detonation_anim::effect(
+        world,
+        rules,
+        warhead,
+        detonation.payload.base_damage,
+        land,
+        selection_coordinate,
+        placement,
+    );
     // `0x00469BD6..0x00469C41`: a Bright bullet (`+0xE0`, the weapon's
     // `Bright=`) lights the anim coordinate with its damage (`+0x6C`),
-    // force 1, and the warhead's CLDisable channels. The Rules alternate
-    // warhead arm (Apply_area_damage returning 2) skips it; that arm is not
-    // modelled.
-    if bright {
+    // force 1, and the warhead's CLDisable channels. AreaDamage result2
+    // skips the light and selected ordinary animation after selection RNG.
+    if bright && area_result != Some(AreaDamageResult::IronCurtain) {
         let flags = (u32::from(warhead.cl_disable_red) << 1)
             | (u32::from(warhead.cl_disable_green) << 2)
             | (u32::from(warhead.cl_disable_blue) << 3);
@@ -1952,18 +2049,19 @@ fn emit_detonation_anim(
             flags,
         });
     }
-    emit_warhead_detonation_effects(
-        warhead,
-        detonation.payload.base_damage,
-        rx,
-        ry,
-        sub_x,
-        sub_y,
-        impact_z_byte(impact_z),
-        world_z_leptons,
-        &mut world.interner,
-        &mut out.effects.explosion_effects,
-    );
+    let effect = if area_result == Some(AreaDamageResult::IronCurtain) {
+        (!rules.general.weapon_nullify_anim.is_empty()).then(|| {
+            let type_id = world.interner.intern(&rules.general.weapon_nullify_anim);
+            // 46A2A1..46A301 uses the same placement and constructor row as
+            // the ordinary impact, then returns before the ordinary tail.
+            detonation_anim::placed_effect(type_id, placement)
+        })
+    } else {
+        selected
+    };
+    if let Some(effect) = effect {
+        crate::sim::world::damage_consequences::admit_explosion_effect(world, rules, effect);
+    }
 }
 
 /// One bullet's detonation, `BulletClass::DetonateAtCoord` then its cluster
@@ -1974,10 +2072,8 @@ fn emit_detonation_anim(
 /// weapon's bare `DetonateAtCoord` (`ProjectileDetonationReason::DeathWeapon`)
 /// and (VERA-internal, never in retail) a weapon that names no BulletType.
 ///
-/// RESIDUAL: the anims and smudges are admitted when the caller commits the
-/// detonation's effects, after the cluster draws, where native constructs them
-/// in the anim tail. Only a `RandomRate=` AnimList anim draws at construction
-/// (none of the small-arms `PIFF`/`PIFFPIFF`); for it the draw order differs.
+/// The selected animation constructs synchronously inside the tail, so its
+/// common identity and constructor RNG precede the next cluster's draws.
 pub(crate) fn commit_projectile_detonations_inline(
     world: &mut Simulation,
     run: &mut ReceiverRun,
@@ -2023,11 +2119,17 @@ pub(crate) fn commit_projectile_detonations_inline(
             let damage_start = emit.damage_events.len();
             let explosion_start = emit.effects.explosion_effects.len();
             let smudge_start = emit.effects.smudge_spawn_requests.len();
-            let area_wall_route =
-                emit_detonation_receivers(world, rules, overlay_registry, &clustered, warhead, emit);
+            let area_wall_route = emit_detonation_receivers(
+                world,
+                rules,
+                overlay_registry,
+                &clustered,
+                warhead,
+                emit,
+            );
             let outer_explosion_effects = emit.effects.explosion_effects.split_off(explosion_start);
             let outer_anim_requests = emit.effects.smudge_spawn_requests.split_off(smudge_start);
-            let (inline_death, mut pings) = commit_area(
+            let (inline_death, mut pings, area_result) = commit_area_with_dispatch(
                 world,
                 run,
                 &emit.damage_events[damage_start..],
@@ -2035,7 +2137,9 @@ pub(crate) fn commit_projectile_detonations_inline(
                 overlay_registry,
             );
             emit.effects.append(inline_death);
-            if let Some(routed_wall) = area_wall_route {
+            if let Some(routed_wall) = area_wall_route
+                && area_result != AreaDamageResult::IronCurtain
+            {
                 let (rx, ry, _, _, z) = projectile_impact_cell(clustered.impact);
                 emit.effects.bridge_state_changed |= continue_area_bridge_damage(
                     world,
@@ -2046,6 +2150,7 @@ pub(crate) fn commit_projectile_detonations_inline(
                     clustered.payload.warhead,
                     z,
                     routed_wall,
+                    area_result,
                 );
             }
             emit.effects
@@ -2053,7 +2158,16 @@ pub(crate) fn commit_projectile_detonations_inline(
                 .extend(outer_explosion_effects);
             under_attack_events.append(&mut pings);
             let anim_start = emit.effects.smudge_spawn_requests.len();
-            emit_detonation_anim(world, &clustered, warhead, inviso, bright, emit);
+            emit_detonation_anim(
+                world,
+                rules,
+                &clustered,
+                warhead,
+                inviso,
+                bright,
+                area_wall_route.map(|_| area_result),
+                emit,
+            );
             let mut anim_requests = outer_anim_requests;
             anim_requests.extend(emit.effects.smudge_spawn_requests.split_off(anim_start));
             commit_smudges(
@@ -2159,18 +2273,19 @@ fn emit_missile_detonations(
         let world_z_leptons = air_impact
             .map(|impact| impact.z_leptons)
             .unwrap_or_else(|| impact_z.wrapping_mul(LEPTONS_PER_LEVEL as i32));
-        emit_warhead_detonation_effects(
-            warhead,
-            det.damage,
-            rx,
-            ry,
-            sub_x,
-            sub_y,
-            impact_z_byte(impact_z),
+        // Rocket66327D selects on its computed crash coordinate and current
+        // Cell land; constructor66328A precedes light and area damage.
+        let coordinate = ProjectileCoord::new(
+            i32::from(rx) * 256 + sub_x.to_num::<i32>(),
+            i32::from(ry) * 256 + sub_y.to_num::<i32>(),
             world_z_leptons,
-            &mut world.interner,
-            &mut out.effects.explosion_effects,
         );
+        let land = detonation_anim::land_at(world, coordinate);
+        if let Some(effect) = detonation_anim::effect(
+            world, rules, warhead, det.damage, land, coordinate, coordinate,
+        ) {
+            crate::sim::world::damage_consequences::admit_explosion_effect(world, rules, effect);
+        }
         // `RocketLocomotion::Detonate` lights every impact after its anim and
         // before the area damage (`0x006632AF`: damage, warhead, the impact
         // coordinate, not forced, no CLDisable flags) — no `Bright=` gate.
@@ -2981,13 +3096,13 @@ fn uncloak_to_fire(
 /// Native Mission_Attack418403 checks legality once before its burst loop;
 /// separating emission lets the aircraft caller reselect from live state
 /// without repeating admission for every FireAt call.
-struct AdmittedFire<'a> {
-    snap: AttackerSnapshot,
-    obj: &'a ObjectType,
-    selected: combat_weapon::SelectedWeapon<'a>,
-    target_coords: (u16, u16, SimFixed, SimFixed),
-    target_type_ref: InternedId,
-    is_garrison: bool,
+pub(super) struct AdmittedFire<'a> {
+    pub(super) snap: AttackerSnapshot,
+    pub(super) obj: &'a ObjectType,
+    pub(super) selected: combat_weapon::SelectedWeapon<'a>,
+    pub(super) target_coords: (u16, u16, SimFixed, SimFixed),
+    pub(super) target_type_ref: InternedId,
+    pub(super) is_garrison: bool,
 }
 
 /// The object coordinate `vt+0x48` (GetCoords) returns: a building's
@@ -3433,7 +3548,7 @@ fn fireat_get_rof(
 
 /// Existing FireAt delivery and bookkeeping, shared by the world receiver.
 /// The caller still owns legality, fire-action timing and inline damage commit.
-fn emit_admitted_fire(
+pub(super) fn emit_admitted_fire(
     world: &mut Simulation,
     rules: &RuleSet,
     shot: AdmittedFire<'_>,
@@ -3546,7 +3661,7 @@ fn emit_admitted_fire(
         rules,
         &super::fire_coord::FireSource::from(snap),
         obj,
-        selected.slot,
+        selected.index,
         burst_index,
     );
     let launch_source = fireat_launch_source(world, rules, snap, &fire, weapon);
@@ -3567,6 +3682,7 @@ fn emit_admitted_fire(
     // unique id (`0x00410230`) before the launch math, so a launch that then
     // fails has still spent one.
     let bullet_id = world.allocate_stable_id();
+    let native_unique_id = world.next_native_runtime_id();
     fireat_estimate_debit(world, rules, snap.stable_id, obj, weapon);
     let launched = {
         let impact_world_z_leptons = attack_world_z_leptons(
@@ -3591,7 +3707,6 @@ fn emit_admitted_fire(
         let launch_geometry =
             fireat_launch_aim(world, rules, snap, weapon, launch_source.coord, impact);
         let origin = launch_source.coord;
-        let aim_facing16 = fire.aim_facing16;
         let body_facing16 = crate::sim::movement::turret::body_facing_to_turret(snap.facing);
         let projectile_type = weapon
             .projectile
@@ -3723,7 +3838,7 @@ fn emit_admitted_fire(
                     // pixel-offset and quantization producers beyond this owner.
                     // Ordinary stock reachability of a directed Building projectile
                     // is not established; its input producer remains open.
-                    EntityCategory::Structure => aim_facing16,
+                    EntityCategory::Structure => fire.aim_facing16,
                 }
             });
         let current_target_coord = (ballistic && !weapon.lobber)
@@ -3754,44 +3869,29 @@ fn emit_admitted_fire(
                     .wrapping_mul(200)
                     .wrapping_sub(pivot_z)
             });
-        let launch = if let Some(guidance) = guidance.as_mut() {
-            // Homing's launch/steering producer remains open. Its integer XY
-            // output is widened into the same authoritative binary64 state.
-            let heading_bam = aim_facing16.wrapping_sub(0x4000);
-            guidance.heading_bam = heading_bam;
-            // `ProximityDetector::Setup` (`0x004E1130`, from
-            // `BulletClass::Fire` at `0x00468A93`) copies the target's own
-            // coordinate (`0x00468700..0x00468724`): unled and unscattered.
+        if let Some(guidance) = guidance.as_mut() {
             guidance.fuse_reference = frozen_target_position;
-            Some(FireAtLaunchResult {
-                velocity: ProjectileVelocity::new(
-                    crate::sim::movement::homing_movement::cos_bam(heading_bam).to_num::<i32>(),
-                    crate::sim::movement::homing_movement::sin_bam(heading_bam).to_num::<i32>(),
-                    0,
-                ),
-                speed: 1,
-            })
-        } else {
-            fireat_launch(FireAtLaunch {
-                delta,
-                speed: launch_geometry.speed,
-                vertical: vertical.is_some(),
-                heading: directed_heading,
-                arcing: ballistic,
-                gravity: crate::sim::projectile::projectile_gravity(
-                    rules.general.gravity,
-                    collision.floater,
-                ),
-                high_root: high_arc_root(weapon.lobber, raw_source, current_target_coord),
-                voxel_downward: (!ballistic && voxel).then(|| {
-                    target_location(snap.target)
-                        .expect("live native FireAt target")
-                        .z
-                        < raw_source.z
-                }),
-                building_pitch_height,
-            })
-        };
+        }
+        let launch = fireat_launch(FireAtLaunch {
+            delta,
+            speed: launch_geometry.speed,
+            vertical: vertical.is_some(),
+            homing: guidance.is_some(),
+            heading: directed_heading,
+            arcing: ballistic,
+            gravity: crate::sim::projectile::projectile_gravity(
+                rules.general.gravity,
+                collision.floater,
+            ),
+            high_root: high_arc_root(weapon.lobber, raw_source, current_target_coord),
+            voxel_downward: (!ballistic && voxel).then(|| {
+                target_location(snap.target)
+                    .expect("live native FireAt target")
+                    .z
+                    < raw_source.z
+            }),
+            building_pitch_height,
+        });
         // A launch with no ballistic solution deletes its bullet
         // (`0x006FF000` -> `0x006FF93C`, or `0x006FF01E` when
         // `BulletClass::Fire` refuses) and resumes at `0x006FF749`.
@@ -3820,6 +3920,13 @@ fn emit_admitted_fire(
             };
             let arm_frames = projectile_arm_delay(arm_frames, target, &world.substrate.entities);
             let spawn = ProjectileSpawn {
+                native_unique_id,
+                line_trail: projectile_type.and_then(|kind| {
+                    crate::sim::projectile::ProjectileLineTrail::from_type(
+                        kind,
+                        rules.general.line_trail_color_override,
+                    )
+                }),
                 flat: projectile_type.is_some_and(|projectile| projectile.flat),
                 source_id: snap.stable_id,
                 origin,
@@ -4242,6 +4349,8 @@ pub(crate) fn tick_combat(
 
     if tick_ms == 0 {
         return CombatTickResult {
+            #[cfg(test)]
+            fixture_anims: Vec::new(),
             projectile_spawns: Vec::new(),
             unit_facing: Vec::new(),
             consequences: crate::sim::world::damage_consequences::DamageConsequences::ordinary(
@@ -5067,6 +5176,8 @@ pub(crate) fn tick_combat(
     }
 
     CombatTickResult {
+        #[cfg(test)]
+        fixture_anims: Vec::new(),
         projectile_spawns,
         unit_facing,
         consequences: crate::sim::world::damage_consequences::DamageConsequences::ordinary(
@@ -5192,3 +5303,7 @@ mod reveal_on_fire_tests {
         assert!(!revealed(&sim, "Americans", 10, 10), "a cell target");
     }
 }
+
+#[cfg(test)]
+#[path = "ifv_area_receipt_tests.rs"]
+mod ifv_area_receipt_tests;

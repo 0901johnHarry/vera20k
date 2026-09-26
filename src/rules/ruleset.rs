@@ -349,12 +349,15 @@ pub struct GeneralRules {
     /// Underground travel speed for Tunnel locomotor units (TunnelSpeed=).
     /// Default 6.0 cells/second matching RA2 default.
     pub tunnel_speed: SimFixed,
-    /// `MissileROTVar=` from [General]. Amplitude of the sidewinder cosine
-    /// modulation in homing missile flight; the per-tick ROT scales by
-    /// `(1 + var) + cos(2π * frame / 15) * var`. Stock RA2/YR rules set
-    /// `.25`, yielding roughly 1.0 to 1.5 times the projectile's base ROT.
-    /// The parser fallback for a missing key remains 1.0.
-    pub missile_rot_var: SimFixed,
+    /// Rules+598: ReadDouble at 66EC37, constructor .25 at 665DBD.
+    /// Bullet guidance uses sin((signed native ID + frame) % 15 * 2pi/15).
+    pub missile_rot_var: f64,
+    /// Rules+5A0: ReadInt at 66EC57, constructor 500 at 665DC9.
+    /// Targetless guided flight detonates when old Object height reaches it.
+    pub safety_altitude: i32,
+    /// Rules+1863, AudioVisual66B77D ReadColorRGB. Any nonzero channel
+    /// replaces ObjectType ART LineTrailColor on trail construction.
+    pub line_trail_color_override: [u8; 3],
     /// Default cruise altitude for Fly-locomotor aircraft (FlightLevel= in [General]).
     /// Fallback 500 leptons matches the engine constructor default; retail
     /// rulesmd.ini always supplies its own (1500), so the fallback only fires
@@ -1120,8 +1123,15 @@ pub struct GeneralRules {
     /// Minimum manhattan distance between consecutive bolts (LightningSeparation= in [General]).
     /// Default 3.
     pub lightning_separation: i32,
-    /// Warhead ID for lightning bolt damage (LightningWarhead= in [General]). Default "IonWH".
+    /// [General] LightningWarhead (+17B4), constructor null.
+    /// Retained factory binding from General671053; empty string means null.
     pub lightning_warhead: String,
+    /// [General] WeatherConBoltExplosion (+2F4), constructor null;
+    /// selected by SelectAnim48A59A for LightningWarhead.
+    pub weather_con_bolt_explosion: String,
+    /// [General] WeaponNullifyAnim (+350), constructor null; retained reader
+    /// 66E2AF. Bullet46A2A1 uses it after AreaDamage returns IronCurtain (2).
+    pub weapon_nullify_anim: String,
     /// Whether `[General] AmbientChangeRate=` is nonzero before its native
     /// frame conversion. Kept separately because a nonzero mod value can chop
     /// to a zero-frame interval while still passing ScenarioClass's outer gate.
@@ -1312,7 +1322,9 @@ impl Default for GeneralRules {
             gap_radius: 10,
             reveal_by_height: true,
             tunnel_speed: sim_from_f32(6.0),
-            missile_rot_var: sim_from_f32(1.0),
+            missile_rot_var: 0.25,
+            safety_altitude: 500,
+            line_trail_color_override: [0; 3],
             flight_level: 500,
             display_cruise_height: 400, // Rules constructor665C3A
             hover_height: 120,
@@ -1528,7 +1540,9 @@ impl Default for GeneralRules {
             lightning_scatter_delay: 5,
             lightning_cell_spread: 10,
             lightning_separation: 3,
-            lightning_warhead: "IonWH".to_string(),
+            lightning_warhead: String::new(),
+            weather_con_bolt_explosion: String::new(),
+            weapon_nullify_anim: String::new(),
             ambient_change_rate_nonzero: true,
             ambient_change_interval_frames: 180,
             ambient_change_step: 20,
@@ -2040,10 +2054,17 @@ impl GeneralRules {
                 .get_f32("TunnelSpeed")
                 .map(sim_from_f32)
                 .unwrap_or(sim_from_f32(6.0)),
-            missile_rot_var: general
-                .get_f32("MissileROTVar")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(1.0)),
+            missile_rot_var: general.read_double("MissileROTVar", defaults.missile_rot_var),
+            safety_altitude: general.read_int("MissileSafetyAltitude", defaults.safety_altitude),
+            line_trail_color_override: audio_visual.map_or(
+                defaults.line_trail_color_override,
+                |section| {
+                    section.read_color_rgb(
+                        "LineTrailColorOverride",
+                        defaults.line_trail_color_override,
+                    )
+                },
+            ),
             flight_level: general.get_i32("FlightLevel").unwrap_or(500),
             display_cruise_height,
             // Hover keys. gamemd reads these with the %-aware Get_Double (150% → 1.5),
@@ -2523,22 +2544,18 @@ impl GeneralRules {
                 .get_f32("ShipSinkingWeight")
                 .map(sim_from_f32)
                 .unwrap_or(defaults.ship_sinking_weight),
-            tracked_uphill: SimFixed::from_num(general.read_double(
-                "TrackedUphill",
-                defaults.tracked_uphill.to_num::<f64>(),
-            )),
-            tracked_downhill: SimFixed::from_num(general.read_double(
-                "TrackedDownhill",
-                defaults.tracked_downhill.to_num::<f64>(),
-            )),
-            wheeled_uphill: SimFixed::from_num(general.read_double(
-                "WheeledUphill",
-                defaults.wheeled_uphill.to_num::<f64>(),
-            )),
-            wheeled_downhill: SimFixed::from_num(general.read_double(
-                "WheeledDownhill",
-                defaults.wheeled_downhill.to_num::<f64>(),
-            )),
+            tracked_uphill: SimFixed::from_num(
+                general.read_double("TrackedUphill", defaults.tracked_uphill.to_num::<f64>()),
+            ),
+            tracked_downhill: SimFixed::from_num(
+                general.read_double("TrackedDownhill", defaults.tracked_downhill.to_num::<f64>()),
+            ),
+            wheeled_uphill: SimFixed::from_num(
+                general.read_double("WheeledUphill", defaults.wheeled_uphill.to_num::<f64>()),
+            ),
+            wheeled_downhill: SimFixed::from_num(
+                general.read_double("WheeledDownhill", defaults.wheeled_downhill.to_num::<f64>()),
+            ),
             // RulesClass's AudioVisual pass stores these ReadDouble values as
             // signed milliunits after the active x87 chop-toward-zero conversion.
             extra_unit_light: (audio_visual
@@ -2634,10 +2651,9 @@ impl GeneralRules {
             lightning_scatter_delay: general.get_i32("LightningScatterDelay").unwrap_or(5).max(1),
             lightning_cell_spread: general.get_i32("LightningCellSpread").unwrap_or(10),
             lightning_separation: general.get_i32("LightningSeparation").unwrap_or(3),
-            lightning_warhead: general
-                .get("LightningWarhead")
-                .unwrap_or("IonWH")
-                .to_string(),
+            lightning_warhead: general.read_string("LightningWarhead", "", 128),
+            weather_con_bolt_explosion: general.read_string("WeatherConBoltExplosion", "", 128),
+            weapon_nullify_anim: general.read_string("WeaponNullifyAnim", "", 128),
             ambient_change_rate_nonzero: ambient_change_rate != 0.0,
             ambient_change_interval_frames: (ambient_change_rate * 900.0) as i32,
             ambient_change_step: (ambient_change_step * 100.0) as i32,
@@ -3141,6 +3157,27 @@ impl RuleSet {
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
+        let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
+        rules.general.lightning_warhead = lightning.to_owned();
+        rules.general.weather_con_bolt_explosion = weather_anim.to_owned();
+        rules.general.weapon_nullify_anim = nullify_anim.to_owned();
+        rules.combat_damage.splash_list = splash.to_vec();
+        for (name, conventional, em_effect, anim_list) in processed.warhead_anim_states() {
+            if let Some(warhead) = rules
+                .warheads
+                .values_mut()
+                .find(|wh| wh.id.eq_ignore_ascii_case(name))
+            {
+                warhead.conventional = conventional;
+                warhead.em_effect = em_effect;
+                warhead.anim_list = anim_list.to_vec();
+            }
+        }
+        (
+            rules.general.missile_rot_var,
+            rules.general.safety_altitude,
+            rules.general.line_trail_color_override,
+        ) = processed.projectile_rule_controls();
         for (name, speed, projectile) in processed.weapon_speeds_and_projectiles() {
             if let Some(weapon) = rules
                 .weapons
@@ -3958,11 +3995,28 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v8".hash(&mut hasher);
+        b"rules-simulation-config-v9".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
         self.general.gravity.hash(&mut hasher);
+        self.general.missile_rot_var.to_bits().hash(&mut hasher);
+        self.general.safety_altitude.hash(&mut hasher);
+        self.general.line_trail_color_override.hash(&mut hasher);
+        self.general.lightning_warhead.hash(&mut hasher);
+        self.general.weather_con_bolt_explosion.hash(&mut hasher);
+        self.general.weapon_nullify_anim.hash(&mut hasher);
+        self.combat_damage.splash_list.hash(&mut hasher);
+        self.warheads
+            .iter()
+            .map(|(name, wh)| {
+                (
+                    name.to_ascii_uppercase(),
+                    (wh.conventional, wh.em_effect, &wh.anim_list),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
         self.weapons
             .iter()
             .map(|(id, weapon)| (id.to_ascii_uppercase(), (weapon.speed, &weapon.projectile)))
@@ -4015,6 +4069,11 @@ impl RuleSet {
                         ),
                         (p.rotates, p.flat, p.anim_palette),
                         (
+                            p.use_line_trail,
+                            p.line_trail_color,
+                            p.line_trail_color_decrement,
+                        ),
+                        (
                             p.anim_low,
                             p.anim_high,
                             p.anim_rate,
@@ -4034,6 +4093,46 @@ impl RuleSet {
                     object.id.to_ascii_uppercase(),
                     self.building_launch_height(object),
                 )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
+        // Actual selected FLH records and turret pivot, in canonical type order.
+        b"art-weapon-flh-v1".hash(&mut hasher);
+        self.object_list
+            .iter()
+            .map(|object| {
+                let art = self
+                    .art_registry
+                    .get(&object.image)
+                    .or_else(|| self.art_registry.get(&object.id));
+                // FireAt uses zero FLH/pivot when metadata is absent. Hash
+                // that same effective value, not the presence of an ART section.
+                let slots = (0..crate::rules::object_type::WEAPON_SLOT_COUNT)
+                    .map(|index| {
+                        let elite = object
+                            .elite_weapon_list
+                            .get(index)
+                            .is_some_and(Option::is_some);
+                        art.map_or_else(Default::default, |art| {
+                            (
+                                art.weapon_flh(
+                                    object.turret_count,
+                                    object.weapon_count,
+                                    index as i32,
+                                    false,
+                                ),
+                                art.weapon_flh(
+                                    object.turret_count,
+                                    object.weapon_count,
+                                    index as i32,
+                                    elite,
+                                ),
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let consumed = (art.map_or(0, |art| art.turret_offset), slots);
+                (object.id.to_ascii_uppercase(), consumed)
             })
             .collect::<BTreeMap<_, _>>()
             .hash(&mut hasher);
@@ -6595,34 +6694,26 @@ ParachuteMaxFallRate=-1
     }
 
     #[test]
-    fn test_missile_rot_var_missing_key_falls_back_to_one() {
+    fn test_missile_rot_var_missing_key_keeps_native_constructor() {
         let ini = IniFile::from_str("[General]\nFixtureOnly=1\n");
         let general = GeneralRules::from_ini(&ini);
-        assert_eq!(general.missile_rot_var, sim_from_f32(1.0));
+        assert_eq!(general.missile_rot_var, 0.25);
     }
 
     #[test]
     fn test_missile_rot_var_stock_rules_value_parsed() {
         let ini = IniFile::from_str("[General]\nMissileROTVar=.25\n");
         let general = GeneralRules::from_ini(&ini);
-        let diff = (general.missile_rot_var - SimFixed::lit("0.25")).abs();
-        assert!(
-            diff < SimFixed::lit("0.001"),
-            "got {:?}",
-            general.missile_rot_var
-        );
+        let diff = (general.missile_rot_var - 0.25).abs();
+        assert!(diff < 0.001, "got {:?}", general.missile_rot_var);
     }
 
     #[test]
     fn test_missile_rot_var_parsed() {
         let ini = IniFile::from_str("[General]\nMissileROTVar=2.5\n");
         let general = GeneralRules::from_ini(&ini);
-        let diff = (general.missile_rot_var - sim_from_f32(2.5)).abs();
-        assert!(
-            diff < SimFixed::lit("0.001"),
-            "got {:?}",
-            general.missile_rot_var
-        );
+        let diff = (general.missile_rot_var - 2.5).abs();
+        assert!(diff < 0.001, "got {:?}", general.missile_rot_var);
     }
 
     #[test]
@@ -6842,7 +6933,9 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             general.condition_red.to_bits(),
-            section.read_double("ConditionRed", GeneralRules::default().condition_red).to_bits()
+            section
+                .read_double("ConditionRed", GeneralRules::default().condition_red)
+                .to_bits()
         );
         assert_ne!(
             general.condition_yellow.to_bits(),
