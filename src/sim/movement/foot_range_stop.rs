@@ -11,6 +11,7 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{self, TargetKind};
+use crate::sim::game_entity::GameEntity;
 use crate::sim::world::Simulation;
 
 impl Simulation {
@@ -28,10 +29,8 @@ impl Simulation {
     ///   (`0x004D88F9..0x004D8914`). Its map lookup precedes the gates below
     ///   and can stamp the shared Dummy.
     ///
-    /// The stop then needs Rescue, Area Guard, Attack or Hunt
-    /// (`0x004D8916..0x004D8950`) and an empty NavQueue (`+0x598`,
-    /// `0x004D8956`). No draw. `registry` feeds only the InRange arm's line of
-    /// fire.
+    /// The stop then needs [`range_stop_admits`]. No draw. `registry` feeds
+    /// only the InRange arm's line of fire.
     pub(super) fn foot_per_cell_range_stop(
         &self,
         id: u64,
@@ -99,8 +98,14 @@ impl Simulation {
             )
         })()
         .unwrap_or(false);
-        reached
-            && [21, 11, 1, 15].contains(&actor.mission.effective().raw())
-            && actor.navigation.nav_queue.is_empty()
+        reached && range_stop_admits(actor)
     }
+}
+
+/// The range stop's gates after its measurement: Rescue, Area Guard, Attack
+/// or Hunt (`0x004D8916..0x004D8950`) with an empty NavQueue (`+0x598`,
+/// `0x004D8956`).
+pub(crate) fn range_stop_admits(entity: &GameEntity) -> bool {
+    [21, 11, 1, 15].contains(&entity.mission.effective().raw())
+        && entity.navigation.nav_queue.is_empty()
 }

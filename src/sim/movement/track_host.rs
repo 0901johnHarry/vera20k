@@ -792,19 +792,16 @@ impl Simulation {
         if position_world_coord(&entity.position) == coord {
             return;
         }
-        let cargo = rules
-            .and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())))
-            .filter(|object| object.open_topped)
-            .and_then(|_| entity.passenger_role.cargo())
-            .map(|cargo| cargo.passengers.clone())
-            .unwrap_or_default();
         put_coords(self.substrate.entities.get_mut(id).unwrap(), coord);
         // Foot4DB810 -> Techno7104F0 propagates changed XYZ to OpenTopped
         // cargo in cargo-list order, before the caller resumes Mark(PUT).
-        for passenger in cargo {
-            if let Some(entity) = self.substrate.entities.get_mut(passenger) {
-                put_coords(entity, coord);
-            }
+        if let Some(rules) = rules {
+            crate::sim::passenger::open_topped_riders_follow(
+                &mut self.substrate.entities,
+                id,
+                rules,
+                &self.interner,
+            );
         }
     }
 

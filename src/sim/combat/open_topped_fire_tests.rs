@@ -28,6 +28,11 @@ struct Fortress {
 /// otherwise join the fight; each keeps a power plant out of the fight, so
 /// neither is defeated under the Battle mode's ShortGame.
 fn retail_dustbowl_battle_fortress() -> Fortress {
+    retail_dustbowl_battle_fortress_boarded(5)
+}
+
+/// [`retail_dustbowl_battle_fortress`] with `riders` GIs boarded (at most 5).
+fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
     let dir = std::env::var("RA2_DIR")
         .ok()
         .filter(|path| !path.trim().is_empty())
@@ -95,7 +100,7 @@ fn retail_dustbowl_battle_fortress() -> Fortress {
             .or_default()
             .insert(ally.to_string());
     }
-    let gis: Vec<u64> = (0..5_u16)
+    let gis: Vec<u64> = (0..riders)
         .map(|i| {
             let id = sim
                 .spawn_object(
@@ -493,5 +498,86 @@ fn retail_dustbowl_battle_fortress_riders_force_fire_at_the_ground() {
         }
         let stop = order(&fortress, Command::Stop { entity_id: bfrt });
         retail_frame(&mut fortress.scenario, vec![stop]);
+    }
+}
+
+/// A GI ordered into an empty Battle Fortress from two cells away walks in
+/// (production `EnterTransport`) and boards. Inside, it keeps the Fortress's
+/// coordinate frame after frame and leaves no infantry occupation on the cells
+/// it crossed: its walk does not carry on from inside the transport.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
+    let mut fortress = retail_dustbowl_battle_fortress_boarded(0);
+    let (x, y) = fortress.cell;
+    let bfrt = fortress.bfrt;
+    let gi = {
+        let crate::sim::runtime::SimRuntime {
+            simulation: sim,
+            resources,
+        } = &mut fortress.scenario.runtime;
+        let id = sim
+            .spawn_object(
+                "E1",
+                "Americans",
+                x - 2,
+                y + 2,
+                0,
+                &resources.rules,
+                &resources.height_map,
+            )
+            .expect("GI spawns");
+        sim.resolve_type_handles(&resources.rules);
+        id
+    };
+    let enter = order(
+        &fortress,
+        Command::EnterTransport {
+            passenger_id: gi,
+            transport_id: bfrt,
+        },
+    );
+    retail_frame(&mut fortress.scenario, vec![enter]);
+    let inside = |fortress: &Fortress| {
+        matches!(
+            fortress.scenario.sim().substrate.entities.get(gi).unwrap().passenger_role,
+            PassengerRole::Inside {
+                open_topped: true,
+                ..
+            }
+        )
+    };
+    let mut frames = 0;
+    while !inside(&fortress) {
+        assert!(frames < 300, "the GI boards");
+        retail_frame(&mut fortress.scenario, Vec::new());
+        frames += 1;
+    }
+    println!("boarded after {frames} frames");
+    for frame in 0..60 {
+        retail_frame(&mut fortress.scenario, Vec::new());
+        let sim = fortress.scenario.sim();
+        let [rider, transport] =
+            [gi, bfrt].map(|id| sim.substrate.entities.get(id).expect("object lives"));
+        assert!(inside(&fortress), "frame {frame}: still inside");
+        assert!(rider.lifecycle.in_limbo, "frame {frame}: in limbo");
+        assert_eq!(
+            position_world_coord(&rider.position),
+            position_world_coord(&transport.position),
+            "frame {frame}: the rider holds the Fortress's coordinate"
+        );
+        for cx in x - 3..=x + 1 {
+            for cy in y - 1..=y + 3 {
+                assert!(
+                    !sim.substrate.occupancy.contains_entity(cx, cy, gi),
+                    "frame {frame}: the rider is listed in ({cx}, {cy})"
+                );
+                assert_eq!(
+                    sim.substrate.raw_cell_occupation.ground_bits(cx, cy) & 0x1F,
+                    0,
+                    "frame {frame}: infantry occupation left at ({cx}, {cy})"
+                );
+            }
+        }
     }
 }

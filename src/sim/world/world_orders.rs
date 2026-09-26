@@ -1277,18 +1277,22 @@ impl Simulation {
             );
 
             // `FootClass::Per_Cell_Process @ 0x004D885C`: an `OpenTopped=`
-            // mover chasing a Foot target stops only on entering a cell, by
-            // distance (`foot_per_cell_range_stop`), never by InRange. A loaded
-            // Battle Fortress drives on to its GIs' M60 range.
+            // mover chasing a Foot target, on a mission the range stop admits,
+            // stops only on entering a cell, by distance
+            // (`foot_per_cell_range_stop`), never by InRange. A loaded Battle
+            // Fortress drives on to its GIs' M60 range. On any other mission
+            // (VERA's Guard and AttackMove orders among them) the stop never
+            // fires, and the halt below stands in as for every other mover.
             let open_topped_chase = matches!(
                 attack.target,
                 combat::TargetKind::Entity(target_id)
                     if self.substrate.entities.get(target_id).is_some_and(|target| {
                         target.category != EntityCategory::Structure
                     })
-            ) && self
-                .object_type(entity.type_ref(), rules)
-                .is_some_and(|obj| obj.open_topped);
+            ) && movement::range_stop_admits(entity)
+                && self
+                    .object_type(entity.type_ref(), rules)
+                    .is_some_and(|obj| obj.open_topped);
 
             if verdict == combat::PursuitRangeVerdict::CloseIn {
                 // **Sticky never chases.** The one place the engine tells
@@ -1395,10 +1399,7 @@ impl Simulation {
                     // temporal weapon. Infantry take the Walk port's stop
                     // (`finish_walk_pursuit_at_per_cell`), an open-topped unit
                     // the track PerCell's (`foot_per_cell_range_stop`).
-                    if e.category == EntityCategory::Unit
-                        && [21, 11, 1, 15].contains(&e.mission.effective().raw())
-                        && e.navigation.nav_queue.is_empty()
-                    {
+                    if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
                         self.set_unit_null_destination(entity_id, Some(rules));
                     }
                 }
