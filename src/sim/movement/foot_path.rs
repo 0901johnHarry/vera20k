@@ -10,7 +10,7 @@
 //! Virtual calls reach the receiver's own class: Infantry and Unit differ in
 //! `+0x1AC`, `+0x480`, `+0x500` and `+0x3C8`, never in this body.
 
-use super::block_index::LentOwnerBlockSet;
+use super::block_index::HeldBlockSets;
 use super::ground_pose;
 use super::infantry_entry::InfantryEntryArgs;
 use super::movement_tick::FootPathRequest;
@@ -165,18 +165,18 @@ pub(crate) enum FootPathOutcome {
 
 impl Simulation {
     /// Run a suspended Walk no-queue request (Walk75AFC5, continuation
-    /// 0x75AFD3); `lent` is the requester's owner block set held by the
-    /// pending pass. Drive/Ship requests are made inside their
-    /// Process_Movement (`track_fresh`).
+    /// 0x75AFD3); `held` is the owner block sets the pending pass holds.
+    /// Drive/Ship requests are made inside their Process_Movement
+    /// (`track_fresh`).
     pub(crate) fn run_foot_path_request(
         &mut self,
         request: &FootPathRequest,
-        lent: Option<&mut LentOwnerBlockSet>,
+        held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<FootPathOutcome, String> {
-        self.run_walk_path_request(request, lent, rules, fallback, registry)
+        self.run_walk_path_request(request, held, rules, fallback, registry)
             .map(|resumed| {
                 if resumed {
                     FootPathOutcome::Resume
@@ -187,11 +187,12 @@ impl Simulation {
     }
 
     /// `Find_Path(cell, 0, 0)` for a no-queue caller whose own movement
-    /// timer is already armed; see [`FindPathResult`].
+    /// timer is already armed; see [`FindPathResult`]. `held`: the owner
+    /// block sets of the movement pass making the request, if any.
     pub(crate) fn foot_find_path(
         &mut self,
         request: &FootPathRequest,
-        lent: Option<&mut LentOwnerBlockSet>,
+        held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
         fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
@@ -235,7 +236,7 @@ impl Simulation {
             return Ok(FindPathResult::Failed);
         }
         let goal = self.find_path_admitted_goal(id, request.destination, rules, registry)?;
-        match self.search_foot_path(request, lent, goal, rules, fallback, registry)? {
+        match self.search_foot_path(request, held, goal, rules, fallback, registry)? {
             Ok(true) => Ok(FindPathResult::Route),
             Ok(false) => Ok(FindPathResult::EmptyRoute),
             Err(refusal) => {
@@ -301,7 +302,7 @@ impl Simulation {
     fn search_foot_path(
         &mut self,
         request: &FootPathRequest,
-        lent: Option<&mut LentOwnerBlockSet>,
+        held: Option<&mut HeldBlockSets>,
         goal: DriveCoord,
         rules: &RuleSet,
         fallback: Option<&PathGrid>,
@@ -318,7 +319,7 @@ impl Simulation {
         //removal: the kept plane and owner sets follow it through the touch
         //log instead of a whole-world rebuild per request.
         let mut borrowed = None;
-        let blocks = match lent {
+        let lent = match held.and_then(|held| held.get_mut(&owner)) {
             Some(lent) => {
                 self.movement_pass_cache.refresh_lent_block_set(
                     owner,
@@ -328,35 +329,27 @@ impl Simulation {
                     &self.interner,
                     Some(rules),
                 );
-                lent.sets.clone()
+                lent
             }
-            None => {
-                let lent = self.movement_pass_cache.lend_block_set(
-                    owner,
-                    &mut self.substrate.entities,
-                    &self.house_alliances,
-                    &self.interner,
-                    Some(rules),
-                );
-                let sets = lent.sets.clone();
-                borrowed = Some(lent);
-                sets
-            }
+            None => borrowed.insert(self.movement_pass_cache.lend_block_set(
+                owner,
+                &mut self.substrate.entities,
+                &self.house_alliances,
+                &self.interner,
+                Some(rules),
+            )),
         };
         let snapshot = self.path_grid_snapshot();
         let grid = snapshot.as_deref().or(fallback).expect("checked above");
-        let counts = self
-            .movement_pass_cache
-            .blocker_plane(
-                &mut self.substrate.entities,
-                grid,
-                self.resolved_terrain.as_ref(),
-                self.overlay_grid.as_ref(),
-                registry,
-                &self.interner,
-                Some(rules),
-            )
-            .clone();
+        let counts = self.movement_pass_cache.blocker_plane(
+            &mut self.substrate.entities,
+            grid,
+            self.resolved_terrain.as_ref(),
+            self.overlay_grid.as_ref(),
+            registry,
+            &self.interner,
+            Some(rules),
+        );
         let searched = request.search(
             goal,
             &self.substrate.entities,
@@ -371,10 +364,10 @@ impl Simulation {
                 zone_grid: self.zone_grid.as_ref(),
                 resolved_terrain: self.resolved_terrain.as_ref(),
                 playfield_bounds: self.playfield_bounds,
-                blocker_neighbor_counts: Some(&counts),
+                blocker_neighbor_counts: Some(counts),
             },
             &self.terrain_costs,
-            &blocks,
+            &lent.sets,
         );
         if let Some(lent) = borrowed {
             self.movement_pass_cache.give_back(owner, lent);

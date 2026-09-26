@@ -437,6 +437,10 @@ pub(crate) struct OwnerBlockIndex {
     /// How many times the placements were rebuilt from every entity.
     #[cfg(test)]
     pub(crate) world_rebuilds: usize,
+    /// How many times an owner's sets were built from every placement
+    /// instead of brought current.
+    #[cfg(test)]
+    pub(crate) view_builds: usize,
 }
 
 /// Sets on loan to a movement pass, with the number that returns them.
@@ -445,6 +449,11 @@ pub(crate) struct LentOwnerBlockSet {
     loan: u64,
     pub(crate) sets: OwnerBlockSet,
 }
+
+/// The sets a movement pass holds, by owner. A path request the pass makes
+/// searches with its requester's owner's sets from here, brought current,
+/// because lending sets a pass already holds rebuilds them.
+pub(crate) type HeldBlockSets = BTreeMap<InternedId, LentOwnerBlockSet>;
 
 impl OwnerBlockIndex {
     /// Move the store's touch log into this index's backlog and the
@@ -534,7 +543,13 @@ impl OwnerBlockIndex {
             }
             // No view yet, or its product is out with a pass that will be
             // refused: build from the placements.
-            None => view.build(placements, owner_name, alliances, interner),
+            None => {
+                #[cfg(test)]
+                {
+                    self.view_builds += 1;
+                }
+                view.build(placements, owner_name, alliances, interner)
+            }
         };
         view.loan = loan;
         debug_assert_current(&sets, entities, owner_name, alliances, interner, rules);
@@ -561,6 +576,10 @@ impl OwnerBlockIndex {
             // The view was dropped or lent again since: these sets are
             // nobody's, so rebuild them and take the loan over.
             _ => {
+                #[cfg(test)]
+                {
+                    self.view_builds += 1;
+                }
                 let view = self.owners.entry(owner).or_default();
                 view.product = None;
                 lent.sets = view.build(placements, owner_name, alliances, interner);
