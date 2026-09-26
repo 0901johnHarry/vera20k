@@ -456,6 +456,7 @@ fn fresh_arm_rows_match_the_original_responses() {
             id,
             family,
             ProcessMovementArgs::OUTER,
+            None,
             &rules,
             grid.as_deref(),
             Some(&registry),

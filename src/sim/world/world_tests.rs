@@ -9104,6 +9104,42 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
     );
 }
 
+/// A Drive request made inside the movement pass searches with the owner
+/// sets the pass holds, brought current in place. Lending them a second time
+/// would build the owner's sets from every placement for each such pass.
+#[test]
+fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
+    let (mut sim, rules, grid) = stacking_world_native(24);
+    let heights = empty_heights();
+    sim.spawn_object("MTNK", "Americans", 12, 8, 64, &rules, &heights)
+        .expect("blocker spawns");
+    let mover = sim
+        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules, &heights)
+        .expect("mover spawns");
+    let cmd = cmd_envelope(
+        &sim,
+        "Americans",
+        1,
+        Command::Move {
+            entity_id: mover,
+            target_rx: 12,
+            target_ry: 8,
+            queue: false,
+            group_id: None,
+        },
+    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let builds = sim.movement_pass_cache.block_index_view_builds();
+    for _ in 0..60 {
+        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    }
+    assert_eq!(
+        sim.movement_pass_cache.block_index_view_builds(),
+        builds,
+        "a request inside a pass rebuilt the owner's sets"
+    );
+}
+
 /// FAITHFUL CASE: eight vehicles selected as a group, one Move order each to
 /// a single destination cell, issued in one batch exactly as a group order is.
 #[test]

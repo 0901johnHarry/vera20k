@@ -54,7 +54,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_coord_distance;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
-use crate::sim::movement::block_index::LentOwnerBlockSet;
+use crate::sim::movement::block_index::HeldBlockSets;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
@@ -141,7 +141,7 @@ impl Simulation {
     pub(crate) fn run_track_path_request(
         &mut self,
         request: &FootPathRequest,
-        lent: Option<&mut LentOwnerBlockSet>,
+        held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         fallback: Option<&PathGrid>,
         registry: Option<&OverlayTypeRegistry>,
@@ -157,7 +157,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        let found = self.foot_find_path(request, lent, rules, fallback, registry)?;
+        let found = self.foot_find_path(request, held, rules, fallback, registry)?;
         self.continue_track_path_request(id, found, rules, registry)
     }
 
