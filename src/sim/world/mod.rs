@@ -171,8 +171,9 @@ use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
 use crate::sim::vision::{self, FogState};
 use crate::util::fixed_math::SimFixed;
 
-/// Dev/test fallback seed. Real launches negotiate a per-match seed through
-/// `ScenarioDescriptor`; nothing on the launch path may rely on this value.
+/// Test fixtures' seed. Real launches negotiate a per-match seed through
+/// `ScenarioDescriptor`, and only test builds can construct with this value.
+#[cfg(test)]
 const DEFAULT_SIM_SEED: u64 = 0x5EED_CAFE_D15E_A5E5;
 
 #[derive(Default)]
@@ -1242,6 +1243,7 @@ pub struct Simulation {
     pub(crate) trigger_runtime: TriggerRuntime,
 }
 
+#[cfg(test)]
 impl Default for Simulation {
     fn default() -> Self {
         Self::new()
@@ -2823,7 +2825,11 @@ impl Simulation {
         self.mapgen_rng = mapgen_rng;
     }
 
-    /// Create a new empty simulation with the default deterministic seed.
+    /// Create a new empty simulation with the test fixtures' seed. Test builds
+    /// only: a launch constructs through `ScenarioDescriptor`
+    /// (`Simulation::from_descriptor`, `ScenarioBootstrapRng::into_simulation`),
+    /// so no match can start on the default seed (AT-3).
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::with_seed(DEFAULT_SIM_SEED)
     }

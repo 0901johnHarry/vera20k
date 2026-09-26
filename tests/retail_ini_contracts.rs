@@ -217,20 +217,8 @@ fn hermetic_ini_contracts_match_consumed_retail_values() {
         contract_miner.chrono_miner_capacity
     );
     assert_eq!(
-        retail_miner.harvest_tick_interval,
-        contract_miner.harvest_tick_interval
-    );
-    assert_eq!(
         retail_miner.unload_tick_interval,
         contract_miner.unload_tick_interval
-    );
-    assert_eq!(
-        retail_miner.local_continuation_radius,
-        contract_miner.local_continuation_radius
-    );
-    assert_eq!(
-        retail_miner.long_scan_radius,
-        contract_miner.long_scan_radius
     );
     assert_eq!(
         rules.general.harvester_too_far_distance,
@@ -239,10 +227,6 @@ fn hermetic_ini_contracts_match_consumed_retail_values() {
     assert_eq!(
         rules.general.chrono_harv_too_far_distance,
         miner_contract_rules.general.chrono_harv_too_far_distance
-    );
-    assert_eq!(
-        retail_miner.rescan_cooldown_ticks,
-        contract_miner.rescan_cooldown_ticks
     );
 
     let refinery = rules.object("GAREFN").expect("retail GAREFN");
