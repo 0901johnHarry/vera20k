@@ -439,6 +439,9 @@ mod retail_construction_tests {
             ..descriptor
         };
         let mut sim = ScenarioBootstrapRng::new(descriptor.seed).into_simulation(&descriptor);
+        // This synthetic fixture omits the production native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let resolved = {
             let (mut scenario_fill_rng, mut variant_main_rng) = sim.terrain_load_draws();
             let mut scenario_fill_ranged =
@@ -653,7 +656,10 @@ mod retail_construction_tests {
                 rules.object(name).map(|object| &object.id)
             );
         }
-        assert!(a.sim().rule_handles.is_some(), "headless combat rule bindings");
+        assert!(
+            a.sim().rule_handles.is_some(),
+            "headless combat rule bindings"
+        );
         assert_eq!(rules.general.metallic_debris.len(), 15);
         assert_eq!(
             rules.general.metallic_debris.last().map(String::as_str),

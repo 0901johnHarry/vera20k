@@ -1,11 +1,11 @@
 //! Release-mode composition witness on unmodified retail Hills.mmx.
-//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin] [map-file] [game-speed] [live-flight-save.bin]
+//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin] [map-file] [game-speed] [live-flight-save.bin] [MTNK|FV]
 //! The optional map file supports an unchanged Hills payload exposed as a
 //! loose `.yrm` in the ordinary chooser. Its name is retained by save validation.
 //! Optional game-speed 0..6 uses the ordinary first-frame command; 6 leaves
 //! more wall-clock time to capture live debris after restoring in the app.
-//! The optional fifth argument saves the first already-moved, still-live Cannon
-//! shell from the spawned MTNK, immediately after an ordinary production frame.
+//! The optional fifth argument saves the first already-moved live projectile
+//! after an ordinary production frame. The sixth selects MTNK (default) or FV.
 //! Native scalar comparisons: tools/spatial_oracle/bridge_damage_admission.py.
 //! Continues 200 frames after collapse through debris flight and expiration.
 //! This uses the production headless loader/runtime; it is not rendered parity
@@ -57,6 +57,12 @@ fn main() {
         speed
     });
     let mut live_flight_snapshot_path = std::env::args().nth(5);
+    let vehicle = std::env::args().nth(6).unwrap_or_else(|| "MTNK".into());
+    let projectile = match vehicle.as_str() {
+        "MTNK" => "Cannon",
+        "FV" => "AAHeatSeeker2",
+        _ => panic!("vehicle must be MTNK or FV"),
+    };
     let mut scenario = vera20k::headless_scenario::load(Path::new(&retail), &map_file, 0x0B21_D6E5)
         .expect("load retail Hills through the production loader");
     let owner = scenario
@@ -84,7 +90,7 @@ fn main() {
     let attacker = runtime
         .simulation
         .spawn_object(
-            "MTNK",
+            &vehicle,
             &owner_name,
             64,
             72,
@@ -92,7 +98,7 @@ fn main() {
             &runtime.resources.rules,
             &runtime.resources.height_map,
         )
-        .expect("spawn Grizzly on the retail bank");
+        .expect("spawn selected vehicle on the retail bank");
     runtime
         .simulation
         .resolve_type_handles(&runtime.resources.rules);
@@ -237,7 +243,7 @@ fn main() {
                     .rules
                     .weapon(runtime.simulation.interner.resolve(shell.payload.weapon))
                     .and_then(|weapon| weapon.projectile.as_deref())
-                    .is_some_and(|kind| kind.eq_ignore_ascii_case("Cannon"))
+                    .is_some_and(|kind| kind.eq_ignore_ascii_case(projectile))
             {
                 let mapped_cell = (shell.position.x / 256, shell.position.y / 256);
                 let cell_flags = runtime
@@ -260,11 +266,11 @@ fn main() {
                     &runtime.simulation,
                     map_hash,
                     runtime.resources.rules.simulation_config_hash(),
-                    "Cannon in flight toward bridge - Hills",
+                    &format!("{vehicle} projectile in flight toward bridge - Hills"),
                     path,
                 );
                 println!(
-                    "Saved production live-flight snapshot to {path}: frame {frame}, tick {}, binary frame {}, Cannon {id}, source {attacker}, XYZ {:?}, launch {:?}, in_logic_vector {}, on_bridge {}, mapped cell {mapped_cell:?}, cell flags {cell_flags:?}, target bridge {target:?} {bridge_state:?}",
+                    "Saved production live-flight snapshot to {path}: frame {frame}, tick {}, binary frame {}, {projectile} {id}, source {attacker}, XYZ {:?}, launch {:?}, in_logic_vector {}, on_bridge {}, mapped cell {mapped_cell:?}, cell flags {cell_flags:?}, target bridge {target:?} {bridge_state:?}",
                     runtime.simulation.session.tick,
                     runtime.simulation.session.binary_frame,
                     shell.position,
@@ -309,7 +315,7 @@ fn main() {
                     .is_none()
             );
             println!(
-                "{map_file}: {target:?} collapsed at frame {frame}; {} Cannon shells, flight and target release observed",
+                "{map_file}: {target:?} collapsed at frame {frame}; {} {projectile} projectiles, flight and target release observed",
                 seen.len()
             );
             if let Some(path) = snapshot_path.as_deref() {
@@ -363,7 +369,7 @@ fn main() {
             }
             assert!(
                 live_flight_snapshot_path.is_none(),
-                "requested live-flight snapshot never found a moved Cannon shell"
+                "requested live-flight snapshot never found a moved selected projectile"
             );
             return;
         }

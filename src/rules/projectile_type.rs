@@ -145,6 +145,10 @@ pub struct ProjectileType {
     pub new_theater: bool,
     /// Animation played as a trail behind the projectile (anim type name, art Image section).
     pub trailer: Option<String>,
+    /// ObjectType ART trail inputs, retained at each native reader pass.
+    pub use_line_trail: bool,
+    pub line_trail_color: [u8; 3],
+    pub line_trail_color_decrement: i32,
 }
 
 /// Inputs captured at the latest ObjectType::LoadImage5F9070 call. Asset binding
@@ -175,6 +179,9 @@ pub(crate) struct ProjectileArtState {
     anim_rate: u8,
     spawn_delay: i32,
     trailer: Option<String>,
+    use_line_trail: bool,
+    line_trail_color: [u8; 3],
+    line_trail_color_decrement: i32,
 }
 
 impl ProjectileArtState {
@@ -194,6 +201,9 @@ impl ProjectileArtState {
             anim_rate: 0,
             spawn_delay: 3,
             trailer: None,
+            use_line_trail: false,
+            line_trail_color: [128; 3],
+            line_trail_color_decrement: 16,
         }
     }
 
@@ -243,6 +253,13 @@ impl ProjectileArtState {
             self.theater = section.read_bool("Theater", self.theater);
             self.new_theater = section.read_bool("NewTheater", self.new_theater);
             self.voxel = section.read_bool("Voxel", self.voxel);
+            // ObjectType5F9574..5F95E2, after the base ART/Image selection.
+            // Constructor5F7090 defaults; original executable controls:
+            // tools/projectile_oracle/line_trail.json reader_controls.
+            self.use_line_trail = section.read_bool("UseLineTrail", self.use_line_trail);
+            self.line_trail_color = section.read_color_rgb("LineTrailColor", self.line_trail_color);
+            self.line_trail_color_decrement =
+                section.read_int("LineTrailColorDecrement", self.line_trail_color_decrement);
         }
     }
 
@@ -285,6 +302,9 @@ impl ProjectileArtState {
         projectile.anim_rate = i32::from(self.anim_rate);
         projectile.spawn_delay = self.spawn_delay;
         projectile.trailer = self.trailer.clone();
+        projectile.use_line_trail = self.use_line_trail;
+        projectile.line_trail_color = self.line_trail_color;
+        projectile.line_trail_color_decrement = self.line_trail_color_decrement;
     }
 }
 
@@ -382,6 +402,9 @@ impl ProjectileType {
             theater: false,
             new_theater: false,
             trailer: None,
+            use_line_trail: false,
+            line_trail_color: [128; 3],
+            line_trail_color_decrement: 16,
         };
         // Standalone reader callers use the same field kernel. Production
         // RuleSet receives the retained per-pass state from native_processing.
@@ -615,3 +638,7 @@ mod tests {
         assert_eq!(proj.spawn_delay, 3);
     }
 }
+
+#[cfg(test)]
+#[path = "projectile_line_trail_tests.rs"]
+mod line_trail_tests;

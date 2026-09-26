@@ -66,9 +66,9 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
     assert_eq!(weapon.id, "105mm");
     assert_eq!(kind.id, "Cannon");
     assert_eq!(kind.image.as_deref(), source_type["image"].as_str());
-    // WeaponType currently retains authored Speed40; native ReadSpeed stores102.
-    // That separate reader/consumer residual is dormant for this ROT0 path:
-    // production GetSpeed ignores the stored value and must still yield59.
+    // ROT0 GetSpeed uses current gravity/distance, independently of the
+    // retained postpass speed. Native speed/postpass evidence is pinned in
+    // tools/rules_oracle/weapon_speed{,_order}.
 
     assert_eq!(
         i64::from(rules.general.gravity),
@@ -108,6 +108,7 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
         source["launch_speed"].as_i64().unwrap()
     );
     let launched = launch::fireat_launch(launch::FireAtLaunch {
+        homing: false,
         delta: ProjectileCoord::new(
             target.x.wrapping_sub(origin.x),
             target.y.wrapping_sub(origin.y),
@@ -158,6 +159,8 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
     sim.projectiles.spawn(
         id,
         ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
             flat: kind.flat,
             source_id: 7,
             origin,
@@ -219,6 +222,8 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
                 &terrain.shared_cell_dummy(),
                 rules.general.gravity,
                 false,
+                false,
+                rules.general.safety_altitude,
                 |_, candidate, phase| {
                     if let ProjectileCollisionPhase::Ordinary { motion, .. } = phase {
                         ordinary_visits += 1;
@@ -327,4 +332,93 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
             "tick {tick} presentation changed dummy state"
         );
     }
+}
+
+#[test]
+fn original_ifv_dragon_frame_getter_matches_retained_flights_and_all_directions() {
+    let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
+    else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
+    rules.merge_art_data(&ArtRegistry::from_ini(&art_ini));
+    let weapon = rules.weapon("HoverMissile").unwrap();
+    let kind = rules
+        .projectile(weapon.projectile.as_deref().unwrap())
+        .unwrap();
+    assert_eq!(kind.id, "AAHeatSeeker2");
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../../tools/projectile_oracle/ifv_render.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        kind.image.as_deref(),
+        corpus["selected_native_type"]["image"].as_str()
+    );
+    assert!(!kind.rotates && !kind.shadow);
+    let mut sim = Simulation::with_seed(31);
+    let weapon_id = sim.interner.intern(&weapon.id);
+    let warhead = sim.interner.intern(weapon.warhead.as_deref().unwrap());
+    let id = sim.allocate_stable_id();
+    let rows = corpus["frames"].as_array().unwrap();
+    assert_eq!(rows.len(), 166);
+    let origin = coord(&rows[0]["position"]);
+    sim.admit_projectile(
+        id,
+        ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
+            flat: kind.flat,
+            source_id: 0,
+            origin,
+            target: ProjectileTarget::None,
+            initial_target_position: origin,
+            payload: ProjectilePayload {
+                base_damage: weapon.damage,
+                warhead,
+                weapon: weapon_id,
+            },
+            speed_leptons_per_frame: 0,
+            velocity: crate::sim::projectile::ProjectileVelocity::new(0, 0, 0),
+            trajectory: ProjectileTrajectory::Straight,
+            guidance: None,
+            visual: ProjectileVisualState::new(
+                kind.anim_low as u8,
+                kind.anim_high as u8,
+                kind.anim_rate as u8,
+            ),
+            arm_frames: 0,
+            fuse_frames: None,
+            ranged_fuse: false,
+            tracks_target: false,
+            target_expiry: TargetExpiryPolicy::Expire,
+            collision: ProjectileCollisionPolicy::NONE,
+        },
+    );
+    let mut directions = BTreeSet::new();
+    for row in rows {
+        let projectile = sim.projectiles.get_mut(id).unwrap();
+        projectile.position = coord(&row["position"]);
+        projectile.velocity = crate::sim::projectile::ProjectileVelocity::from_native(
+            bits(&row["velocity"]["bits"]).map(NativeF64Bits::from_bits),
+        );
+        let before = sim.state_hash();
+        let frame = projectile_shp_frame(sim.projectiles.get(id).unwrap(), kind);
+        assert_eq!(
+            u64::from(frame),
+            row["native_frame"].as_u64().unwrap(),
+            "original468000 frame for {} with velocity{}",
+            row["name"],
+            row["velocity"]["bits"]
+        );
+        if row["kind"] == "direction" {
+            directions.insert(frame);
+        }
+        assert_eq!(
+            sim.state_hash(),
+            before,
+            "frame selection changed simulation state"
+        );
+    }
+    assert_eq!(directions.len(), 32);
 }

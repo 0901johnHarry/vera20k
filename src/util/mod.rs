@@ -22,6 +22,7 @@ pub mod legacy_crt_rng;
 pub mod lepton;
 pub mod logging;
 pub mod lzo;
+pub(crate) mod native_ballistics;
 pub mod native_string;
 pub mod native_trig;
 pub mod native_x87;

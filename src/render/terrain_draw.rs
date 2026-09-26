@@ -17,6 +17,8 @@ use super::tactical_draw_plan::RenderZPolicy;
 
 #[path = "terrain_batch.rs"]
 mod batching;
+#[path = "terrain_line_trail.rs"]
+mod line_trails;
 #[path = "terrain_submission.rs"]
 mod submission;
 pub(crate) use batching::TerrainBatchStats;
@@ -75,6 +77,7 @@ pub(crate) struct TerrainDrawRenderer {
     batches: TerrainBatches,
     read_only_commands: Vec<TerrainCommand>,
     submission: PassSubmission,
+    line_trails: line_trails::LineTrailGpu,
 }
 
 impl TerrainDrawRenderer {
@@ -327,6 +330,7 @@ impl TerrainDrawRenderer {
             reference_body_pipeline: pipeline("fs_body", false),
             #[cfg(test)]
             reference_shadow_pipeline: pipeline("fs_shadow", false),
+            line_trails: line_trails::LineTrailGpu::new(device, format, &snapshot_layout),
             source_layout,
             snapshot_layout,
             read_only_layout,

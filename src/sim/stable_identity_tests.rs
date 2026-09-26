@@ -29,6 +29,8 @@ fn terrain(stable_id: u64) -> TerrainObjectState {
 
 fn projectile(source_id: u64) -> ProjectileSpawn {
     ProjectileSpawn {
+        native_unique_id: 0,
+        line_trail: None,
         flat: false,
         source_id,
         origin: ProjectileCoord::new(0, 0, 0),

@@ -954,6 +954,22 @@ fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bo
         // direct attachment or retained audio handle.
         for output in drained_lifecycle_outputs {
             match output {
+                LifecycleOutput::LineTrailConstructed { stable_id, style } => {
+                    let presentation = &mut state.match_state.match_presentation;
+                    presentation.line_trails.attach(
+                        stable_id,
+                        style.color,
+                        style.decrement,
+                        presentation.in_game_options.detail_level as i32,
+                    );
+                }
+                LifecycleOutput::LineTrailDetached { stable_id } => {
+                    state
+                        .match_state
+                        .match_presentation
+                        .line_trails
+                        .detach(stable_id);
+                }
                 // Attached anims are simulation objects; the store detaches
                 // them itself.
                 LifecycleOutput::DetachAttachedAnims { .. } => {}
@@ -1470,8 +1486,7 @@ mod tests {
     use crate::sim::combat::combat_weapon::WeaponSlot;
     use crate::sim::intern::{InternedId, StringInterner, test_intern};
     use crate::sim::terrain_object::{
-        TerrainObjectState, mark_terrain_occupation,
-        unmark_terrain_occupation,
+        TerrainObjectState, mark_terrain_occupation, unmark_terrain_occupation,
     };
     use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
     use crate::util::fixed_math::SimFixed;

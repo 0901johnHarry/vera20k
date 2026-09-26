@@ -62,9 +62,11 @@ impl Simulation {
         let owner_iid = self.interner.intern(owner);
         let type_iid = self.interner.intern(type_id);
         let techno_ctor_random_word = self.resolve_techno_constructor_word(init, None)?;
+        let native_unique_id = self.next_native_runtime_id();
 
         let mut ge = GameEntity::new_at_frame_from_constructor_word(
             stable_id,
+            native_unique_id,
             rx,
             ry,
             z,

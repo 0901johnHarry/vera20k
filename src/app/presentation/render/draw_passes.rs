@@ -395,6 +395,17 @@ pub(super) fn dispatch_draw_passes(
         }
     }
 
+    // Tactical LineTrail556D40 edits the completed tactical destination and
+    // samples the same native Z authority as bridge/object rendering. End the
+    // attachment pass while the ordered RGB565 stores execute, then load it.
+    drop(pass);
+    state
+        .renderer
+        .terrain_draw_renderer
+        .draw_line_trails(encoder, view);
+    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
+
     // --- Step 10: UI elements ---
     // Factory rally and selected action lines are separate line families.
     draw_pooled_no_depth(

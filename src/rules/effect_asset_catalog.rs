@@ -246,6 +246,10 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
     for name in &rules.combat_damage.splash_list {
         insert(name);
     }
+    // SelectAnim48A594 returns this retained AnimType for LightningWarhead.
+    insert(&rules.general.weather_con_bolt_explosion);
+    // Bullet46A2A1 substitutes this after an Iron Curtain area receipt2.
+    insert(&rules.general.weapon_nullify_anim);
     // `[General] Parachute=`: the canopy `ObjectClass::Paradrop` attaches to a
     // dropped object (`sim::movement::parachute_descent`).
     if let Some(name) = rules.general.parachute_shp.as_deref() {

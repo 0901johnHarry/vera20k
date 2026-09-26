@@ -90,6 +90,10 @@ pub struct ArtEntry {
     /// Elite-rank override for secondary fire offset (from art.ini `EliteSecondaryFireFLH=`).
     /// None means use `secondary_fire_flh`.
     pub elite_secondary_fire_flh: Option<Flh>,
+    /// Numbered weapon offsets read by715B10 when TurretCount>0. The type's
+    /// WeaponCount bounds consumption; each elite default is its normal FLH.
+    pub numbered_weapon_flh: [Flh; crate::rules::object_type::WEAPON_SLOT_COUNT],
+    pub elite_numbered_weapon_flh: [Flh; crate::rules::object_type::WEAPON_SLOT_COUNT],
     /// Fixed building primary fire screen-pixel offset.
     /// Used by non-turret buildings before converting the pixel delta to world leptons.
     pub primary_fire_pixel_offset: Option<(i32, i32)>,
@@ -180,6 +184,43 @@ pub struct ArtEntry {
     /// the building body's own Z term before the height lift is cancelled.
     /// Retail sets it only on GAFSDF (-10); default 0.
     pub normal_z_adjust: i32,
+}
+
+impl ArtEntry {
+    /// Native715B10 tests HasTurrets717880 (`TurretCount > 0`) before
+    /// reading Weapon1..WeaponCount FLHs. GetFLH6F3B28 uses the selected
+    /// weapon-array index; it does not reduce numbered indices to two slots.
+    /// `use_elite` means GetWeapon70E140 resolved a nonnull elite weapon.
+    pub(crate) fn weapon_flh(
+        &self,
+        turret_count: i32,
+        weapon_count: i32,
+        index: i32,
+        use_elite: bool,
+    ) -> Flh {
+        if turret_count > 0 {
+            let Ok(slot) = usize::try_from(index) else {
+                return Flh::default();
+            };
+            if index >= weapon_count {
+                return Flh::default();
+            }
+            let slots = if use_elite {
+                &self.elite_numbered_weapon_flh
+            } else {
+                &self.numbered_weapon_flh
+            };
+            return slots.get(slot).copied().unwrap_or_default();
+        }
+        crate::rules::flh::resolve_flh(
+            self.primary_fire_flh,
+            self.secondary_fire_flh,
+            self.elite_primary_fire_flh,
+            self.elite_secondary_fire_flh,
+            index != 1,
+            if use_elite { 200 } else { 0 },
+        )
+    }
 }
 
 /// One native building-damage-fire art offset.
@@ -1085,6 +1126,27 @@ impl ArtRegistry {
             let elite_secondary_fire_flh: Option<Flh> = section
                 .get("EliteSecondaryFireFLH")
                 .map(|v| parse_flh(Some(v)));
+            let numbered_weapon_flh = std::array::from_fn(|index| {
+                let [forward, lateral, height] =
+                    section.read_coord3(&format!("Weapon{}FLH", index + 1), [0; 3]);
+                Flh {
+                    forward,
+                    lateral,
+                    height,
+                }
+            });
+            let elite_numbered_weapon_flh = std::array::from_fn(|index| {
+                let normal: Flh = numbered_weapon_flh[index];
+                let [forward, lateral, height] = section.read_coord3(
+                    &format!("EliteWeapon{}FLH", index + 1),
+                    [normal.forward, normal.lateral, normal.height],
+                );
+                Flh {
+                    forward,
+                    lateral,
+                    height,
+                }
+            });
             let primary_fire_pixel_offset = section
                 .get("PrimaryFirePixelOffset")
                 .and_then(parse_i32_pair);
@@ -1283,6 +1345,8 @@ impl ArtRegistry {
                     secondary_fire_flh,
                     elite_primary_fire_flh,
                     elite_secondary_fire_flh,
+                    numbered_weapon_flh,
+                    elite_numbered_weapon_flh,
                     primary_fire_pixel_offset,
                     secondary_fire_pixel_offset,
                     primary_fire_dual_offset,

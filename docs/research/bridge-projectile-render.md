@@ -40,13 +40,15 @@ are false; inverse-Rotates is true, and all three animation bytes are zero.
 The constructor-backed original frame getter therefore returns 0 and GetLayer
 returns Air 3. Elite `105mmE` is not exercised by this witness.
 
-VERA currently retains the authored weapon Speed value (40), whereas native
+At this render chain's merge, VERA retained the authored weapon Speed value (40), whereas native
 ReadSpeed stores 102 before the Weapon postpass7729F0. That pass runs after
 Weapon/Bullet/Warhead readers in ReadTypeData679A10 and recomputes ROT=0
 stored Speed from Range/Gravity. The selected `ROT=0` GetSpeed arm ignores this field and
 derives the compared launch speed from distance and gravity. Its joined test
 passes the unmodified production value into that arm; it does not convert the
-fixture to hide the broader reader/consumer residual listed below.
+fixture to hide the broader reader/consumer residual listed below. The subsequent
+[retained-speed prerequisite](../../tools/rules_oracle/weapon_speed.md) fixes the
+reader and per-pass owner; guided flight remains a separate unfinished chain.
 
 Original palette startup 52BE61..52BFCE loads and expands the physical palette
 files, executes full Convert 48E740 and blitter initialization 48EBF0, and binds
@@ -518,9 +520,15 @@ critic is complete. Whole-scene parity does not follow from these bounded receip
 
 ## Required residual mechanisms
 
+The earlier Weapon Speed reader/consumer residual is now addressed by the
+[IFV guided bridge chain](../../tools/projectile_oracle/ifv_launch.md), including
+retained native ReadSpeed, complete Process/postpass history and selected launch/
+guidance comparisons. That ledger owns current Speed evidence and its limits;
+the Cannon receipts above remain historical candidates. Physical DRAGON drawing
+now has its own bounded comparison there and does not inherit the Cannon proof.
+
 | Trigger and frequency | Missing/unproven behavior and current treatment | Downstream risk |
 | --- | --- | --- |
-| Weapon Speed consumed by guided (`ROT>0`) or missing-projectile GetSpeed, guidance/Vertical MaxSpeed, or Shrapnel child launch; whenever those paths fire | Native ReadSpeed474810 scales/clamps the authored value into Weapon+0xA8; the later7729F0 postpass recomputes ROT=0 storage after all three type-reader sweeps. Body-reader102 is not final retail stored Speed. `WeaponType::from_ini_section` currently retains the authored integer, and these consumers use it without conversion. The ordinary Cannon `ROT=0` GetSpeed arm ignores it and remains compared from the actual production field through derived speed and launch bits. No test-only conversion or reader fix is included here. | Wrong launch speed, acceleration ceiling, travel/impact cadence and resulting collision timing on affected paths. Requires one Speed reader/consumer chain with native constructor defaults, per-layer sentinel/clamp controls, cross-family postpass history and executable launch/guidance goldens; the whole-bridge goal remains open. |
 | FirersPalette on retail JUMP, DOGJUMP, ADOGJUMP, GiantNukeUp or GiantNukeDown; whenever those projectiles appear. DredMissile also authors it but is a dormant definition in the selected data | BulletConstruct 466519..46653B snapshots source House+16054 into Bullet+114. VERA lacks the retained House scheme authority and saved Bullet scheme. `projectile_sprite(None)` explicitly preserves the previous ANIM.PAL appearance through the shared Bullet path; `Some` can look up an explicitly supplied scheme entry, but production registration now packs only its used fallback. Cannon does not enter this path. | Wrong house color/Convert after ownership change, source deletion or restore; current-player fallback also requires its real owner. This is a required House initialization/capture/persistence chain, not an index-zero approximation claimed as native. |
 | Admitted projectile ART Trailer/SpawnDelay on emitting families; absent on ordinary Cannon | The retained reader now preserves native identity/defaults, ordering and configuration hash. Selected Cannon has no Trailer, so this change does not implement or establish their runtime emission cadence, RNG, child attachment or cleanup. | Requires the emitting projectile lifecycle chain; matching reader values cannot certify emitted child timing, visibility or bridge-relative contacts. |
 | Custom source stacks with no preceding AnimType or other ART read; absent from the selected retail predecessor | Original INI pointer-key cache lifetime can outlive the isolated Bullet body. The witness executes the actual preceding D reader, not a synthetic reset; the shared cache lifetime without that active-retail prerequisite is unproven. | Different ART section selection on such custom iteration/pass histories; the whole reader mechanism remains bounded. |

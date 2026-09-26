@@ -330,6 +330,14 @@ impl Simulation {
             // `BulletClass::AI 0x0046699D` reads the GLOBAL frame counter's
             // parity for the half-rate course-locked acceleration ramp, so the
             // Logic slot has to hand the flight loop the current frame.
+            let target_is_aircraft = match projectile.target {
+                crate::sim::projectile::ProjectileTarget::Entity(target) => {
+                    self.substrate.entities.get(target).is_some_and(|entity| {
+                        entity.category == crate::map::entities::EntityCategory::Aircraft
+                    })
+                }
+                _ => false,
+            };
             let binary_frame = self.session.binary_frame;
             let shared_cell_dummy = self.effective_shared_cell_dummy();
             let terrain = self.resolved_terrain.as_ref();
@@ -369,6 +377,11 @@ impl Simulation {
                         |rules| rules.general.gravity,
                     ),
                     source_is_jumpjet,
+                    target_is_aircraft,
+                    rules.map_or_else(
+                        || crate::rules::ruleset::GeneralRules::default().safety_altitude,
+                        |rules| rules.general.safety_altitude,
+                    ),
                     |projectile, candidate, phase| {
                         collision_world.collide(projectile, candidate, phase)
                     },
@@ -481,7 +494,8 @@ impl Simulation {
         rules: Option<&RuleSet>,
         ctx: ObjectAiCtx<'_>,
     ) -> bool {
-        self.object_ai_visit_one_with_effects(id, rules, ctx).visited
+        self.object_ai_visit_one_with_effects(id, rules, ctx)
+            .visited
     }
 
     /// [`Simulation::object_ai_stage`] with the world context the dispatched

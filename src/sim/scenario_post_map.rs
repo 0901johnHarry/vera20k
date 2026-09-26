@@ -604,6 +604,7 @@ mod tests {
     #[test]
     fn post_load_ore_twinkle_pass_is_inert_without_the_rules_anim() {
         let (rules, overlays) = post_map_rules_and_overlays();
+        assert!(rules.general.ore_twinkle.is_none());
         let mut sim = Simulation::with_seed(0x0037_7EA6);
         sim.session.map_width = MAP_SIZE;
         sim.session.map_height = MAP_SIZE;
@@ -612,12 +613,26 @@ mod tests {
         overlay_grid.place_overlay(7, 7, 0, 3);
         sim.overlay_grid = Some(overlay_grid);
         let scenario_before = sim.scenario_rng.state();
+        let native_before = sim.native_unique_ids.as_ref().unwrap().current_raw();
         let roster = HouseRoster::default();
 
         let output =
             sim.finalize_scenario_post_map(generic_post_map_input(&rules, &overlays, &roster));
 
-        assert_eq!(output.ore_twinkle, Default::default());
+        // Original68503B constructs GasCloudSys before685052 tests the
+        // OreTwinkle pointer. with_seed now supplies the same explicit cursor
+        // prerequisite as other synthetic constructor fixtures.
+        assert_eq!(
+            output.ore_twinkle,
+            crate::sim::ore_twinkle::OreTwinkleReceipt {
+                particle_system_id_consumed: true,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            sim.native_unique_ids.as_ref().unwrap().current_raw(),
+            native_before.wrapping_add(1)
+        );
         assert_eq!(sim.scenario_rng.state(), scenario_before);
         assert_eq!(sim.substrate.anims.iter().count(), 0);
     }

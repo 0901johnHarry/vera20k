@@ -36,6 +36,11 @@ pub(crate) fn commit_prepared_load(
     let occupied_overlays = prepared.commit_into(runtime);
     crate::app::loading::transitions::sync_in_game_options_speed_from_sim(state);
     state.match_state.match_presentation.combat_lights.clear();
+    state
+        .match_state
+        .match_presentation
+        .line_trails
+        .clear_on_load();
     // The restored world's strips are seeded silently on the first refresh
     // below (`SidebarClass::AddCameo` init gate), not read as insertions
     // against the outgoing timeline's cameos.

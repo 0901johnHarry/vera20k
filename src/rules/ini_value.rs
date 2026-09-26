@@ -75,6 +75,31 @@ impl IniSection {
         strtrim_ascii(truncate_bytes(raw, capacity - 1)).to_string()
     }
 
+    /// ReadCoord529CA0: a 64-byte buffer, trim, then `%d,%d,%d`.
+    /// Missing/empty input returns the current coordinate. Complete decimal
+    /// triples retain signed32 wrapping and ignore text after the third number.
+    /// Original incomplete nonempty scans expose stale ABI argument bits;
+    /// modded malformed coordinates deterministically retain `default` here.
+    /// Executable coverage: tools/projectile_oracle/ifv_fire_coord.
+    pub fn read_coord3(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
+        let raw = self.read_string(key, "", 64);
+        let mut bytes = raw.as_bytes();
+        let mut out = [0; 3];
+        for (index, value) in out.iter_mut().enumerate() {
+            let Some(parsed) = scan_decimal_i32(&mut bytes) else {
+                return default;
+            };
+            *value = parsed;
+            if index < 2 {
+                if bytes.first() != Some(&b',') {
+                    return default;
+                }
+                bytes = &bytes[1..];
+            }
+        }
+        out
+    }
+
     /// Read3Int (P8): comma "%d,%d,%d". All-defaults on ABSENT key. Each field
     /// atoi-lenient; missing trailing fields keep the corresponding default.
     #[cfg(test)]
@@ -118,21 +143,31 @@ impl IniSection {
         (out[0], out[1], out[2], out[3])
     }
 
-    /// ReadColorRGB (P21): COMMA "%d,%d,%d" -> [u8;3]. Per-component plain %d
-    /// (stops at first non-digit; NO atoi-leniency beyond sign, NO hex). Default
-    /// RGB on absent key or short value; component byte-narrowed to u8 (gamemd
-    /// packs the sscanf int into a byte).
-    ///
-    /// `atoi_lenient` matches sscanf `%d` over the whole stock domain (leading
-    /// sign + decimal digits, stop at non-digit) — corpus-confirmed ZERO `$`/`h`
-    /// triplet components (plan-review C-R3). The `$`/`h` hex lives in `read_int`,
-    /// NOT in `atoi_lenient`, so reusing it here stays faithful to `%d`.
+    /// Original474B50: ReadString64 then one `%d,%d,%d` scan, byte narrowing.
+    /// Literal commas must immediately follow each of the first two numbers;
+    /// a suffix there stops the WHOLE scan. Absent/empty input keeps the default.
+    /// Original incomplete nonempty scans copy uninitialized stack bytes. We
+    /// deterministically retain the current RGB for that malformed domain,
+    /// matching read_coord3's policy instead of reproducing fixture stack data.
+    /// Full-reader controls: tools/projectile_oracle/line_trail.json.
     pub fn read_color_rgb(&self, key: &str, default: [u8; 3]) -> [u8; 3] {
-        self.fold_rules_values(key, default, |mut current, raw| {
-            for (index, token) in strtrim_ascii(raw).split(',').enumerate().take(3) {
-                current[index] = atoi_lenient(strtrim_ascii(token)) as u8;
+        self.fold_rules_values(key, default, |current, raw| {
+            let raw = strtrim_ascii(raw);
+            let mut bytes = &raw.as_bytes()[..raw.len().min(63)];
+            let mut result = [0; 3];
+            for (index, component) in result.iter_mut().enumerate() {
+                let Some(value) = scan_decimal_i32(&mut bytes) else {
+                    return current;
+                };
+                *component = value as u8;
+                if index < 2 {
+                    if bytes.first() != Some(&b',') {
+                        return current;
+                    }
+                    bytes = &bytes[1..];
+                }
             }
-            current
+            result
         })
     }
 
@@ -145,7 +180,6 @@ impl IniSection {
     /// P4/P18; corpus harness scans stock for present-empty Speed/Range.
     ///
     /// Retail provenance: INI speed conversion — `CCINIClass__ReadSpeed` @ `0x00474810`.
-    #[cfg(test)]
     pub fn read_speed(&self, key: &str, default: i32) -> i32 {
         self.fold_rules_values(key, default, |current, raw| {
             let parsed = parse_read_int(-1, raw);

@@ -74,8 +74,6 @@ mod aircraft_deployment_tests;
 #[cfg(test)]
 mod crash_tests;
 #[cfg(test)]
-mod jumpjet_infantry_tests;
-#[cfg(test)]
 mod damage_consequence_tests;
 #[cfg(test)]
 mod eva_dispatch_tests;
@@ -87,6 +85,8 @@ pub(crate) mod gap_generator_tests;
 mod gsi_04_18_tests;
 #[cfg(test)]
 mod house_ai_activation_tests;
+#[cfg(test)]
+mod jumpjet_infantry_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
@@ -951,7 +951,7 @@ pub struct Simulation {
     /// Native numeric IDs may duplicate and are neither stable handles nor RNG.
     /// Original689310/689470 preserve the cursor across save/load, including
     ///683560's post-read Scenario reinitialization. See native_id_snapshot.
-    /// Runtime constructors still need to consume this shared continuation.
+    /// Runtime constructors consume this continuation before class admission.
     pub(crate) native_unique_ids: Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     /// `MapClass+0x134` (`0x0087F91C`) analogue: the wrapping signed total that
     /// authored `ScenarioClass::Full_Init @ 0x00686B20` stores from
@@ -1741,11 +1741,15 @@ impl Simulation {
                 // An absorbing building's passengers leave through
                 // SpawnSurvivors' Phase A; its KillPassengers (`0x00441F27`)
                 // runs after that and finds the list empty.
-                let absorbs = self.substrate.entities.get(stable_id).is_some_and(|entity| {
-                    rules
-                        .object(self.interner.resolve(entity.type_ref()))
-                        .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
-                });
+                let absorbs = self
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .is_some_and(|entity| {
+                        rules
+                            .object(self.interner.resolve(entity.type_ref()))
+                            .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
+                    });
                 if let Some(event) = garrison {
                     production::eject_destruction_garrison_with_context(
                         self,
@@ -2486,21 +2490,24 @@ impl Simulation {
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
     ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
-        let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_area(
-            self,
-            &mut run,
-            receivers,
-            rules,
-            overlay_registry,
-        );
+        let (effects, under_attack_events, area_result) =
+            crate::sim::combat::world_receiver::commit_area_with_dispatch(
+                self,
+                &mut run,
+                receivers,
+                rules,
+                overlay_registry,
+            );
         let terrain_navigation_changed_cells = run.finish();
-        self.absorb_noncombat_damage_effects(
+        let mut receipt = self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
-        )
+        );
+        receipt.area_result = Some(area_result);
+        receipt
     }
 
     /// World-owned half of a non-combat damage transaction. Physical death
@@ -2915,7 +2922,10 @@ impl Simulation {
             &crate::sim::scenario_session::ScenarioDescriptor::default(),
         );
         session.seed = seed;
-        Self::construct(session)
+        let mut simulation = Self::construct(session);
+        simulation.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
+        simulation
     }
 
     /// Construct a session simulation from an app-layer launch descriptor.
@@ -3843,6 +3853,10 @@ impl Simulation {
             .spawn_at(stable_id, self.session.binary_frame, spawn);
         let registered = self.register_projectile(stable_id, spawn.flat);
         debug_assert!(registered);
+        if let Some(style) = spawn.line_trail {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::LineTrailConstructed { stable_id, style });
+        }
         stable_id
     }
 
@@ -5564,7 +5578,9 @@ impl Simulation {
             if let Some(bu) = self
                 .substrate
                 .entities
-                .get_mut_if(sid, |entity| entity.building_up.is_some() && !entity.ai_frozen())
+                .get_mut_if(sid, |entity| {
+                    entity.building_up.is_some() && !entity.ai_frozen()
+                })
                 .and_then(|entity| entity.building_up.as_mut())
                 && bu.frame(now, options)
                     == crate::sim::building_construction::ConstructionFrame::Complete
@@ -6897,11 +6913,11 @@ pub(crate) mod tests;
 mod smudge_integration_tests;
 
 #[cfg(test)]
-#[path = "refinery_dock_oracle_tests.rs"]
-mod refinery_dock_oracle_tests;
-#[cfg(test)]
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;
+#[cfg(test)]
+#[path = "refinery_dock_oracle_tests.rs"]
+mod refinery_dock_oracle_tests;
 
 #[cfg(test)]
 #[path = "harvest_field_cycle_tests.rs"]

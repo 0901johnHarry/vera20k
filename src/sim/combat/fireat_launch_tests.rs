@@ -109,7 +109,7 @@ impl Duel {
 /// Retail data the regression rests on: the Grizzly's `[105mm]` fires
 /// `[Cannon]`, an `Arcing=` projectile, at `Speed=40` under `Gravity=6`.
 #[test]
-fn retail_cannon_is_an_arcing_speed_40_shell_under_gravity_6() {
+fn retail_cannon_uses_converted_speed_and_arcing_under_gravity_6() {
     let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
         return;
     };
@@ -118,8 +118,11 @@ fn retail_cannon_is_an_arcing_speed_40_shell_under_gravity_6() {
     for (tank, weapon) in [("MTNK", "105mm"), ("HTNK", "120mm")] {
         let object = rules.object(tank).unwrap();
         assert_eq!(object.primary.as_deref(), Some(weapon), "{tank}");
+        // The raw reader converts authored40 to102; ROT0's later postpass
+        // replaces it using prior Gravity. That ordered state is compared to
+        // original full Process in rules::native_processing::weapon_speed_tests.
+        assert_eq!(ini.section(weapon).unwrap().read_speed("Speed", 0), 102);
         let weapon = rules.weapon(weapon).unwrap();
-        assert_eq!(weapon.speed, 40);
         let projectile = rules
             .projectile(weapon.projectile.as_deref().unwrap())
             .unwrap();
@@ -285,8 +288,6 @@ fn a_moving_rhino_is_led() {
 /// `BulletClass::Fire` at `0x00468A93`) copies the target's unled vt+0x58
 /// (`0x00468700..0x00468724`), not the led aim.
 #[test]
-#[ignore = "the IFV's HoverMissile launches at ground height (not Weapon1FLH z=180) and \
-            collides on its first step, which now runs in the firing frame's tail"]
 fn a_homing_missile_fuses_on_the_unled_target() {
     let Some(mut duel) = Duel::new() else {
         return;

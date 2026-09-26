@@ -828,6 +828,11 @@ impl Simulation {
         world_coord: AnimWorldCoord,
         draws: Option<AnimConstructorDraws>,
     ) -> Result<AnimId, AnimSpawnError> {
+        // Anim42203D assigns before registry insertion and RandomRate4221F5.
+        // Death debris may already have constructed at its pick/draw boundary.
+        let native_unique_id = draws
+            .and_then(|draws| draws.native_unique_id)
+            .unwrap_or_else(|| self.next_native_runtime_id());
         let type_name = self
             .interner
             .resolve(descriptor.type_name)
@@ -839,14 +844,6 @@ impl Simulation {
             .ok_or(AnimSpawnError::MissingType(descriptor.type_name))?;
         let (effective_end, effective_loop_end) = effective_bounds(&type_name, &config)?;
         let reverse = descriptor.reverse || config.reverse;
-        let draws = match draws {
-            Some(draws) => draws,
-            None => anim_constructor_draws(&config, world_coord, &mut self.scenario_rng)
-                .map_err(|error| AnimSpawnError::LaunchOutOfDomain(type_name.clone(), error))?,
-        };
-        let rate_reload = self.anim_rate(&config, draws.random_rate);
-        let frame_timer =
-            CdTimer::started(self.session.binary_frame as i32, i32::from(rate_reload));
         let stop_sound_id = config
             .stop_sound
             .as_deref()
@@ -859,7 +856,7 @@ impl Simulation {
         }
         let object = AnimObject {
             stable_id,
-            native_unique_id: stable_id as i32,
+            native_unique_id,
             type_id: descriptor.type_name,
             world_coord,
             draw_flags: descriptor.draw_flags,
@@ -875,8 +872,8 @@ impl Simulation {
                 },
                 frame_step: if reverse { -1 } else { 1 },
                 delay_remaining: descriptor.delay,
-                rate_reload,
-                frame_timer,
+                rate_reload: 0,
+                frame_timer: CdTimer::default(),
                 loop_remaining: native_loop_remaining(config.loop_count, descriptor.loop_count),
                 first_ai_guard: true,
                 constructor_reverse: descriptor.reverse,
@@ -896,13 +893,36 @@ impl Simulation {
                 marked_on_map: false,
                 y_sort_adjust: config.y_sort_adjust,
             },
-            bounce: draws.bounce,
+            bounce: None,
         };
         // The insert must run in every build profile: wrapped in
         // `debug_assert!` it was compiled out of release binaries and no
         // scheduler anim ever existed in a shipped build.
         let previous = self.substrate.anims.insert(object);
         debug_assert!(previous.is_none());
+        let draws = match draws {
+            Some(draws) => draws,
+            None => match anim_constructor_draws(&config, world_coord, &mut self.scenario_rng) {
+                Ok(draws) => draws,
+                Err(error) => {
+                    // VERA's explicit unsupported-arithmetic failure precedes
+                    // Reveal. The original constructor ID remains spent.
+                    self.substrate.anims.remove(stable_id);
+                    return Err(AnimSpawnError::LaunchOutOfDomain(type_name, error));
+                }
+            },
+        };
+        let rate_reload = self.anim_rate(&config, draws.random_rate);
+        let frame_timer =
+            CdTimer::started(self.session.binary_frame as i32, i32::from(rate_reload));
+        let registered = self
+            .substrate
+            .anims
+            .get_mut(stable_id)
+            .expect("new Anim registry entry");
+        registered.runtime.rate_reload = rate_reload;
+        registered.runtime.frame_timer = frame_timer;
+        registered.bounce = draws.bounce;
         // Native registry insertion precedes Reveal, and Reveal precedes the
         // delay-zero constructor-time Start call.
         self.reveal_anim(stable_id, Some(rules), None);
@@ -2137,9 +2157,8 @@ impl Simulation {
             }),
             z_leptons.div_euclid(crate::util::lepton::LEPTONS_PER_LEVEL as i32),
         );
-        let mut bridge_state_changed = self
-            .commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers)
-            .bridge_state_changed;
+        let receipt = self.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
+        let mut bridge_state_changed = receipt.bridge_state_changed;
         // Anim's Apply_area_damage call at0x423EAB completes its bridge
         // continuation before the combat-light call at0x423EF8.
         bridge_state_changed |= crate::sim::combat::world_receiver::continue_area_bridge_damage(
@@ -2151,6 +2170,7 @@ impl Simulation {
             warhead_ref,
             z_leptons,
             routed_wall,
+            receipt.area_result.expect("area receiver receipt"),
         );
         self.combat_light_requests
             .push(crate::sim::combat::CombatLightRequest {
@@ -2398,6 +2418,9 @@ const BOUNCE_SPLASH_LIFT_LEPTONS: i32 = 3;
 /// (`0x004224D9..0x00422648`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnimConstructorDraws {
+    /// Present when a producer has already crossed Anim42203D. Admission must
+    /// retain that constructor identity rather than consume the cursor again.
+    pub(crate) native_unique_id: Option<i32>,
     /// The drawn `RandomRate=` delay in logic frames, before normalization.
     pub random_rate: Option<u16>,
     pub bounce: Option<BounceState>,
@@ -2421,6 +2444,7 @@ pub(crate) fn anim_constructor_draws(
         None
     };
     Ok(AnimConstructorDraws {
+        native_unique_id: None,
         random_rate,
         bounce,
     })
@@ -3489,6 +3513,63 @@ mod tests {
     }
 
     #[test]
+    fn runtime_anim_retains_native_identity_and_spends_it_before_asset_failure() {
+        let rules = runtime_rules("[LIVE]\nRate=900\nEnd=2\n", &[("LIVE", 2)]);
+        let mut sim = Simulation::new();
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(1000));
+        let live = sim.interner.intern("LIVE");
+        let missing = sim.interner.intern("UNBOUND");
+        let rng = sim.scenario_rng.logical_state();
+        assert!(
+            sim.spawn_anim_object(&rules, runtime_descriptor(missing, 0))
+                .is_err()
+        );
+        assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
+        let id = sim
+            .spawn_anim_object(&rules, runtime_descriptor(live, 0))
+            .unwrap();
+        assert_eq!(sim.anim(id).unwrap().native_unique_id, 1002);
+        assert_ne!(id as i32, 1002, "stable handles have an independent owner");
+        assert_eq!(sim.scenario_rng.logical_state(), rng);
+    }
+
+    #[test]
+    fn preconsumed_anim_constructor_retains_identity_without_redrawing_or_reassigning() {
+        let rules = runtime_rules(
+            "[DEBRIS]\nRate=900\nRandomRate=50,150\nEnd=2\n",
+            &[("DEBRIS", 2)],
+        );
+        let mut sim = Simulation::new();
+        let type_id = sim.interner.intern("DEBRIS");
+        let descriptor = runtime_descriptor(type_id, 1);
+        let coord = AnimWorldCoord {
+            x: 128,
+            y: 128,
+            z: 20,
+        };
+        let native_unique_id = sim.next_native_runtime_id();
+        let mut draws = anim_constructor_draws(
+            rules.art_registry.anim_runtime_config("DEBRIS").unwrap(),
+            coord,
+            &mut sim.scenario_rng,
+        )
+        .unwrap();
+        draws.native_unique_id = Some(native_unique_id);
+        let after_draws = sim.scenario_rng.logical_state();
+        let next_constructor = sim.next_native_runtime_id();
+        let id = sim
+            .spawn_anim_at_world_with_draws(&rules, descriptor, coord, Some(draws))
+            .unwrap();
+        assert_eq!(sim.anim(id).unwrap().native_unique_id, native_unique_id);
+        assert_eq!(
+            sim.native_unique_ids.as_ref().unwrap().current_raw() as i32,
+            next_constructor
+        );
+        assert_eq!(sim.scenario_rng.logical_state(), after_draws);
+    }
+
+    #[test]
     fn authored_load_anim_retains_native_id_and_final_scalar_delete_rechecks_compaction() {
         let rules = runtime_rules(
             "[LOADTILE]\nRate=900\nEnd=2\nLoopCount=-1\nStartSound=TileStart\nStopSound=TileStop\n\n\
@@ -3530,10 +3611,7 @@ mod tests {
         assert_eq!(
             sim.sound_events
                 .iter()
-                .filter(|event| matches!(
-                    event,
-                    SimSoundEvent::ObjectSoundReleased { .. }
-                ))
+                .filter(|event| matches!(event, SimSoundEvent::ObjectSoundReleased { .. }))
                 .count(),
             2,
             "final Init scalar deletion suppresses configured StopSound identity"
