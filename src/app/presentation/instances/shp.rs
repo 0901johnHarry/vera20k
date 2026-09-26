@@ -8,14 +8,13 @@
 //! - Part of the app layer — may depend on everything.
 
 use super::helpers::{
-    ANIM_DRAW_DEPTH_BIAS_PX, EntityDrawBand, apply_shape_z_adjust, compute_sprite_depth,
-    effective_anim_z_adjust, entity_draw_band, ground_sort_row, ground_z_adjust, in_view,
-    tactical_entity_render_admission,
+    ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth, effective_anim_z_adjust,
+    entity_draw_band, ground_sort_row, ground_z_adjust, in_view, tactical_entity_render_admission,
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
-    GroundPieceInstance, GroundTexture, NativeGroundOrder, PlannedBuildingPieceInstance,
-    PlannedGroundObjectInstance,
+    NativeDisplayOrder, ObjectPieceInstance, ObjectTexture, PlannedBuildingPieceInstance,
+    PlannedObjectInstance,
 };
 use crate::map::entities::EntityCategory;
 use crate::render::batch::SpriteInstance;
@@ -64,9 +63,7 @@ fn shp_body_tint(
 /// Ground bodies, building bibs/anims, and building turret VXLs are emitted as
 /// one parent-owned group so the native global order cannot split their display
 /// call at an atlas boundary.
-/// `top_instances` and aligned `top_pages` receive SHP bodies registered above
-/// the Ground band — in stock YR that is the Rocketeer at hover height, the one infantry
-/// type on a Jumpjet locomotor.
+/// Air and Top bodies retain the same parent ownership in their own Display layers.
 /// `parachute_body_depths` collects the sort key of every body currently under
 /// a parachute, keyed by entity — see [`ParachuteBodyDepths`].
 /// Building bodies write their own per-pixel Z in the Ground pass, which is
@@ -74,13 +71,9 @@ fn shp_body_tint(
 /// depth stamp exists any more.
 pub(crate) fn build_shp_instances(
     state: &AppState,
-    paged: &mut [Vec<SpriteInstance>],
-    top_instances: &mut Vec<SpriteInstance>,
-    top_pages: &mut Vec<usize>,
-    top_ids: &mut Vec<u64>,
     parachute_body_depths: &mut ParachuteBodyDepths,
-    ground_objects: &mut Vec<PlannedGroundObjectInstance>,
-    ground_order: &NativeGroundOrder,
+    ground_objects: &mut Vec<PlannedObjectInstance>,
+    ground_order: &NativeDisplayOrder,
 ) {
     let (sim, atlas) = match (
         state
@@ -115,7 +108,7 @@ pub(crate) fn build_shp_instances(
         if entity.is_voxel {
             continue;
         }
-        let Some(band) = entity_draw_band(sim.display_layers(), stable_id) else {
+        let Some(_band) = entity_draw_band(sim.display_layers(), stable_id) else {
             continue;
         };
         // Common visibility, passenger, limbo, and DrawState admission is shared below.
@@ -130,9 +123,8 @@ pub(crate) fn build_shp_instances(
             .map(|id| sim.interner.resolve(id))
             .unwrap_or(owner_str);
         // Wall buildings render as overlays (auto-tiled connectivity frames).
-        // Their Y-sorted rendering in the object pass is handled by including
-        // wall overlay instances in the unified merge (draw_merged_object_pass),
-        // not here. Skip them to avoid drawing frame 0 (isolated pillar).
+        // Their fixed-cell overlay pass owns the connected wall frame.
+        // Skip them here to avoid drawing frame0 (an isolated pillar).
         if entity.category == EntityCategory::Structure {
             let is_wall = state
                 .rules()
@@ -351,7 +343,6 @@ pub(crate) fn build_shp_instances(
         };
         // Direct SHP and infantry keep native Ground parent order. Infantry
         // does not use the Unit composite bridge split at 0x73B140.
-        let collect_ground = band == EntityDrawBand::Ground;
         // Native per-pixel Z. Buildings (`BuildingClass_DrawBody`, flags
         // 0x6E00) seed from `NormalZAdjust - AdjustForZ(Z)`
         // minus DrawSHP's 2, write Z, and subtract the BUILDNGZ z-shape placed
@@ -434,28 +425,22 @@ pub(crate) fn build_shp_instances(
                 z_bias: 0,
                 // Body and buildup go through the same Z-writing body draw.
                 policy: BlitPolicy::opaque(SpriteEncoding::Plain),
-                target: GroundTexture::ShpPage(entry.page as usize),
+                target: ObjectTexture::ShpPage(entry.page as usize),
                 instance: body,
             });
-        } else if collect_ground {
+        } else {
             if let Some(parent) =
                 ground_order.object_draw(entity.stable_id(), SpriteEncoding::Plain)
             {
-                ground_objects.push(PlannedGroundObjectInstance::object(
+                ground_objects.push(PlannedObjectInstance::object(
                     parent,
-                    vec![GroundPieceInstance {
-                        target: GroundTexture::ShpPage(entry.page as usize),
+                    vec![ObjectPieceInstance {
+                        target: ObjectTexture::ShpPage(entry.page as usize),
                         render_z: parent.policy.render_z,
                         instance: body,
                     }],
                 ));
             }
-        } else if band == EntityDrawBand::Top {
-            top_instances.push(body);
-            top_pages.push(entry.page as usize);
-            top_ids.push(entity.stable_id());
-        } else {
-            paged[entry.page as usize].push(body);
         }
 
         // Emit building animation overlays and bib — but NOT during build-up/down.
@@ -546,7 +531,7 @@ pub(crate) fn build_shp_instances(
                                 // `FUN_0043DA80` -> `TechnoClass__Draw` 0x2800:
                                 // the turret tests Z and never writes.
                                 policy: BlitPolicy::z_read(SpriteEncoding::Voxel),
-                                target: GroundTexture::UnitAtlasPage(page),
+                                target: ObjectTexture::UnitAtlasPage(page),
                                 instance,
                             });
                         }
@@ -559,10 +544,7 @@ pub(crate) fn build_shp_instances(
             if let Some(parent) =
                 ground_order.object_draw(entity.stable_id(), SpriteEncoding::Plain)
             {
-                ground_objects.push(PlannedGroundObjectInstance::building(
-                    parent,
-                    building_pieces,
-                ));
+                ground_objects.push(PlannedObjectInstance::building(parent, building_pieces));
             }
         }
     }
@@ -697,7 +679,7 @@ fn emit_building_bib(
         kind: BuildingPieceKind::Bib,
         z_bias: 0,
         policy: BlitPolicy::opaque(SpriteEncoding::Plain),
-        target: GroundTexture::ShpPage(bib_entry.page as usize),
+        target: ObjectTexture::ShpPage(bib_entry.page as usize),
         instance: SpriteInstance {
             position: [bx, by],
             size: bib_entry.pixel_size,
@@ -841,7 +823,7 @@ fn emit_building_anims(
             kind: BuildingPieceKind::PoweredOrActiveOverlay,
             z_bias: z_adjust_px,
             policy: BlitPolicy::z_read(SpriteEncoding::Plain),
-            target: GroundTexture::ShpPage(anim_entry.page as usize),
+            target: ObjectTexture::ShpPage(anim_entry.page as usize),
             instance: SpriteInstance {
                 position: [ax, ay],
                 size: anim_entry.pixel_size,

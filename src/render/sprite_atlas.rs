@@ -30,6 +30,7 @@ use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::rules::art_data::{self, ArtRegistry};
 use crate::rules::effect_asset_catalog::available_effect_anim_frame_count;
 use crate::rules::house_colors::{HouseColorIndex, HouseColorRamps};
+use crate::rules::projectile_type::ProjectileType;
 use crate::rules::ruleset::RuleSet;
 
 /// Edge of a growth page: RGBA plus indices is 80 MB, room for the sprites
@@ -199,6 +200,59 @@ pub enum ShpPaletteContext {
     GlobalAnim,
     SelectedScheme,
     Cell,
+    /// BulletClass::Draw 46838D: global PALETTE.PAL Convert87F6C4.
+    BulletDefault,
+    /// Bullet AnimPalette selects ANIM.PAL without AnimType AltPalette logic.
+    BulletAnim,
+    /// Caller supplies BulletClass's retained ColorScheme identity (+114).
+    BulletFirer,
+}
+
+impl ShpPaletteContext {
+    fn is_projectile(self) -> bool {
+        matches!(
+            self,
+            Self::BulletDefault | Self::BulletAnim | Self::BulletFirer
+        )
+    }
+}
+
+/// BulletDraw46838D..468409 selects AnimPalette before FirersPalette. The
+/// latter requires the bullet's retained scheme, not its source's current house.
+pub fn projectile_key(
+    type_id: &str,
+    projectile_type: &ProjectileType,
+    frame: u16,
+    house_color: HouseColorIndex,
+) -> ShpSpriteKey {
+    let palette_context = if projectile_type.anim_palette {
+        ShpPaletteContext::BulletAnim
+    } else if projectile_type.firers_palette {
+        ShpPaletteContext::BulletFirer
+    } else {
+        ShpPaletteContext::BulletDefault
+    };
+    ShpSpriteKey {
+        palette_context,
+        type_id: type_id.to_ascii_uppercase(),
+        facing: 0,
+        frame,
+        house_color: if palette_context == ShpPaletteContext::BulletFirer {
+            house_color
+        } else {
+            HouseColorIndex(0)
+        },
+    }
+}
+
+fn unresolved_firer_key(
+    type_id: &str,
+    projectile_type: &ProjectileType,
+    frame: u16,
+) -> ShpSpriteKey {
+    let mut key = projectile_key(type_id, projectile_type, frame, HouseColorIndex(0));
+    key.palette_context = ShpPaletteContext::BulletAnim;
+    key
 }
 
 pub(crate) fn attached_anim_palette_context(
@@ -301,6 +355,8 @@ pub struct SpriteAtlas {
     /// The file each counted animation, make and parachute type's frames came
     /// from (upper-case type), so its frames render from that file.
     shp_files: HashMap<String, String>,
+    /// ProjectileType image binding is separate from AnimType frame sources.
+    projectile_files: HashMap<String, (String, u16)>,
     effects: EffectRegistry,
     /// Page refreshes append to; created when the first refresh needs room.
     growth: Option<GrowthShelf>,
@@ -341,22 +397,14 @@ fn collect_effect_names(rules: &RuleSet) -> Vec<String> {
             push_effect_name(&mut effect_names, anim_name);
         }
     }
-    // Weapon Anim=, OccupantAnim= and visible projectile images.
+    // Weapon Anim= and OccupantAnim=. Bullet images have a separate binding
+    // and palette owner; they are not AnimType registrations.
     for weapon in rules.weapons_iter() {
         for anim_name in &weapon.anim {
             push_effect_name(&mut effect_names, anim_name);
         }
         if let Some(ref anim_name) = weapon.occupant_anim {
             push_effect_name(&mut effect_names, anim_name);
-        }
-        if let Some(projectile) = weapon
-            .projectile
-            .as_deref()
-            .and_then(|id| rules.projectile(id))
-            && !projectile.inviso
-            && let Some(image) = projectile.image.as_deref()
-        {
-            push_effect_name(&mut effect_names, image);
         }
     }
     // Particle SHPs: ParticleType.Image= goes through the ObjectTypeClass
@@ -381,6 +429,7 @@ impl SpriteAtlas {
             covered_anim_remaps: HashSet::new(),
             harvest_overlay_loaded: false,
             shp_files: HashMap::new(),
+            projectile_files: HashMap::new(),
             effects: EffectRegistry::default(),
             growth: None,
             growth_indices: HashMap::new(),
@@ -392,6 +441,33 @@ impl SpriteAtlas {
     /// holds this sprite's texture data.
     pub fn get(&self, key: &ShpSpriteKey) -> Option<&ShpSpriteEntry> {
         self.entries.get(key)
+    }
+
+    /// Exact frame lookup; an absent frame is not substituted or wrapped.
+    ///
+    /// RESIDUAL: BulletConstruct466519..46653B snapshots source House+16054
+    /// into Bullet+114. VERA does not yet retain that House/scheme authority.
+    /// A missing retained scheme preserves the old ANIM.PAL appearance through
+    /// this same Bullet path; it does not pretend scheme zero is native state.
+    pub fn projectile_sprite(
+        &self,
+        type_id: &str,
+        projectile_type: &ProjectileType,
+        frame: u16,
+        retained_scheme: Option<HouseColorIndex>,
+    ) -> Option<&ShpSpriteEntry> {
+        if projectile_type.firers_palette
+            && !projectile_type.anim_palette
+            && retained_scheme.is_none()
+        {
+            return self.get(&unresolved_firer_key(type_id, projectile_type, frame));
+        }
+        self.get(&projectile_key(
+            type_id,
+            projectile_type,
+            frame,
+            retained_scheme.unwrap_or_default(),
+        ))
     }
 
     /// Number of unique sprites across all pages.
@@ -676,6 +752,8 @@ pub(crate) enum SpritePaletteChoice {
     Anim,
     /// Active theater ISO palette, used by AnimClass +0x196 cell-drawer rows.
     CellIso,
+    /// BulletClass's ordinary global Convert, independent of the theater.
+    Bullet,
 }
 
 /// Pick the palette a sprite key's frames are baked against.
@@ -721,6 +799,9 @@ fn sprite_palette_for_key(
     cell_palette_type_ids: &HashSet<String>,
 ) -> SpritePaletteChoice {
     match key.palette_context {
+        ShpPaletteContext::BulletDefault => SpritePaletteChoice::Bullet,
+        ShpPaletteContext::BulletAnim => SpritePaletteChoice::Anim,
+        ShpPaletteContext::BulletFirer => SpritePaletteChoice::Unit,
         ShpPaletteContext::SelectedScheme => SpritePaletteChoice::Unit,
         ShpPaletteContext::Cell => SpritePaletteChoice::CellIso,
         ShpPaletteContext::GlobalAnim => {
@@ -892,6 +973,96 @@ fn sprite_key_order(key: &ShpSpriteKey) -> (&str, u8, u8, u16, u8) {
     )
 }
 
+/// ObjectType LoadImage5F9070 uses BulletType's already resolved Image25,
+/// exact ART metadata and one second-character G retry. It does not follow an
+/// AnimType Image redirect or try both theater and SHP extensions.
+fn projectile_shp_candidates(
+    projectile: &ProjectileType,
+    theater_ext: &str,
+    theater_name: &str,
+) -> Vec<String> {
+    let Some(load) = &projectile.image_load else {
+        return Vec::new();
+    };
+    let image = &load.image;
+    let theater = load.theater;
+    let mut image = image.to_ascii_uppercase().into_bytes();
+    if !theater
+        && load.new_theater
+        && image.len() >= 2
+        && matches!(image[0], b'G' | b'N' | b'C' | b'Y')
+        && matches!(image[1], b'A' | b'T')
+    {
+        image[1] = match theater_name.to_ascii_uppercase().as_str() {
+            "TEMPERATE" => b'T',
+            "SNOW" => b'A',
+            "URBAN" => b'U',
+            "DESERT" => b'D',
+            "LUNAR" => b'L',
+            "NEWURBAN" => b'N',
+            _ => image[1],
+        };
+    }
+    let mut file = String::from_utf8(image).expect("ASCII case conversion preserves UTF-8");
+    file.push('.');
+    file.push_str(if theater { theater_ext } else { "SHP" });
+    let mut candidates = vec![file.clone()];
+    if file.is_ascii() && file.len() >= 2 {
+        file.replace_range(1..2, "G");
+        if file != candidates[0] {
+            candidates.push(file);
+        }
+    }
+    candidates
+}
+
+fn register_projectile_frames(
+    needed: &mut HashSet<ShpSpriteKey>,
+    files: &mut HashMap<String, (String, u16)>,
+    assets: &AssetManager,
+    rules: Option<&RuleSet>,
+    theater_ext: &str,
+    theater_name: &str,
+) {
+    let Some(rules) = rules else {
+        return;
+    };
+    for weapon in rules.weapons_iter() {
+        let Some(projectile) = weapon
+            .projectile
+            .as_deref()
+            .and_then(|id| rules.projectile(id))
+        else {
+            continue;
+        };
+        if projectile.inviso || projectile.voxel {
+            continue;
+        }
+        let id = projectile.id.to_ascii_uppercase();
+        let (_, count) = files.entry(id.clone()).or_insert_with(|| {
+            let candidates = projectile_shp_candidates(projectile, theater_ext, theater_name);
+            find_shp(assets, &candidates)
+                .and_then(|(file, bytes)| {
+                    ShpFile::frame_count_from_bytes(bytes)
+                        .ok()
+                        .map(|count| (file.to_string(), count))
+                })
+                .unwrap_or_default()
+        });
+        for frame in 0..*count {
+            if projectile.firers_palette && !projectile.anim_palette {
+                // The production Bullet adapter has no retained House scheme
+                // yet and requests None. Register only its explicit ANIM.PAL
+                // fallback, not unused per-house variants. Native +114 capture
+                // remains the separate 466519..46653B House-authority residual.
+                needed.insert(unresolved_firer_key(&id, projectile, frame));
+            } else {
+                needed.insert(projectile_key(&id, projectile, frame, HouseColorIndex(0)));
+            }
+        }
+    }
+}
+
 /// Build or refresh the SHP sprite atlas for every object in the ECS world.
 ///
 /// Without an `existing` atlas every key the world can draw is rendered and
@@ -972,6 +1143,18 @@ pub fn build_sprite_atlas(
             )
         })
         .unwrap_or_default();
+    let mut projectile_files = previous_atlas
+        .as_ref()
+        .map(|atlas| atlas.projectile_files.clone())
+        .unwrap_or_default();
+    register_projectile_frames(
+        &mut needed,
+        &mut projectile_files,
+        asset_manager,
+        rules,
+        theater_ext,
+        theater_name,
+    );
 
     // Step 1b: Collect every declared building animation frame required by art
     // metadata. Runtime owns timing; atlas construction only ensures that a
@@ -1254,6 +1437,9 @@ pub fn build_sprite_atlas(
     let effect_palette: Option<Palette> = asset_manager
         .get_ref("anim.pal")
         .and_then(|d| Palette::from_bytes(d).ok());
+    let bullet_palette = asset_manager
+        .get_ref("palette.pal")
+        .and_then(|data| Palette::from_bytes(data).ok());
     if effect_palette.is_none() && !effects.type_ids.is_empty() {
         log::warn!("anim.pal not found — world effect SHPs will use unit.pal (wrong colors)");
     }
@@ -1284,19 +1470,41 @@ pub fn build_sprite_atlas(
             "terrain-attached animations require the active theater ISO palette".to_string(),
         );
     }
+    if bullet_palette.is_none() && palette_choices.contains(&SpritePaletteChoice::Bullet) {
+        return abort_sprite_atlas_refresh(
+            previous_atlas,
+            "visible projectiles require PALETTE.PAL".to_string(),
+        );
+    }
+    if effect_palette.is_none()
+        && new_keys
+            .iter()
+            .any(|key| key.palette_context == ShpPaletteContext::BulletAnim)
+    {
+        return abort_sprite_atlas_refresh(
+            previous_atlas,
+            "AnimPalette projectiles require ANIM.PAL".to_string(),
+        );
+    }
 
     let mut rendered: Vec<RenderedShpSprite> = Vec::with_capacity(new_keys.len());
     let mut unrenderable: Vec<ShpSpriteKey> = Vec::new();
-    let mut source: Option<(&str, Option<ShpSource>)> = None;
+    let mut source: Option<(&str, bool, Option<ShpSource>)> = None;
     for (key, palette_choice) in new_keys.iter().zip(palette_choices) {
-        if source
-            .as_ref()
-            .is_none_or(|(type_id, _)| *type_id != key.type_id)
-        {
-            let file = shp_files
-                .get(&key.type_id.to_ascii_uppercase())
-                .map(String::as_str);
-            let loaded = load_shp_source(
+        let projectile = key.palette_context.is_projectile();
+        if source.as_ref().is_none_or(|(type_id, was_projectile, _)| {
+            *type_id != key.type_id || *was_projectile != projectile
+        }) {
+            let file = if projectile {
+                projectile_files
+                    .get(&key.type_id)
+                    .map(|(file, _)| file.as_str())
+            } else {
+                shp_files
+                    .get(&key.type_id.to_ascii_uppercase())
+                    .map(String::as_str)
+            };
+            let mut loaded = load_shp_source(
                 asset_manager,
                 &key.type_id,
                 file,
@@ -1305,13 +1513,20 @@ pub fn build_sprite_atlas(
                 rules,
                 art,
             );
-            source = Some((&key.type_id, loaded));
+            if projectile && let Some(loaded) = &mut loaded {
+                // BulletDraw468090 has no AnimType/Techno XDrawOffset consumer.
+                loaded.draw_offsets = (0, 0);
+            }
+            source = Some((&key.type_id, projectile, loaded));
         }
         let pal: &Palette = match palette_choice {
             SpritePaletteChoice::Anim => effect_palette.as_ref().unwrap_or(palette),
             SpritePaletteChoice::Unit => palette,
             SpritePaletteChoice::CellIso => {
                 cell_palette.expect("cell-drawer palette was validated before atlas rendering")
+            }
+            SpritePaletteChoice::Bullet => {
+                bullet_palette.as_ref().expect("bullet palette validated")
             }
         };
         let house_remap = match key.palette_context {
@@ -1320,7 +1535,7 @@ pub fn build_sprite_atlas(
         };
         let sprite = source
             .as_ref()
-            .and_then(|(_, loaded)| loaded.as_ref())
+            .and_then(|(_, _, loaded)| loaded.as_ref())
             .and_then(|loaded| render_shp_frame(loaded, pal, house_remap, key, rules));
         match sprite {
             Some(sprite) => rendered.push(sprite),
@@ -1376,6 +1591,7 @@ pub fn build_sprite_atlas(
     atlas.make_frame_counts = make_frame_counts;
     atlas.active_anim_frame_counts = active_anim_frame_counts;
     atlas.shp_files = shp_files;
+    atlas.projectile_files = projectile_files;
     for (type_id, color) in new_objects {
         atlas
             .covered_objects
@@ -1529,6 +1745,9 @@ fn render_shp_frame(
 
     // Frame selection: use facing to pick among the first 8 frames (standing pose).
     // If SHP has fewer frames, use frame 0.
+    if key.palette_context.is_projectile() && key.frame as usize >= shp.frames.len() {
+        return None;
+    }
     let frame_idx: usize = if (key.frame as usize) < shp.frames.len() {
         key.frame as usize
     } else if shp.frames.len() >= 8 {
@@ -1920,6 +2139,10 @@ fn simulate_shelf_height(
 #[cfg(test)]
 #[path = "sprite_atlas_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "sprite_atlas_projectile_tests.rs"]
+mod projectile_tests;
 
 #[cfg(test)]
 impl SpriteAtlas {

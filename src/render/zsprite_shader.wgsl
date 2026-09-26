@@ -63,13 +63,11 @@ struct VertexOutput {
     @location(9) @interpolate(flat) z_gradient: u32,
     @location(10) @interpolate(flat) zshape_origin: vec2f,
     @location(11) @interpolate(flat) palette_light: vec4u,
+    // Only vs_read_only supplies an ordered destination command ordinal.
+    @location(12) @interpolate(flat) command_ordinal: u32,
 };
 
-@vertex
-fn vs_main(
-    @builtin(vertex_index) idx: u32,
-    instance: Instance,
-) -> VertexOutput {
+fn shp_vertex(idx: u32, instance: Instance) -> VertexOutput {
     var quad_pos = array<vec2f, 6>(
         vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
         vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
@@ -103,6 +101,21 @@ fn vs_main(
     output.z_gradient = instance.z_gradient;
     output.zshape_origin = instance.zshape_origin;
     output.palette_light = instance.palette_light;
+    return output;
+}
+
+// Ordinary SHP consumers retain their original vertex index and projection.
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32, instance: Instance) -> VertexOutput {
+    return shp_vertex(idx, instance);
+}
+
+// The first vertex carries command sequence, independently of instance index:
+// draw(ordinal*6..ordinal*6+6, original_instance..original_instance+1).
+@vertex
+fn vs_read_only(@builtin(vertex_index) idx: u32, instance: Instance) -> VertexOutput {
+    var output = shp_vertex(idx % 6u, instance);
+    output.command_ordinal = idx / 6u + 1u;
     return output;
 }
 

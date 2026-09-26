@@ -26,7 +26,7 @@ pub(crate) struct PlannedBuildingPieceInstance {
     pub kind: BuildingPieceKind,
     pub z_bias: i32,
     pub policy: BlitPolicy,
-    pub target: GroundTexture,
+    pub target: ObjectTexture,
     pub instance: SpriteInstance,
 }
 
@@ -35,33 +35,37 @@ pub(crate) struct PlannedBuildingPieceInstance {
 /// Atlas identity is deliberately data carried by a draw piece, never a sort
 /// key. Parent order comes exclusively from the retained Display vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GroundTexture {
+pub(crate) enum ObjectTexture {
     OverlayAtlas,
     /// Per-piece native destination edit; never a texture-only coalesced draw.
     TerrainStatic(crate::render::terrain_draw::TerrainPiece),
+    /// Bullet body/shadow: signed native Z comparison, destination edits,
+    /// and no depth write. The atlas page is payload, never an ordering key.
+    ProjectileShp(usize, crate::render::terrain_draw::TerrainPiece),
     UnitAtlasPage(usize),
     UnitTransitionPage(usize),
+    UnitPose,
     ShpPage(usize),
 }
 
-/// One already-resolved sprite owned by one Ground-layer parent object.
-pub(crate) struct GroundPieceInstance {
-    pub target: GroundTexture,
+/// One already-resolved sprite owned by one retained Display parent object.
+pub(crate) struct ObjectPieceInstance {
+    pub target: ObjectTexture,
     /// Which depth pipeline draws it (`RenderZPolicy::None` passthrough,
     /// `ReadOnly` Z-tested, `ReadWrite` Z-tested and written).
     pub render_z: RenderZPolicy,
     pub instance: SpriteInstance,
 }
 
-/// One native Ground-layer registration and every sprite its display call owns.
-pub(crate) struct PlannedGroundObjectInstance {
+/// One native Display registration and every sprite its display call owns.
+pub(crate) struct PlannedObjectInstance {
     pub parent: ObjectDraw,
-    pub pieces: Vec<GroundPieceInstance>,
+    pub pieces: Vec<ObjectPieceInstance>,
     pub building_pieces: Option<Vec<PlannedBuildingPieceInstance>>,
 }
 
-impl PlannedGroundObjectInstance {
-    pub(crate) fn object(parent: ObjectDraw, pieces: Vec<GroundPieceInstance>) -> Self {
+impl PlannedObjectInstance {
+    pub(crate) fn object(parent: ObjectDraw, pieces: Vec<ObjectPieceInstance>) -> Self {
         Self {
             parent,
             pieces,
@@ -80,36 +84,54 @@ impl PlannedGroundObjectInstance {
 
 /// One contiguous GPU-buffer run sharing a texture/pipeline binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GroundDrawRun {
-    pub target: GroundTexture,
+pub(crate) struct ObjectDrawRun {
+    pub target: ObjectTexture,
     pub render_z: RenderZPolicy,
     pub start: u32,
     pub count: u32,
 }
 
-/// Live Layer-2 output: exact integer parent order plus flat GPU instances.
+/// One native layer output: exact integer parent order plus flat GPU instances.
 #[derive(Default)]
-pub(crate) struct GroundObjectPass {
+pub(crate) struct ObjectLayerPass {
     pub instances: Vec<SpriteInstance>,
-    pub runs: Vec<GroundDrawRun>,
+    pub runs: Vec<ObjectDrawRun>,
     /// Aligned with `instances`; retained for executable ordering checks.
     #[cfg(test)]
     pub owners: Vec<DrawId>,
 }
 
-/// Frame-local lookup derived solely from the retained Ground Display vector.
+/// Frame-local lookup derived solely from the five retained Display vectors.
 /// The sim owns all registration and sorting; atlas builders only read ranks.
-pub(crate) struct NativeGroundOrder {
-    positions: BTreeMap<DrawId, u64>,
+#[derive(Default)]
+pub(crate) struct NativeDisplayOrder {
+    positions: BTreeMap<DrawId, (TacticalLayer, u64)>,
 }
 
-impl NativeGroundOrder {
+impl NativeDisplayOrder {
+    pub(crate) fn from_display(display: &crate::sim::world::display_layers::DisplayLayers) -> Self {
+        Self {
+            positions: (0..5u8)
+                .flat_map(|index| {
+                    let layer = crate::sim::world::display_layers::DisplayLayer::from_index(index)
+                        .expect("native Display layer index");
+                    display
+                        .members(layer)
+                        .iter()
+                        .enumerate()
+                        .map(move |(rank, &id)| (id, (TacticalLayer(index), rank as u64)))
+                })
+                .collect(),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn new(ids: &[DrawId]) -> Self {
         Self {
             positions: ids
                 .iter()
                 .enumerate()
-                .map(|(rank, &id)| (id, rank as u64))
+                .map(|(rank, &id)| (id, (TacticalLayer(2), rank as u64)))
                 .collect(),
         }
     }
@@ -119,10 +141,11 @@ impl NativeGroundOrder {
             SpriteEncoding::Terrain => BlitPolicy::z_none(encoding),
             _ => BlitPolicy::z_read(encoding),
         };
+        let &(layer, display_order) = self.positions.get(&id)?;
         Some(ObjectDraw {
             id,
-            layer: TacticalLayer(2),
-            display_order: *self.positions.get(&id)?,
+            layer,
+            display_order,
             policy,
         })
     }
@@ -172,12 +195,10 @@ pub(crate) fn lower_cell_instances_with_policy(
     (ordered, render_z)
 }
 
-/// Restore the retained Ground vector order after the class-specific builders.
+/// Restore the retained Display vector order after the class-specific builders.
 /// Native Tactical6D8F39 reads members in order; neither sprite depth nor a new
 /// GetYSort query participates. Building pieces remain contiguous in their slot.
-pub(crate) fn lower_ground_object_instances(
-    entries: Vec<PlannedGroundObjectInstance>,
-) -> GroundObjectPass {
+pub(crate) fn lower_object_instances(entries: Vec<PlannedObjectInstance>) -> [ObjectLayerPass; 5] {
     let mut ordinary = BTreeMap::new();
     let mut buildings = BTreeMap::new();
     let mut inputs = Vec::with_capacity(entries.len());
@@ -195,7 +216,7 @@ pub(crate) fn lower_ground_object_instances(
                         resolved
                             .insert(
                                 piece_id,
-                                GroundPieceInstance {
+                                ObjectPieceInstance {
                                     target: piece.target,
                                     render_z: piece.policy.render_z,
                                     instance: piece.instance,
@@ -214,7 +235,7 @@ pub(crate) fn lower_ground_object_instances(
                 .collect();
             assert!(
                 buildings.insert(id, resolved).is_none(),
-                "each Ground parent must be emitted once"
+                "each Display parent must be emitted once"
             );
             inputs.push(TacticalDrawInput::Building(BuildingOwnedPlan {
                 parent: entry.parent,
@@ -223,27 +244,25 @@ pub(crate) fn lower_ground_object_instances(
         } else {
             assert!(
                 ordinary.insert(id, entry.pieces).is_none(),
-                "each Ground parent must be emitted once"
+                "each Display parent must be emitted once"
             );
             inputs.push(TacticalDrawInput::Object(entry.parent));
         }
     }
 
     let plan = TacticalDrawPlan::build(inputs);
-    let mut lowered = GroundObjectPass::default();
+    let mut layers: [ObjectLayerPass; 5] = std::array::from_fn(|_| ObjectLayerPass::default());
     for layer in plan.object_layers {
-        if layer.layer != TacticalLayer(2) {
-            continue;
-        }
+        let lowered = &mut layers[usize::from(layer.layer.0)];
         for entry in layer.entries {
             let owner = entry.object().id;
             match entry {
                 crate::render::tactical_draw_plan::LayerEntry::Object(_) => {
                     for piece in ordinary
                         .remove(&owner)
-                        .expect("planned Ground object must retain its sprites")
+                        .expect("planned Display object must retain its sprites")
                     {
-                        push_ground_piece(&mut lowered, owner, piece);
+                        push_object_piece(lowered, owner, piece);
                     }
                 }
                 crate::render::tactical_draw_plan::LayerEntry::Building(building) => {
@@ -254,16 +273,24 @@ pub(crate) fn lower_ground_object_instances(
                         let piece = pieces
                             .remove(&planned.id)
                             .expect("planned building piece must retain its sprite");
-                        push_ground_piece(&mut lowered, owner, piece);
+                        push_object_piece(lowered, owner, piece);
                     }
                 }
             }
         }
     }
-    lowered
+    layers
 }
 
-fn push_ground_piece(pass: &mut GroundObjectPass, owner: DrawId, piece: GroundPieceInstance) {
+#[cfg(test)]
+pub(crate) fn lower_ground_object_instances(
+    entries: Vec<PlannedObjectInstance>,
+) -> ObjectLayerPass {
+    let mut layers = lower_object_instances(entries);
+    std::mem::take(&mut layers[2])
+}
+
+fn push_object_piece(pass: &mut ObjectLayerPass, owner: DrawId, piece: ObjectPieceInstance) {
     #[cfg(not(test))]
     let _ = owner;
     let start = pass.instances.len() as u32;
@@ -274,7 +301,7 @@ fn push_ground_piece(pass: &mut GroundObjectPass, owner: DrawId, piece: GroundPi
     }) {
         run.count += 1;
     } else {
-        pass.runs.push(GroundDrawRun {
+        pass.runs.push(ObjectDrawRun {
             target: piece.target,
             render_z: piece.render_z,
             start,
@@ -301,10 +328,118 @@ mod tests {
     use crate::render::tactical_draw_plan::{BlitPolicy, RenderZPolicy, SpriteEncoding};
 
     #[test]
+    fn native_non_entity_lifetimes_reach_their_layers_without_family_or_page_sorting() {
+        use crate::sim::world::display_layers::{DisplayLayer, DisplayLayers};
+        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../../tools/spatial_oracle/display_non_entity.json"
+        ))
+        .unwrap();
+        for row in rows {
+            let actors = row["input"]["actors"].as_array().unwrap();
+            let mut keys: Vec<_> = row["queries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|query| query["key"].as_i64().map(|key| key as i32))
+                .collect();
+            let mut display = DisplayLayers::default();
+            for (step, expected) in row["input"]["steps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .zip(row["after_steps"].as_array().unwrap())
+            {
+                let actor = step["actor"].as_u64().map(|id| id as usize);
+                match step["op"].as_str().unwrap() {
+                    "submit" => {
+                        let actor = actor.unwrap();
+                        let layer = DisplayLayer::from_index(
+                            row["queries"][actor]["layer"].as_u64().unwrap() as u8,
+                        );
+                        display.submit(actor as u64 + 1, layer, &|id| {
+                            keys[id as usize - 1].expect("native only queries Ground keys")
+                        });
+                    }
+                    "remove" => {
+                        display.remove(actor.unwrap() as u64 + 1);
+                    }
+                    "coordinates" => {
+                        keys[actor.unwrap()] = Some(
+                            (step["xyz"][0].as_i64().unwrap() as i32)
+                                .wrapping_add(step["xyz"][1].as_i64().unwrap() as i32),
+                        );
+                    }
+                    "sort" => {
+                        display.sort_ground_pass(&|id| {
+                            keys[id as usize - 1].expect("native only queries Ground keys")
+                        });
+                    }
+                    other => panic!("unexpected native step {other}"),
+                }
+                // Load must preserve the retained order even when it is only
+                // partly sorted. Removed actors remain in storage below.
+                let display: DisplayLayers =
+                    bincode::deserialize(&bincode::serialize(&display).unwrap()).unwrap();
+                let order = NativeDisplayOrder::from_display(&display);
+                let entries = actors
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(index, actor)| {
+                        let id = index as u64 + 1;
+                        let parent = order.object_draw(id, SpriteEncoding::Plain)?;
+                        let pieces = if actor["kind"] == "bullet" {
+                            [
+                                crate::render::terrain_draw::TerrainPiece::Shadow,
+                                crate::render::terrain_draw::TerrainPiece::Body,
+                            ]
+                            .into_iter()
+                            .map(|piece| {
+                                marked_piece(
+                                    ObjectTexture::ProjectileShp(index % 2, piece),
+                                    id as u32,
+                                )
+                            })
+                            .collect()
+                        } else {
+                            vec![marked_piece(ObjectTexture::ShpPage(index % 2), id as u32)]
+                        };
+                        Some(PlannedObjectInstance::object(parent, pieces))
+                    })
+                    .collect();
+                let lowered = lower_object_instances(entries);
+                for (index, pass) in lowered.iter().enumerate() {
+                    let owners: Vec<_> = expected[index]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .flat_map(|value| {
+                            let actor = value.as_u64().unwrap() as usize;
+                            std::iter::repeat_n(
+                                actor as u64 + 1,
+                                if actors[actor]["kind"] == "bullet" {
+                                    2
+                                } else {
+                                    1
+                                },
+                            )
+                        })
+                        .collect();
+                    assert_eq!(
+                        pass.owners, owners,
+                        "{}: {step}, layer{index}",
+                        row["input"]["name"]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn native_ground_history_reaches_entity_picking_and_atlas_lowering() {
         use crate::app::presentation::instances::tactical_entity_encounter_order;
         use crate::app::presentation::render::draw_plan_lowering::{
-            GroundPieceInstance, GroundTexture, NativeGroundOrder, PlannedGroundObjectInstance,
+            NativeDisplayOrder, ObjectPieceInstance, ObjectTexture, PlannedObjectInstance,
             lower_ground_object_instances,
         };
         use crate::render::tactical_draw_plan::{RenderZPolicy, SpriteEncoding};
@@ -383,14 +518,14 @@ mod tests {
                 expected,
                 "pick: {step}"
             );
-            let order = NativeGroundOrder::new(sim.display_layers().members(DisplayLayer::GROUND));
+            let order = NativeDisplayOrder::new(sim.display_layers().members(DisplayLayer::GROUND));
             let entries = (1..=4)
                 .rev()
                 .filter_map(|id| {
-                    Some(PlannedGroundObjectInstance::object(
+                    Some(PlannedObjectInstance::object(
                         order.object_draw(id, SpriteEncoding::Plain)?,
-                        vec![GroundPieceInstance {
-                            target: GroundTexture::ShpPage(id as usize % 2),
+                        vec![ObjectPieceInstance {
+                            target: ObjectTexture::ShpPage(id as usize % 2),
                             render_z: RenderZPolicy::ReadOnly,
                             instance: Default::default(),
                         }],
@@ -460,8 +595,8 @@ mod tests {
         assert_eq!((lowered[1].z_adjust, lowered[1].z_gradient), (-62.0, 2));
     }
 
-    fn marked_piece(target: GroundTexture, marker: u32) -> GroundPieceInstance {
-        GroundPieceInstance {
+    fn marked_piece(target: ObjectTexture, marker: u32) -> ObjectPieceInstance {
+        ObjectPieceInstance {
             target,
             render_z: RenderZPolicy::ReadOnly,
             instance: SpriteInstance {
@@ -474,7 +609,7 @@ mod tests {
         }
     }
 
-    fn plain_parent(order: &NativeGroundOrder, id: DrawId) -> ObjectDraw {
+    fn plain_parent(order: &NativeDisplayOrder, id: DrawId) -> ObjectDraw {
         order
             .object_draw(id, SpriteEncoding::Plain)
             .expect("registered parent")
@@ -482,19 +617,19 @@ mod tests {
 
     #[test]
     fn gsi_13_03_far_tree_unit_near_tree_share_one_integer_ground_order() {
-        let order = NativeGroundOrder::new(&[10, 20, 30]);
+        let order = NativeDisplayOrder::new(&[10, 20, 30]);
         let pass = lower_ground_object_instances(vec![
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 order.object_draw(30, SpriteEncoding::Terrain).unwrap(),
-                vec![marked_piece(GroundTexture::OverlayAtlas, 30)],
+                vec![marked_piece(ObjectTexture::OverlayAtlas, 30)],
             ),
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 plain_parent(&order, 20),
-                vec![marked_piece(GroundTexture::UnitAtlasPage(3), 20)],
+                vec![marked_piece(ObjectTexture::UnitAtlasPage(3), 20)],
             ),
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 order.object_draw(10, SpriteEncoding::Terrain).unwrap(),
-                vec![marked_piece(GroundTexture::OverlayAtlas, 10)],
+                vec![marked_piece(ObjectTexture::OverlayAtlas, 10)],
             ),
         ]);
 
@@ -503,26 +638,26 @@ mod tests {
 
     #[test]
     fn gsi_13_03_equal_tree_unit_building_use_registration_not_atlas() {
-        let order = NativeGroundOrder::new(&[20, 30, 10]);
-        let building = PlannedGroundObjectInstance::building(
+        let order = NativeDisplayOrder::new(&[20, 30, 10]);
+        let building = PlannedObjectInstance::building(
             order.object_draw(30, SpriteEncoding::Plain).unwrap(),
             vec![PlannedBuildingPieceInstance {
                 kind: BuildingPieceKind::Body,
                 z_bias: 0,
                 policy: BlitPolicy::opaque(SpriteEncoding::Plain),
-                target: GroundTexture::ShpPage(0),
-                instance: marked_piece(GroundTexture::ShpPage(0), 30).instance,
+                target: ObjectTexture::ShpPage(0),
+                instance: marked_piece(ObjectTexture::ShpPage(0), 30).instance,
             }],
         );
         let pass = lower_ground_object_instances(vec![
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 order.object_draw(10, SpriteEncoding::Terrain).unwrap(),
-                vec![marked_piece(GroundTexture::OverlayAtlas, 10)],
+                vec![marked_piece(ObjectTexture::OverlayAtlas, 10)],
             ),
             building,
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 plain_parent(&order, 20),
-                vec![marked_piece(GroundTexture::UnitAtlasPage(9), 20)],
+                vec![marked_piece(ObjectTexture::UnitAtlasPage(9), 20)],
             ),
         ]);
 
@@ -530,9 +665,9 @@ mod tests {
         assert_eq!(
             pass.runs.iter().map(|run| run.target).collect::<Vec<_>>(),
             [
-                GroundTexture::UnitAtlasPage(9),
-                GroundTexture::ShpPage(0),
-                GroundTexture::OverlayAtlas,
+                ObjectTexture::UnitAtlasPage(9),
+                ObjectTexture::ShpPage(0),
+                ObjectTexture::OverlayAtlas,
             ]
         );
     }
@@ -540,10 +675,10 @@ mod tests {
     #[test]
     fn gsi_13_03_terrain_leaves_fixed_overlay_and_enters_ground_once() {
         let fixed = lower_cell_instances(vec![cell(7, false)]);
-        let order = NativeGroundOrder::new(&[8]);
-        let ground = lower_ground_object_instances(vec![PlannedGroundObjectInstance::object(
+        let order = NativeDisplayOrder::new(&[8]);
+        let ground = lower_ground_object_instances(vec![PlannedObjectInstance::object(
             order.object_draw(8, SpriteEncoding::Terrain).unwrap(),
-            vec![marked_piece(GroundTexture::OverlayAtlas, 8)],
+            vec![marked_piece(ObjectTexture::OverlayAtlas, 8)],
         )]);
 
         assert_eq!(fixed.len(), 1);
@@ -553,7 +688,7 @@ mod tests {
 
     #[test]
     fn gsi_13_03_building_pieces_remain_contiguous_in_parent_slot() {
-        let order = NativeGroundOrder::new(&[1, 2, 3]);
+        let order = NativeDisplayOrder::new(&[1, 2, 3]);
         let building_piece = |kind, target, marker| PlannedBuildingPieceInstance {
             kind,
             z_bias: 0,
@@ -562,25 +697,25 @@ mod tests {
             instance: marked_piece(target, marker).instance,
         };
         let pass = lower_ground_object_instances(vec![
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 plain_parent(&order, 3),
-                vec![marked_piece(GroundTexture::UnitAtlasPage(0), 3)],
+                vec![marked_piece(ObjectTexture::UnitAtlasPage(0), 3)],
             ),
-            PlannedGroundObjectInstance::building(
+            PlannedObjectInstance::building(
                 plain_parent(&order, 2),
                 vec![
                     building_piece(
                         BuildingPieceKind::PoweredOrActiveOverlay,
-                        GroundTexture::UnitAtlasPage(2),
+                        ObjectTexture::UnitAtlasPage(2),
                         23,
                     ),
-                    building_piece(BuildingPieceKind::Body, GroundTexture::ShpPage(1), 22),
-                    building_piece(BuildingPieceKind::Bib, GroundTexture::ShpPage(0), 21),
+                    building_piece(BuildingPieceKind::Body, ObjectTexture::ShpPage(1), 22),
+                    building_piece(BuildingPieceKind::Bib, ObjectTexture::ShpPage(0), 21),
                 ],
             ),
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 plain_parent(&order, 1),
-                vec![marked_piece(GroundTexture::OverlayAtlas, 1)],
+                vec![marked_piece(ObjectTexture::OverlayAtlas, 1)],
             ),
         ]);
 
