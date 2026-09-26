@@ -9,6 +9,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{CellRect, resolve_reservation_real_cell, scan_cell_rect};
 use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS;
@@ -3148,6 +3149,80 @@ impl Simulation {
         )
     }
 
+    /// Whether the pointer-expiry forwards an entity listener receives can
+    /// change anything for `expired_id`: the listener is the expiring object,
+    /// a field [`Self::notify_entity_pointer_expired`] compares names it, or
+    /// it holds an object a forward reaches (SpawnManager, CaptureManager,
+    /// TemporalClass, its parasite). A superset of each forward's own test, so
+    /// passing over a listener without any of these matches visiting it. A
+    /// field or forward added to the broadcast must be added here too.
+    fn entity_expiry_listener_acts(
+        listener: &GameEntity,
+        listener_id: u64,
+        expired_id: u64,
+    ) -> bool {
+        let names = |target: Option<TargetKind>| target == Some(TargetKind::Entity(expired_id));
+        let nav_names = |target: Option<&NavTargetRef>| {
+            target.is_some_and(|target| Self::nav_ref_targets_expired(target, expired_id))
+        };
+        listener_id == expired_id
+            || names(listener.attack_target.as_ref().map(|attack| attack.target))
+            || names(listener.suspended_attack_target)
+            || names(listener.archive_target())
+            || listener.has_live_contact_with(expired_id)
+            || match &listener.passenger_role {
+                PassengerRole::Transport { cargo } => cargo.passengers.contains(&expired_id),
+                PassengerRole::Boarding {
+                    target_transport_id,
+                    ..
+                } => *target_transport_id == expired_id,
+                PassengerRole::Inside { transport_id, .. } => *transport_id == expired_id,
+                PassengerRole::None => false,
+            }
+            || nav_names(listener.navigation.suspended_nav_com.as_ref())
+            || nav_names(listener.navigation.nav_com.as_ref())
+            || listener
+                .navigation
+                .nav_queue
+                .iter()
+                .any(|target| Self::nav_ref_targets_expired(target, expired_id))
+            || listener.capture_target == Some(expired_id)
+            || listener
+                .c4_plant
+                .as_ref()
+                .is_some_and(|plant| plant.target_building_id == expired_id)
+            || listener
+                .dock_state
+                .as_ref()
+                .is_some_and(|dock| dock.dock_building_id == expired_id)
+            || listener
+                .aircraft_ammo
+                .as_ref()
+                .is_some_and(|ammo| ammo.target_airfield == Some(expired_id))
+            || listener
+                .miner
+                .as_ref()
+                .is_some_and(|miner| miner.reserved_refinery == Some(expired_id))
+            || listener
+                .pending_c4_detonation
+                .as_ref()
+                .is_some_and(|pending| pending.source_entity_id == Some(expired_id))
+            || listener.homing_state.is_some()
+            || listener.spawn_manager.is_some()
+            || listener.capture_manager.is_some()
+            || listener.temporal.has_link()
+            || listener.parasite_eating_me.is_some()
+    }
+
+    /// Each RNG stream's cursor, which every draw moves.
+    #[cfg(test)]
+    fn rng_cursors(&self) -> [(u8, i32, i32); 3] {
+        [&self.scenario_rng, &self.main_rng, &self.mapgen_rng].map(|rng| {
+            let view = rng.logical_view();
+            (view.disabled, view.index_a, view.index_b)
+        })
+    }
+
     /// Represented entries in global ObjectClass construction order, each
     /// with the store it lives in. Stable IDs are monotonic and never reused,
     /// so merging the separate Rust stores by ID reproduces the native
@@ -3349,6 +3424,9 @@ impl Simulation {
         }
     }
 
+    /// The broadcast passes over listeners that
+    /// [`Self::entity_expiry_listener_acts`] rejects, so a field compared here
+    /// must be tested there too.
     #[allow(clippy::too_many_arguments)]
     fn notify_entity_pointer_expired(
         &mut self,
@@ -3754,9 +3832,24 @@ impl Simulation {
 
         for (listener_id, kind) in self.removal_listener_order() {
             // A callback may have removed a later listener; an ID never
-            // moves to another store.
+            // moves to another store. An entity listener is read once, for
+            // its presence and for whether it holds anything this expiry
+            // changes.
+            let mut entity_acts = false;
             let present = match kind {
-                ObjectKind::Entity => self.substrate.entities.contains(listener_id),
+                ObjectKind::Entity => {
+                    self.substrate
+                        .entities
+                        .get(listener_id)
+                        .is_some_and(|listener| {
+                            entity_acts = Self::entity_expiry_listener_acts(
+                                listener,
+                                listener_id,
+                                expired_id,
+                            );
+                            true
+                        })
+                }
                 ObjectKind::Anim => self.substrate.anims.contains_key(listener_id),
                 ObjectKind::ParticleSystem => {
                     self.substrate.particle_systems.contains_key(listener_id)
@@ -3786,6 +3879,16 @@ impl Simulation {
             }
 
             if kind == ObjectKind::Entity {
+                // Most entity listeners hold nothing this expiry changes, and
+                // the game passes over them. Test builds visit them as well,
+                // and check below that their forwards handed out no entity and
+                // drew no random number.
+                if !entity_acts && !cfg!(test) {
+                    continue;
+                }
+                #[cfg(test)]
+                let passed_over = (!entity_acts)
+                    .then(|| (self.substrate.entities.hand_outs(), self.rng_cursors()));
                 self.notify_entity_pointer_expired(
                     listener_id,
                     expired_id,
@@ -3829,6 +3932,15 @@ impl Simulation {
                 // FootClass::PointerExpired 0x004D998C..0x004D99CD follows the
                 // Techno body: the parasite link and its forward.
                 self.foot_parasite_pointer_expired(listener_id, expired_id, context.rules());
+                #[cfg(test)]
+                if let Some(before) = passed_over {
+                    assert_eq!(
+                        before,
+                        (self.substrate.entities.hand_outs(), self.rng_cursors()),
+                        "the expiry of {expired_id} changed listener {listener_id}, which \
+                         entity_expiry_listener_acts passes over"
+                    );
+                }
             } else if kind == ObjectKind::Anim {
                 self.expire_anim_owner_reference(listener_id, expired_id);
             } else if kind == ObjectKind::ParticleSystem {

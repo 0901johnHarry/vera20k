@@ -137,21 +137,39 @@ impl TouchReader {
 }
 
 #[derive(Debug, Clone)]
-struct TouchLogs([TouchLog; TouchReader::COUNT]);
+struct TouchLogs {
+    logs: [TouchLog; TouchReader::COUNT],
+    /// Every hand-out so far, for test checks that a pass handed nothing out
+    /// ([`EntityStore::hand_outs`]).
+    #[cfg(test)]
+    hand_outs: u64,
+}
 
 impl TouchLogs {
     fn everything() -> Self {
-        Self(std::array::from_fn(|_| TouchLog::everything()))
+        Self {
+            logs: std::array::from_fn(|_| TouchLog::everything()),
+            #[cfg(test)]
+            hand_outs: 0,
+        }
     }
 
     fn note(&mut self, id: u64, stored: usize) {
-        for log in &mut self.0 {
+        #[cfg(test)]
+        {
+            self.hand_outs += 1;
+        }
+        for log in &mut self.logs {
             log.note(id, stored);
         }
     }
 
     fn note_all(&mut self) {
-        for log in &mut self.0 {
+        #[cfg(test)]
+        {
+            self.hand_outs += 1;
+        }
+        for log in &mut self.logs {
             log.note_all();
         }
     }
@@ -174,7 +192,13 @@ impl Clone for EntityStore {
 impl EntityStore {
     /// Take `reader`'s touch log, leaving it empty.
     pub(crate) fn take_touched(&mut self, reader: TouchReader) -> Touched {
-        self.touched.0[reader as usize].take()
+        self.touched.logs[reader as usize].take()
+    }
+
+    /// How many mutable hand-outs the store has made (test builds only).
+    #[cfg(test)]
+    pub(crate) fn hand_outs(&self) -> u64 {
+        self.touched.hand_outs
     }
 
     /// Create an empty store.
