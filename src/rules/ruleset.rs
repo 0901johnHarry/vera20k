@@ -3140,6 +3140,17 @@ impl RuleSet {
         rules.powerups = processed.powerups().clone();
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
+        rules.general.gravity = processed.gravity();
+        for (name, speed, projectile) in processed.weapon_speeds_and_projectiles() {
+            if let Some(weapon) = rules
+                .weapons
+                .values_mut()
+                .find(|weapon| weapon.id.eq_ignore_ascii_case(name))
+            {
+                weapon.speed = speed;
+                weapon.projectile = projectile.map(str::to_owned);
+            }
+        }
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
@@ -3949,6 +3960,14 @@ impl RuleSet {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         b"rules-simulation-config-v8".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
+        // Process-resident Gravity and Weapon postpass results can differ for
+        // identical current source stacks because earlier passes retained them.
+        self.general.gravity.hash(&mut hasher);
+        self.weapons
+            .iter()
+            .map(|(id, weapon)| (id.to_ascii_uppercase(), (weapon.speed, &weapon.projectile)))
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
         // Selection order and duplicate references affect the scenario RNG's
         // consumers, including the truncated retail pool's unread AnimType D.
         self.general.metallic_debris.hash(&mut hasher);

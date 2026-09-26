@@ -145,7 +145,6 @@ impl IniSection {
     /// P4/P18; corpus harness scans stock for present-empty Speed/Range.
     ///
     /// Retail provenance: INI speed conversion — `CCINIClass__ReadSpeed` @ `0x00474810`.
-    #[cfg(test)]
     pub fn read_speed(&self, key: &str, default: i32) -> i32 {
         self.fold_rules_values(key, default, |current, raw| {
             let parsed = parse_read_int(-1, raw);

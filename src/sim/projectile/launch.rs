@@ -205,8 +205,6 @@ pub(crate) struct FireAtLaunchResult {
     pub speed: i32,
 }
 
-/// `[0x007E5190]`, the launch-speed helper's 1.2.
-const LAUNCH_SPEED_FACTOR: NativeF64Bits = NativeF64Bits::from_bits(0x3ff3_3333_3333_3333);
 /// `[0x007F4E80]`, the lead's 0.9.
 const LEAD_SPEED_FACTOR: NativeF64Bits = NativeF64Bits::from_bits(0x3fec_cccc_cccc_cccd);
 
@@ -224,10 +222,9 @@ pub(crate) struct LaunchSpeedProjectile {
 /// weapon's `Speed=` and launches at `ftol(Sqrt_Approx(distance * gravity *
 /// 1.2))` (`0x0048AB90`), where gravity is `Gravity=` (`Rules+0x16B8`) or, for
 /// a `Floater=` projectile, half of it (`0x0048ACF0`); anything else (a homing
-/// projectile, or no projectile) launches at `Speed=` (`+0xA8`). Every cannon
-/// shell in the game takes the first arm: `[Cannon]` is `Arcing=true`, and at
-/// retail `Gravity=6` its `Speed=40` has no ballistic solution beyond about one
-/// cell, where the derived speed (85 at four cells) always has one.
+/// projectile, or no projectile) launches at the retained, already converted
+/// speed (`+0xA8`). Retail Cannon takes the first arm, deriving speed from the
+/// current firing distance instead of the Range used by its Rules postpass.
 ///
 /// Native execution: `tools/projectile_oracle/fireat_speed.py` (`speed` rows).
 pub(crate) fn weapon_launch_speed(
@@ -239,20 +236,7 @@ pub(crate) fn weapon_launch_speed(
     let Some(projectile) = projectile.filter(|projectile| projectile.rot == 0) else {
         return weapon_speed;
     };
-    // 0x0077308D..0x007730A3: FILD Gravity (times 0.5 for a Floater), then
-    // FSTP qword as the helper's argument.
-    let gravity = X::load_i32(gravity);
-    let gravity = round(if projectile.floater {
-        X::mul(gravity, d(NativeF64Bits::HALF))
-    } else {
-        gravity
-    });
-    // 0x0048AB98..0x0048ABAE: FILD distance; FMUL gravity; FMUL 1.2; FSTP
-    // qword; Sqrt_Approx; ftol.
-    int(sqrt(X::mul(
-        X::mul(X::load_i32(distance), gravity),
-        d(LAUNCH_SPEED_FACTOR),
-    )))
+    crate::util::native_ballistics::ballistic_launch_speed(distance, gravity, projectile.floater)
 }
 
 /// `TechnoClass::FireAt @ 0x006FE4F6..0x006FE537`: the distance FireAt hands

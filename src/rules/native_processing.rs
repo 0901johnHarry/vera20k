@@ -314,6 +314,38 @@ impl ProcessedRulesLayers {
             .map(|member| (member.native_stored_id.as_str(), &member.projectile_art))
     }
 
+    /// Retained +A8 speed and +A0 projectile after the last Weapon sweep.
+    pub(crate) fn weapon_speeds_and_projectiles(
+        &self,
+    ) -> impl Iterator<Item = (&str, i32, Option<&str>)> {
+        let families = &self
+            .native_type_construction_trace
+            .registry_state()
+            .families;
+        families
+            .get(&RulesTypeFamily::Weapon)
+            .into_iter()
+            .flatten()
+            .map(move |member| {
+                let projectile = member.weapon.projectile.map(|index| {
+                    families[&RulesTypeFamily::Projectile][index]
+                        .native_stored_id
+                        .as_str()
+                });
+                (
+                    member.native_stored_id.as_str(),
+                    member.weapon.speed,
+                    projectile,
+                )
+            })
+    }
+
+    pub(crate) fn gravity(&self) -> i32 {
+        self.native_type_construction_trace
+            .registry_state()
+            .rules_gravity
+    }
+
     /// Consume only the typed-reader compatibility projection and deliberately
     /// discard the native constructor/registry receipt.
     ///
@@ -469,10 +501,23 @@ impl NativeTypeConstructionTrace {
 /// been read so far. The receipt is deliberately move-only: preview, Start, and
 /// fresh Full_Init must hand off one authority instead of recounting a merged
 /// INI. Tiberium slots are included even though their constructors spend no ID.
-#[derive(Debug, Default)]
+/// RulesClass Gravity shares this process lifetime, but survives Type resets.
+#[derive(Debug)]
 pub(crate) struct NativeRulesRegistryState {
     families: HashMap<RulesTypeFamily, Vec<ProcessedType>>,
     tiberiums: Vec<ProcessedType>,
+    rules_gravity: i32,
+}
+
+impl Default for NativeRulesRegistryState {
+    fn default() -> Self {
+        Self {
+            families: HashMap::new(),
+            tiberiums: Vec::new(),
+            // RulesClass665650 initializes +16B8 before any AudioVisual read.
+            rules_gravity: 3,
+        }
+    }
 }
 
 impl NativeRulesRegistryState {
@@ -500,12 +545,16 @@ impl NativeRulesRegistryState {
     }
 
     /// Consume the pre-reset registry owner at Full_Init's destructive Rules
-    /// reset and return a genuinely empty post-reset owner.
+    /// reset and return an owner with empty Type registries. RulesClass itself
+    /// survives 6686C0, so its Gravity is retained for the first postpass.
     ///
     /// Numeric-ID history is intentionally not represented here and therefore
     /// cannot be rewound by this operation.
     pub(crate) fn destructive_reset(self) -> Self {
-        Self::default()
+        Self {
+            rules_gravity: self.rules_gravity,
+            ..Self::default()
+        }
     }
 }
 
@@ -605,6 +654,17 @@ struct ProcessedType {
     anim_art_read: bool,
     /// One owner for Bullet's two-phase Image/ART reads across rules passes.
     projectile_art: ProjectileArtState,
+    weapon: WeaponReadState,
+}
+
+/// Fields needed by Weapon7729F0, retained on the same live Weapon object.
+/// The projectile handle is an allocation index, not a relookup of a truncated
+/// name: repeated names longer than 24 bytes can allocate distinct native types.
+#[derive(Debug, Clone, Default)]
+struct WeaponReadState {
+    speed: i32,
+    range_leptons: i32,
+    projectile: Option<usize>,
 }
 
 impl ProcessedType {
@@ -614,11 +674,12 @@ impl ProcessedType {
             projectile_art: ProjectileArtState::new(&native_stored_id),
             native_stored_id,
             anim_art_read: false,
+            weapon: WeaponReadState::default(),
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct RulesPassProcessor {
     ordinary: Option<IniFile>,
     crate_rules: CrateRulesAccumulator,
@@ -629,6 +690,24 @@ struct RulesPassProcessor {
     tiberiums: Vec<ProcessedType>,
     colors: Vec<(String, String)>,
     prerequisite_groups: HashMap<&'static str, Vec<String>>,
+    rules_gravity: i32,
+}
+
+impl Default for RulesPassProcessor {
+    fn default() -> Self {
+        Self {
+            ordinary: None,
+            crate_rules: CrateRulesAccumulator::default(),
+            powerups: PowerupsAccumulator::default(),
+            general_anim_lists: GeneralAnimLists::default(),
+            families: HashMap::new(),
+            native_type_construction_events: Vec::new(),
+            tiberiums: Vec::new(),
+            colors: Vec::new(),
+            prerequisite_groups: HashMap::new(),
+            rules_gravity: NativeRulesRegistryState::default().rules_gravity,
+        }
+    }
 }
 
 impl RulesPassProcessor {
@@ -636,6 +715,7 @@ impl RulesPassProcessor {
         Self {
             families: registry_state.families,
             tiberiums: registry_state.tiberiums,
+            rules_gravity: registry_state.rules_gravity,
             ..Self::default()
         }
     }
@@ -1024,7 +1104,10 @@ impl RulesPassProcessor {
         self.process_weapon_family(pass);
         self.process_bullet_family(pass, fixed_art);
         self.process_warhead_family(pass);
-        // Weapon post and Building post add no Type references.
+        // 679B8C follows all three readers, even for absent Type sections.
+        // AudioVisual6691E0 runs later in Process, so this uses prior Gravity.
+        self.postprocess_weapon_speeds();
+        // Building post adds no Type references.
         self.process_plain_family(RulesTypeFamily::Terrain, pass);
         self.process_plain_family(RulesTypeFamily::Smudge, pass);
         self.process_plain_family(RulesTypeFamily::Overlay, pass);
@@ -1298,9 +1381,37 @@ impl RulesPassProcessor {
                     0x14,
                 );
                 self.allocate_scalar_from(&raw, "Warhead", RulesTypeFamily::Warhead, 0x80);
-                self.allocate_scalar_from(&raw, "Projectile", RulesTypeFamily::Projectile, 0x80);
+                let incoming = raw.read_string("Projectile", "", 0x80);
+                let projectile = (!incoming.is_empty())
+                    .then(|| self.find_or_allocate(RulesTypeFamily::Projectile, &incoming));
+                let state = &mut self.family_mut(RulesTypeFamily::Weapon)[index].weapon;
+                if let Some(projectile) = projectile {
+                    state.projectile = projectile;
+                }
+                state.speed = raw.read_speed("Speed", state.speed);
+                state.range_leptons = raw.read_range("Range", state.range_leptons);
             }
             index += 1;
+        }
+    }
+
+    /// WeaponType7729F0 writes +A8 only for a nonnull projectile with ROT=0.
+    /// Original chronology and arithmetic: rules_oracle/weapon_speed_order.
+    fn postprocess_weapon_speeds(&mut self) {
+        for index in 0..self.family_len(RulesTypeFamily::Weapon) {
+            let state = &self.families[&RulesTypeFamily::Weapon][index].weapon;
+            let Some(projectile) = state.projectile else {
+                continue;
+            };
+            let bullet = &self.families[&RulesTypeFamily::Projectile][projectile].body;
+            if bullet.read_int("ROT", 0) == 0 {
+                let speed = crate::util::native_ballistics::ballistic_launch_speed(
+                    state.range_leptons,
+                    self.rules_gravity,
+                    bullet.read_bool("Floater", false),
+                );
+                self.family_mut(RulesTypeFamily::Weapon)[index].weapon.speed = speed;
+            }
         }
     }
 
@@ -1476,6 +1587,9 @@ impl RulesPassProcessor {
         let Some(section) = pass.section("AudioVisual") else {
             return;
         };
+        // Full AudioVisual6691E0's 66B3C4 read uses the retained signed dword
+        // default. Cold startup52D132 calls the same reader before Process.
+        self.rules_gravity = section.read_int("Gravity", self.rules_gravity);
         for key in ["DropPodPuff", "VeinAttack", "Dig", "AtmosphereEntry"] {
             self.allocate_scalar_from(section, key, RulesTypeFamily::Animation, 0x80);
         }
@@ -1597,7 +1711,19 @@ impl RulesPassProcessor {
         for family in [RulesTypeFamily::Weapon, RulesTypeFamily::Projectile] {
             if let Some(members) = self.families.get(&family) {
                 for member in members {
-                    ini.replace_first_section(member.body.clone());
+                    let mut body = member.body.clone();
+                    if family == RulesTypeFamily::Weapon {
+                        if let Some(index) = member.weapon.projectile {
+                            // Compatibility graph discovery must follow the
+                            // retained pointer even after an empty key read.
+                            body.set(
+                                "Projectile",
+                                &self.families[&RulesTypeFamily::Projectile][index]
+                                    .native_stored_id,
+                            );
+                        }
+                    }
+                    ini.replace_first_section(body);
                 }
             }
         }
@@ -1613,6 +1739,7 @@ impl RulesPassProcessor {
                 registry_state: NativeRulesRegistryState {
                     families: self.families,
                     tiberiums: self.tiberiums,
+                    rules_gravity: self.rules_gravity,
                 },
             },
             self.crate_rules.finish(),
@@ -1640,3 +1767,7 @@ mod tests;
 #[cfg(test)]
 #[path = "projectile_art_tests.rs"]
 mod projectile_art_tests;
+
+#[cfg(test)]
+#[path = "weapon_speed_tests.rs"]
+mod weapon_speed_tests;

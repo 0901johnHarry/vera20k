@@ -40,13 +40,15 @@ are false; inverse-Rotates is true, and all three animation bytes are zero.
 The constructor-backed original frame getter therefore returns 0 and GetLayer
 returns Air 3. Elite `105mmE` is not exercised by this witness.
 
-VERA currently retains the authored weapon Speed value (40), whereas native
+At this render chain's merge, VERA retained the authored weapon Speed value (40), whereas native
 ReadSpeed stores 102 before the Weapon postpass7729F0. That pass runs after
 Weapon/Bullet/Warhead readers in ReadTypeData679A10 and recomputes ROT=0
 stored Speed from Range/Gravity. The selected `ROT=0` GetSpeed arm ignores this field and
 derives the compared launch speed from distance and gravity. Its joined test
 passes the unmodified production value into that arm; it does not convert the
-fixture to hide the broader reader/consumer residual listed below.
+fixture to hide the broader reader/consumer residual listed below. The subsequent
+[retained-speed prerequisite](../../tools/rules_oracle/weapon_speed.md) fixes the
+reader and per-pass owner; guided flight remains a separate unfinished chain.
 
 Original palette startup 52BE61..52BFCE loads and expands the physical palette
 files, executes full Convert 48E740 and blitter initialization 48EBF0, and binds
