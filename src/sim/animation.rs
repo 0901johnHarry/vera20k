@@ -352,7 +352,7 @@ fn tick_animations_impl(
     let keys: Vec<u64> = entities.keys_sorted();
 
     for &id in &keys {
-        let Some(entity) = entities.get_mut(id) else {
+        let Some(entity) = entities.get(id) else {
             continue;
         };
         if entity.dying && !tick_dying {
@@ -363,20 +363,27 @@ fn tick_animations_impl(
         if !entity.dying && entity.ai_frozen() {
             continue;
         }
-        let type_ref = entity.type_ref();
         // Its Doing's sequence, which its actions restart and whose stage
         // steps in its own turn (`sim::movement::infantry_action`); this
         // frame-end clock leaves it.
         if !entity.dying && crate::sim::movement::infantry_action::doing_owns_sequence(entity) {
             continue;
         }
-        let Some(anim) = entity.animation.as_mut() else {
+        if entity.animation.is_none() {
             // Dying entity with no animation → ready for despawn.
             if entity.dying {
                 dying_finished.push(id);
             }
             continue;
-        };
+        }
+        let entity = entities
+            .get_mut(id)
+            .expect("an animated entity was just read");
+        let type_ref = entity.type_ref();
+        let anim = entity
+            .animation
+            .as_mut()
+            .expect("an animated entity was just read");
 
         // Dying entities: only advance the death animation, skip all transitions.
         if entity.dying {
@@ -631,17 +638,23 @@ const HARVEST_OVERLAY_FRAMES: u16 = 15;
 /// Cycles through the 15-frame oregath.shp animation for harvesters that are
 /// actively gathering ore. When not visible, the overlay is skipped.
 pub fn tick_harvest_overlays(entities: &mut crate::sim::entity_store::EntityStore) {
-    let keys: Vec<u64> = entities.keys_sorted();
-    for &id in &keys {
-        let Some(entity) = entities.get_mut(id) else {
-            continue;
-        };
-        let Some(overlay) = entity.harvest_overlay.as_mut() else {
-            continue;
-        };
-        if !overlay.visible {
-            continue;
-        }
+    // Find the advancing overlays by reading: every mutable hand-out enters
+    // the store's touch logs, and most entities have none.
+    let advancing: Vec<u64> = entities
+        .values()
+        .filter(|entity| {
+            entity
+                .harvest_overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.visible)
+        })
+        .map(|entity| entity.stable_id())
+        .collect();
+    for id in advancing {
+        let overlay = entities
+            .get_mut(id)
+            .and_then(|entity| entity.harvest_overlay.as_mut())
+            .expect("an advancing overlay was just read");
         overlay.elapsed_frames = 0;
         overlay.frame = (overlay.frame + 1) % HARVEST_OVERLAY_FRAMES;
     }
@@ -652,17 +665,22 @@ pub fn tick_harvest_overlays(entities: &mut crate::sim::entity_store::EntityStor
 /// Cycles through HVA frames for voxel entities that have `playing == true`.
 /// Frame wraps around to 0 when reaching frame_count (looping animation).
 pub fn tick_voxel_animations(entities: &mut crate::sim::entity_store::EntityStore) {
-    let keys: Vec<u64> = entities.keys_sorted();
-    for &id in &keys {
-        let Some(entity) = entities.get_mut(id) else {
-            continue;
-        };
-        let Some(anim) = entity.voxel_animation.as_mut() else {
-            continue;
-        };
-        if !anim.playing || anim.frame_count <= 1 || anim.frame_delay == 0 {
-            continue;
-        }
+    // Read first, as in `tick_harvest_overlays`.
+    let advancing: Vec<u64> = entities
+        .values()
+        .filter(|entity| {
+            entity
+                .voxel_animation
+                .as_ref()
+                .is_some_and(|anim| anim.playing && anim.frame_count > 1 && anim.frame_delay != 0)
+        })
+        .map(|entity| entity.stable_id())
+        .collect();
+    for id in advancing {
+        let anim = entities
+            .get_mut(id)
+            .and_then(|entity| entity.voxel_animation.as_mut())
+            .expect("an advancing voxel animation was just read");
         anim.elapsed_frames = anim.elapsed_frames.saturating_add(1);
         while anim.elapsed_frames >= anim.frame_delay {
             anim.elapsed_frames -= anim.frame_delay;

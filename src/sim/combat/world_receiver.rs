@@ -4517,11 +4517,11 @@ pub(crate) fn tick_combat(
         if fire_suppressed.contains(&id) {
             continue;
         }
-        // Mutable borrow: capture the per-attacker scalars and garrison cargo
-        // info. Entity field-reads move into `build_attacker_snapshot` (pure)
-        // below, after this borrow releases.
-        let (attack_target, pending_infantry_fire, pending_building_fire, garrison_cargo) = {
-            let entity = match world.substrate.entities.get_mut(id) {
+        // Read without a hand-out: only an armed building's delayed-fire
+        // latch is written here. Entity field-reads move into
+        // `build_attacker_snapshot` (pure) below.
+        let (attack_target, pending_infantry_fire, pending_building_fire) = {
+            let entity = match world.substrate.entities.get(id) {
                 Some(e) => e,
                 None => continue,
             };
@@ -4538,77 +4538,79 @@ pub(crate) fn tick_combat(
                 .attack_target
                 .as_ref()
                 .map(|attack| (attack.target, attack.pending_infantry_fire));
+            // Skip snapshot for entities blocked by locomotor state.
+            // An aircraft's Mission_Attack visit runs whenever its dispatch asked
+            // for it; the visit opens with its own prefix.
+            let requested = aircraft_fire_requests.contains(&id);
+            let blocked = !requested
+                && (fire_blocked.contains(&id)
+                    || entity
+                        .aircraft_mission
+                        .as_ref()
+                        .is_some_and(|mission| mission.is_attacking()));
 
             // gamemd-derived: BuildingClass::Update @ 0x0043FB20 invokes
             // ProcessDelayedFire @ 0x004503F0 after mission dispatch. The
             // signed counter is pre-decremented and values <= 0 clamp to zero
             // and expire on this visit.
-            let pending_building_fire = entity.pending_building_fire.as_mut().map(|pending| {
-                pending.remaining_ticks = pending.remaining_ticks.saturating_sub(1).max(0);
-                *pending
-            });
-            if pending_building_fire.is_some_and(|pending| pending.remaining_ticks != 0) {
-                // GetFireError @ 0x00447F10 blocks ordinary fire while armed.
-                continue;
-            }
-            let Some((attack_target, pending_infantry_fire)) = attack_state else {
-                // Expiry reads only the live target. A missing target clears
-                // the latch and does not acquire or drop another target.
-                if pending_building_fire.is_some() {
-                    entity.pending_building_fire = None;
+            let pending_building_fire = if entity.pending_building_fire.is_some() {
+                let latch = &mut world
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .expect("an attacker was just read")
+                    .pending_building_fire;
+                let pending = latch.as_mut().map(|pending| {
+                    pending.remaining_ticks = pending.remaining_ticks.saturating_sub(1).max(0);
+                    *pending
+                });
+                if pending.is_some_and(|pending| pending.remaining_ticks != 0) {
+                    // GetFireError @ 0x00447F10 blocks ordinary fire while armed.
+                    continue;
                 }
+                // Expiry reads only the live target, so a missing target clears
+                // the latch. Delayed expiry rechecks fire admissibility and
+                // clears on any failure rather than postponing until the
+                // building is usable.
+                if attack_state.is_none() || blocked {
+                    *latch = None;
+                    continue;
+                }
+                pending
+            } else {
+                None
+            };
+            // A missing target does not acquire or drop another target.
+            let Some((attack_target, pending_infantry_fire)) = attack_state else {
                 continue;
             };
-            // Skip snapshot for entities blocked by locomotor state.
-            // An aircraft's Mission_Attack visit runs whenever its dispatch asked
-            // for it; the visit opens with its own prefix.
-            let requested = aircraft_fire_requests.contains(&id);
-            if !requested
-                && (fire_blocked.contains(&id)
-                    || entity
-                        .aircraft_mission
-                        .as_ref()
-                        .is_some_and(|mission| mission.is_attacking()))
-            {
-                // Delayed expiry rechecks fire admissibility and clears on any
-                // failure rather than postponing until the building is usable.
-                if pending_building_fire.is_some() {
-                    entity.pending_building_fire = None;
-                }
+            if blocked {
                 continue;
             }
+            (attack_target, pending_infantry_fire, pending_building_fire)
+        };
 
-            // Extract garrison cargo info while we have the entity.
-            let garrison_cargo: Option<(u8, u8, u64)> =
-                if entity.category == EntityCategory::Structure {
-                    entity.passenger_role.cargo().and_then(|c| {
-                        if c.is_empty() {
-                            return None;
-                        }
-                        let fi = c.garrison_fire_index;
-                        let count = c.count() as u8;
-                        let oi = fi as usize % count as usize;
-                        Some((fi, count, c.passengers[oi]))
-                    })
-                } else {
-                    None
-                };
-
-            (
-                attack_target,
-                pending_infantry_fire,
-                pending_building_fire,
-                garrison_cargo,
-            )
-        }; // mutable borrow released
-
-        // Re-fetch the attacker immutably (nothing mutated `entities` since the
-        // borrow above released) and resolve any garrison occupant, then build the
+        // Re-fetch the attacker after the latch write above and resolve any
+        // garrison occupant, then build the
         // snapshot through the shared `build_attacker_snapshot` so the field-reads
         // stay byte-identical to the per-object Fire→Facing host.
         let entity = match world.substrate.entities.get(id) {
             Some(e) => e,
             None => continue,
+        };
+        let garrison_cargo: Option<(u8, u8, u64)> = if entity.category == EntityCategory::Structure
+        {
+            entity.passenger_role.cargo().and_then(|c| {
+                if c.is_empty() {
+                    return None;
+                }
+                let fi = c.garrison_fire_index;
+                let count = c.count() as u8;
+                let oi = fi as usize % count as usize;
+                Some((fi, count, c.passengers[oi]))
+            })
+        } else {
+            None
         };
         let garrison = garrison_cargo.and_then(|(fire_idx, count, occ_id)| {
             let obj = rules.object(world.interner.resolve(entity.type_ref()))?;
