@@ -158,16 +158,15 @@ fn gap_flags_snapshot_hash_and_later_setter_preserve_value_authority() {
     let bytes = GameSnapshot::save(&sim, 0, 0, "gap.map", 0);
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(
-        pristine,
-        crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        Vec::new(),
-        Vec::new(),
-    );
     let ini = crate::rules::ini_parser::IniFile::from_str(
         "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n[OverlayTypes]\n",
     );
     let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+    restored.rebuild_caches_after_load(
+        pristine,
+        crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
+        &rules,
+    );
     restored
         .restore_map_authority_after_snapshot_load(
             &rules,

@@ -484,6 +484,22 @@ pub(crate) fn scan_decimal_i32(bytes: &mut &[u8]) -> Option<i32> {
 /// and optional exponent. Parsing stops at the first byte outside that token
 /// (`12.5%` -> 12.5, `1.25e2junk` -> 125). Empty/junk -> 0.0.
 pub(crate) fn parse_leading_f32(s: &str) -> f32 {
+    leading_float_token(s)
+        .and_then(|token| token.parse::<f32>().ok())
+        .unwrap_or(0.0)
+}
+
+/// Decimal/exponent prefix used by Verses75DE39's CRT `atof7C9D66` route.
+/// Unlike ReadDouble's `%f` route, this retains binary64. Executed finite,
+/// malformed and exponent forms are pinned in bridge_landing_inputs.json;
+/// arbitrary extreme CRT rounding/range behavior is not certified here.
+pub(crate) fn parse_leading_f64(s: &str) -> f64 {
+    leading_float_token(s)
+        .and_then(|token| token.parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
+
+fn leading_float_token(s: &str) -> Option<&str> {
     let b = s.as_bytes();
     let mut end = usize::from(b.first().is_some_and(|c| matches!(c, b'-' | b'+')));
     let mut mantissa_digits = 0usize;
@@ -500,7 +516,7 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         }
     }
     if mantissa_digits == 0 {
-        return 0.0;
+        return None;
     }
 
     if b.get(end).is_some_and(|c| matches!(c, b'e' | b'E')) {
@@ -518,7 +534,7 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         }
     }
 
-    s[..end].parse::<f32>().unwrap_or(0.0)
+    Some(&s[..end])
 }
 
 #[cfg(test)]

@@ -90,7 +90,7 @@ fn bridge_candidate_decisions_match_original_executable() {
                     },
                 )
             })
-            .collect();
+            .collect::<BTreeMap<_, _>>();
         for case in scenario.cases {
             let mut adjusted = case.scan_y - f32::from(scenario.base_height as i8) * HEIGHT_STEP;
             let actual = apply_tactical_bridge_inverse(
@@ -159,7 +159,7 @@ fn complete_bridge_inverse_matches_original_executable() {
                     },
                 )
             })
-            .collect();
+            .collect::<BTreeMap<_, _>>();
         for case in scenario.cases {
             // Native camera offsets have already been removed in world_input.
             // Exercise the viewport subtraction as well as the zero-offset API.

@@ -1228,10 +1228,7 @@ impl SfxPlayer {
     /// cue stops repeating and plays out, and the handle is cleared.
     /// Idempotent.
     pub fn release_animation_sound(&mut self, anim_id: u64) {
-        if let Some(event) = self.arbiter.validate_loop_handle(anim_id) {
-            self.arbiter.release(event);
-        }
-        self.arbiter.clear_loop_handle(anim_id);
+        self.arbiter.release_owner(anim_id);
     }
 
     /// Whether `owner`'s handle still holds a live event: `0x00406130` on a
@@ -1240,7 +1237,8 @@ impl SfxPlayer {
         self.arbiter.validate_loop_handle(owner).is_some()
     }
 
-    /// Release only the handle owned by `anim_id`. Idempotent.
+    /// `VocHandle::StopAndClear405D40`: hard-stop the event owned by
+    /// `anim_id`, then clear its handle. Idempotent.
     pub fn stop_animation_sound(&mut self, anim_id: u64) {
         if let Some(event) = self.arbiter.validate_loop_handle(anim_id) {
             self.arbiter.stop(event);

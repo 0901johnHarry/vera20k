@@ -844,7 +844,7 @@ mod slot_tests {
         assert_eq!(anim.draw_flags, 0x1600);
         assert_ne!(before_rng, sim.scenario_rng.logical_state());
         assert!(sim.sound_events.iter().any(|event| matches!(event,
-            crate::sim::world::SimSoundEvent::AnimationStopped{anim_id,stop_sound_id:None,..} if *anim_id==old)));
+            crate::sim::world::SimSoundEvent::ObjectSoundReleased{owner} if *owner==old)));
         assert!(!sim.sound_events.iter().any(|event| matches!(event,
             crate::sim::world::SimSoundEvent::AnimationStopped{anim_id,stop_sound_id:Some(_),..} if *anim_id==old)));
         let unchanged = sim.state_hash();

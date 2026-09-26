@@ -5,12 +5,12 @@
 //! ruleset converts this processed output into gameplay definitions. Failed passes
 //! preserve already-constructed registry state rather than rolling back.
 
+use crate::rules::crate_rules::{CrateRules, CrateRulesAccumulator};
+use crate::rules::error::RulesError;
+use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use crate::rules::ini_parser::{IniFile, IniSection};
-use crate::rules::crate_rules::{CrateRules, CrateRulesAccumulator};
-use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
-use crate::rules::error::RulesError;
 
 /// One native `RulesClass::Process` source in its runtime position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -129,18 +129,20 @@ impl RulesLayerStack {
         let mut processor = RulesPassProcessor::with_registry_state(registry_state);
         for (_, ini) in self.iter_passes() {
             if let Err(error) = processor.apply_pass(ini, fixed_art) {
-                let (_, partial_trace, _, _) = processor.finish();
+                let (_, partial_trace, _, _, _) = processor.finish();
                 return Err(NativeRulesProcessingFailure {
                     error,
                     partial_trace,
                 });
             }
         }
-        let (ini, native_type_construction_trace, crate_rules, powerups) = processor.finish();
+        let (ini, native_type_construction_trace, crate_rules, powerups, general_anim_lists) =
+            processor.finish();
         Ok(ProcessedRulesLayers {
             ini,
             crate_rules,
             powerups,
+            general_anim_lists,
             content_hash: self.content_hash(),
             native_type_construction_trace,
         })
@@ -182,13 +184,8 @@ pub(crate) fn process_native_rules_cold_start(
     fixed_art: &IniFile,
     langrule: Option<&IniFile>,
 ) -> Result<NativeTypeConstructionTrace, RulesError> {
-    process_native_rules_cold_start_inner(
-        registry_state,
-        selected_rules_root,
-        fixed_art,
-        langrule,
-    )
-    .map(|(trace, _phase_event_counts)| trace)
+    process_native_rules_cold_start_inner(registry_state, selected_rules_root, fixed_art, langrule)
+        .map(|(trace, _phase_event_counts)| trace)
 }
 
 /// Shared production/test implementation. Counts are cumulative boundaries
@@ -221,13 +218,9 @@ fn process_native_rules_cold_start_inner(
         RulesTypeFamily::Building,
     );
     let after_building_master = processor.native_type_construction_events.len();
-    processor.process_techno_family(
-        RulesTypeFamily::Building,
-        selected_rules_root,
-        fixed_art,
-    );
+    processor.process_techno_family(RulesTypeFamily::Building, selected_rules_root, fixed_art);
     let after_building_bodies = processor.native_type_construction_events.len();
-    let (_, trace, _, _) = processor.finish();
+    let (_, trace, _, _, _) = processor.finish();
     Ok((
         trace,
         [
@@ -262,21 +255,24 @@ fn process_native_noncampaign_rules_prepass_inner(
     selected_rules_root: &IniFile,
 ) -> (NativeTypeConstructionTrace, [usize; 3]) {
     let mut processor = RulesPassProcessor::with_registry_state(registry_state);
-    processor.allocate_explicit_family(
-        selected_rules_root,
-        "Countries",
-        RulesTypeFamily::Country,
-    );
+    processor.allocate_explicit_family(selected_rules_root, "Countries", RulesTypeFamily::Country);
     let after_countries = processor.native_type_construction_events.len();
     processor.allocate_general_references(selected_rules_root);
     let after_general = processor.native_type_construction_events.len();
     processor.process_house_family(selected_rules_root);
     let after_house_bodies = processor.native_type_construction_events.len();
-    let (_, trace, _, _) = processor.finish();
-    (
-        trace,
-        [after_countries, after_general, after_house_bodies],
-    )
+    let (_, trace, _, _, _) = processor.finish();
+    (trace, [after_countries, after_general, after_house_bodies])
+}
+
+/// Retained RulesClass vectors, distinct from the process-resident AnimType
+/// registry. The constructor @ 0x00665827 initializes both empty; ReadGeneral
+/// @ 0x0066DA90/0x0066DB93 replaces them only after a nonempty ReadString128.
+/// Native execution: tools/rules_oracle/bridge_anim_lists.{py,json}.
+#[derive(Debug, Default)]
+struct GeneralAnimLists {
+    metallic_debris: Vec<String>,
+    bridge_explosions: Vec<String>,
 }
 
 /// Result of applying an ordered rules stack.
@@ -285,6 +281,7 @@ pub struct ProcessedRulesLayers {
     ini: IniFile,
     crate_rules: CrateRules,
     powerups: PowerupTable,
+    general_anim_lists: GeneralAnimLists,
     content_hash: u64,
     native_type_construction_trace: NativeTypeConstructionTrace,
 }
@@ -333,6 +330,14 @@ impl ProcessedRulesLayers {
 
     pub fn powerups(&self) -> &PowerupTable {
         &self.powerups
+    }
+
+    pub(crate) fn metallic_debris(&self) -> &[String] {
+        &self.general_anim_lists.metallic_debris
+    }
+
+    pub(crate) fn bridge_explosions(&self) -> &[String] {
+        &self.general_anim_lists.bridge_explosions
     }
 
     #[cfg(test)]
@@ -616,6 +621,7 @@ struct RulesPassProcessor {
     ordinary: Option<IniFile>,
     crate_rules: CrateRulesAccumulator,
     powerups: PowerupsAccumulator,
+    general_anim_lists: GeneralAnimLists,
     families: HashMap<RulesTypeFamily, Vec<ProcessedType>>,
     native_type_construction_events: Vec<NativeTypeConstructionEvent>,
     tiberiums: Vec<ProcessedType>,
@@ -769,13 +775,30 @@ impl RulesPassProcessor {
         family: RulesTypeFamily,
         capacity: usize,
     ) {
-        if section.get(key).is_none() {
-            return;
-        }
+        let _ = self.resolve_list_from(section, key, family, capacity);
+    }
+
+    /// Resolve each native pointer once, in constructor order. None means the
+    /// reader retained its previous vector; Some(empty) is a real replacement
+    /// (for example `,,,` or only exact `none` sentinels).
+    fn resolve_list_from(
+        &mut self,
+        section: &IniSection,
+        key: &str,
+        family: RulesTypeFamily,
+        capacity: usize,
+    ) -> Option<Vec<String>> {
         let incoming = section.read_string(key, "", capacity);
-        for token in native_strtok_comma_tokens(&incoming) {
-            self.find_or_allocate(family, token);
+        if incoming.is_empty() {
+            return None;
         }
+        let mut resolved = Vec::new();
+        for token in native_strtok_comma_tokens(&incoming) {
+            if let Some(index) = self.find_or_allocate(family, token) {
+                resolved.push(self.families[&family][index].native_stored_id.clone());
+            }
+        }
+        Some(resolved)
     }
 
     fn lookup_existing(&self, family: RulesTypeFamily, incoming: &str) -> Option<String> {
@@ -841,11 +864,7 @@ impl RulesPassProcessor {
             ("IonBeam", RulesTypeFamily::Animation, false),
             ("WeatherConClouds", RulesTypeFamily::Animation, true),
             ("WeatherConBolts", RulesTypeFamily::Animation, true),
-            (
-                "WeatherConBoltExplosion",
-                RulesTypeFamily::Animation,
-                false,
-            ),
+            ("WeatherConBoltExplosion", RulesTypeFamily::Animation, false),
             ("DominatorWarhead", RulesTypeFamily::Warhead, false),
             ("DominatorFirstAnim", RulesTypeFamily::Animation, false),
             ("DominatorSecondAnim", RulesTypeFamily::Animation, false),
@@ -856,16 +875,8 @@ impl RulesPassProcessor {
             ("WarpIn", RulesTypeFamily::Animation, false),
             ("WarpOut", RulesTypeFamily::Animation, false),
             ("WarpAway", RulesTypeFamily::Animation, false),
-            (
-                "IronCurtainInvokeAnim",
-                RulesTypeFamily::Animation,
-                false,
-            ),
-            (
-                "ForceShieldInvokeAnim",
-                RulesTypeFamily::Animation,
-                false,
-            ),
+            ("IronCurtainInvokeAnim", RulesTypeFamily::Animation, false),
+            ("ForceShieldInvokeAnim", RulesTypeFamily::Animation, false),
             ("WeaponNullifyAnim", RulesTypeFamily::Animation, false),
             ("ChronoSparkle1", RulesTypeFamily::Animation, false),
             ("InfantryExplode", RulesTypeFamily::Animation, false),
@@ -902,11 +913,7 @@ impl RulesPassProcessor {
             ("NodRegularPower", RulesTypeFamily::Building, false),
             ("NodAdvancedPower", RulesTypeFamily::Building, false),
             ("ThirdPowerPlant", RulesTypeFamily::Building, false),
-            (
-                "PrerequisiteProcAlternate",
-                RulesTypeFamily::Vehicle,
-                false,
-            ),
+            ("PrerequisiteProcAlternate", RulesTypeFamily::Vehicle, false),
             ("BaseUnit", RulesTypeFamily::Vehicle, true),
             ("HarvesterUnit", RulesTypeFamily::Vehicle, true),
             ("PadAircraft", RulesTypeFamily::Aircraft, true),
@@ -934,18 +941,22 @@ impl RulesPassProcessor {
             ("DMislType", RulesTypeFamily::Aircraft, false),
             ("CMislType", RulesTypeFamily::Aircraft, false),
             ("VeinholeTypeClass", RulesTypeFamily::Terrain, false),
-            (
-                "DefaultMirageDisguises",
-                RulesTypeFamily::Terrain,
-                true,
-            ),
+            ("DefaultMirageDisguises", RulesTypeFamily::Terrain, true),
         ];
 
         let Some(section) = pass.section("General") else {
             return;
         };
         for &(key, family, is_list) in SITES {
-            if is_list {
+            if matches!(key, "MetallicDebris" | "BridgeExplosions") {
+                if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
+                    if key == "MetallicDebris" {
+                        self.general_anim_lists.metallic_debris = resolved;
+                    } else {
+                        self.general_anim_lists.bridge_explosions = resolved;
+                    }
+                }
+            } else if is_list {
                 self.allocate_list_from(section, key, family, 0x80);
             } else {
                 self.allocate_scalar_from(section, key, family, 0x80);
@@ -1027,24 +1038,9 @@ impl RulesPassProcessor {
             if let Some((_id, raw, _effective)) =
                 self.begin_rules_member_read(RulesTypeFamily::Country, index, pass)
             {
-                self.allocate_list_from(
-                    &raw,
-                    "VeteranInfantry",
-                    RulesTypeFamily::Infantry,
-                    0x80,
-                );
-                self.allocate_list_from(
-                    &raw,
-                    "VeteranUnits",
-                    RulesTypeFamily::Vehicle,
-                    0x80,
-                );
-                self.allocate_list_from(
-                    &raw,
-                    "VeteranAircraft",
-                    RulesTypeFamily::Aircraft,
-                    0x80,
-                );
+                self.allocate_list_from(&raw, "VeteranInfantry", RulesTypeFamily::Infantry, 0x80);
+                self.allocate_list_from(&raw, "VeteranUnits", RulesTypeFamily::Vehicle, 0x80);
+                self.allocate_list_from(&raw, "VeteranAircraft", RulesTypeFamily::Aircraft, 0x80);
                 self.allocate_scalar_from(&raw, "Side", RulesTypeFamily::Side, 0x80);
             }
             index += 1;
@@ -1124,12 +1120,7 @@ impl RulesPassProcessor {
                 self.process_techno_base(&raw, &effective);
                 match family {
                     RulesTypeFamily::Building => {
-                        self.allocate_scalar_from(
-                            &raw,
-                            "FreeUnit",
-                            RulesTypeFamily::Vehicle,
-                            0x80,
-                        );
+                        self.allocate_scalar_from(&raw, "FreeUnit", RulesTypeFamily::Vehicle, 0x80);
                         self.allocate_scalar_from(
                             &raw,
                             "SecretInfantry",
@@ -1345,19 +1336,9 @@ impl RulesPassProcessor {
             if let Some((_id, raw, _effective)) =
                 self.begin_rules_member_read(RulesTypeFamily::Warhead, index, pass)
             {
-                self.allocate_scalar_from(
-                    &raw,
-                    "Particle",
-                    RulesTypeFamily::ParticleSystem,
-                    0x80,
-                );
+                self.allocate_scalar_from(&raw, "Particle", RulesTypeFamily::ParticleSystem, 0x80);
                 self.allocate_list_from(&raw, "AnimList", RulesTypeFamily::Animation, 0x80);
-                self.allocate_list_from(
-                    &raw,
-                    "DebrisTypes",
-                    RulesTypeFamily::VoxelAnimation,
-                    0x80,
-                );
+                self.allocate_list_from(&raw, "DebrisTypes", RulesTypeFamily::VoxelAnimation, 0x80);
             }
             index += 1;
         }
@@ -1431,7 +1412,13 @@ impl RulesPassProcessor {
         let Some(section) = pass.section("CombatDamage") else {
             return;
         };
-        for key in ["Scorches", "Scorches1", "Scorches2", "Scorches3", "Scorches4"] {
+        for key in [
+            "Scorches",
+            "Scorches1",
+            "Scorches2",
+            "Scorches3",
+            "Scorches4",
+        ] {
             self.allocate_list_from(section, key, RulesTypeFamily::Smudge, 0x80);
         }
         self.allocate_list_from(section, "SplashList", RulesTypeFamily::Animation, 0x80);
@@ -1545,18 +1532,21 @@ impl RulesPassProcessor {
             let native_stored_id = self.tiberiums[index].native_stored_id.clone();
             if let Some(section) = pass.section(&native_stored_id).cloned() {
                 self.tiberiums[index].body.overlay_rules_pass(&section);
-                self.allocate_list_from(
-                    &section,
-                    "Debris",
-                    RulesTypeFamily::Animation,
-                    0x80,
-                );
+                self.allocate_list_from(&section, "Debris", RulesTypeFamily::Animation, 0x80);
             }
         }
         Ok(())
     }
 
-    fn finish(mut self) -> (IniFile, NativeTypeConstructionTrace, CrateRules, PowerupTable) {
+    fn finish(
+        mut self,
+    ) -> (
+        IniFile,
+        NativeTypeConstructionTrace,
+        CrateRules,
+        PowerupTable,
+        GeneralAnimLists,
+    ) {
         let allocated_super_weapon_type_count = self
             .families
             .get(&RulesTypeFamily::SuperWeapon)
@@ -1622,6 +1612,7 @@ impl RulesPassProcessor {
             },
             self.crate_rules.finish(),
             self.powerups.finish(),
+            self.general_anim_lists,
         )
     }
 }
@@ -1636,7 +1627,6 @@ fn native_strtok_comma_tokens(value: &str) -> impl Iterator<Item = &str> {
 fn is_exact_native_none_type_name(value: &str) -> bool {
     value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("<none>")
 }
-
 
 #[cfg(test)]
 #[path = "native_processing_tests.rs"]

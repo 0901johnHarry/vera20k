@@ -379,7 +379,11 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
         grid.set_bridge_cell_decoupled_for_test(3, 2, 0, true, true, 4, true);
         let mut sim = Simulation::with_seed(71);
         assert_eq!(sim.allocate_stable_id(), 1);
-        sim.rebuild_caches_after_load(terrain.clone(), Default::default(), Vec::new(), Vec::new());
+        sim.rebuild_caches_after_load(
+            terrain.clone(),
+            Default::default(),
+            &crate::sim::runtime::SimResources::empty().rules,
+        );
         let mut entity = mover(&mut sim, kind);
         entity.position.z = 4;
         entity.position.sub_y = SimFixed::from_num(7);
@@ -442,8 +446,7 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
         restored.rebuild_caches_after_load(
             terrain.clone(),
             Default::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
         assert_eq!(
             restored.state_hash(),

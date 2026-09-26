@@ -572,7 +572,6 @@ impl App {
                     has_radar: false,
                     selection_overlay: None,
                     shroud_buffer: None,
-                    tactical_bridge_inverse_map: BTreeMap::new(),
                     theater_name: "TEMPERATE".to_string(),
                     theater_ext: "tem".to_string(),
                     target_lines: startup_target_lines,
@@ -614,7 +613,6 @@ impl App {
                 scenario_elapsed_clock:
                     crate::app::match_runtime::frame_pacer::ScenarioElapsedClock::new(),
                 configured_input_delay_ticks: input_delay_ticks,
-                local_player_owner: None,
                 local_owner_override: None,
                 sandbox_full_visibility: false,
                 paused: false,

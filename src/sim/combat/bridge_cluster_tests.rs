@@ -119,7 +119,7 @@ fn ordinary_bridge_continuation_precedes_cluster_rng_like_native() {
         }
         let mut run = world_receiver::ReceiverRun::default();
         let commit = world_receiver::commit_projectiles(&mut sim, &mut run, &[shot], &rules, None);
-        run.finish(&mut sim);
+        run.finish();
         assert!(!commit.effects.bridge_state_changed, "{name}");
         assert!(commit.effects.explosion_effects.is_empty(), "{name}");
         let dirty: Vec<_> = row["events"]
@@ -211,7 +211,7 @@ fn nested_death_bridge_continuation_finishes_before_parent_area_returns() {
             None,
         );
         assert_eq!(run.handled_deaths, units, "both recursive receivers ran");
-        run.finish(&mut sim);
+        run.finish();
         assert!(!effects.bridge_state_changed);
         // INNER's signed -1 packet still draws first and cannot pass. OUTER
         // then compares the second native result:29000 fails,31000 succeeds.

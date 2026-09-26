@@ -233,8 +233,6 @@ impl PreparedLoad {
             .ok_or(PreparedLoadError::MissingTerrainTemplate)?;
 
         let terrain_speed_config = current_simulation.terrain_speed_config.clone();
-        let bridge_explosions = current_simulation.bridge_explosions.clone();
-        let metallic_debris = current_simulation.metallic_debris.clone();
 
         let mut simulation = snapshot.sim;
         // This is the in-scenario Load Game route: native load reseeds
@@ -251,13 +249,16 @@ impl PreparedLoad {
         simulation.rebuild_caches_after_load(
             terrain_template,
             terrain_speed_config,
-            bridge_explosions,
-            metallic_debris,
+            rules,
         );
 
         let overlay_registry = overlay_registry.ok_or(PreparedLoadError::MissingOverlayRegistry)?;
         let map_restore =
             simulation.restore_map_authority_after_snapshot_load(rules, overlay_registry)?;
+        // Older headless saves may omit types that had never spawned. Add
+        // those canonical names without changing any saved ID, then build
+        // the handle table; a missing name must never become sidebar ID zero.
+        simulation.intern_rule_type_ids(rules);
         simulation.resolve_type_handles(rules);
         simulation.restore_move_sound_handles_after_load(rules)?;
         simulation.rebuild_lighting_sources_after_load(rules);
@@ -773,6 +774,7 @@ mod tests {
 
     mod factory_restore_tests;
     mod infantry_terminal_restore_tests;
+    mod rule_cache_restore_tests;
 
     include!("tube_hierarchy_restore_tests.rs");
 

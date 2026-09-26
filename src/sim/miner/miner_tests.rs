@@ -2299,23 +2299,18 @@ fn scan_skips_tree_blocked_ore_cell() {
 /// Unit Can_Enter_Cell of Is_Cell_Harvestable reads.
 fn plant_tree(sim: &mut Simulation, cell: (u16, u16)) {
     use crate::sim::terrain_object::{
-        TerrainObjectLifecycle, TerrainObjectState, mark_terrain_raw_occupation,
+        TerrainObjectState, mark_terrain_raw_occupation,
     };
     let id = 900;
     let type_ref = sim.interner.intern("TREE01");
     sim.production.terrain_objects.insert(
         id,
-        TerrainObjectState {
-            stable_id: id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref,
-            rx: cell.0,
-            ry: cell.1,
-            health: 800,
-            max_health: 800,
-            occupation_bits: 4,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(id, type_ref, cell.0, cell.1);
+            terrain.health = 800;
+            terrain.max_health = 800;
+            terrain.occupation_bits = 4;
+            terrain
         },
     );
     sim.production.terrain_object_cells.insert(cell, id);

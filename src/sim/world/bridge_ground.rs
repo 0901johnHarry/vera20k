@@ -14,12 +14,7 @@ use crate::sim::occupancy::CellObjectMember;
 use crate::sim::world::Simulation;
 
 fn members(sim: &Simulation, rx: u16, ry: u16) -> impl Iterator<Item = CellObjectMember> + '_ {
-    sim.substrate.occupancy.cell_objects(
-        rx,
-        ry,
-        MovementLayer::Ground,
-        sim.production.terrain_object_cells.get(&(rx, ry)).copied(),
-    )
+    sim.cell_objects((rx, ry), MovementLayer::Ground)
 }
 
 pub(super) fn apply(
@@ -36,9 +31,9 @@ pub(super) fn apply(
         // captured successor removed by nested effects has no next link when
         // its own iteration begins; do not resume from a precollected vector.
         let next = {
-            let mut live = members(sim, rx, ry);
-            live.find(|candidate| *candidate == member)
-                .and_then(|_| live.next())
+            let mut current_list = members(sim, rx, ry);
+            current_list.find(|candidate| *candidate == member);
+            current_list.next()
         };
         match member {
             CellObjectMember::Entity(stable_id) => {

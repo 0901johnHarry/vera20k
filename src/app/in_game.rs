@@ -739,7 +739,7 @@ impl App {
     ) {
         match action {
             crate::app::match_runtime::scenario_exit::ScenarioExitVoiceAction::InterruptBattleControlTerminated => {
-                if state.match_state.local_player_owner.is_none() {
+                if state.match_state.local_player_owner().is_none() {
                     log::warn!("Battle-control termination EVA has no pinned local owner");
                     return;
                 }

@@ -18,6 +18,7 @@ pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
 pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
+mod cell_content;
 mod crash;
 pub mod edge_cell;
 mod gap_generator;
@@ -297,7 +298,8 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// Animation destruction releases its current handle before optional StopSound.
+    /// Hard-stop the owner's handle, then optionally play StopSound. Anim
+    /// destruction emits ObjectSoundReleased first so its Report plays out.
     AnimationStopped {
         anim_id: crate::sim::anim_class::AnimId,
         stop_sound_id: Option<InternedId>,
@@ -319,8 +321,9 @@ pub enum SimSoundEvent {
     /// 0x00406060`): it stops repeating and plays out.
     GattlingLoopRelease { owner: u64 },
     /// `SoundEvent::Release @ 0x00406060` on an object's own sound handle
-    /// (`FootClass+0x544`, keyed by the object's id) as the object goes: the
-    /// crash sound it holds plays out (`FootClass::~FootClass`, `0x004D3677`).
+    /// (`FootClass+0x544` or `AnimClass+0x1A0`, keyed by object id). A one-shot
+    /// plays out; an uncounted loop stops repeating. Anim Destroy4255D5 and
+    /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
     AircraftPhase {
@@ -1179,13 +1182,13 @@ pub struct Simulation {
     /// edge; cell-local bridge dirtiness is deliberately a separate channel.
     #[serde(default)]
     pub(crate) playfield_revision: u64,
-    /// SHP interned IDs for bridge destruction explosions (from rules.ini BridgeExplosions=).
+    /// Interned projection of RuleSet's ordered BridgeExplosions references.
+    /// Rebuilt at map binding and snapshot restoration; not serialized authority.
     #[serde(skip)]
     pub bridge_explosions: Vec<InternedId>,
-    /// SHP interned IDs for bridge metallic-debris animations
-    /// (from `[General] MetallicDebris=`). Pre-interned at sim init so the
-    /// per-cell debris cascade in `bridge_orchestrator::spawn_bridge_debris`
-    /// runs allocation-free.
+    /// Interned projection of RuleSet's ordered MetallicDebris references,
+    /// including unread types without an SHP. Rebuilt at map binding and
+    /// snapshot restoration so per-cell selection needs no string interning.
     #[serde(skip)]
     pub metallic_debris: Vec<InternedId>,
     /// Runtime terrain cells whose radar/minimap terrain pixel needs refresh.
@@ -1808,7 +1811,7 @@ impl Simulation {
             projectile_detonations,
             wave_damage_events,
         );
-        result.consequences.finish_navigation(run.finish(self));
+        result.consequences.finish_navigation(run.finish());
         result
     }
 
@@ -1832,7 +1835,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
 
         for projectile in commit.projectile_spawns {
             let stable_id = self.allocate_stable_id();
@@ -2383,7 +2386,7 @@ impl Simulation {
             }
         }
 
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.dynamic_terrain_cells.extend(collapsed_terrain_cells);
         if let Some(terrain) = self.resolved_terrain.as_ref() {
             self.real_cell_bridge_flags_0x1180 = terrain.capture_real_cell_bridge_flags_0x1180();
@@ -2416,7 +2419,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2443,7 +2446,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2479,7 +2482,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
-    ) -> Vec<u64> {
+    ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
         let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_area(
             self,
@@ -2488,19 +2491,14 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
-        // Fatal transitions are facts of this receiver transaction. Retain
-        // them before consequence delivery can retire their objects.
-        let fatal_ids = effects.despawned_ids.clone();
-
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
-        );
-        fatal_ids
+        )
     }
 
     /// World-owned half of a non-combat damage transaction. Physical death
@@ -2856,6 +2854,25 @@ impl Simulation {
         {
             self.interner.intern(id);
         }
+    }
+
+    /// Resolve the rules-owned ordered AnimType lists in this world's interner.
+    /// These IDs are derived, never portable between independently constructed
+    /// worlds. Native ReadGeneral owns the list names/order; both map binding
+    /// and snapshot restoration project those names through this one writer.
+    pub(crate) fn resolve_rule_animation_lists(&mut self, rules: &RuleSet) {
+        self.bridge_explosions = rules
+            .bridge_rules
+            .explosions
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
+        self.metallic_debris = rules
+            .general
+            .metallic_debris
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
     }
 
     /// Pre-resolved rule handles for combat comparisons.
@@ -4755,13 +4772,13 @@ impl Simulation {
     ///
     /// Overlay, bridge, and navigation authority are restored separately by
     /// `restore_map_authority_after_snapshot_load` once rules and the overlay
-    /// registry are bound.
+    /// registry are bound. Rule animation lists are re-interned from names:
+    /// an outgoing simulation's numeric IDs do not belong to this saved world.
     pub fn rebuild_caches_after_load(
         &mut self,
         mut resolved_terrain: ResolvedTerrainGrid,
         terrain_speed_config: terrain_speed::TerrainSpeedConfig,
-        bridge_explosions: Vec<InternedId>,
-        metallic_debris: Vec<InternedId>,
+        rules: &RuleSet,
     ) {
         resolved_terrain.bind_shared_cell_dummy(self.shared_cell_dummy.clone());
         // Restore externally-derived data only. Substrate caches are rebuilt
@@ -4791,8 +4808,7 @@ impl Simulation {
 
         self.resolved_terrain = Some(resolved_terrain);
         self.terrain_speed_config = terrain_speed_config;
-        self.bridge_explosions = bridge_explosions;
-        self.metallic_debris = metallic_debris;
+        self.resolve_rule_animation_lists(rules);
         self.terrain_costs = terrain_costs;
     }
 
@@ -6106,7 +6122,9 @@ impl Simulation {
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
         if let Some(rules) = rules {
-            self.for_each_multiplayer_feedback_anim(|sim, id| sim.visit_anim(id, rules, None));
+            self.for_each_multiplayer_feedback_anim(|sim, id| {
+                sim.visit_anim(id, rules, None);
+            });
         }
         // Spawn-manager missiles that reached their target during the movement
         // pass are consumed here — the missile leaves the world at the moment
