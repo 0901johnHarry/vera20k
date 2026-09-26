@@ -190,40 +190,17 @@ fn dispatch_in_game_options_transaction(
     true
 }
 
-/// Options is a child of the in-game menu: gamemd's state machine writes
-/// state 1 (the menu) when the Options dialog returns.
-fn finish_in_game_options_close(state: &mut AppState) {
-    crate::app::App::enter_in_game_menu_state(
-        state,
-        crate::ui::pause_menu::InGameMenuState::Menu,
-    );
-    log::info!(
-        "In-game Options closed at {} tps",
-        state.match_state.sim_speed_tps
-    );
-}
-
-/// Native close transaction: result 1 mutates the retained profile, applies
-/// consumers, then performs one complete write. Result 2 performs none of
-/// those operations, but both results leave the modal and resume presentation.
+/// Native close transaction for the Options dialog's result 1: mutate the
+/// retained profile, apply consumers, then perform one complete write. Result
+/// 2 performs none of those operations. It runs when the dialog returns (Back
+/// or Escape) and before Sound or Keyboard opens over it; leaving the dialog
+/// belongs to the in-game menu state machine (`App::route_in_game_menu_escape`).
 ///
 /// Retail provenance: `OptionsClass__ShowInGameDialog @ 0x004E1D00` and
 /// `OptionsClass__ApplyFromInGameDialog @ 0x004E1DE0`.
 pub(crate) fn accept_in_game_options(state: &mut AppState) {
     let mut operations = AppStateOptionsTransaction { state };
     dispatch_in_game_options_transaction(&mut operations, IN_GAME_OPTIONS_RESULT_BACK);
-}
-
-fn in_game_options_close_with_result(state: &mut AppState, result: i32) {
-    {
-        let mut operations = AppStateOptionsTransaction { state };
-        dispatch_in_game_options_transaction(&mut operations, result);
-    }
-    finish_in_game_options_close(state);
-}
-
-pub(crate) fn in_game_options_close(state: &mut AppState) {
-    in_game_options_close_with_result(state, IN_GAME_OPTIONS_RESULT_BACK);
 }
 
 #[cfg(test)]

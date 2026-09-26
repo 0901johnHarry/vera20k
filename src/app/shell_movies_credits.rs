@@ -291,8 +291,9 @@ impl App {
         state.platform.window.request_redraw();
     }
 
-    /// End of Play_Movie: resume paused audio and recreate the caller's
-    /// dialog (state 4 for Sneak Peeks, state `0xE` for the list).
+    /// End of Play_Movie: resume the paused music and recreate the caller's
+    /// dialog (state 4 for Sneak Peeks, state `0xE` for the list). The SFX
+    /// pause is `pump_audio_service`'s.
     pub(super) fn finish_fullscreen_movie(state: &mut AppState) {
         let Some(movie) = state.frontend.fullscreen_movie.take() else {
             return;

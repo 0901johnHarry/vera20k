@@ -149,22 +149,23 @@ impl App {
         )
     }
 
-    /// Route one Escape press through the in-scenario modal machine.
+    /// Route one Escape press, or the Options Back control, through the
+    /// in-scenario modal machine.
     pub(super) fn route_in_game_menu_escape(state: &mut AppState) {
         use crate::ui::pause_menu::InGameMenuState;
 
-        // Backing out of Options takes the same exit its Back control does —
-        // apply and persist the touched `[Options]` values — so the two ways of
-        // leaving the dialog cannot disagree about what was saved.
-        if state.match_state.match_presentation.in_game_menu == InGameMenuState::Options {
-            crate::app::persistence::options::in_game_options_close(state);
+        let current = state.match_state.match_presentation.in_game_menu;
+        // Escape and Back leave Options the same way — apply and persist the
+        // touched `[Options]` values, then return to the menu — so the two
+        // cannot disagree about what was saved.
+        if current == InGameMenuState::Options {
+            crate::app::persistence::options::accept_in_game_options(state);
+            log::info!(
+                "In-game Options closed at {} tps",
+                state.match_state.sim_speed_tps
+            );
         }
-        let next = state
-            .match_state
-            .match_presentation
-            .in_game_menu
-            .on_escape();
-        Self::enter_in_game_menu_state(state, next);
+        Self::enter_in_game_menu_state(state, current.on_escape());
     }
 
     /// Commit an in-scenario modal transition and the app-layer effects that

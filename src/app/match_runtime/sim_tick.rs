@@ -371,8 +371,9 @@ pub(crate) fn monotonic_frame_pacer_ms(state: &AppState, now: Instant) -> u64 {
 /// event, stop the playing channels, and pause the EVA/speech stream.
 ///
 /// `MatchState::paused` **is** VERA's in-game-menu state: it reads
-/// `InGameMenuState::is_open()`, and apart from the `J` debug pause VERA has
-/// no other pause. That is not a divergence from gamemd; it is
+/// `InGameMenuState::is_open()`, and apart from the `J` debug pause and the
+/// fullscreen movie below no other pause reaches the SFX player. That is not
+/// a divergence from gamemd; it is
 /// exactly gamemd's pause. `State_Machine @ 0x0048C8B0` brackets its entire
 /// dialog switch — case 5 `OptionsClass::ShowInGameDialog`, case 8
 /// `Show_Diplomacy_Menu`, case 9 `ScenarioClass::ShowMissionRestateBriefing`
@@ -389,10 +390,12 @@ pub(crate) fn monotonic_frame_pacer_ms(state: &AppState, now: Instant) -> u64 {
 /// "menu open is not really a pause" carve-out here; that would be a
 /// regression against the binary.
 ///
-/// A fullscreen movie is the other pause: `Play_Movie @ 0x005BED40` pauses
-/// the EVA stream and the sound events for the whole movie (guard
-/// `0x00ABF35C`) and resumes them after. This pump is the only writer of the
-/// SFX pause, so the two sources are combined here.
+/// A fullscreen movie also pauses: `Play_Movie @ 0x005BED40` pauses the EVA
+/// stream (`Audio__PauseForMovie @ 0x005BF580`, behind guard `0x00ABF35C`)
+/// and suspends the sound events (`0x00406EA0`) for the whole movie, and
+/// resumes the events after it (`0x00406EC0`). This pump is the only writer of
+/// the SFX pause, so the sources are combined here, one frame after the movie
+/// starts and ends.
 pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
     // `AudioSystem__Pump @ 0x00406F70` reaches `ThemeClass__AI @ 0x007209D0`
     // on every screen (menu, loading, in-game, pause, score, inactive window);

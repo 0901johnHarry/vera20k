@@ -1679,10 +1679,7 @@ pub(crate) fn dispatch_command_bar(state: &mut AppState, command: usize, right: 
 // Native 653952 -> GameState1 -> 48C9BA/4F10E0 opens the pause menu.
 // The button calls this directly; Escape's cancel/resume priority is separate.
 fn open_pause_menu(state: &mut AppState) {
-    crate::app::App::enter_in_game_menu_state(
-        state,
-        crate::ui::pause_menu::InGameMenuState::Menu,
-    );
+    crate::app::App::enter_in_game_menu_state(state, crate::ui::pause_menu::InGameMenuState::Menu);
     log::info!("Game paused");
 }
 
@@ -1694,8 +1691,9 @@ fn open_diplomacy_menu(_state: &mut AppState) {
 
 fn handle_options_hotkey(state: &mut AppState) {
     // Only Escape reaches a hotkey while paused, and the in-game menu takes
-    // Escape whenever it is open, so this pause is the debug pause.
-    if state.match_state.paused() {
+    // Escape whenever it is open, so the only pause seen here is the debug one.
+    debug_assert!(!state.match_state.match_presentation.in_game_menu.is_open());
+    if state.match_state.debug_pause {
         state.match_state.debug_pause = false;
         state.platform.frame_pacer.reset_for_immediate_frame();
         if state
