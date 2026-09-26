@@ -572,7 +572,6 @@ impl App {
                     has_radar: false,
                     selection_overlay: None,
                     shroud_buffer: None,
-                    tactical_bridge_inverse_map: BTreeMap::new(),
                     theater_name: "TEMPERATE".to_string(),
                     theater_ext: "tem".to_string(),
                     target_lines: startup_target_lines,

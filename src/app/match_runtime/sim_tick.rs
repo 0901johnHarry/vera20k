@@ -1357,6 +1357,18 @@ pub(crate) fn screen_point_to_world_with_camera(
     (screen.0 / zoom + camera.0, screen.1 / zoom + camera.1)
 }
 
+/// Borrow current real-cell flags for the inverse. There is no retained app
+/// bridge projection to invalidate after collapse, repair or world replacement.
+/// Native 6D674C resolves the current cell before reading 0x100/0x800; see
+/// tools/bridge_click_state_oracle/README.md.
+pub(crate) fn tactical_bridge_cells(
+    sim: &crate::sim::world::Simulation,
+) -> Option<&dyn terrain::TacticalBridgeLookup> {
+    sim.resolved_terrain
+        .as_ref()
+        .map(|terrain| terrain as &dyn terrain::TacticalBridgeLookup)
+}
+
 /// Shared owner for world-space point -> map-cell resolution in the app layer.
 ///
 /// Any app code that already has world coordinates should use this instead of
@@ -1365,9 +1377,7 @@ pub(crate) fn world_point_to_cell(
     world_x: f32,
     world_y: f32,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_cells: Option<
-        &std::collections::BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>,
-    >,
+    bridge_cells: Option<&dyn terrain::TacticalBridgeLookup>,
 ) -> (u16, u16) {
     let inverse = terrain::screen_to_cell_tactical_inverse(
         world_x,
@@ -1405,12 +1415,9 @@ pub(crate) fn screen_point_to_world_cell(
         world_x,
         world_y,
         &state.height_map(),
-        Some(
-            &state
-                .match_state
-                .match_presentation
-                .tactical_bridge_inverse_map,
-        ),
+        state.sim_view().and_then(|view| {
+            crate::app::match_runtime::sim_tick::tactical_bridge_cells(view.simulation())
+        }),
     )
 }
 
@@ -1698,7 +1705,7 @@ mod tests {
     }
 
     #[test]
-    fn world_point_to_cell_forwards_tactical_bridge_inverse_map() {
+    fn world_point_to_cell_forwards_bridge_lookup() {
         let (world_x, world_y) = (150.0, 180.0);
         let height_map = BTreeMap::new();
         let bridge_cells = BTreeMap::from([(

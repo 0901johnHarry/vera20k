@@ -344,12 +344,7 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                                     state.rules(),
                                     Some(&sim.houses),
                                     &state.height_map(),
-                                    Some(
-                                        &state
-                                            .match_state
-                                            .match_presentation
-                                            .tactical_bridge_inverse_map,
-                                    ),
+                                    crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                                     Some(&sim.interner),
                                 );
                                 queued_selection = if let Some(clicked_id) = picked {
@@ -378,12 +373,7 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                                         state.rules(),
                                         Some(&sim.houses),
                                         &state.height_map(),
-                                        Some(
-                                            &state
-                                                .match_state
-                                                .match_presentation
-                                                .tactical_bridge_inverse_map,
-                                        ),
+                                        crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                                         Some(&sim.interner),
                                         sim.playfield_bounds.is_some(),
                                     )
@@ -403,12 +393,7 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                                     state.rules(),
                                     Some(&sim.houses),
                                     &state.height_map(),
-                                    Some(
-                                        &state
-                                            .match_state
-                                            .match_presentation
-                                            .tactical_bridge_inverse_map,
-                                    ),
+                                    crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                                     Some(&sim.interner),
                                     sim.playfield_bounds.is_some(),
                                 );

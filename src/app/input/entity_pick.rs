@@ -10,6 +10,7 @@
 
 use crate::app::types::HoverTargetKind;
 use crate::map::entities::EntityCategory;
+use crate::map::terrain::TacticalBridgeLookup;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
@@ -19,8 +20,6 @@ use crate::sim::vision::FogState;
 /// `dx*dx + 0.5*dy*dy < 200` with 0.5 Y-weight compensating for isometric projection.
 /// Max horizontal reach: sqrt(200) ≈ 14px, max vertical reach: sqrt(400) = 20px.
 const PICK_DISTANCE_THRESHOLD: f32 = 200.0;
-type TacticalBridgeInverseMap =
-    std::collections::BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>;
 /// The simulation's house table, as the picker needs it: owner → player state.
 type HouseStates = std::collections::BTreeMap<InternedId, crate::sim::house_state::HouseState>;
 
@@ -66,7 +65,7 @@ pub(crate) fn pick_enemy_target_stable_id(
     ignore_visibility: bool,
     rules: Option<&RuleSet>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
 ) -> Option<u64> {
     hover_target_at_point(
         sim,
@@ -76,7 +75,7 @@ pub(crate) fn pick_enemy_target_stable_id(
         ignore_visibility,
         rules,
         height_map,
-        bridge_height_map,
+        bridge_cells,
     )
     .and_then(|hover| match hover.kind {
         HoverTargetKind::EnemyUnit | HoverTargetKind::EnemyStructure => Some(hover.stable_id),
@@ -92,7 +91,7 @@ pub(crate) fn pick_any_target_stable_id(
     ignore_visibility: bool,
     rules: Option<&RuleSet>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
 ) -> Option<u64> {
     // Use empty owner so everything is considered "enemy" in hover logic.
     hover_target_at_point(
@@ -103,7 +102,7 @@ pub(crate) fn pick_any_target_stable_id(
         ignore_visibility,
         rules,
         height_map,
-        bridge_height_map,
+        bridge_cells,
     )
     .filter(|hover| hover.kind != HoverTargetKind::HiddenEnemy)
     .map(|hover| hover.stable_id)
@@ -117,7 +116,7 @@ pub(crate) fn hover_target_at_point(
     ignore_visibility: bool,
     rules: Option<&RuleSet>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
 ) -> Option<HoverTargetKindWithId> {
     let local_owner_id: InternedId = sim.interner.get(local_owner).unwrap_or_default();
     let mut best: Option<(u64, f32)> = None;
@@ -143,7 +142,7 @@ pub(crate) fn hover_target_at_point(
                 entity.position.ry,
                 foundation,
                 height_map,
-                bridge_height_map,
+                bridge_cells,
             ) {
                 continue;
             }
@@ -234,7 +233,7 @@ pub(crate) fn compute_click_selection_snapshot(
     rules: Option<&RuleSet>,
     houses: Option<&HouseStates>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Option<SelectionMutation> {
     compute_click_selection_snapshot_with_playfield(
@@ -250,7 +249,7 @@ pub(crate) fn compute_click_selection_snapshot(
         rules,
         houses,
         height_map,
-        bridge_height_map,
+        bridge_cells,
         interner,
         false,
     )
@@ -269,7 +268,7 @@ pub(crate) fn compute_click_selection_snapshot_with_playfield(
     rules: Option<&RuleSet>,
     houses: Option<&HouseStates>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
     interner: Option<&crate::sim::intern::StringInterner>,
     require_playfield_membership: bool,
 ) -> Option<SelectionMutation> {
@@ -284,7 +283,7 @@ pub(crate) fn compute_click_selection_snapshot_with_playfield(
         rules,
         houses,
         height_map,
-        bridge_height_map,
+        bridge_cells,
         interner,
     ) else {
         // Non-shift click clears selection; shift-click with no hit keeps it.
@@ -1136,14 +1135,14 @@ fn click_hits_foundation(
     entity_ry: u16,
     foundation: &str,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
 ) -> bool {
     let (fw, fh) = crate::rules::foundation::foundation_dimensions(foundation);
     let (click_rx, click_ry) = crate::app::match_runtime::sim_tick::world_point_to_cell(
         world_x,
         world_y,
         height_map,
-        bridge_height_map,
+        bridge_cells,
     );
     let crx = click_rx as i32;
     let cry = click_ry as i32;
@@ -1163,7 +1162,7 @@ pub(crate) fn pick_entity_at_point(
     rules: Option<&RuleSet>,
     _houses: Option<&HouseStates>,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_height_map: Option<&TacticalBridgeInverseMap>,
+    bridge_cells: Option<&dyn TacticalBridgeLookup>,
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Option<u64> {
     // Elliptical pick distance: dx² + 0.5*dy² < 200, with the 0.5 Y-weight
@@ -1176,7 +1175,7 @@ pub(crate) fn pick_entity_at_point(
             world_x,
             world_y,
             height_map,
-            bridge_height_map,
+            bridge_cells,
         );
         if !fog.is_cell_revealed(owner_id, rx, ry) || fog.is_cell_gap_covered(owner_id, rx, ry) {
             return None;
@@ -1253,7 +1252,7 @@ pub(crate) fn pick_entity_at_point(
             entity.position.ry,
             foundation,
             height_map,
-            bridge_height_map,
+            bridge_cells,
         )
         .then_some(entity.stable_id())
     })

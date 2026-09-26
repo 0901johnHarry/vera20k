@@ -74,7 +74,6 @@ pub(crate) fn fallback_map_load_result() -> init::MapLoadResult {
             house_roster: HouseRoster::default(),
             height_map: BTreeMap::new(),
             bridge_height_map: BTreeMap::new(),
-            tactical_bridge_inverse_map: BTreeMap::new(),
             rules: None,
             map_lighting_config: crate::map::lighting::LightingConfig::default(),
             theater_name: "TEMPERATE".to_string(),
@@ -226,10 +225,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         result.presentation.overlay_radar_colors;
     state.match_state.match_presentation.house_color_map = result.presentation.house_color_map;
     state.match_state.match_presentation.house_roster = result.scenario.house_roster;
-    state
-        .match_state
-        .match_presentation
-        .tactical_bridge_inverse_map = result.scenario.tactical_bridge_inverse_map;
     // F04: the app no longer stores a second ArtRegistry; presentation
     // borrows the sole copy owned by RuleSet (state.rules).
     state.process_assets.csf = result.presentation.csf;
