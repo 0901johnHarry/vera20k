@@ -924,9 +924,17 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
         let Some(mcv) = mcv else {
             continue;
         };
-        let (mcv_debris, mcv_explosions): (Vec<_>, Vec<_>) = kill(sim, mcv)
-            .into_iter()
-            .partition(|anim| anim.5.is_some());
+        // ReadGeneral's 128-byte buffer leaves a literal final type D in
+        // retail MetallicDebris. It is unread/non-Bouncer but still debris;
+        // the selected type list, not presence of a Bounce body, classifies it.
+        let (mcv_debris, mcv_explosions): (Vec<_>, Vec<_>) =
+            kill(sim, mcv).into_iter().partition(|anim| {
+                rules
+                    .general
+                    .metallic_debris
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(&anim.0))
+            });
         let amcv = rules.object("AMCV").unwrap();
         assert!(
             matches!(mcv_explosions.as_slice(), [(name, _, 0, 0x600, 0, None)]

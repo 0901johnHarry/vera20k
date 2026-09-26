@@ -602,7 +602,7 @@ impl TacticalCaptureSession {
             "Rust L0 is not InGame"
         );
         ensure!(
-            state.match_state.local_player_owner.as_deref()
+            state.match_state.local_player_owner()
                 == Some(profile.launch.player_name.as_str()),
             "local owner differs from sealed tactical launch"
         );

@@ -17,6 +17,10 @@ use crate::sim::occupancy::RawCellOccupationGrid;
 use crate::sim::production::ProductionState;
 use crate::sim::terrain_spawn::TerrainSpawnerState;
 
+#[cfg(test)]
+#[path = "terrain_coordinate_tests.rs"]
+mod coordinate_tests;
+
 const TERRAIN_LIMBO_CLEAR_BIT: u8 = 0x40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -40,6 +44,10 @@ pub struct TerrainObjectState {
     pub type_ref: InternedId,
     pub rx: u16,
     pub ry: u16,
+    /// Retained ObjectClass Location.Z after TerrainType+6C (71E0D0)
+    /// clamps the constructor coordinate to Map578080 ground height.
+    /// Ground changes do not relocate the object. See terrain_coordinate.json.
+    world_z_leptons: i32,
     pub health: i32,
     pub max_health: i32,
     pub occupation_bits: u8,
@@ -52,6 +60,7 @@ impl std::hash::Hash for TerrainObjectState {
         self.type_ref.hash(state);
         self.rx.hash(state);
         self.ry.hash(state);
+        self.world_z_leptons.hash(state);
         self.health.hash(state);
         self.max_health.hash(state);
         self.occupation_bits.hash(state);
@@ -63,11 +72,43 @@ impl TerrainObjectState {
     pub fn new(
         stable_id: u64,
         type_ref: InternedId,
-        rx: u16,
-        ry: u16,
+        cell: (u16, u16),
         terrain_type: &TerrainObjectType,
         snow_theater: bool,
+        terrain: Option<&ResolvedTerrainGrid>,
     ) -> Self {
+        let [x, y] = terrain_cell_center(cell);
+        // Terrain ctor71BC4A..71BC76 passes centered signed XY and Z0;
+        // Object Unlimbo5F4F9C dispatches TerrainType71E0D0 before the raw
+        // coordinate write5F6940. The type callback retains max(0, ground).
+        let world_z_leptons =
+            crate::sim::movement::ground_pose::ground_surface_z_at([x, y], false, terrain, None)
+                .unwrap_or(0)
+                .max(0);
+        Self {
+            stable_id,
+            native_unique_id: None,
+            in_logic_vector: false,
+            type_ref,
+            rx: cell.0,
+            ry: cell.1,
+            world_z_leptons,
+            health: terrain_type.strength,
+            max_health: terrain_type.strength,
+            occupation_bits: occupation_bits_for(terrain_type, snow_theater),
+            lifecycle: TerrainObjectLifecycle::Live,
+        }
+    }
+
+    /// Terrain VT7F522C+48 inherits Object GetCoords5F65A0. Its XY is
+    /// the authored cell center; Z is the coordinate retained at construction.
+    pub(crate) fn world_coord(&self) -> crate::sim::projectile::ProjectileCoord {
+        let [x, y] = terrain_cell_center(self.cell());
+        crate::sim::projectile::ProjectileCoord::new(x, y, self.world_z_leptons)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(stable_id: u64, type_ref: InternedId, rx: u16, ry: u16) -> Self {
         Self {
             stable_id,
             native_unique_id: None,
@@ -75,9 +116,10 @@ impl TerrainObjectState {
             type_ref,
             rx,
             ry,
-            health: terrain_type.strength,
-            max_health: terrain_type.strength,
-            occupation_bits: occupation_bits_for(terrain_type, snow_theater),
+            world_z_leptons: 0,
+            health: 100,
+            max_health: 100,
+            occupation_bits: 0,
             lifecycle: TerrainObjectLifecycle::Live,
         }
     }
@@ -89,6 +131,14 @@ impl TerrainObjectState {
     pub fn is_live(&self) -> bool {
         self.lifecycle == TerrainObjectLifecycle::Live
     }
+}
+
+fn terrain_cell_center(cell: (u16, u16)) -> [i32; 2] {
+    use crate::util::lepton::{CELL_CENTER_LEPTON_I32, LEPTONS_PER_CELL_I32};
+    [
+        i32::from(cell.0 as i16) * LEPTONS_PER_CELL_I32 + CELL_CENTER_LEPTON_I32,
+        i32::from(cell.1 as i16) * LEPTONS_PER_CELL_I32 + CELL_CENTER_LEPTON_I32,
+    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -899,7 +949,7 @@ mod tests {
             .expect("terrain type");
         let mut interner = StringInterner::default();
         let type_ref = interner.intern("TIBTRE01");
-        let mut terrain = TerrainObjectState::new(1, type_ref, 0, 0, terrain_type, false);
+        let mut terrain = TerrainObjectState::new(1, type_ref, (0, 0), terrain_type, false, None);
         let mut production = ProductionState::default();
         let mut grid = resolved_clear_grid();
 

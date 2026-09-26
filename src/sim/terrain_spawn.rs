@@ -731,8 +731,14 @@ fn construct_terrain_objects_inner(
         let native_unique_id = authored_overlay_registry
             .map(|_| sim.next_native_load_id())
             .transpose()?;
-        let mut terrain_state =
-            TerrainObjectState::new(stable_id, type_ref, obj.rx, obj.ry, t, snow_theater);
+        let mut terrain_state = TerrainObjectState::new(
+            stable_id,
+            type_ref,
+            (obj.rx, obj.ry),
+            t,
+            snow_theater,
+            sim.resolved_terrain.as_ref(),
+        );
         terrain_state.native_unique_id = native_unique_id;
         let occupation_bits = terrain_state.occupation_bits;
         if occupation_bits != 0 {

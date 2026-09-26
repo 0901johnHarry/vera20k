@@ -171,19 +171,8 @@ pub(crate) struct ReceiverRun {
 }
 
 impl ReceiverRun {
-    pub(crate) fn finish(self, world: &mut Simulation) -> Vec<(u16, u16)> {
+    pub(crate) fn finish(self) -> Vec<(u16, u16)> {
         debug_assert!(self.finalizing_terrain.is_empty());
-        let inactive: Vec<_> = world
-            .production
-            .terrain_objects
-            .values()
-            .filter(|object| !object.is_live() && object.in_logic_vector)
-            .map(|object| object.stable_id)
-            .collect();
-        for stable_id in inactive {
-            let retired = world.retire_non_entity_object(stable_id);
-            debug_assert!(retired);
-        }
         self.navigation_changed_cells
     }
 }
@@ -302,22 +291,26 @@ pub(crate) fn commit_terrain(
         && let Some(c4_warhead) = rules.warhead(&rules.bridge_warheads.c4_name).cloned()
     {
         let c4_id = world.interner.intern(&c4_warhead.id);
-        let impact_z = world
-            .resolved_terrain
-            .as_ref()
-            .and_then(|grid| grid.cell(lethal.cell.0, lethal.cell.1))
-            .map_or(0, |cell| i32::from(cell.level));
+        // Terrain71BABF passes its retained Object Location, not a fresh
+        // sample of the ground/deck after nested callbacks.
+        let impact = world.production.terrain_objects[&lethal.stable_id].world_coord();
+        let (rx, ry, sub_x, sub_y, world_z) = projectile_impact_cell(impact);
+        let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), &c4_warhead);
         let aoe = {
             let collected = collect_area(
                 world,
                 rules,
                 overlay_registry,
-                lethal.cell,
+                (rx, ry),
                 100,
                 &c4_warhead,
                 (RAD_NO_ATTACKER, None, c4_id),
-                None,
-                impact_z,
+                Some(combat_aoe::AoEAirImpact {
+                    sub_x,
+                    sub_y,
+                    z_leptons: world_z,
+                }),
+                world_z.div_euclid(LEPTONS_PER_LEVEL as i32),
             );
             append_fixture_tiberium(world, &mut effects.tiberium_reduction_requests);
             collected
@@ -332,9 +325,19 @@ pub(crate) fn commit_terrain(
         let (nested, mut pings) = commit_area(world, run, &aoe.receivers, rules, overlay_registry);
         effects.append(nested);
         under_attack_events.append(&mut pings);
+        effects.bridge_state_changed |= continue_area_bridge_damage(
+            world,
+            rules,
+            overlay_registry,
+            (rx, ry),
+            100,
+            c4_id,
+            world_z,
+            routed_wall,
+        );
     }
 
-    let _ = crate::sim::terrain_object::finalize_terrain_lethal(
+    let finalized = crate::sim::terrain_object::finalize_terrain_lethal(
         crate::sim::terrain_object::production_authority_parts(
             &mut world.production,
             &mut world.substrate.raw_cell_occupation,
@@ -344,6 +347,13 @@ pub(crate) fn commit_terrain(
         lethal,
         world.resolved_terrain.as_mut(),
     );
+    if finalized {
+        // Terrain's common tail 0x71BB2C -> ObjectUnInit 0x5F65F0 retires Logic membership before
+        // returning to the current receiver walk; physical deletion is deferred.
+        // Native executable comparison: terrain_debris_receiver.json.
+        let retired = world.retire_non_entity_object(lethal.stable_id);
+        debug_assert!(retired);
+    }
     (effects, under_attack_events)
 }
 
@@ -1230,9 +1240,7 @@ pub(crate) fn handle_death(
             bridge_hut,
         } = blast;
         if let Some(warhead) = rules.warhead(world.interner.resolve(*wh_id)) {
-            let routed_wall =
-                wall_overlay_flags_at(world.overlay_grid.as_ref(), overlay_registry, *rx, *ry)
-                    .is_some_and(|flags| warhead_damages_wall(warhead, flags));
+            let routed_wall = area_routes_to_wall(world, overlay_registry, (*rx, *ry), warhead);
             let aoe = {
                 let collected = collect_area(
                     world,
@@ -1696,12 +1704,29 @@ fn run_special_detonation_arm(
     }
 }
 
+/// Snapshot the native primary-cell wall branch before its receiver collection
+/// mutates the overlay. Its return skips the bridge tail even if the wall dies.
+pub(crate) fn area_routes_to_wall(
+    world: &Simulation,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    cell: (u16, u16),
+    warhead: &WarheadType,
+) -> bool {
+    wall_overlay_flags_at(
+        world.overlay_grid.as_ref(),
+        overlay_registry,
+        cell.0,
+        cell.1,
+    )
+    .is_some_and(|flags| warhead_damages_wall(warhead, flags))
+}
+
 /// Apply_area_damage's bridge continuation489E87..48A2C4 runs after all
 /// ordinary receivers and their recursive deaths, before returning to the
 /// caller. In particular Bullet469033 completes it before cluster RNG469057.
 /// A negative nonzero packet still reaches the native strength draw.
 #[allow(clippy::too_many_arguments)]
-fn continue_area_bridge_damage(
+pub(crate) fn continue_area_bridge_damage(
     world: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
@@ -1826,13 +1851,8 @@ fn emit_detonation_receivers(
                 out,
             );
 
-            let routed_wall = wall_overlay_flags_at(
-                world.overlay_grid.as_ref(),
-                overlay_registry,
-                impact_rx,
-                impact_ry,
-            )
-            .is_some_and(|flags| warhead_damages_wall(warhead, flags));
+            let routed_wall =
+                area_routes_to_wall(world, overlay_registry, (impact_rx, impact_ry), warhead);
             // `0x00469A69..0x00469A75`: the bullet's live Owner's house, or
             // none once the owner is gone (`BulletClass+0xB0` is detached).
             let source_house = world

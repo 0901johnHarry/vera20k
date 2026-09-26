@@ -2371,8 +2371,8 @@ impl Simulation {
         {
             return false;
         }
-        // Terrain ctor71BC76 reveals at cell center/Z=0; Object5F4260 is
-        // Ground for this stationary surface object, including elevated cells.
+        // Terrain ctor71BC76 reveals at the retained type-adjusted coordinate;
+        // Object5F4260 selects Ground even on elevated cells.
         self.submit_object_display(stable_id, DisplayLayer::GROUND, rules);
         self.register_logic_object(stable_id)
     }

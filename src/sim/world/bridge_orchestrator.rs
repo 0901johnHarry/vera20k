@@ -4,8 +4,8 @@
 //! receivers and before returning to the bullet's animation/cluster tail.
 //! The four native admission blocks run in fixed order, selecting drivers from
 //! live state. Concrete-body publication is synchronous; other driver outcomes
-//! still feed the existing cascade. Tagged collapse notification and debris
-//! construction remain required dependencies (see bridge-damage-admission.md).
+//! still feed the existing cascade. Debris uses the shared AnimClass lifecycle;
+//! tagged collapse notification remains a required dependency.
 //!
 //! ## Dependency rules
 //! Same as sim/world: depends on sim/bridge_state, sim/rng, rules/, map/;
@@ -34,10 +34,15 @@ use crate::sim::bridge_state::{
     Axis, BridgeCellRole, BridgeDamageEvent, BridgeOverlayProjectionOp,
     BridgeRuntimeCell, BridgeRuntimeState, DamageState, DispatchPath, StateOutcome,
 };
+use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::world::Simulation;
 use crate::sim::{intern::InternedId, rng::SimRng};
-use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::CELL_CENTER_LEPTON;
+use crate::util::lepton::{BRIDGE_HEIGHT_DELTA_LEPTONS, LEPTONS_PER_LEVEL};
+use crate::util::native_x87::{NativeF64Bits, X87Chop53};
+
+#[cfg(test)]
+#[path = "bridge_debris_tests.rs"]
+mod debris_tests;
 
 /// Apply bridge inputs through the four native admission blocks.
 ///
@@ -291,8 +296,8 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
             fallback_adjacent_dirty_anchor = fallback.adjacent_dirty_anchor;
         }
     }
-    for descriptor in anim_spawns {
-        construct_bridge_explosion(sim, rules, descriptor);
+    for spawn in anim_spawns {
+        construct_bridge_anim(sim, rules, spawn);
     }
 
     apply_hut_bridge_execution(
@@ -601,7 +606,7 @@ struct BridgePresentationContext<'a> {
     /// `BridgeExplosions` constructor rows in draw order. The walker runs
     /// inside the bridge-state and terrain borrows, so the owner constructs
     /// them as soon as those end.
-    anim_spawns: &'a mut Vec<crate::sim::components::AnimClassSpawnDescriptor>,
+    anim_spawns: &'a mut Vec<BridgeAnimSpawn>,
     bridge_explosions: &'a [InternedId],
 }
 
@@ -621,7 +626,6 @@ const HUT_FALLBACK_STARTER_MASK: u32 = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DEST
 const MAX_HUT_SWEEP_STEPS: usize = 4;
 const MAX_HUT_ATTEMPTS_PER_STEP: usize = 3;
 const NORMALIZED_RNG_MAX_INCLUSIVE: u32 = 0x7FFF_FFFE;
-const NORMALIZED_RNG_DENOMINATOR: u64 = 0x8000_0000;
 // Bridge-debris RNG gate boundaries. The original engine compares
 // `(double)draw * scale` against 0.95 / 0.5, where `scale` is the bit-exact
 // double `2^-31 + 2^-61` (NOT `1/2^31`). The tiny `2^-61` term pushes each
@@ -632,27 +636,6 @@ const NORMALIZED_RNG_DENOMINATOR: u64 = 0x8000_0000;
 // spurious pass spends extra slot draws -> lockstep desync.
 const BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE: u32 = 2_040_109_464;
 const BRIDGE_METALLIC_GATE_EXCLUSIVE: u32 = 0x3FFF_FFFF;
-const BRIDGE_JITTER_SPAN_LEPTONS: u64 = 50;
-const BRIDGE_JITTER_HALF_LEPTONS: i32 = 25;
-// The collapse fallout is closed against `CellClass::BlowUpBridge @
-// 0x0047DD70`: the outer 95% gate, both jitter draws, the 50% metallic gate, the
-// metallic slot draw inside it, the `RandomRanged(1, 5)` start delay and the
-// explosion slot draw all match, in order.
-//
-// RESIDUAL (GSI-04.14, M11b) — `MetallicDebris=` is not constructed.
-// - The entries resolve to `[DBRIS*]` AnimTypes with `Bouncer=yes`,
-//   `RandomRate=220,600`, `Damage=10/20`, `DamageRadius=50/80`, `Warhead=HE`
-//   and `ExpireAnim=`: retail's bridge debris bounces and hurts what it lands
-//   on. `AnimStore` has no bouncer arm (`sim::anim_class` module header), so
-//   VERA keeps the gate and slot draws and builds nothing. `ReadINI` converts
-//   the rate pair to 1..1 and native's `AnimClass::Constructor` still runs
-//   `RandomRanged(1, 1)` for it, a draw VERA does not take.
-// - The legacy effect list this replaced never drew the debris either: no
-//   atlas source lists `MetallicDebris=` names, so their sprites were never
-//   loaded and every record was skipped at draw time.
-// - Trigger: every bridge span destroyed. Frequency: routine on maps with
-//   bridges. Downstream risk: the missing draw shifts the stream for every
-//   collapse, so it must land with the damage half rather than alone.
 // Safety cap on the extent-measurement walk (Phase 1 of the bounded
 // walker). gamemd has no explicit cap — the off-bridge band check
 // terminates the walk — but a runaway count would only happen if the
@@ -1558,130 +1541,81 @@ pub(crate) fn refresh_bridge_zones_if_dirty(
     let _ = sim.rebuild_dynamic_navigation(rules);
 }
 
-/// Per-cell debris spawn. Mirror of binary `BlowUpBridge` step 4. RNG draw
-/// order is parity-critical for lockstep; the binary draws in this exact
-/// sequence per cell that passes the outer gate:
-/// 1. Outer normalized 95% gate.
-/// 2. Two normalized jitter draws, converted to in-cell offsets.
-/// 3. MetallicDebris normalized 50% gate.
-/// 4. Optional MetallicDebris slot when the gate passed and debris exists.
-/// 5. BridgeExplosion delay in 1..=5 frames.
-/// 6. BridgeExplosion slot.
-///
-/// Replaces the wrong-shape legacy `Simulation::spawn_bridge_explosions`,
-/// which drew 1 immediate BridgeExplosion + a 50% delayed BridgeExplosion
-/// — visible every collapse.
+/// CellClass::BlowUpBridge47DD70 after its ground/deck receiver passes.
+/// Constructor/Start completes before the sibling explosion's delay/index
+/// draws. Native comparisons: tools/spatial_oracle/bridge_debris_producer.
 fn spawn_bridge_debris(sim: &mut Simulation, rules: &RuleSet, cells: &BTreeSet<(u16, u16)>) {
     let explosion_count = sim.bridge_explosions.len() as u32;
     let metallic_count = sim.metallic_debris.len() as u32;
-
     if explosion_count == 0 {
         return;
     }
-
     for &(rx, ry) in cells {
-        // Step 1: outer 95% gate.
         let outer_draw = sim
             .bridge_rng()
             .next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
         if outer_draw >= BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE {
             continue;
         }
-
-        // Step 2: two normalized jitter draws become the in-cell offsets.
-        let (sub_x, sub_y) = bridge_jittered_subcells(sim.bridge_rng());
-
-        let deck_level = sim
+        // 47DE78..47DEB6 reads signed Cell.Level and adds416 unconditionally,
+        // including after SetBridgeDirection has removed structural flags.
+        let level = sim
             .resolved_terrain
             .as_ref()
-            .and_then(|t| t.cell(rx, ry))
-            .map(|c| c.bridge_deck_level_if_any().unwrap_or(c.level))
+            .map(|terrain| terrain.collapse_animation_level(rx as i16, ry as i16))
             .unwrap_or(0);
-
-        // Step 3: MetallicDebris 50% gate.
+        let z = i32::from(level) * LEPTONS_PER_LEVEL as i32 + BRIDGE_HEIGHT_DELTA_LEPTONS as i32;
+        let coord = bridge_jittered_coord(sim.bridge_rng(), (rx as i16, ry as i16), z);
         let metallic_draw = sim
             .bridge_rng()
             .next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-        let metallic_pass = metallic_draw < BRIDGE_METALLIC_GATE_EXCLUSIVE;
-        // Step 4: MetallicDebris slot pick + spawn (no delay). Slot draw
-        // only happens when all three gates pass — short-circuit matches
-        // the binary's call order.
-        if metallic_pass && metallic_count > 0 {
-            // The slot draw is kept for stream parity; the debris itself is
-            // not constructed (see the RESIDUAL on the debris block above).
-            let _slot = sim.bridge_rng().next_range_u32(metallic_count);
+        if metallic_draw < BRIDGE_METALLIC_GATE_EXCLUSIVE && metallic_count > 0 {
+            let slot = sim.bridge_rng().next_range_u32(metallic_count) as usize;
+            let spawn = bridge_anim_spawn(sim.metallic_debris[slot], coord, 0);
+            construct_bridge_anim(sim, rules, spawn);
         }
-
-        // Step 5 + 6: always BridgeExplosion, delayed 1-5 frames.
-        let delay_frames = sim.bridge_rng().next_range_u32_inclusive(1, 5);
-        let idx = sim.bridge_rng().next_range_u32(explosion_count) as usize;
-        let descriptor = bridge_explosion_descriptor(
-            sim.bridge_explosions[idx],
-            (rx, ry),
-            (sub_x, sub_y),
-            deck_level,
-            delay_frames as u16,
-        );
-        construct_bridge_explosion(sim, rules, descriptor);
+        // Native does not guard an empty MetallicDebris vector before indexing.
+        // Rust safely skips that invalid-list spawn; no successful native
+        // construction equivalence is claimed for this authored input.
+        let delay = sim.bridge_rng().next_range_u32_inclusive(1, 5) as u16;
+        let slot = sim.bridge_rng().next_range_u32(explosion_count) as usize;
+        let spawn = bridge_anim_spawn(sim.bridge_explosions[slot], coord, delay);
+        construct_bridge_anim(sim, rules, spawn);
     }
 }
 
-/// `AnimClass` draw flags every bridge collapse animation is constructed with.
 const BRIDGE_ANIM_DRAW_FLAGS: u32 = 0x600;
 
-/// The `AnimClass::Constructor @ 0x00421EA0` row of a `BridgeExplosions=`
-/// animation: `(type, &coord, delay 1..=5, loop 1, flags 0x600, zAdjust 0,
-/// reverse 0)`, identical at `CellClass::BlowUpBridge` `0x0047E02C` and in the
-/// four hut walkers. The start delay keeps the constructor from calling
-/// `AnimClass::Start @ 0x00424CE0`; the store calls it, and plays the type's
-/// `Report=`, on the visit that counts the delay to zero.
-///
-/// RESIDUAL: all four stock types author `Scorch=yes` and `Crater=yes`.
-/// `AnimClass::Middle @ 0x00424F00` places them, behind a height gate
-/// (`vtable+0x1C8 < 0x1E`) and, with both keys set, one
-/// `RandomRanged(0, 0x7FFFFFFE)` for the pick. `Start` calls `Middle` when
-/// `AnimType+0x298` is zero, otherwise `AnimClass::AI` does at that frame; the
-/// value for these types is UNCHECKED. The store does not run `Middle` (see
-/// `sim::anim_class`) and these producers queue no smudge rows, so the hut
-/// walker explosions, which sit at cell level and should pass the gate, leave
-/// no scorch or crater and skip that draw; the `BlowUpBridge` ones sit a deck
-/// offset up and should fail it (offset value UNCHECKED). Downstream risk: one
-/// scenario draw per walker explosion. The legacy list took neither.
-///
-/// UNCHECKED: the store draws an anim during its start delay, so frame 0 shows
-/// for the delay plus the first-AI visit before the sound;
-/// `AnimClass::DrawIt @ 0x00422CA0` shows no delay test, which suggests native
-/// does the same. The
-/// `BlowUpBridge` Z uses the deck level only while the cell still reports a
-/// deck, where native adds the offset unconditionally.
-fn bridge_explosion_descriptor(
-    type_name: InternedId,
-    cell: (u16, u16),
-    sub: (SimFixed, SimFixed),
-    level: u8,
-    delay: u16,
-) -> crate::sim::components::AnimClassSpawnDescriptor {
-    crate::sim::components::AnimClassSpawnDescriptor {
-        delay,
-        loop_count: 1,
-        draw_flags: BRIDGE_ANIM_DRAW_FLAGS,
-        z_adjust: 0,
-        reverse: false,
-        ..crate::sim::components::AnimClassSpawnDescriptor::new(
-            type_name, cell.0, cell.1, sub.0, sub.1, level,
-        )
+struct BridgeAnimSpawn {
+    descriptor: crate::sim::components::AnimClassSpawnDescriptor,
+    coord: AnimWorldCoord,
+}
+
+/// Both native bridge producers pass loop1/flags600/ZAdjust0/reverse0.
+/// Exact world coordinates remain authoritative; descriptor cell fields are
+/// only compatibility projections and cannot represent negative Cell levels.
+fn bridge_anim_spawn(type_name: InternedId, coord: AnimWorldCoord, delay: u16) -> BridgeAnimSpawn {
+    let (rx, ry, sub_x, sub_y, level) = coord.to_cell_sub_z();
+    BridgeAnimSpawn {
+        descriptor: crate::sim::components::AnimClassSpawnDescriptor {
+            delay,
+            loop_count: 1,
+            draw_flags: BRIDGE_ANIM_DRAW_FLAGS,
+            z_adjust: 0,
+            reverse: false,
+            ..crate::sim::components::AnimClassSpawnDescriptor::new(
+                type_name, rx, ry, sub_x, sub_y, level,
+            )
+        },
+        coord,
     }
 }
 
-fn construct_bridge_explosion(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    descriptor: crate::sim::components::AnimClassSpawnDescriptor,
-) {
-    if let Err(error) = sim.spawn_anim_object(rules, descriptor) {
-        // `anim_class_roots` binds every `BridgeExplosions=` type, so this is
-        // a type with no art section or no SHP.
-        log::warn!("bridge explosion anim did not construct: {error}");
+fn construct_bridge_anim(sim: &mut Simulation, rules: &RuleSet, spawn: BridgeAnimSpawn) {
+    if let Err(error) = sim.spawn_anim_at_world(rules, spawn.descriptor, spawn.coord) {
+        // The loader binds both resolved lists, including registered types
+        // without ART such as retail's truncated final MetallicDebris token D.
+        log::warn!("bridge anim did not construct: {error}");
     }
 }
 
@@ -1705,34 +1639,45 @@ fn queue_walker_bridge_explosion(
     if presentation.bridge_explosions.is_empty() {
         return;
     }
-    let sub = bridge_jittered_subcells(presentation.rng);
-    let delay_frames = presentation.rng.next_range_u32_inclusive(1, 5);
-    let idx = presentation
+    let coord = bridge_jittered_coord(
+        presentation.rng,
+        (rx as i16, ry as i16),
+        i32::from(z as i8) * LEPTONS_PER_LEVEL as i32,
+    );
+    let delay = presentation.rng.next_range_u32_inclusive(1, 5) as u16;
+    let slot = presentation
         .rng
         .next_range_u32(presentation.bridge_explosions.len() as u32) as usize;
-    presentation.anim_spawns.push(bridge_explosion_descriptor(
-        presentation.bridge_explosions[idx],
-        (rx, ry),
-        sub,
-        z,
-        delay_frames as u16,
+    presentation.anim_spawns.push(bridge_anim_spawn(
+        presentation.bridge_explosions[slot],
+        coord,
+        delay,
     ));
 }
 
-fn bridge_jittered_subcells(rng: &mut SimRng) -> (SimFixed, SimFixed) {
+fn bridge_jittered_coord(rng: &mut SimRng, cell: (i16, i16), z: i32) -> AnimWorldCoord {
     let x_draw = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
     let y_draw = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-    (
-        bridge_jittered_subcell(x_draw),
-        bridge_jittered_subcell(y_draw),
-    )
+    AnimWorldCoord {
+        x: bridge_jittered_axis(cell.0, x_draw),
+        y: bridge_jittered_axis(cell.1, y_draw),
+        z,
+    }
 }
 
-fn bridge_jittered_subcell(draw: u32) -> SimFixed {
-    let offset = ((u64::from(draw) * BRIDGE_JITTER_SPAN_LEPTONS) / NORMALIZED_RNG_DENOMINATOR)
-        as i32
-        - BRIDGE_JITTER_HALF_LEPTONS;
-    CELL_CENTER_LEPTON + SimFixed::from_num(offset)
+/// 47DECF..47DEE9 and47DF0D..47DF27 truncate the final absolute coordinate,
+/// not the relative jitter. This matters at negative Cell coordinates. Reuse
+/// the deterministic native arithmetic owner for the chained multiply/sub/add;
+/// a host floating-point expression can change the emitted flight coordinate.
+fn bridge_jittered_axis(cell: i16, draw: u32) -> i32 {
+    let scale = X87Chop53::load_f64(NativeF64Bits::from_bits(0x3e00_0000_0040_0000))
+        .expect("finite native normalized random scale");
+    let half = X87Chop53::load_f64(NativeF64Bits::from_bits(0x3fe0_0000_0000_0000))
+        .expect("finite native one-half");
+    let normalized = X87Chop53::mul(X87Chop53::load_i32(draw as i32), scale);
+    let offset = X87Chop53::mul(X87Chop53::sub(normalized, half), X87Chop53::load_i32(50));
+    let center = i32::from(cell) * 256 + 128;
+    X87Chop53::ftol_i32_low_masked(X87Chop53::add(offset, X87Chop53::load_i32(center)))
 }
 
 /// BlowUpBridge's deck pass (0x0047DDBA..0x0047DDC9): read the selected
@@ -2285,22 +2230,10 @@ mod tests {
         assert_eq!(cell.count_on(MovementLayer::Bridge), 0);
     }
 
-    /// Build a minimal RuleSet whose bridge voxel maximum matches the argument.
-    /// Used by debris tests to toggle the voxel-max gate.
-    fn rules_with_voxel_max(voxel_max: u32) -> crate::rules::ruleset::RuleSet {
-        let body = format!(
-            "[InfantryTypes]\n\
-             [VehicleTypes]\n\
-             [AircraftTypes]\n\
-             [BuildingTypes]\n\
-             [General]\n\
-             BridgeVoxelMax={}\n",
-            voxel_max
-        );
-        let ini = crate::rules::ini_parser::IniFile::from_str(&body);
+    /// Bound synthetic explosion types for the hut-walker fixture.
+    fn bridge_explosion_rules() -> crate::rules::ruleset::RuleSet {
+        let ini = crate::rules::ini_parser::IniFile::from_str("");
         let mut rules = crate::rules::ruleset::RuleSet::from_ini(&ini).expect("rules parse");
-        // Stock-shaped `BridgeExplosions=` art: an unbound type constructs no
-        // AnimClass, natively or here.
         let mut art = crate::rules::art_data::ArtRegistry::from_ini(
             &crate::rules::ini_parser::IniFile::from_str(
                 "[BRIDGEEXP1]\nTranslucent=yes\nReport=Explosion06\n\
@@ -2443,85 +2376,6 @@ mod tests {
         );
     }
 
-    /// Task 12 - RNG draw-order parity: per cell, `spawn_bridge_debris`
-    /// MUST consume RNG draws in the exact binary order:
-    /// outer-95% → jitter×2 → metallic-50% → optional metallic-slot →
-    /// explosion-delay → explosion-slot. Wrong order desyncs lockstep.
-    #[test]
-    fn bridge_blowup_debris_uses_scenario_only() {
-        let mut sim = Simulation::new();
-        let seed = 0xDEAD_BEEF_u64;
-        sim.reseed_scenario_and_main(seed);
-        let main_before = sim.main_rng.logical_state();
-        let mapgen_before = sim.mapgen_rng.logical_state();
-        sim.resolved_terrain = Some(water_below_bridge_terrain(3));
-        let bridge_exp_1 = sim.interner.intern("BRIDGEEXP1");
-        let bridge_exp_2 = sim.interner.intern("BRIDGEEXP2");
-        let metallic_debris = sim.interner.intern("METALDEB1");
-        let metallic_debris_2 = sim.interner.intern("METALDEB2");
-        sim.bridge_explosions.extend([bridge_exp_1, bridge_exp_2]);
-        // Two entries: a slot draw over a one-entry list consumes nothing.
-        sim.metallic_debris
-            .extend([metallic_debris, metallic_debris_2]);
-        let rules = rules_with_voxel_max(3);
-
-        let mut cells = BTreeSet::new();
-        cells.insert((5, 5));
-
-        // Predict the exact draw sequence on a parallel RNG. The helper
-        // MUST match this sequence step-for-step to maintain lockstep.
-        let mut predicted = crate::sim::rng::SimRng::new(seed);
-        let outer = predicted.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-        if outer < BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE {
-            let _jx = predicted.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-            let _jy = predicted.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-            let metallic_draw = predicted.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-            // Metallic slot draw is gated on the 50% predicate and the
-            // presence of MetallicDebris entries. BridgeVoxelMax is not part
-            // of standard BlowUpBridge debris gating.
-            if metallic_draw < BRIDGE_METALLIC_GATE_EXCLUSIVE {
-                let _slot = predicted.next_range_u32(2);
-            }
-            let _delay = predicted.next_range_u32_inclusive(1, 5);
-            let _exp_slot = predicted.next_range_u32(2);
-        }
-
-        spawn_bridge_debris(&mut sim, &rules, &cells);
-
-        assert_eq!(
-            sim.scenario_rng.logical_state(),
-            predicted.logical_state(),
-            "RNG draw order/count diverged from binary parity sequence"
-        );
-        if outer < BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE {
-            // `CellClass::BlowUpBridge` `0x0047E02C`: one delayed explosion at
-            // the structural deck height, which is where this differs from
-            // the hut walkers.
-            let anims = bridge_explosion_anims(&sim);
-            assert_eq!(anims.len(), 1);
-            assert_eq!(anims[0].draw_flags, 0x600);
-            assert!((1..=5).contains(&anims[0].runtime.delay_remaining));
-            let (rx, ry, _, _, level) = anims[0].world_coord.to_cell_sub_z();
-            assert_eq!((rx, ry, level), (5, 5, 3));
-            assert!(
-                sim.substrate.anims.iter().all(|(_, anim)| {
-                    anim.type_id != metallic_debris && anim.type_id != metallic_debris_2
-                }),
-                "MetallicDebris is drawn for but not constructed (RESIDUAL M11b)"
-            );
-        }
-        assert_eq!(
-            sim.main_rng.logical_state(),
-            main_before,
-            "bridge destruction presentation must not consume Main"
-        );
-        assert_eq!(
-            sim.mapgen_rng.logical_state(),
-            mapgen_before,
-            "bridge destruction presentation must not consume MapGen"
-        );
-    }
-
     /// The hut-collapse walk creates its pre-destroy presentation effects from
     /// Scenario only. A non-terminal one-step fixture makes the receiver real
     /// without adding BlowUpBridge fallout draws after the walker effects.
@@ -2552,7 +2406,7 @@ mod tests {
             predicted.next_range_u32(1);
         }
 
-        let rules = rules_with_voxel_max(3);
+        let rules = bridge_explosion_rules();
         let collapsed = dispatch_bridge_collapse_from_hut(&mut sim, &rules, (4, 4));
 
         assert!(
@@ -3203,103 +3057,6 @@ mod tests {
         );
     }
 
-    /// Seed search for a cell that passes the outer 95% gate and lands on the
-    /// wanted side of the 50% metallic gate.
-    fn debris_seed(metallic_passes: bool) -> u64 {
-        (1u64..10_000)
-            .find(|seed| {
-                let mut rng = crate::sim::rng::SimRng::new(*seed);
-                let outer = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-                if outer >= BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE {
-                    return false;
-                }
-                let _ = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-                let _ = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-                let metallic = rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-                (metallic < BRIDGE_METALLIC_GATE_EXCLUSIVE) == metallic_passes
-            })
-            .expect("fixture seed")
-    }
-
-    /// Multi-entry lists: a slot draw over a one-entry list consumes nothing,
-    /// which would make the draw-count assertions below vacuous.
-    fn debris_sim(seed: u64) -> Simulation {
-        let mut sim = Simulation::new();
-        sim.reseed_scenario_and_main(seed);
-        sim.resolved_terrain = Some(water_below_bridge_terrain(3));
-        for name in ["BRIDGEEXP1", "BRIDGEEXP2"] {
-            let id = sim.interner.intern(name);
-            sim.bridge_explosions.push(id);
-        }
-        for name in ["METALDEB1", "METALDEB2", "METALDEB3"] {
-            let id = sim.interner.intern(name);
-            sim.metallic_debris.push(id);
-        }
-        sim
-    }
-
-    /// The scenario stream after one fallout cell, with or without the
-    /// MetallicDebris slot draw.
-    fn debris_stream(seed: u64, metallic_slot: bool) -> crate::sim::rng::SimRng {
-        let mut rng = crate::sim::rng::SimRng::new(seed);
-        for _ in 0..4 {
-            rng.next_range_u32_inclusive(0, NORMALIZED_RNG_MAX_INCLUSIVE);
-        }
-        if metallic_slot {
-            rng.next_range_u32(3);
-        }
-        rng.next_range_u32_inclusive(1, 5);
-        rng.next_range_u32(2);
-        rng
-    }
-
-    /// A failed 50% gate takes no MetallicDebris slot draw, even with
-    /// BridgeVoxelMax at zero.
-    #[test]
-    fn bridge_debris_no_metallic_when_gate_fails_even_with_voxel_zero() {
-        let seed = debris_seed(false);
-        let mut sim = debris_sim(seed);
-        let rules = rules_with_voxel_max(0);
-
-        let mut cells = BTreeSet::new();
-        cells.insert((5, 5));
-        spawn_bridge_debris(&mut sim, &rules, &cells);
-
-        assert_ne!(
-            debris_stream(seed, false).logical_state(),
-            debris_stream(seed, true).logical_state(),
-            "fixture must tell the two sequences apart"
-        );
-        assert_eq!(
-            sim.scenario_rng.logical_state(),
-            debris_stream(seed, false).logical_state(),
-            "metallic gate failure must skip the MetallicDebris slot draw"
-        );
-    }
-
-    /// A passed gate takes the slot draw whatever BridgeVoxelMax says.
-    #[test]
-    fn bridge_debris_ignores_bridge_voxel_max_when_metallic_gate_passes() {
-        let seed = debris_seed(true);
-        let mut sim = debris_sim(seed);
-        let rules = rules_with_voxel_max(0);
-
-        let mut cells = BTreeSet::new();
-        cells.insert((5, 5));
-        spawn_bridge_debris(&mut sim, &rules, &cells);
-
-        assert_ne!(
-            debris_stream(seed, false).logical_state(),
-            debris_stream(seed, true).logical_state(),
-            "fixture must tell the two sequences apart"
-        );
-        assert_eq!(
-            sim.scenario_rng.logical_state(),
-            debris_stream(seed, true).logical_state(),
-            "BridgeVoxelMax=0 must not suppress the BlowUpBridge metallic slot draw"
-        );
-    }
-
     /// Debris helper short-circuits when the required BridgeExplosion list is
     /// empty. MetallicDebris alone does not enable BlowUpBridge presentation.
     #[test]
@@ -3310,7 +3067,7 @@ mod tests {
         sim.resolved_terrain = Some(water_below_bridge_terrain(3));
         let metallic_debris = sim.interner.intern("METALDEB1");
         sim.metallic_debris.push(metallic_debris);
-        let rules = rules_with_voxel_max(3);
+        let rules = bridge_explosion_rules();
 
         let mut cells = BTreeSet::new();
         cells.insert((5, 5));
@@ -3436,22 +3193,6 @@ mod tests {
         let cell = sim.substrate.occupancy.get(5, 5).expect("ground occupancy");
         assert_eq!(cell.count_on(MovementLayer::Ground), 1);
         assert_eq!(cell.count_on(MovementLayer::Bridge), 0);
-    }
-
-    /// Debris RNG gate boundaries reproduce the original engine's float
-    /// truncation (`scale = 2^-31 + 2^-61`), NOT the naive `threshold * 2^31`.
-    /// A draw landing exactly on the float boundary must FAIL the gate; a
-    /// spurious pass spends extra slot draws and desyncs lockstep. This test
-    /// fails if either constant is "simplified" back to its 2^31-scaled value.
-    #[test]
-    fn bridge_debris_gate_boundaries_match_float_truncation() {
-        // Outer 95% gate: largest passing draw is 2_040_109_463.
-        assert!(2_040_109_463 < BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE);
-        assert!(2_040_109_464 >= BRIDGE_DEBRIS_OUTER_GATE_EXCLUSIVE);
-        // Metallic 50% gate: largest passing draw is 0x3FFF_FFFE; the value
-        // that maps to exactly 0.5 (0x3FFF_FFFF) must fail under strict `<`.
-        assert!(0x3FFF_FFFE_u32 < BRIDGE_METALLIC_GATE_EXCLUSIVE);
-        assert!(0x3FFF_FFFF_u32 >= BRIDGE_METALLIC_GATE_EXCLUSIVE);
     }
 
     /// BlowUpBridge force-kills only the cell's ground object-list occupants.

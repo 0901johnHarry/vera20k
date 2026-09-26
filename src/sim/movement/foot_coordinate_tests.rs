@@ -115,8 +115,7 @@ fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
             restored.rebuild_caches_after_load(
                 terrain.clone(),
                 crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-                Vec::new(),
-                Vec::new(),
+                &crate::sim::runtime::SimResources::empty().rules,
             );
         }
         assert_eq!(

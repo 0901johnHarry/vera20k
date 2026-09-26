@@ -738,8 +738,7 @@ mod tests {
             restored.rebuild_caches_after_load(
                 terrain,
                 crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-                Vec::new(),
-                Vec::new(),
+                &runtime.resources.rules,
             );
             restored
                 .restore_map_authority_after_snapshot_load(
@@ -1074,8 +1073,7 @@ mod tests {
             restored.rebuild_caches_after_load(
                 terrain_template,
                 crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-                Vec::new(),
-                Vec::new(),
+                &runtime.resources.rules,
             );
             restored
                 .restore_map_authority_after_snapshot_load(
