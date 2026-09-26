@@ -184,6 +184,15 @@ all 198 damage outputs. Rust's safe handling of malformed short lists is an
 explicit exception. This is a demonstrated gameplay requirement for the existing
 arithmetic helper, not a new general x87 emulation layer.
 
+The full-suite radiation expectation also depended on the old percentage
+rounding. A separate [six-row original comparison](../../tools/spatial_oracle/radiation_damage_boundary.md)
+establishes health 295 for that synthetic heavy-unit fixture; its former 294
+expectation was arithmetic-only. It exposes an independent radiation spread and
+ReadDouble precision gap (native base59 versus Rust60) that happens to produce
+the same selected armored result. That larger radiation mechanism and its
+bridge consumers remain required follow-up work; this PR does not claim matching
+radiation intermediates.
+
 `GeneralRules` now owns the native constructor defaults for TreeStrength (25)
 and ConditionRed (0.5); actual retail reads still produce 200 and 0.25. Terrain
 convenience construction derives that same TreeStrength authority. The selected

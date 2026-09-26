@@ -48,8 +48,8 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
         sounds += &format!("ImpactWaterSound={}\n", sound_name(water));
     }
     let mut rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-        "[General]\nFlightLevel=1500\nConditionRed=0.25\n\
-         [AudioVisual]\nImpactLandSound=RulesLand\nImpactWaterSound=RulesWater\n\
+        "[General]\nFlightLevel=1500\n\
+         [AudioVisual]\nConditionRed=0.25\nImpactLandSound=RulesLand\nImpactWaterSound=RulesWater\n\
          [AircraftTypes]\n0=TEST\n[VehicleTypes]\n0=VICTIM\n\
          [TEST]\nStrength={}\nSpeed={}\nLandable=yes\nPrimary=CrashGun\n\
          Locomotor={{4A582746-9839-11D1-B709-00A024DDAFD1}}\n{sounds}\
@@ -60,6 +60,12 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
         int(input, "ini_speed", 14),
     )))
     .unwrap();
+    // aircraft_crash.py supplies Rules+1708=0.25. Native ReadAudioVisual
+    // 0066B337..0066B35E owns this key; the constructor default is 0.5.
+    assert_eq!(
+        rules.general.condition_red, 0.25,
+        "oracle fixture threshold"
+    );
     let mut art =
         crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str("[SGRYSMK1]\nRate=100\n"));
     art.bind_anim_frame_count_for_test("SGRYSMK1", 20);
@@ -606,8 +612,8 @@ fn a_death_weapon_detonates_once_without_cluster_draws() {
 /// type names an `ImpactLandSound=` the Jumpjet impact must not play.
 fn jumpjet_rules(balloon: bool) -> RuleSet {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-        "[General]\nConditionRed=0.25\n\
-         [AudioVisual]\nImpactLandSound=RulesLand\n\
+        "[General]\n\
+         [AudioVisual]\nConditionRed=0.25\nImpactLandSound=RulesLand\n\
          [VehicleTypes]\n0=TEST\n1=VICTIM\n\
          [InfantryTypes]\n0=RIDER\n\
          [TEST]\nStrength=300\nArmor=none\nCrashable=yes\nBalloonHover={}\nPassengers=2\n\
@@ -622,6 +628,7 @@ fn jumpjet_rules(balloon: bool) -> RuleSet {
         if balloon { "yes" } else { "no" },
     )))
     .unwrap();
+    assert_eq!(rules.general.condition_red, 0.25, "crash fixture threshold");
     let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
         "[BOOM]\nRate=100\n[SGRYSMK1]\nRate=100\n",
     ));

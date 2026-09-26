@@ -109,4 +109,12 @@ The retained failing library binary is `/tmp/bridge-landing-owned-libtests`,
 SHA-256 `f82850a9a6458fb997a17c2703a36c5bd9e63ad1ac46108a9a10b69fea251695`;
 log `/tmp/bridge-child-sound-meaningful-red.log`. The first attempted run had
 only found an uppercase fixture-name comparison and is not the meaningful red.
+After correction, the focused Cargo `--lib` regression passed with retail
+fixtures required. The retained corrected binary
+`/tmp/bridge-child-sound-owned-libtests` has SHA-256
+`2c9733ad143f193308faf0f841073e1a2cef53d7d924523f8d58421cd233116b`.
+Its connected Anim44, building-art17, audio108, dispatcher13 and debris5
+checks all passed (187 total; one existing ignored retail-load test). Logs
+are `/tmp/bridge-child-sound-{anim,building-art,audio,dispatch,debris}-green.log`;
+the compiled regression log is `/tmp/bridge-child-sound-green.log`.
 The parent chain records the release rebuild and production validation results.

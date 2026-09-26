@@ -7601,11 +7601,31 @@ fn rad_combat_tick(
 }
 
 /// Radiation damage applies only on `frame % RadApplicationDelay == 0`
-/// boundaries, scaled by the RadSiteWarhead Verses per armor class:
-/// trunc(min(500, 500) × 0.2) = 100 base → 100 vs none, 10 vs heavy.
+/// boundaries. Original reader/Foot producer/Object receiver outcomes are
+/// pinned in spatial_oracle/radiation_damage_boundary. This checks selected
+/// final health/admission, not the known intermediate radiation precision gap.
 #[test]
 fn rad_damage_fires_on_application_delay_boundary_only() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/radiation_damage_boundary.json"
+    ))
+    .unwrap();
+    let native_row = |frame: u32, armor: u8| {
+        native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["frame"] == frame && row["armor"] == armor)
+            .unwrap()
+    };
     let rules = radiation_rules();
+    for (index, verse) in rules.warhead("RadSite").unwrap().verses_f64.iter().enumerate() {
+        assert_eq!(
+            format!("{:016x}", verse.to_bits()),
+            native_row(16, 5)["verses_bits"][index],
+            "original RadSite reader, armor{index}"
+        );
+    }
     let mut sim = crate::sim::world::Simulation::new();
     let heights = BTreeMap::new();
     let inf = sim
@@ -7626,23 +7646,36 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
         None,
     );
 
-    // Frame 15: not an application boundary — nobody takes damage.
+    // Original Foot4DA554 skips the application on frame15.
+    assert_eq!(native_row(15, 0)["admitted"], false);
+    assert_eq!(native_row(15, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 15);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 300);
     assert_eq!(
-        sim.substrate.entities.get(tank).unwrap().health.current,
-        300
+        i64::from(sim.substrate.entities.get(inf).unwrap().health.current),
+        native_row(15, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(sim.substrate.entities.get(tank).unwrap().health.current),
+        native_row(15, 5)["final_health"].as_i64().unwrap()
     );
 
-    // Frame 16: boundary. E2 stands on the center cell (level 500, clamped
-    // 500): trunc(500 × 0.2) = 100, Verses none = 100% → 100 damage. The
-    // tank is one cell out (falloff (640−256)/640 × 500 = 300): trunc(300 ×
-    // 0.2) = 60, Verses heavy = 10% → 6 damage.
+    // Original spread65B9C0/Cell487CB0/Foot4DA5FA emits base59 at the
+    // side cell, while Rust currently emits60. Original 10% reader bits and
+    // Object5F5390 nevertheless produce the same selected health295. See
+    // the companion's required radiation precision follow-up; no base parity.
+    assert_eq!(native_row(16, 0)["admitted"], true);
+    assert_eq!(native_row(16, 5)["admitted"], true);
     rad_combat_tick(&mut sim, &rules, 16);
     let inf_hp = sim.substrate.entities.get(inf).unwrap().health.current;
     let tank_hp = sim.substrate.entities.get(tank).unwrap().health.current;
-    assert_eq!(inf_hp, 200, "100 rad damage vs armor none");
-    assert_eq!(tank_hp, 294, "6 rad damage vs heavy armor (10% Verses)");
+    assert_eq!(
+        i64::from(inf_hp),
+        native_row(16, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(tank_hp),
+        native_row(16, 5)["final_health"].as_i64().unwrap()
+    );
     // Sourceless damage must not arm retaliation.
     assert!(
         sim.substrate
@@ -7654,8 +7687,11 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
     );
 
     // Frame 17: off-boundary again.
+    assert_eq!(native_row(17, 0)["admitted"], false);
+    assert_eq!(native_row(17, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 17);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 200);
+    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, inf_hp);
+    assert_eq!(sim.substrate.entities.get(tank).unwrap().health.current, tank_hp);
 }
 
 #[test]
