@@ -502,7 +502,10 @@ mod tests {
         };
 
         assert!(admitted(&entity, "Americans", false));
-        entity.passenger_role = PassengerRole::Inside { transport_id: 9 };
+        entity.passenger_role = PassengerRole::Inside {
+            transport_id: 9,
+            open_topped: false,
+        };
         assert!(!admitted(&entity, "Americans", false));
         entity.passenger_role = PassengerRole::None;
         entity.lifecycle.in_limbo = true;

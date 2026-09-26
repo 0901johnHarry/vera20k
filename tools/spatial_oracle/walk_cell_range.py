@@ -10,7 +10,7 @@ from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC
 from tools.native_oracle import load_image, run_checked, STACK_BASE, STACK_SIZE, SCRATCH, RET_MAGIC, finish_vectors, provenance
 from tools.spatial_oracle.map_queries import dwords, packed
 
-ACTOR, TYPE, HOUSE, VT, WEAPON, SLOT, PROJECTILE, CELLS, COORD = [SCRATCH + i * 0x2000 for i in range(9)]
+ACTOR, TYPE, HOUSE, VT, WEAPON, SLOT, PROJECTILE, CELLS, COORD, RULES = [SCRATCH + i * 0x2000 for i in range(10)]
 MAP, TABLE, DUMMY = 0x87F7E8, 0xC00000, 0xABDC50
 
 
@@ -36,6 +36,10 @@ def query(row):
     u.mem_write(ACTOR + 0x9C, dwords(*row.get('source', [2624, 2624, 0])))
     u.mem_write(ACTOR + 0x74, bytes([int(row.get('marked', False))]))
     u.mem_write(ACTOR + 0x8C, bytes([int(row.get('on_bridge', False))]))
+    # InRange 0x6F72C8: +0x82 (in an open-topped transport) adds Rules+0xF5C << 8.
+    u.mem_write(ACTOR + 0x82, bytes([int(row.get('open_topped', False))]))
+    u.mem_write(0x8871E0, dwords(RULES))
+    u.mem_write(RULES + 0xF5C, dwords(row.get('open_topped_bonus', 2)))
     u.mem_write(WEAPON + 0xA0, dwords(PROJECTILE))
     u.mem_write(WEAPON + 0xB4, dwords(row.get('range', 768)))
     u.mem_write(WEAPON + 0xB8, dwords(row.get('minimum', 0)))
@@ -118,6 +122,18 @@ def generate():
         {'source': [2624, 2624, 800], 'marked': True, 'cell_rangefinding': True},
         {'cells': [{'coord': [10, 10], 'flags': 256}, {'coord': [11, 10], 'flags': 256}]},
         {'cells': [{'coord': [10, 10], 'flags': 256}, {'coord': [11, 10], 'flags': 256}], 'cell_rangefinding': True, 'on_bridge': True},
+        # +0x82: the target cell's centre is 326 leptons away, so a 70-lepton
+        # weapon reaches it exactly with one bonus cell and misses it by one
+        # lepton at 69; the bonus needs the flag, and the retail two cells
+        # lift a 0-lepton weapon past it.
+        {'range': 70, 'open_topped': True, 'open_topped_bonus': 1},
+        {'range': 69, 'open_topped': True, 'open_topped_bonus': 1},
+        {'range': 70, 'open_topped_bonus': 1},
+        {'range': 0, 'open_topped': True},
+        {'range': 326, 'open_topped': True, 'open_topped_bonus': 0},
+        {'range': 582, 'open_topped': True, 'open_topped_bonus': -1},
+        {'range': 581, 'open_topped': True, 'open_topped_bonus': -1},
+        {'minimum': 327, 'open_topped': True},
     ]
     for tile in [313, 314, 327, 328, -1]:
         rows.append({'cells': [{'coord': [10, 10]}, {'coord': [11, 10], 'tile': tile, 'flags': 256, 'level': 1}], 'range': 500})
@@ -128,7 +144,7 @@ def generate():
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Original6F7970->6F77B0->6F7220 normal non-arcing Infantry Cell-target range and lookup ordering; explicit supplied object/weapon/map fields.',
+        scope='Original6F7970->6F77B0->6F7220 normal non-arcing Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; explicit supplied object/weapon/map fields.',
         entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310},
-        assumptions=['Supplied original Infantry table7EB058 and Cell table7E4EEC; actor non-garrison, no bunker/open-top/veteran range bonuses. Projectile has all flags false, including non-arcing and no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants, x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
+        assumptions=['Supplied original Infantry table7EB058 and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile has all flags false, including non-arcing and no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants, x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
         substitutions=['GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. No other callable substitution.']))

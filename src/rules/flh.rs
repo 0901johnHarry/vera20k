@@ -7,9 +7,10 @@
 //! - **Lateral**: perpendicular to facing (positive = right of facing direction)
 //! - **Height**: vertical offset (positive = up)
 //!
-//! Values are in leptons (256 leptons = 1 cell). Parsed from art.ini keys:
-//! `PrimaryFireFLH=`, `SecondaryFireFLH=`, `ElitePrimaryFireFLH=`,
-//! `EliteSecondaryFireFLH=`.
+//! Values are in leptons (256 leptons = 1 cell). Read from art.ini keys
+//! (`PrimaryFireFLH=`, `SecondaryFireFLH=`, `ElitePrimaryFireFLH=`,
+//! `EliteSecondaryFireFLH=`, `AlternateFLH0..4=`) by the native coordinate
+//! read, `IniSection::read_coordinate`.
 //!
 //! ## Dependency rules
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
@@ -30,40 +31,22 @@ pub struct Flh {
     pub height: i32,
 }
 
-/// Parse an FLH triplet from a comma-separated INI value string.
-///
-/// Accepts `"F,L,H"` (three integers) or `"F,L"` (height defaults to 0).
-/// Returns `Flh::default()` (all zeros) if the value is None, empty, or malformed.
-///
-/// Uses the same pattern as `parse_exit_coord()` in object_type.rs.
-pub fn parse_flh(value: Option<&str>) -> Flh {
-    let val: &str = match value {
-        Some(v) if !v.trim().is_empty() => v,
-        _ => return Flh::default(),
-    };
-
-    let parts: Vec<&str> = val.split(',').collect();
-    if parts.len() < 2 {
-        return Flh::default();
+/// The art read's `[forward, lateral, height]` fields
+/// ([`IniSection::read_coordinate`](crate::rules::ini_parser::IniSection::read_coordinate),
+/// `0x00529CA0`).
+impl From<[i32; 3]> for Flh {
+    fn from([forward, lateral, height]: [i32; 3]) -> Self {
+        Self {
+            forward,
+            lateral,
+            height,
+        }
     }
+}
 
-    let forward: i32 = match parts[0].trim().parse() {
-        Ok(v) => v,
-        Err(_) => return Flh::default(),
-    };
-    let lateral: i32 = match parts[1].trim().parse() {
-        Ok(v) => v,
-        Err(_) => return Flh::default(),
-    };
-    let height: i32 = parts
-        .get(2)
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-
-    Flh {
-        forward,
-        lateral,
-        height,
+impl From<Flh> for [i32; 3] {
+    fn from(flh: Flh) -> Self {
+        [flh.forward, flh.lateral, flh.height]
     }
 }
 
@@ -103,112 +86,6 @@ pub fn resolve_flh(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_flh_full_triplet() {
-        let flh: Flh = parse_flh(Some("150,0,100"));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: 150,
-                lateral: 0,
-                height: 100
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_flh_two_elements() {
-        let flh: Flh = parse_flh(Some("100,-25"));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: 100,
-                lateral: -25,
-                height: 0
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_flh_with_spaces() {
-        let flh: Flh = parse_flh(Some(" 80 , 0 , 120 "));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: 80,
-                lateral: 0,
-                height: 120
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_flh_negative_values() {
-        let flh: Flh = parse_flh(Some("-160,0,75"));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: -160,
-                lateral: 0,
-                height: 75
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_flh_none() {
-        let flh: Flh = parse_flh(None);
-        assert_eq!(flh, Flh::default());
-    }
-
-    #[test]
-    fn test_parse_flh_empty_string() {
-        let flh: Flh = parse_flh(Some(""));
-        assert_eq!(flh, Flh::default());
-    }
-
-    #[test]
-    fn test_parse_flh_single_value() {
-        // Only one number — not a valid FLH, needs at least F,L.
-        let flh: Flh = parse_flh(Some("100"));
-        assert_eq!(flh, Flh::default());
-    }
-
-    #[test]
-    fn test_parse_flh_malformed() {
-        let flh: Flh = parse_flh(Some("abc,def,ghi"));
-        assert_eq!(flh, Flh::default());
-    }
-
-    #[test]
-    fn test_parse_flh_zero_triplet() {
-        let flh: Flh = parse_flh(Some("0,0,0"));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: 0,
-                lateral: 0,
-                height: 0
-            }
-        );
-    }
-
-    #[test]
-    fn test_parse_flh_large_values() {
-        // Real-world: [DEST] Destroyer has PrimaryFireFLH=280,0,120
-        let flh: Flh = parse_flh(Some("280,0,120"));
-        assert_eq!(
-            flh,
-            Flh {
-                forward: 280,
-                lateral: 0,
-                height: 120
-            }
-        );
-    }
-
-    // --- resolve_flh tests ---
 
     const PRI: Flh = Flh {
         forward: 150,

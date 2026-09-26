@@ -87,6 +87,10 @@ mod delayed_building_fire_tests;
 #[path = "fireat_launch_tests.rs"]
 mod fireat_launch_tests;
 
+#[cfg(test)]
+#[path = "open_topped_fire_tests.rs"]
+mod open_topped_fire_tests;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use self::combat_weapon::{WeaponSlot, select_weapon_against, select_weapon_slot};
@@ -2929,6 +2933,7 @@ pub(crate) fn build_attacker_snapshot(
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,
+        in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
     }
@@ -3056,8 +3061,7 @@ pub(crate) fn award_kill_experience(
     };
     // Branch 1: a passenger firing from an OpenTopped transport pays its
     // transporter (the `+0x82`/`+0x11C` pair).
-    let open_transporter =
-        crate::sim::passenger::open_topped_transport(entities, rules, interner, killer);
+    let open_transporter = killer.passenger_role.open_transport_id();
     let recipient = if let Some(transporter) = open_transporter.and_then(trainable_cost) {
         Some(transporter)
     } else if killer_type.trainable {

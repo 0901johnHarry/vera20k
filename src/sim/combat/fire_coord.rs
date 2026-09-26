@@ -61,6 +61,28 @@ pub(crate) struct FireSource {
     pub garrison_fire_index: Option<u8>,
 }
 
+impl FireSource {
+    /// The fire facts of a stored object, read as the attacker snapshot
+    /// reads them (`combat::build_attacker_snapshot`).
+    fn of_entity(entity: &crate::sim::game_entity::GameEntity) -> Self {
+        Self {
+            stable_id: entity.stable_id(),
+            category: entity.category,
+            rx: entity.position.rx,
+            ry: entity.position.ry,
+            sub_x: entity.position.sub_x,
+            sub_y: entity.position.sub_y,
+            level: entity.position.z,
+            exact_z_leptons: entity.position.exact_z_leptons,
+            facing: entity.facing,
+            hull_facing: entity.body_facing,
+            barrel_facing: entity.barrel_facing,
+            veterancy: entity.veterancy,
+            garrison_fire_index: None,
+        }
+    }
+}
+
 impl From<&AttackerSnapshot> for FireSource {
     fn from(snap: &AttackerSnapshot) -> Self {
         Self {
@@ -114,6 +136,74 @@ pub(crate) fn fire_coordinate(
     slot: WeaponSlot,
     burst_index: u8,
 ) -> FireCoordinate {
+    if snap.category == EntityCategory::Infantry
+        && let Some(fire) = open_topped_port_coordinate(world, rules, snap)
+    {
+        return fire;
+    }
+    let base = fire_coordinate_base(world, rules, snap, obj);
+    let (source_x, source_y, source_z) = (base.x, base.y, base.z);
+    let aim_facing16 = base.facings.aim;
+    let art = base.art;
+
+    if snap.category == EntityCategory::Structure
+        && let Some((px, py)) =
+            art.and_then(|art| building_pixel_offset(art, snap, slot, burst_index))
+    {
+        let (dx, dy) = PixelConversionBounds::isometric_pixel_to_leptons(px, py);
+        return FireCoordinate {
+            coord: ProjectileCoord::new(
+                source_x.wrapping_add(dx),
+                source_y.wrapping_add(dy),
+                source_z,
+            ),
+            source_z,
+            aim_facing16,
+            offset_y: dy,
+        };
+    }
+
+    let flh_delta = art
+        .and_then(|art| {
+            let flh = crate::rules::flh::resolve_flh(
+                art.primary_fire_flh,
+                art.secondary_fire_flh,
+                art.elite_primary_fire_flh,
+                art.elite_secondary_fire_flh,
+                matches!(slot, WeaponSlot::Primary),
+                snap.veterancy,
+            );
+            flh_world_delta(art, flh, base.facings, burst_index)
+        })
+        .unwrap_or((0, 0, 0));
+    FireCoordinate {
+        coord: ProjectileCoord::new(
+            source_x + flh_delta.0,
+            source_y + flh_delta.1,
+            source_z + flh_delta.2,
+        ),
+        source_z,
+        aim_facing16,
+        offset_y: flh_delta.1,
+    }
+}
+
+/// What every GetFLH arm starts from: the object coordinate (`vtable+0xAC`),
+/// the facings its transform reads and the object's art.
+struct FireBase<'r> {
+    x: i32,
+    y: i32,
+    z: i32,
+    facings: crate::util::flh_transform::FlhFacings,
+    art: Option<&'r ArtEntry>,
+}
+
+fn fire_coordinate_base<'r>(
+    world: &Simulation,
+    rules: &'r RuleSet,
+    snap: &FireSource,
+    obj: &ObjectType,
+) -> FireBase<'r> {
     let binary_frame = world.session.binary_frame;
     let source_z = world
         .substrate
@@ -163,57 +253,88 @@ pub(crate) fn fire_coordinate(
         .get(&obj.image)
         .or_else(|| rules.art_registry.get(&obj.id));
 
-    if snap.category == EntityCategory::Structure
-        && let Some((px, py)) =
-            art.and_then(|art| building_pixel_offset(art, snap, slot, burst_index))
-    {
-        let (dx, dy) = PixelConversionBounds::isometric_pixel_to_leptons(px, py);
-        return FireCoordinate {
-            coord: ProjectileCoord::new(
-                source_x.wrapping_add(dx),
-                source_y.wrapping_add(dy),
-                source_z,
-            ),
-            source_z,
-            aim_facing16,
-            offset_y: dy,
-        };
+    FireBase {
+        x: source_x,
+        y: source_y,
+        z: source_z,
+        facings: crate::util::flh_transform::FlhFacings {
+            aim: aim_facing16,
+            body: body_facing16,
+            matrix: matrix_facing16,
+        },
+        art,
     }
+}
 
-    let flh_delta = art
-        .and_then(|art| {
-            let flh = crate::rules::flh::resolve_flh(
-                art.primary_fire_flh,
-                art.secondary_fire_flh,
-                art.elite_primary_fire_flh,
-                art.elite_secondary_fire_flh,
-                matches!(slot, WeaponSlot::Primary),
-                snap.veterancy,
-            );
-            crate::util::flh_transform::native_flh_world_delta(
-                flh.forward,
-                flh.lateral,
-                flh.height,
-                art.turret_offset,
-                crate::util::flh_transform::FlhFacings {
-                    aim: aim_facing16,
-                    body: body_facing16,
-                    matrix: matrix_facing16,
-                },
-                burst_index,
-            )
-        })
+/// `TechnoClass::GetFLH @ 0x006F3AD0`'s transform of one FLH triple about
+/// the object's turret offset.
+fn flh_world_delta(
+    art: &ArtEntry,
+    flh: crate::rules::flh::Flh,
+    facings: crate::util::flh_transform::FlhFacings,
+    burst_index: u8,
+) -> Option<(i32, i32, i32)> {
+    crate::util::flh_transform::native_flh_world_delta(
+        flh.forward,
+        flh.lateral,
+        flh.height,
+        art.turret_offset,
+        facings,
+        burst_index,
+    )
+}
+
+/// `InfantryClass::GetFLH @ 0x00523250`: an infantryman riding an
+/// open-topped transport (`+0x82`, Transporter `+0x11C`) fires from the
+/// transport's port, whatever its weapon. With `k` its 1-based cargo index
+/// from the head (`CargoClass::IndexOf @ 0x00473500`), it asks the
+/// transport's GetFLH (vtable `+0xB0`, `TechnoClass::GetFLH` for a Unit) for
+/// weapon `-k` with a zero offset: `AlternateFLH[k-1]` of the transport's
+/// type for `k <= 5`, else a zero FLH (`0x006F3AF5..0x006F3B21`), through
+/// the transport's matrix, facings and burst parity (`+0x3B8`) from the
+/// transport's coordinate. The shot keeps the rider's aim facing for its
+/// muzzle animation (`Fire_At` picks it from the firer).
+fn open_topped_port_coordinate(
+    world: &Simulation,
+    rules: &RuleSet,
+    snap: &FireSource,
+) -> Option<FireCoordinate> {
+    let entities = &world.substrate.entities;
+    let rider = entities.get(snap.stable_id)?;
+    let transport_id = rider.passenger_role.open_transport_id()?;
+    let transport = entities.get(transport_id)?;
+    let port = transport
+        .passenger_role
+        .cargo()?
+        .passengers
+        .iter()
+        .position(|&id| id == snap.stable_id)?;
+    let transport_obj = rules.object(world.interner.resolve(transport.type_ref()))?;
+    let source = FireSource::of_entity(transport);
+    let base = fire_coordinate_base(world, rules, &source, transport_obj);
+    let flh = base
+        .art
+        .and_then(|art| art.alternate_flh.get(port).copied())
+        .unwrap_or_default();
+    let burst_index = (transport.weapon_burst.index() & 1) as u8;
+    let delta = base
+        .art
+        .and_then(|art| flh_world_delta(art, flh, base.facings, burst_index))
         .unwrap_or((0, 0, 0));
-    FireCoordinate {
-        coord: ProjectileCoord::new(
-            source_x + flh_delta.0,
-            source_y + flh_delta.1,
-            source_z + flh_delta.2,
-        ),
-        source_z,
-        aim_facing16,
-        offset_y: flh_delta.1,
-    }
+    let rider_aim = fire_coordinate_base(
+        world,
+        rules,
+        snap,
+        rules.object(world.interner.resolve(rider.type_ref()))?,
+    )
+    .facings
+    .aim;
+    Some(FireCoordinate {
+        coord: ProjectileCoord::new(base.x + delta.0, base.y + delta.1, base.z + delta.2),
+        source_z: base.z,
+        aim_facing16: rider_aim,
+        offset_y: delta.1,
+    })
 }
 
 /// The art pixel offset a building's shot leaves from, if it has one.
@@ -255,26 +376,33 @@ fn building_pixel_offset(
 /// which weapon was chosen, so VERA keys it on the building being occupied.
 /// Type byte `+0x157C` is UNCHECKED and not modelled.
 ///
-/// RESIDUAL: a third source, `weapon+0x118`, taken when nothing was picked and
-/// the firer's byte `+0x82` is set, is not modelled; both identities are
-/// UNCHECKED. Trigger and frequency unknown; effect: a missing flash.
+/// When nothing is picked and the firer rides an open-topped transport
+/// (`+0x82`), the weapon's `OpenToppedAnim=` (`+0x118`) plays instead
+/// (`0x006FF32F..0x006FF347`); stock gives it to PsychicJab and Virusgun.
 pub(crate) fn muzzle_anim_name(
     weapon: &crate::rules::weapon_type::WeaponType,
     aim_facing16: u16,
     occupied_fire: bool,
+    in_open_transport: bool,
 ) -> Option<&str> {
-    if occupied_fire {
-        return weapon.occupant_anim.as_deref();
-    }
-    match weapon.anim.len() {
-        0 => None,
-        8 => {
-            let index =
-                crate::util::direction_tables::quantize::muzzle_anim_index_8way(aim_facing16);
-            weapon.anim.get(usize::from(index)).map(String::as_str)
+    let picked = if occupied_fire {
+        weapon.occupant_anim.as_deref()
+    } else {
+        match weapon.anim.len() {
+            0 => None,
+            8 => {
+                let index =
+                    crate::util::direction_tables::quantize::muzzle_anim_index_8way(aim_facing16);
+                weapon.anim.get(usize::from(index)).map(String::as_str)
+            }
+            _ => weapon.anim.first().map(String::as_str),
         }
-        _ => weapon.anim.first().map(String::as_str),
-    }
+    };
+    picked.or_else(|| {
+        in_open_transport
+            .then_some(weapon.open_topped_anim.as_deref())
+            .flatten()
+    })
 }
 
 /// `ZAdjust` of a building's muzzle animation.
@@ -301,15 +429,17 @@ mod tests {
 
     fn rules() -> RuleSet {
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
-            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n\
+            "[InfantryTypes]\n0=E1\n1=INIT\n[VehicleTypes]\n[AircraftTypes]\n\
              [BuildingTypes]\n0=BUNK\n1=TOWER\n\
              [E1]\nStrength=125\nImage=GI\nPrimary=M60\nSecondary=ONE\n\
+             [INIT]\nStrength=125\nPrimary=JAB\n\
              [BUNK]\nStrength=500\nCanBeOccupied=yes\n\
              [TOWER]\nStrength=500\nPrimary=M60\nSecondary=BARE\n\
              [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\nOccupantAnim=UCFLASH\n\
              Anim=F0,F1,F2,F3,F4,F5,F6,F7\n\
              [ONE]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\nAnim=GUNFIRE,SPARE\n\
              [BARE]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\
+             [JAB]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\nOpenToppedAnim=GUNFIRE\n\
              [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         ))
         .expect("rules");
@@ -421,18 +551,31 @@ mod tests {
         let eight = rules.weapon("M60").unwrap();
         // `(dir8 + 1) & 7`: facing north picks entry 1, and the last octant
         // wraps to entry 0.
-        assert_eq!(muzzle_anim_name(eight, 0x0000, false), Some("F1"));
-        assert_eq!(muzzle_anim_name(eight, 0x4000, false), Some("F3"));
-        assert_eq!(muzzle_anim_name(eight, 0xE000, false), Some("F0"));
+        assert_eq!(muzzle_anim_name(eight, 0x0000, false, false), Some("F1"));
+        assert_eq!(muzzle_anim_name(eight, 0x4000, false, false), Some("F3"));
+        assert_eq!(muzzle_anim_name(eight, 0xE000, false, false), Some("F0"));
         // An occupied building's shot takes `OccupantAnim=` instead.
-        assert_eq!(muzzle_anim_name(eight, 0x4000, true), Some("UCFLASH"));
+        assert_eq!(
+            muzzle_anim_name(eight, 0x4000, true, false),
+            Some("UCFLASH")
+        );
         // Any other list length: the first entry, whatever the facing.
         let one = rules.weapon("ONE").unwrap();
-        assert_eq!(muzzle_anim_name(one, 0x4000, false), Some("GUNFIRE"));
+        assert_eq!(muzzle_anim_name(one, 0x4000, false, false), Some("GUNFIRE"));
         // `OccupantAnim=` replaces the pick even when it is absent.
-        assert_eq!(muzzle_anim_name(one, 0x4000, true), None);
+        assert_eq!(muzzle_anim_name(one, 0x4000, true, false), None);
         assert_eq!(
-            muzzle_anim_name(rules.weapon("BARE").unwrap(), 0, false),
+            muzzle_anim_name(rules.weapon("BARE").unwrap(), 0, false, false),
+            None
+        );
+        // From an open-topped transport, `OpenToppedAnim=` fills only an
+        // empty pick.
+        let jab = rules.weapon("JAB").unwrap();
+        assert_eq!(muzzle_anim_name(jab, 0, false, true), Some("GUNFIRE"));
+        assert_eq!(muzzle_anim_name(jab, 0, false, false), None);
+        assert_eq!(muzzle_anim_name(eight, 0x4000, false, true), Some("F3"));
+        assert_eq!(
+            muzzle_anim_name(rules.weapon("BARE").unwrap(), 0, false, true),
             None
         );
     }

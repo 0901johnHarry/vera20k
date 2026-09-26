@@ -1191,6 +1191,9 @@ impl Simulation {
             if entity.is_deployed() {
                 continue;
             }
+            // A passenger never walks: an open-topped transport's rider has
+            // its chase off (`+0x82`, `0x004D5782`) and a destination refused
+            // (`0x004D94D7`); its reach is `open_transport_reach_step`.
             if entity.passenger_role.is_inside_transport() {
                 continue;
             }
@@ -1272,6 +1275,41 @@ impl Simulation {
                     alliances: Some(&self.fog.alliances),
                 },
             );
+
+            // `FootClass::Per_Cell_Process @ 0x004D885C..0x004D88F4`: an
+            // `OpenTopped=` mover chasing a Foot target stops once its 3-D
+            // distance falls under GetWeaponRange, which caps the weapon at
+            // its riders' shortest one, instead of by InRange. A loaded
+            // Battle Fortress drives on to its GIs' M60 range.
+            if entity.movement_target.is_some()
+                && let combat::TargetKind::Entity(target_id) = attack.target
+                && let Some(target) = self.substrate.entities.get(target_id)
+                && target.category != EntityCategory::Structure
+                && let Some(obj) = self.object_type(entity.type_ref(), rules)
+                && obj.open_topped
+            {
+                let range = combat::combat_weapon::open_topped_cargo_range(
+                    entity,
+                    obj,
+                    &self.substrate.entities,
+                    rules,
+                    &self.interner,
+                )
+                .map_or(weapon.range_leptons, |cargo| {
+                    weapon.range_leptons.min(cargo)
+                });
+                let own = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+                let theirs =
+                    crate::sim::movement::ground_pose::position_world_coord(&target.position);
+                let distance = crate::util::native_x87::distance_3d_leptons(
+                    [own.x, own.y, own.z],
+                    [theirs.x, theirs.y, theirs.z],
+                );
+                if distance < range {
+                    actions.push(PursuitAction::ClearMovement { entity_id: id });
+                }
+                continue;
+            }
 
             if verdict == combat::PursuitRangeVerdict::CloseIn {
                 // **Sticky never chases.** The one place the engine tells

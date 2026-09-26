@@ -614,7 +614,10 @@ use crate::sim::world::Simulation;
 // 211 -> 212: an entity no longer keeps the weapon id of its last live
 // selection (`current_weapon_ref`), which nothing read; `CurrentWeaponNumber`
 // (`TechnoClass+0x138`) stays.
-const SNAPSHOT_VERSION: u32 = 212;
+// 212 -> 213: a passenger keeps `TechnoClass+0x82` (InOpenToppedTransport) in
+// its Inside role, and the weapon override loses the transport-side
+// open-transport slot that stood in for it.
+const SNAPSHOT_VERSION: u32 = 213;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1545,7 +1548,7 @@ fn restore_object_references(
                 target_transport_id,
                 ..
             } => Some((*target_transport_id, "passenger_role.boarding")),
-            PassengerRole::Inside { transport_id } => {
+            PassengerRole::Inside { transport_id, .. } => {
                 Some((*transport_id, "passenger_role.inside"))
             }
             PassengerRole::None | PassengerRole::Transport { .. } => None,
@@ -3574,7 +3577,8 @@ mod tests {
         // 210 -> 211: the construction animation's StageClass on build-ups
         // and pack-ups.
         // 211 -> 212: no copy of the last selection's weapon id.
-        assert_eq!(super::SNAPSHOT_VERSION, 212);
+        // 212 -> 213: a passenger's `+0x82`; no open-transport weapon override.
+        assert_eq!(super::SNAPSHOT_VERSION, 213);
     }
 
     #[test]

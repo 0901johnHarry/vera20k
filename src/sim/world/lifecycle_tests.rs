@@ -259,6 +259,7 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
         passenger.type_ref = passenger_type;
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
+            open_topped: false,
         };
     }
     {
@@ -1379,8 +1380,10 @@ fn gsi_04_05_hidden_lifecycle_follows_base_lists_without_expanding_them() {
 fn gsi_04_12_common_raw_occupation_skips_transport_and_airborne_entities() {
     let mut sim = Simulation::new();
     insert_entity(&mut sim, 1, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(1).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 99 };
+    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 99,
+        open_topped: false,
+    };
     let _ = sim.try_reveal_entity(1, common_raw_request(2, 3, 0, 128, 128));
     assert!(!sim.substrate.occupancy.contains_entity(2, 3, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(2, 3), 0);
@@ -2098,8 +2101,10 @@ fn open_topped_direct_registration_keeps_hidden_passenger_live() {
     let _ = sim.reveal(2);
 
     assert_eq!(sim.techno_limbo(1), super::ConcealOutcome::Concealed);
-    sim.substrate.entities.get_mut(1).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 99 };
+    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 99,
+        open_topped: true,
+    };
 
     assert!(sim.register_open_topped_passenger(1));
     let passenger = sim.substrate.entities.get(1).unwrap();
@@ -2734,10 +2739,14 @@ fn lifecycle_authority_transport_uninits_passengers_in_cargo_order_before_carrie
     cargo.board_forced(2, 1);
     cargo.board_forced(3, 1);
     sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Transport { cargo };
-    sim.substrate.entities.get_mut(2).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 1 };
-    sim.substrate.entities.get_mut(3).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 1 };
+    sim.substrate.entities.get_mut(2).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: false,
+    };
+    sim.substrate.entities.get_mut(3).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: false,
+    };
     sim.lifecycle_test_events.clear();
 
     sim.uninit(1);
@@ -3240,10 +3249,14 @@ fn expiring_mixed_size_passenger_updates_transport_total_exactly() {
     cargo.board_forced(2, 3);
     cargo.board_forced(3, 1);
     sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Transport { cargo };
-    sim.substrate.entities.get_mut(2).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 1 };
-    sim.substrate.entities.get_mut(3).unwrap().passenger_role =
-        PassengerRole::Inside { transport_id: 1 };
+    sim.substrate.entities.get_mut(2).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: false,
+    };
+    sim.substrate.entities.get_mut(3).unwrap().passenger_role = PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: false,
+    };
 
     sim.uninit(2);
 
@@ -5253,6 +5266,7 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         passenger.type_ref = passenger_type;
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
+            open_topped: false,
         };
     }
     {

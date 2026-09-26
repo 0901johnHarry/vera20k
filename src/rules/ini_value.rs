@@ -87,6 +87,38 @@ impl IniSection {
         })
     }
 
+    /// The coordinate read `0x00529CA0` (art FLH keys): an absent key, or a
+    /// value that is blank once cut to 63 bytes and strtrimmed, keeps
+    /// `default`; otherwise sscanf `"%d,%d,%d"` (`0x008189B0`) fills the
+    /// fields in order, each `,` a literal that must follow the previous
+    /// number at once. Native leaves a field the scan does not reach holding
+    /// its stack argument slot (a pointer or a CRC); VERA keeps that field's
+    /// default, which only malformed data can tell apart (stock art FLHs are
+    /// all full triples).
+    pub fn read_coordinate(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
+        self.fold_rules_values(key, default, |current, raw| {
+            let value = strtrim_ascii(truncate_bytes(raw, 0x3F));
+            if value.is_empty() {
+                return current;
+            }
+            let mut out = current;
+            let mut bytes = value.as_bytes();
+            for (index, field) in out.iter_mut().enumerate() {
+                if index > 0 {
+                    let Some(rest) = bytes.strip_prefix(b",") else {
+                        break;
+                    };
+                    bytes = rest;
+                }
+                let Some(number) = scan_decimal_i32(&mut bytes) else {
+                    break;
+                };
+                *field = number;
+            }
+            out
+        })
+    }
+
     /// ReadMinMax (P8): comma "%d,%d". All-defaults on ABSENT key.
     pub fn read_minmax(&self, key: &str, default: [i32; 2]) -> [i32; 2] {
         self.fold_rules_values(key, default, |mut current, raw| {
@@ -637,6 +669,25 @@ mod tests {
         assert_eq!(s.read_point("P", (0, 0)), (3, 5));
         assert_eq!(s.read_rect("R", (0, 0, 0, 0)), (1, 2, 3, 4));
         assert_eq!(s.read_point("MISSING", (9, 9)), (9, 9)); // absent -> default
+    }
+
+    /// `0x00529CA0`: sscanf `"%d,%d,%d"` after the 63-byte cut and strtrim.
+    #[test]
+    fn read_coordinate_scans_like_the_native_coordinate_read() {
+        let ini = IniFile::from_str(
+            "[S]\nFull=45,-190,90;gun port\nPad= 80, 0, 120 \nSpaced=80 ,0,120\n\
+             Pair=100,-25\nJunk=abc,1,2\nPlus=+7,-0,3x\n",
+        );
+        let section = ini.section("S").unwrap();
+        let default = [1, 2, 3];
+        assert_eq!(section.read_coordinate("Full", default), [45, -190, 90]);
+        // `%d` skips the blanks before a number, never before the comma.
+        assert_eq!(section.read_coordinate("Pad", default), [80, 0, 120]);
+        assert_eq!(section.read_coordinate("Spaced", default), [80, 2, 3]);
+        assert_eq!(section.read_coordinate("Pair", default), [100, -25, 3]);
+        assert_eq!(section.read_coordinate("Junk", default), default);
+        assert_eq!(section.read_coordinate("Plus", default), [7, 0, 3]);
+        assert_eq!(section.read_coordinate("Absent", default), default);
     }
 
     #[test] // P8 partial keeps default component

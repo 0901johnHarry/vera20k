@@ -161,7 +161,11 @@ pub struct WeaponType {
     pub fire_while_moving: bool,
     /// Weapon drains target's health to heal the firer (+0x142).
     pub drain_weapon: bool,
-    /// Weapon can fire from inside a transport (+0x143).
+    /// `FireInTransport=` (+0x143): an open-topped passenger may fire it.
+    /// The constructor sets it (`0x00771DF3`) and `ReadINI` keeps that as its
+    /// default (ReadBool at `0x00772252`); stock opts only melee and special
+    /// weapons out. GetFireError refuses it from an open-topped transport
+    /// (`0x006FC57D`).
     pub fire_in_transport: bool,
     /// Firing this weapon kills the attacker (+0x144).
     pub suicide: bool,
@@ -318,7 +322,7 @@ impl WeaponType {
             infinite_mind_control: section.get_bool("InfiniteMindControl").unwrap_or(false),
             fire_while_moving: section.get_bool("FireWhileMoving").unwrap_or(true),
             drain_weapon: section.get_bool("DrainWeapon").unwrap_or(false),
-            fire_in_transport: section.get_bool("FireInTransport").unwrap_or(false),
+            fire_in_transport: section.get_bool("FireInTransport").unwrap_or(true),
             suicide: section.get_bool("Suicide").unwrap_or(false),
             turbo_boost: section.get_bool("TurboBoost").unwrap_or(false),
             supress: section.get_bool("Supress").unwrap_or(false),

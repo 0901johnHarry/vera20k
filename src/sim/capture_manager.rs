@@ -665,26 +665,14 @@ impl Simulation {
         let Some(object) = self.object_type(unit.type_ref(), rules) else {
             return;
         };
+        let strength = object.strength;
         // 0x00472405: an OpenTopped unit's passengers drop their targets
         // (`0x00710550(unit, 0)`).
-        if object.open_topped {
-            let passengers: Vec<u64> = unit
-                .passenger_role
-                .cargo()
-                .map(|cargo| cargo.passengers.clone())
-                .unwrap_or_default();
-            for passenger in passengers {
-                if let Some(passenger) = self.substrate.entities.get_mut(passenger) {
-                    crate::sim::mission::concrete_effects::represented_assign_target(
-                        passenger, None,
-                    );
-                }
-            }
-        }
+        self.open_topped_passengers_take_target(unit_id, None, rules);
         let Some(unit) = self.substrate.entities.get(unit_id) else {
             return;
         };
-        let (unit_owner, health, strength) = (unit.owner(), unit.health, object.strength);
+        let (unit_owner, health) = (unit.owner(), unit.health);
         // 0x0047242A: an object of a human house keeps its orders; no draw.
         if self
             .houses

@@ -4,8 +4,8 @@
 //!
 //! Replaces the 2D `lepton_distance_sq_raw` + `is_within_range_leptons` pair
 //! at the four targeting/cursor sites. Implements 3D distance, IsLowFlying
-//! ground-snap, AirRange bonus, arcing-weapon 2D fallthrough, foundation
-//! bonus, the InRange bridge gate (0x006F75FB), the verified boundary
+//! ground-snap, AirRange bonus, the open-topped passenger's bonus,
+//! arcing-weapon 2D fallthrough, foundation bonus, the InRange bridge gate (0x006F75FB), the verified boundary
 //! semantics (<= max inclusive, < min strict, -512 lep sentinel), and the two
 //! caller-side source substitutions — `CellRangefinding=` and the high-flying
 //! attacker's target-Z swap — that let a Kirov reach the ground below it.
@@ -20,7 +20,7 @@
 //! module takes `LineOfFireInputs` alongside the terrain grid.
 //!
 //! Stages 2-N add the remaining range-VALUE chain (Garrison / Bunker /
-//! OpenTopped / Veteran). Stage Arcing adds the full Branch B slope-arc check.
+//! Veteran). Stage Arcing adds the full Branch B slope-arc check.
 //!
 //! Depends on: rules (ObjectType, Weapon, ProjectileType), map (terrain
 //! height + bridge), sim/combat/line_of_fire, util/lepton (constants),
@@ -163,13 +163,14 @@ fn cells_fixed_to_leptons(cells: SimFixed) -> i64 {
 }
 
 /// Effective max range in leptons for an attacker firing at a target with
-/// `weapon`: weapon base range plus AirRange bonus (target high-flying) plus
-/// foundation bonus (target is a building) plus height-fire bonus (Stage 1
-/// stub returns 0).
+/// `weapon` on the ground arm: weapon base range plus AirRange bonus (target
+/// high-flying) plus foundation bonus (target is a building) plus height-fire
+/// bonus (Stage 1 stub returns 0). The open-topped passenger's bonus is added
+/// by the caller, which shares it with the arcing arm and cell targets.
 ///
-/// Stages 2-N add: Garrison REPLACES, Bunker, OpenTopped, Veteran. Each is a
-/// branch added to this function — call sites stay unchanged.
-pub(crate) fn compute_effective_max_range_leptons(
+/// Stages 2-N add: Garrison REPLACES, Bunker, Veteran. Each is a branch added
+/// to this function — call sites stay unchanged.
+fn compute_effective_max_range_leptons(
     attacker: &GameEntity,
     target: &TargetKind,
     weapon: &WeaponType,
@@ -215,6 +216,19 @@ pub(crate) fn compute_effective_max_range_leptons(
     }
 
     range_lep
+}
+
+/// `0x006F72C8..0x006F72E1`: a passenger of an open-topped transport
+/// (`+0x82`) reaches `[CombatDamage] OpenToppedRangeBonus=` cells farther
+/// (`Rules+0xF5C`, shifted to leptons). The stage runs before the
+/// MinimumRange test and the arcing split, so both arms and a cell target
+/// read it.
+fn open_topped_range_bonus_leptons(attacker: &GameEntity, rules: &RuleSet) -> i64 {
+    if attacker.passenger_role.in_open_transport() {
+        i64::from(rules.garrison_rules.open_topped_range_bonus) << 8
+    } else {
+        0
+    }
 }
 
 /// Stage 1 stub — returns 0.
@@ -370,7 +384,8 @@ fn compute_range_target(
         .map(|p| p.arcing)
         .unwrap_or(false);
     if arcing {
-        if !compute_in_range_arcing_2d(src, (tx, ty), weapon_range_lep) {
+        let arcing_range_lep = weapon_range_lep + open_topped_range_bonus_leptons(attacker, rules);
+        if !compute_in_range_arcing_2d(src, (tx, ty), arcing_range_lep) {
             return false;
         }
         // The arcing arm is NOT exempt from the line-of-fire walk: 0x006F7519
@@ -390,12 +405,13 @@ fn compute_range_target(
         );
     }
 
-    let max_range_lep = match target {
-        RangeTarget::Abstract(target) => {
-            compute_effective_max_range_leptons(attacker, target, weapon, rules, interner, entities)
-        }
-        RangeTarget::Cell(_) => weapon_range_lep,
-    };
+    let max_range_lep = open_topped_range_bonus_leptons(attacker, rules)
+        + match target {
+            RangeTarget::Abstract(target) => compute_effective_max_range_leptons(
+                attacker, target, weapon, rules, interner, entities,
+            ),
+            RangeTarget::Cell(_) => weapon_range_lep,
+        };
 
     let dx = sx - tx;
     let dy = sy - ty;
@@ -1018,7 +1034,7 @@ mod tests {
             "../../../tools/spatial_oracle/walk_cell_range.json"
         ))
         .unwrap();
-        let rules = rules_with_weapon(
+        let mut rules = rules_with_weapon(
             "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing=no\nSubjectToWalls=no\nSubjectToCliffs=no",
             "",
             "",
@@ -1027,6 +1043,8 @@ mod tests {
         let entities = EntityStore::new();
         for (index, row) in rows.as_array().unwrap().iter().enumerate() {
             let input = &row["input"];
+            rules.garrison_rules.open_topped_range_bonus =
+                input["open_topped_bonus"].as_i64().unwrap_or(2) as i32;
             let mut terrain = flat_terrain(32, 32);
             terrain
                 .set_projectile_water_set_base(input["water_base"].as_i64().unwrap_or(314) as i32);
@@ -1069,6 +1087,12 @@ mod tests {
             actor.position.exact_z_leptons = Some(z);
             actor.lifecycle.cell_marked = input["marked"].as_bool().unwrap_or(false);
             actor.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
+            if input["open_topped"] == true {
+                actor.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+                    transport_id: 2,
+                    open_topped: true,
+                };
+            }
             let mut weapon = rules.weapon("GUN").unwrap().clone();
             weapon.range_leptons = input["range"].as_i64().unwrap_or(768) as i32;
             weapon.minimum_range_leptons = input["minimum"].as_i64().unwrap_or(0) as i32;

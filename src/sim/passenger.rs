@@ -204,7 +204,17 @@ pub enum PassengerRole {
         phase: BoardingPhase,
     },
     /// Entity is inside a transport (hidden from map, not targetable).
-    Inside { transport_id: u64 },
+    Inside {
+        transport_id: u64,
+        /// `TechnoClass+0x82` InOpenToppedTransport. Only
+        /// `SetInOpenTransport @ 0x00710470` sets it, when an `OpenTopped=`
+        /// transport takes the passenger aboard (Infantry `0x0051A45E`, Unit
+        /// `0x0073A75D`). Its clears coincide with leaving: a successful unload
+        /// (`ClearInOpenTransport`, `0x0073DB98`) and the dying transport's
+        /// passenger block (`ClearAllInOpenTransport`, `0x00737F92`); a failed
+        /// unload re-attaches the passenger with the flag still set.
+        open_topped: bool,
+    },
 }
 
 impl PassengerRole {
@@ -227,9 +237,28 @@ impl PassengerRole {
     /// Returns the transport ID if this entity is inside one.
     pub fn inside_transport_id(&self) -> Option<u64> {
         match self {
-            Self::Inside { transport_id } => Some(*transport_id),
+            Self::Inside { transport_id, .. } => Some(*transport_id),
             _ => Option::None,
         }
+    }
+
+    /// `TechnoClass+0x82` with its `+0x11C` Transporter: the `OpenTopped=`
+    /// transport this entity rides in, if any. Read by weapon selection, the
+    /// fire coordinate, InRange, GetFireError, FireAt's damage and muzzle
+    /// anim, kill credit, navigation and the Temporal warp-distance check.
+    pub fn open_transport_id(&self) -> Option<u64> {
+        match self {
+            Self::Inside {
+                transport_id,
+                open_topped: true,
+            } => Some(*transport_id),
+            _ => Option::None,
+        }
+    }
+
+    /// `TechnoClass+0x82` InOpenToppedTransport.
+    pub fn in_open_transport(&self) -> bool {
+        self.open_transport_id().is_some()
     }
 
     /// True if entity is inside a transport (hidden from map).
@@ -571,7 +600,6 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
 
     let pax_obj = rules.object(&pax_type_str);
     let pax_ifv_mode = pax_obj.map(|obj| obj.ifv_mode).unwrap_or(0);
-    let pax_open_transport_weapon = pax_obj.map(|obj| obj.open_transport_weapon).unwrap_or(-1);
     let entering_owner = sim.substrate.entities.get(pax_id).map(|pax| pax.owner());
 
     let can_board = sim
@@ -587,6 +615,8 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
         // `0x0073A6FC..0x0073A70F` and `0x0073A29E..0x0073A2B1`, Infantry
         // `0x0051A40E..0x0051A41C` and `0x0051A2B0..0x0051A2BE`).
         if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
+            // `Set_ArchiveTarget(0)` opens both (`0x0051A3FF`, `0x0073A6EC`).
+            pax.set_archive_target(None);
             pax.mission.clear_ai_counter();
             pax.gattling.set_value(0);
             pax.gattling.set_stage(0);
@@ -647,39 +677,65 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
         }
 
         if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
-            pax.passenger_role = PassengerRole::Inside { transport_id };
+            pax.passenger_role = PassengerRole::Inside {
+                transport_id,
+                open_topped: transport_open_topped,
+            };
             pax.movement_target = None;
             pax.attack_target = None;
             pax.passively_acquired_target = false;
             pax.order_intent = None;
         }
         if transport_open_topped {
+            // `SetInOpenTransport @ 0x00710470` (Infantry `0x0051A45E`, Unit
+            // `0x0073A75D`): `+0x82` (the role's flag above), then
+            // `ResetOrdersToGuard` (vt+0x3D0) and the LogicClass add, so the
+            // rider keeps an AI turn and guards from inside.
+            sim.reset_orders_to_guard(pax_id, rules);
             let registered = sim.register_open_topped_passenger(pax_id);
             debug_assert!(
                 registered,
                 "accepted open-topped passenger must remain active"
             );
-        }
-
-        let new_override = if transport_gunner {
-            Some(crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(
-                pax_ifv_mode,
-            ))
-        } else if transport_open_topped && pax_open_transport_weapon >= 0 {
-            Some(
-                crate::sim::combat::combat_weapon::WeaponOverride::OpenTransport(
-                    pax_open_transport_weapon as u32,
-                ),
-            )
-        } else {
-            None
-        };
-        if new_override.is_some() {
-            if let Some(t) = sim.substrate.entities.get_mut(transport_id) {
-                t.weapon_override = new_override;
+            // The rider stands where its walk into the transport ended, and
+            // every later transport `SetLocation` copies the transport's
+            // coordinate onto it (`FootClass::SetLocation 0x004DB810` ->
+            // `0x007104F0`). VERA boards from the adjacent cell, so the rider
+            // takes the transport's coordinate here.
+            //
+            // RESIDUAL: native boards only once the passenger stands in the
+            // transport's own cell (`0x0051A3A0..0x0051A3DF`), where the rider
+            // keeps its own spot until the transport first moves; VERA boards
+            // within `BOARD_DISTANCE`. Trigger: every boarding. Effect: the
+            // passenger vanishes a cell early, and a parked open-topped
+            // transport's riders measure range from its centre rather than
+            // their spot, under half a cell apart. Frequency: every boarding.
+            // Risk: a target at the edge of a parked rider's reach is in range
+            // one frame early or late.
+            //
+            // RESIDUAL: native clears OnBridge (`+0x8C`, `0x0051A407`) on
+            // every boarding; VERA keeps the boarding value because its unload
+            // Reveal reads it to place the passenger on a bridge deck.
+            if let Some(position) = sim
+                .substrate
+                .entities
+                .get(transport_id)
+                .map(|transport| transport.position.clone())
+                && let Some(pax) = sim.substrate.entities.get_mut(pax_id)
+            {
+                pax.position = position;
             }
         }
+        // A boarding open-topped unit's own riders let go of their targets
+        // (Unit `0x0073A76E..0x0073A77C`).
+        sim.open_topped_passengers_take_target(pax_id, None, rules);
+
         if transport_gunner {
+            if let Some(t) = sim.substrate.entities.get_mut(transport_id) {
+                t.weapon_override = Some(
+                    crate::sim::combat::combat_weapon::WeaponOverride::IfvSlot(pax_ifv_mode),
+                );
+            }
             // UnitClass +0x4D4 (`0x00746420`): the gunner's TemporalClass
             // moves to the IFV.
             sim.temporal_receive_gunner(transport_id, pax_id);
@@ -689,24 +745,46 @@ fn process_boarding_passenger(sim: &mut Simulation, rules: &RuleSet, pax_id: u64
     }
 }
 
-/// `TechnoClass+0x82` InOpenTransport with its `+0x11C` Transporter: the
-/// `OpenTopped=` transport `entity` rides in, if any. `PerCellProcess`
-/// (`0x0051A463`/`0x0073A768`) writes `+0x11C` for every transport and, for an
-/// open-topped one, `SetInOpenTransport @ 0x00710470` sets `+0x82`. Read by
-/// FireAt's damage build, kill credit, GetFireError, navigation and the
-/// Temporal warp-distance check.
-pub(crate) fn open_topped_transport(
-    entities: &crate::sim::entity_store::EntityStore,
-    rules: &RuleSet,
-    interner: &StringInterner,
-    entity: &GameEntity,
-) -> Option<u64> {
-    let transport_id = entity.passenger_role.inside_transport_id()?;
-    let transport = entities.get(transport_id)?;
-    rules
-        .object(interner.resolve(transport.type_ref()))?
-        .open_topped
-        .then_some(transport_id)
+impl Simulation {
+    /// `TechnoClass::SetTargetForPassengers @ 0x00710550` behind its callers'
+    /// `OpenTopped=` test (`+0x5E4`): every passenger of an open-topped
+    /// `transport_id`, from the cargo head, takes `target` through its own
+    /// Assign_Target (vt+0x3C8). Callers: an order event with a target
+    /// (MEGAMISSION `0x004C749D`), the Stop event (`0x004C7650`, NULL),
+    /// DecideUnitFate (`0x0047240F`, NULL) and a unit boarding with riders of
+    /// its own (`0x0073A77C`, NULL).
+    pub(crate) fn open_topped_passengers_take_target(
+        &mut self,
+        transport_id: u64,
+        target: Option<crate::sim::combat::TargetKind>,
+        rules: &RuleSet,
+    ) {
+        let Some(transport) = self.substrate.entities.get(transport_id) else {
+            return;
+        };
+        if !self
+            .object_type(transport.type_ref(), rules)
+            .is_some_and(|object| object.open_topped)
+        {
+            return;
+        }
+        let passengers: Vec<u64> = transport
+            .passenger_role
+            .cargo()
+            .map(|cargo| cargo.passengers.clone())
+            .unwrap_or_default();
+        for passenger in passengers {
+            let commits = crate::sim::mission::concrete_effects::assign_target_commits(
+                &self.substrate.entities,
+                target,
+            );
+            if let Some(passenger) = self.substrate.entities.get_mut(passenger) {
+                crate::sim::mission::concrete_effects::represented_assign_target_admitted(
+                    passenger, target, commits,
+                );
+            }
+        }
+    }
 }
 
 fn is_civilian_garrison_owner(interner: &StringInterner, owner: InternedId) -> bool {
@@ -1333,7 +1411,7 @@ ConditionYellow=50%
         assert_eq!(owner_name(&sim, bldg), "Neutral");
         assert!(matches!(
             sim.substrate.entities.get(pax).unwrap().passenger_role,
-            PassengerRole::Inside { transport_id } if transport_id == bldg
+            PassengerRole::Inside { transport_id, .. } if transport_id == bldg
         ));
         assert_eq!(
             sim.substrate
@@ -1615,7 +1693,7 @@ ConditionYellow=50%
             .expect("passenger survives boarding");
         assert!(matches!(
             passenger_entity.passenger_role,
-            PassengerRole::Inside { transport_id } if transport_id == transport
+            PassengerRole::Inside { transport_id, .. } if transport_id == transport
         ));
         assert!(passenger_entity.lifecycle.in_limbo);
         assert!(!passenger_entity.lifecycle.cell_marked);
@@ -1991,7 +2069,7 @@ ConditionYellow=50%
 
         assert!(matches!(
             sim.substrate.entities.get(pax).unwrap().passenger_role,
-            PassengerRole::Inside { transport_id } if transport_id == bldg
+            PassengerRole::Inside { transport_id, .. } if transport_id == bldg
         ));
         assert!(
             sim.substrate
@@ -2064,7 +2142,10 @@ ConditionYellow=50%
         let mut pax = GameEntity::test_default(12345, "E1", "Americans", 9, 10);
         pax.owner = pax_owner;
         pax.type_ref = pax_type;
-        pax.passenger_role = PassengerRole::Inside { transport_id: bldg };
+        pax.passenger_role = PassengerRole::Inside {
+            transport_id: bldg,
+            open_topped: false,
+        };
         sim.substrate.entities.insert(pax);
 
         // Tick unloading — should pop the one passenger and trigger empty branch.
@@ -2209,6 +2290,7 @@ ConditionYellow=50%
         ge.type_ref = type_id;
         ge.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
+            open_topped: false,
         };
         sim.substrate.entities.insert(ge);
         // Add to building's cargo.

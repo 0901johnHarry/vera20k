@@ -1547,9 +1547,15 @@ pub struct GarrisonRules {
     pub bunker_rof_multiplier: f32,
     /// Range bonus in cells for bunker passengers.
     pub bunker_weapon_range_bonus: i32,
-    /// Damage multiplier for open-topped passengers.
+    /// `[CombatDamage] OpenToppedDamageMultiplier=`, the single at
+    /// `Rules+0xF58` (constructor 1.0f `0x00666AD9`; ReadDouble stored with
+    /// `FSTP dword` at `0x0066C743..`). FireAt multiplies an open-topped
+    /// passenger's damage by it (`0x006FE43B`).
     pub open_topped_damage_multiplier: f32,
-    /// Range bonus in cells for open-topped passengers.
+    /// `[CombatDamage] OpenToppedRangeBonus=` in cells, `Rules+0xF5C`
+    /// (constructor 2, `0x00666AD9..`; ReadInt at `0x0066C743..0x0066C7AC`).
+    /// InRange adds it, shifted to leptons, for an open-topped passenger
+    /// (`0x006F72C8`).
     pub open_topped_range_bonus: i32,
 }
 
@@ -1563,7 +1569,7 @@ impl Default for GarrisonRules {
             bunker_rof_multiplier: 1.0,
             bunker_weapon_range_bonus: 0,
             open_topped_damage_multiplier: 1.0,
-            open_topped_range_bonus: 0,
+            open_topped_range_bonus: 2,
         }
     }
 }
@@ -1585,7 +1591,7 @@ impl GarrisonRules {
             bunker_rof_multiplier: get_f32("BunkerROFMultiplier", 1.0),
             bunker_weapon_range_bonus: get_i32("BunkerWeaponRangeBonus", 0),
             open_topped_damage_multiplier: get_f32("OpenToppedDamageMultiplier", 1.0),
-            open_topped_range_bonus: get_i32("OpenToppedRangeBonus", 0),
+            open_topped_range_bonus: get_i32("OpenToppedRangeBonus", 2),
         }
     }
 }

@@ -244,6 +244,7 @@ fn scene(input: &Value) -> Scene {
         );
         sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
             transport_id: transport,
+            open_topped: input["open_topped"] == true,
         };
         assert!(
             sim.substrate
@@ -438,7 +439,7 @@ fn compare(row: &Value) {
         );
         let aboard = matches!(
             entity.passenger_role,
-            PassengerRole::Inside { transport_id } if transport_id == transport
+            PassengerRole::Inside { transport_id, .. } if transport_id == transport
         );
         assert_eq!(
             aboard,

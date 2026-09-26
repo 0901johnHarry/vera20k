@@ -13,7 +13,7 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 
 use thiserror::Error;
 
-use crate::rules::flh::{Flh, parse_flh};
+use crate::rules::flh::Flh;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::object_type::{BuildingHiddenOccupancyProfile, HIDDEN_OCCUPY_SLOT_COUNT};
 use crate::util::native_x87::NativeF64Bits;
@@ -92,6 +92,12 @@ pub struct ArtEntry {
     /// Elite-rank override for secondary fire offset (from art.ini `EliteSecondaryFireFLH=`).
     /// None means use `secondary_fire_flh`.
     pub elite_secondary_fire_flh: Option<Flh>,
+    /// `AlternateFLH0..4=` (`TechnoTypeClass+0x85C`, five 12-byte slots read
+    /// at `0x00715FA4..0x00716005`, each defaulting to Weapon[0]'s FLH
+    /// `+0x89C`): the firing ports an `OpenTopped=` transport lends its
+    /// passengers, by cargo index (`TechnoClass::GetFLH 0x006F3AD0` with a
+    /// negative weapon index). Stock: only `[BFRT]`'s five gun ports.
+    pub alternate_flh: [Flh; 5],
     /// Fixed building primary fire screen-pixel offset.
     /// Used by non-turret buildings before converting the pixel delta to world leptons.
     pub primary_fire_pixel_offset: Option<(i32, i32)>,
@@ -1074,14 +1080,30 @@ impl ArtRegistry {
                 })
                 .unwrap_or((None, None, None));
             let crawls = section.get_bool("Crawls").unwrap_or(false);
-            let primary_fire_flh: Flh = parse_flh(section.get("PrimaryFireFLH"));
-            let secondary_fire_flh: Flh = parse_flh(section.get("SecondaryFireFLH"));
-            let elite_primary_fire_flh: Option<Flh> = section
-                .get("ElitePrimaryFireFLH")
-                .map(|v| parse_flh(Some(v)));
-            let elite_secondary_fire_flh: Option<Flh> = section
-                .get("EliteSecondaryFireFLH")
-                .map(|v| parse_flh(Some(v)));
+            // The non-turret arm of TechnoTypeClass's art read
+            // (`0x00715D94..0x00715F4D`): each key through the coordinate
+            // read, the elite slot defaulting to its base slot. A
+            // `TurretCount>0` type reads `Weapon%dFLH=` instead (not parsed).
+            let primary_fire_flh = Flh::from(section.read_coordinate("PrimaryFireFLH", [0; 3]));
+            let secondary_fire_flh = Flh::from(section.read_coordinate("SecondaryFireFLH", [0; 3]));
+            let elite_primary_fire_flh: Option<Flh> =
+                section.get("ElitePrimaryFireFLH").map(|_| {
+                    Flh::from(
+                        section.read_coordinate("ElitePrimaryFireFLH", primary_fire_flh.into()),
+                    )
+                });
+            let elite_secondary_fire_flh: Option<Flh> =
+                section.get("EliteSecondaryFireFLH").map(|_| {
+                    Flh::from(
+                        section.read_coordinate("EliteSecondaryFireFLH", secondary_fire_flh.into()),
+                    )
+                });
+            let alternate_flh: [Flh; 5] = std::array::from_fn(|slot| {
+                Flh::from(
+                    section
+                        .read_coordinate(&format!("AlternateFLH{slot}"), primary_fire_flh.into()),
+                )
+            });
             let primary_fire_pixel_offset = section
                 .get("PrimaryFirePixelOffset")
                 .and_then(parse_i32_pair);
@@ -1281,6 +1303,7 @@ impl ArtRegistry {
                     secondary_fire_flh,
                     elite_primary_fire_flh,
                     elite_secondary_fire_flh,
+                    alternate_flh,
                     primary_fire_pixel_offset,
                     secondary_fire_pixel_offset,
                     primary_fire_dual_offset,

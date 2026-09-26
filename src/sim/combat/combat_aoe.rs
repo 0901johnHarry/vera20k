@@ -3579,8 +3579,10 @@ mod tests {
                     });
                 }
                 if case["open_transport"] == true {
-                    victim.passenger_role =
-                        crate::sim::passenger::PassengerRole::Inside { transport_id: 1 };
+                    victim.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+                        transport_id: 1,
+                        open_topped: true,
+                    };
                 }
             }
             entities.insert(victim);

@@ -184,6 +184,7 @@ mod tests {
             secondary_fire_flh: Default::default(),
             elite_primary_fire_flh: None,
             elite_secondary_fire_flh: None,
+            alternate_flh: Default::default(),
             primary_fire_pixel_offset: None,
             secondary_fire_pixel_offset: None,
             primary_fire_dual_offset: false,

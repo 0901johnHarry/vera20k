@@ -15,11 +15,13 @@
 //!   the range of the weapon picked against that specific candidate. That is
 //!   [`ScanRange::CanFireAt`].
 //! - **Area Guard** asks for `GuardRange=` **or** the wider of the type's two
-//!   weapon ranges, **doubled**, capped at [`AREA_GUARD_MAX_SCAN_CELLS`]. The
-//!   result is always non-zero, and a non-zero radius is a hard Euclidean
-//!   cutoff — the can-fire-at query is not consulted at all. This is why a unit
-//!   parked on Area Guard reaches out roughly twice as far as the same unit
-//!   sitting on plain Guard.
+//!   weapon ranges, **doubled**, clamped to `[0,` [`AREA_GUARD_MAX_SCAN_CELLS`]`]`.
+//!   A non-zero radius is a hard Euclidean cutoff — the can-fire-at query is
+//!   not consulted at all. This is why a unit parked on Area Guard reaches out
+//!   roughly twice as far as the same unit sitting on plain Guard. The radius
+//!   is zero only when neither slot reaches past zero: an open-topped
+//!   transport carrying a Spy (`MakeupKit` is `Range=-2`) caps both at -2
+//!   cells, and that zero takes the Guard zero case.
 //!
 //! The doubling applies to `GuardRange=` too, not just to the weapon-range
 //! fallback.
@@ -252,12 +254,15 @@ pub(crate) fn scan_mission_for(entity: &GameEntity) -> ScanMission {
     }
 }
 
-/// Acquisition radius for one scanning object.
+/// Acquisition radius for one scanning object. `cargo_range` is an
+/// open-topped scanner's cargo minimum
+/// ([`super::combat_weapon::open_topped_cargo_range`]).
 pub(crate) fn scan_range(
     rules: &RuleSet,
     obj: &ObjectType,
     veterancy: u16,
     mission: ScanMission,
+    cargo_range: Option<i32>,
 ) -> ScanRange {
     let guard_range = obj.guard_range.filter(|gr| *gr != SimFixed::ZERO);
     match mission {
@@ -280,31 +285,52 @@ pub(crate) fn scan_range(
         // gets the same answer the flat walk hardcodes.
         ScanMission::Hunt => ScanRange::NoCutoff,
         ScanMission::AreaGuard => {
-            let base = guard_range.unwrap_or_else(|| max_weapon_range(rules, obj, veterancy));
+            let base =
+                guard_range.unwrap_or_else(|| max_weapon_range(rules, obj, veterancy, cargo_range));
             let doubled = base.saturating_mul(SimFixed::from_num(AREA_GUARD_RANGE_MULTIPLIER));
-            ScanRange::Hard(doubled.min(SimFixed::from_num(AREA_GUARD_MAX_SCAN_CELLS)))
+            // `0x00707F33..0x00707F46`: every mode but Patrol's clamps to
+            // [0, 0x1000], and `Greatest_Threat` reads a zero radius the way
+            // it reads plain Guard's.
+            let radius = doubled.clamp(
+                SimFixed::ZERO,
+                SimFixed::from_num(AREA_GUARD_MAX_SCAN_CELLS),
+            );
+            if radius == SimFixed::ZERO {
+                ScanRange::CanFireAt
+            } else {
+                ScanRange::Hard(radius)
+            }
         }
     }
 }
 
-/// The wider of the type's two weapon slots, elite-swapped at elite veterancy.
-/// A slot with no weapon contributes nothing; a type with neither contributes
-/// zero, which is harmless because such a type never selects a weapon against
-/// any candidate and so never accepts one.
-pub(crate) fn max_weapon_range(rules: &RuleSet, obj: &ObjectType, veterancy: u16) -> SimFixed {
-    let slot_range = |weapon_id: Option<&str>| -> Option<SimFixed> {
+/// `max(GetWeaponRange(0), GetWeaponRange(1))`, in cells: `Threat_Range
+/// @ 0x00707ED0..0x00707F02` and the plain-Guard walk bound in
+/// `Greatest_Threat` (`0x006F90DE..0x006F9110`). The wider of the type's two
+/// weapon slots, elite-swapped at elite veterancy, each in leptons and capped
+/// by an open-topped scanner's `cargo_range` (GetWeaponRange `0x007012C0`).
+/// A slot with no weapon reads 0, so a type with neither contributes zero,
+/// which is harmless because such a type never selects a weapon against any
+/// candidate and so never accepts one.
+pub(crate) fn max_weapon_range(
+    rules: &RuleSet,
+    obj: &ObjectType,
+    veterancy: u16,
+    cargo_range: Option<i32>,
+) -> SimFixed {
+    let slot_range = |weapon_id: Option<&str>| -> i32 {
         weapon_id
             .and_then(|id| rules.weapon(id))
-            .map(|weapon| weapon.range)
+            .map_or(0, |weapon| {
+                cargo_range.map_or(weapon.range_leptons, |cargo| {
+                    weapon.range_leptons.min(cargo)
+                })
+            })
     };
-    let primary = slot_range(primary_for_tier(obj, veterancy));
-    let secondary = slot_range(secondary_for_tier(obj, veterancy));
-    match (primary, secondary) {
-        (Some(p), Some(s)) => p.max(s),
-        (Some(p), None) => p,
-        (None, Some(s)) => s,
-        (None, None) => SimFixed::ZERO,
-    }
+    let leptons = slot_range(primary_for_tier(obj, veterancy))
+        .max(slot_range(secondary_for_tier(obj, veterancy)));
+    // One lepton is 1/256 cell: exact in I16F16.
+    SimFixed::from_bits(leptons.saturating_mul(256))
 }
 
 #[cfg(test)]
@@ -341,7 +367,7 @@ GuardRange=9\n\n\
         // attacker's own can-fire-at query rather than applying a cutoff.
         let rules = test_rules();
         assert_eq!(
-            scan_range(&rules, obj(&rules, "NOGUARD"), 0, ScanMission::Guard),
+            scan_range(&rules, obj(&rules, "NOGUARD"), 0, ScanMission::Guard, None),
             ScanRange::CanFireAt
         );
     }
@@ -356,8 +382,14 @@ GuardRange=9\n\n\
     fn guard_and_area_guard_do_not_share_a_filter() {
         let rules = test_rules();
         for type_id in ["NOGUARD", "WITHGUARD", "ONLYPRIMARY"] {
-            let guard = scan_range(&rules, obj(&rules, type_id), 0, ScanMission::Guard);
-            let area = scan_range(&rules, obj(&rules, type_id), 0, ScanMission::AreaGuard);
+            let guard = scan_range(&rules, obj(&rules, type_id), 0, ScanMission::Guard, None);
+            let area = scan_range(
+                &rules,
+                obj(&rules, type_id),
+                0,
+                ScanMission::AreaGuard,
+                None,
+            );
             assert_ne!(
                 guard, area,
                 "{type_id}: Guard (mask 1) and Area Guard (mask 2) select different formulas"
@@ -370,7 +402,13 @@ GuardRange=9\n\n\
         // And the doubling is Area Guard's alone: a type WITH GuardRange keeps
         // it undoubled on Guard.
         assert_eq!(
-            scan_range(&rules, obj(&rules, "WITHGUARD"), 0, ScanMission::Guard),
+            scan_range(
+                &rules,
+                obj(&rules, "WITHGUARD"),
+                0,
+                ScanMission::Guard,
+                None
+            ),
             ScanRange::Hard(SimFixed::from_num(9))
         );
     }
@@ -381,7 +419,13 @@ GuardRange=9\n\n\
         // the Area Guard branch only — a V3 on Guard scans 9 cells, not 18.
         let rules = test_rules();
         assert_eq!(
-            scan_range(&rules, obj(&rules, "WITHGUARD"), 0, ScanMission::Guard),
+            scan_range(
+                &rules,
+                obj(&rules, "WITHGUARD"),
+                0,
+                ScanMission::Guard,
+                None
+            ),
             ScanRange::Hard(SimFixed::from_num(9))
         );
     }
@@ -393,7 +437,13 @@ GuardRange=9\n\n\
         // particular candidate.
         let rules = test_rules();
         assert_eq!(
-            scan_range(&rules, obj(&rules, "NOGUARD"), 0, ScanMission::AreaGuard),
+            scan_range(
+                &rules,
+                obj(&rules, "NOGUARD"),
+                0,
+                ScanMission::AreaGuard,
+                None
+            ),
             ScanRange::Hard(SimFixed::from_num(12))
         );
     }
@@ -404,7 +454,13 @@ GuardRange=9\n\n\
         // exceeding the 2 * 6 = 12 the weapon path would give), is itself
         // doubled to 18, and is then clamped to the 16-cell ceiling.
         let rules = test_rules();
-        let clamped = scan_range(&rules, obj(&rules, "WITHGUARD"), 0, ScanMission::AreaGuard);
+        let clamped = scan_range(
+            &rules,
+            obj(&rules, "WITHGUARD"),
+            0,
+            ScanMission::AreaGuard,
+            None,
+        );
         let ScanRange::Hard(cells) = clamped else {
             panic!("Area Guard always produces a hard cutoff");
         };
@@ -424,9 +480,168 @@ GuardRange=9\n\n\
                 &rules,
                 obj(&rules, "ONLYPRIMARY"),
                 0,
-                ScanMission::AreaGuard
+                ScanMission::AreaGuard,
+                None
             ),
             ScanRange::Hard(SimFixed::from_num(8))
         );
+    }
+
+    /// `tools/spatial_oracle/threat_range_cargo.json`: original
+    /// `GetWeaponRange 0x007012C0` and `Threat_Range 0x00707E60` on a Unit
+    /// transport, closed and open-topped, with infantry and unit riders.
+    /// Mode 0 is plain Guard's radius, mode 1 Area Guard's and mode -1 the
+    /// Hunt literal; mode 2 (Patrol) has no writer in VERA and is not read.
+    #[test]
+    fn original_threat_range_and_cargo_rows() {
+        use crate::sim::combat::combat_weapon::{
+            WeaponOverride, open_topped_cargo_range, weapon_range,
+        };
+        use crate::sim::entity_store::EntityStore;
+        use crate::sim::game_entity::GameEntity;
+        use crate::sim::passenger::{PassengerCargo, PassengerRole};
+
+        let payload: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/threat_range_cargo.json"
+        ))
+        .unwrap();
+        assert_eq!(payload["modes"], serde_json::json!([-1, 0, 1, 2]));
+        let rows = payload["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 26);
+        let lookup = |group: &serde_json::Value, defaults: &serde_json::Value, key: &str| {
+            group.get(key).unwrap_or(&defaults[key]).clone()
+        };
+        // Ranges are whole multiples of 128 leptons, exact as `Range=` cells.
+        let cells = |leptons: i64| format!("{}", leptons as f64 / 256.0);
+        let veterancy = |value: serde_json::Value| (value.as_f64().unwrap() * 100.0) as u16;
+        let weapon_keys = |turreted: bool| {
+            if turreted {
+                ["Weapon1", "Weapon2", "EliteWeapon1", "EliteWeapon2"]
+            } else {
+                ["Primary", "Secondary", "ElitePrimary", "EliteSecondary"]
+            }
+        };
+        for row in rows {
+            let input = &row["input"];
+            let name = input["name"].as_str().unwrap();
+            let defaults = &payload["defaults"];
+            let mut infantry = String::new();
+            let mut vehicles = String::from("0=TRN\n");
+            let mut sections = String::new();
+            let mut weapons = |owner: &str, spec: &serde_json::Value, turreted: bool| -> String {
+                let mut keys = String::new();
+                for (slot, key) in ["slot0", "slot1", "elite_slot0", "elite_slot1"]
+                    .into_iter()
+                    .zip(weapon_keys(turreted))
+                {
+                    if let Some(range) = spec[slot].as_i64() {
+                        keys += &format!("{key}={owner}{slot}\n");
+                        sections += &format!(
+                            "[{owner}{slot}]\nDamage=10\nWarhead=WH\nRange={}\n",
+                            cells(range)
+                        );
+                    }
+                }
+                keys
+            };
+            let transport_weapons = {
+                let mut spec = defaults["weapons"].clone();
+                for (key, value) in input
+                    .get("weapons")
+                    .and_then(|group| group.as_object())
+                    .into_iter()
+                    .flatten()
+                {
+                    spec[key] = value.clone();
+                }
+                weapons("TRN", &spec, false)
+            };
+            let open_topped = lookup(input, defaults, "open_topped").as_i64().unwrap() != 0;
+            let guard_range = lookup(input, defaults, "guard_range").as_i64().unwrap();
+            let mut types = format!(
+                "[TRN]\nStrength=100\nOpenTopped={}\nGuardRange={}\n{transport_weapons}",
+                if open_topped { "yes" } else { "no" },
+                cells(guard_range),
+            );
+            let riders: Vec<serde_json::Value> = input
+                .get("passengers")
+                .and_then(|list| list.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let rider_defaults = &payload["passenger_defaults"];
+            for (index, rider) in riders.iter().enumerate() {
+                let rider_type = format!("P{index}");
+                let turret_count = lookup(rider, rider_defaults, "turret_count")
+                    .as_i64()
+                    .unwrap();
+                let mut spec = rider_defaults.clone();
+                for (key, value) in rider.as_object().unwrap() {
+                    spec[key] = value.clone();
+                }
+                let keys = weapons(&rider_type, &spec, turret_count > 0);
+                if lookup(rider, rider_defaults, "class") == "unit" {
+                    vehicles += &format!("{}={rider_type}\n", index + 1);
+                } else {
+                    infantry += &format!("{index}={rider_type}\n");
+                }
+                types += &format!(
+                    "[{rider_type}]\nStrength=100\nTurretCount={turret_count}\nWeaponCount=2\n{keys}"
+                );
+            }
+            let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+                "[InfantryTypes]\n{infantry}[VehicleTypes]\n{vehicles}[AircraftTypes]\n\
+                 [BuildingTypes]\n{types}{sections}[WH]\nVerses=100%,100%,100%,100%,100%,\
+                 100%,100%,100%,100%,100%,100%\n"
+            )))
+            .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+
+            let mut entities = EntityStore::new();
+            let mut cargo = PassengerCargo::new(5, 100);
+            for (index, rider) in riders.iter().enumerate().rev() {
+                let id = 10 + index as u64;
+                let mut passenger =
+                    GameEntity::test_default(id, &format!("P{index}"), "Test", 0, 0);
+                passenger.veterancy = veterancy(lookup(rider, rider_defaults, "veterancy"));
+                let current = lookup(rider, rider_defaults, "current_weapon")
+                    .as_u64()
+                    .unwrap();
+                passenger.weapon_override = Some(WeaponOverride::IfvSlot(current as u32));
+                passenger.passenger_role = PassengerRole::Inside {
+                    transport_id: 1,
+                    open_topped,
+                };
+                entities.insert(passenger);
+                assert!(cargo.board(id, 1));
+            }
+            let mut transport = GameEntity::test_default(1, "TRN", "Test", 0, 0);
+            transport.veterancy = veterancy(lookup(input, defaults, "veterancy"));
+            transport.passenger_role = PassengerRole::Transport { cargo };
+            let interner = crate::sim::intern::test_interner();
+            let obj = rules.object("TRN").unwrap();
+
+            let ranges: Vec<i32> = (0..2)
+                .map(|index| weapon_range(&transport, obj, index, &entities, &rules, &interner))
+                .collect();
+            assert_eq!(serde_json::json!(ranges), row["weapon_range"], "{name}");
+            let cargo_range =
+                open_topped_cargo_range(&transport, obj, &entities, &rules, &interner);
+            let expected = |leptons: i64| match leptons {
+                -1 => ScanRange::NoCutoff,
+                0 => ScanRange::CanFireAt,
+                leptons => ScanRange::Hard(SimFixed::from_bits(leptons as i32 * 256)),
+            };
+            let native = row["threat_range"].as_array().unwrap();
+            for (mode, mission) in [
+                (0, ScanMission::Hunt),
+                (1, ScanMission::Guard),
+                (2, ScanMission::AreaGuard),
+            ] {
+                assert_eq!(
+                    scan_range(&rules, obj, transport.veterancy, mission, cargo_range),
+                    expected(native[mode].as_i64().unwrap()),
+                    "{name}: {mission:?}"
+                );
+            }
+        }
     }
 }
