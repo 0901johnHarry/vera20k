@@ -226,6 +226,7 @@ python -m tools.rules_oracle.anim_image --check
 python -m tools.rules_oracle.bridge_anim_inputs --check
 python -m tools.rules_oracle.bridge_landing_inputs --check
 python -m tools.rules_oracle.bridge_child_sound --check
+python -m tools.spatial_oracle.radiation_damage_boundary --check
 python -m tools.bridge_click_state_oracle --check
 python -m tools.spatial_oracle.bridge_debris_producer --check
 python -m tools.spatial_oracle.bridge_debris_flight --check
@@ -242,9 +243,9 @@ python -m tools.spatial_oracle.terrain_strength --check
 | Actual bridge producer and constructors | [Producer corpus](../../tools/spatial_oracle/bridge_debris_producer.json), original47DD70/AnimType ctor/AnimClass ctor/immediate Start; all15 metallic slots exercised. ART scalar/image-header inputs supplied from production export and independently established by the original full ART/image-reader corpus. | Production-reader producer/RNG comparisons and shared death-loop12 rows passed, including seed5 selecting `D`. |
 | Primary flight, empty contact lists, landing and cleanup | [32 joined cases](../../tools/spatial_oracle/bridge_debris_flight.json), original primary AI/Bounce/result handling, dry/water/deck landing, area bridge admission and native drain; [explicit boundaries](../../tools/spatial_oracle/bridge_debris_flight.md). Native `--check` passed. | `native_bridge_producer_primary_flight_landing_and_rng_continuation` passed all32 histories through final physical removal. The separate `debris_contact_matches_original_tree_damage_gates_radius_and_retirement` passed its19 covered contact cases. |
 | Terrain retained-coordinate rendering | [82 native rows](../../tools/spatial_oracle/terrain_render.json), original Render projection and ordinary static DrawIt through the shape-call boundary, before pixels. | `terrain_retained_xyz_projection_and_piece_z_match_original_render` uses the production projection and static-pair helper, compares draw points with explicit world/dirty-rectangle translation and exact body/shadow gradients and Z-adjust. All82 rows passed. |
-| Mixed scheduler and persistence | Native Load reseeds Scenario RNG; the primary-only native corpus does not establish whole-world scheduling. | [Retail force-fire example](../../examples/bridge_forcefire.rs) follows ordinary Hills collapse for 200 further frames. The [ignored production test](../../src/sim/combat/bridge_live_chain_tests.rs) restores live debris through the production snapshot/fixup APIs twice and compares both loaded continuations for 200 frames. The release example passed on candidate `04fe00c8`: collapse at frame7327 after121 shells; all3 observed DBRIS Bouncers moved and were removed by frame7385. The next200 frames constructed26 SMOKEY2,1 TWLT026 and2 TWLT036 follow-ups; final state hash `24fa6d7ffe5651f8`. This seed did not select unread `D`; the native/focused cases cover it. Log `/tmp/bridge-debris-release-chain.log`. The ignored retail restore test passed in160.75s on the merged candidate: all3 restored Bouncers flew and expired; two validated restores matched all200 state hashes, final `dd1d9c4dc8a09218`. Log `/tmp/bridge-debris-retail-restore.log`. This is production composition, not native whole-frame proof. |
-| Retail loading and rendering | AssetManager/ART/SHP production inputs are recorded in [retail input export](../../tools/spatial_oracle/bridge-retail-anim-inputs.json); no native pixel comparator. | Owner to insert release map-load result, visible collapse evidence and artifact paths. |
-| PR candidate checks | No claim from a parser pass alone. | Retail-required full `cargo test -p vera20k --lib` on `4682eb5b`: **9521 passed, 0 failed, 147 ignored** (60.99s), including the restore prerequisites below. Log `/tmp/bridge-debris-full-lib-final.log`. Earlier snapshot-version and atlas test expectations were corrected before this clean run. Focused persistence63, app current-owner2 and snapshot94 checks also passed; the ignored headless retail loader check passed two Dustbowl loads and30 frames. Final Clippy, corrected native-input focused checks and the fresh critic remain pending. |
+| Mixed scheduler and persistence | Native Load reseeds Scenario RNG; the primary-only native corpus does not establish whole-world scheduling. | Final release [force-fire witness](../../examples/bridge_forcefire.rs) on `822161c1` collapsed the exact retail Hills bridge at frame7327 after121 Cannon shells. All3 observed DBRIS Bouncers moved and were removed by frame7385; the next200 frames constructed26 SMOKEY2,1 TWLT026 and2 TWLT036, final state hash `818d1342a839bdbe`. Log `/tmp/bridge-debris-release-witness-822161c1.log`. The explicitly enabled [production restore test](../../src/sim/combat/bridge_live_chain_tests.rs) passed in188.96s from the retained final test executable: all3 restored Bouncers flew and expired, and two validated restores matched all200 state hashes, final `219282f5d7a0f8dd`. Log `/tmp/bridge-debris-restore-822161c1.log`. This is production composition, not native whole-frame proof. |
+| Retail loading and rendering | Independently established ART/SHP inputs plus actual AssetManager/map/renderer integration; no native pixel comparator. | Normal release game and example built successfully from the owned `822161c1` source (1m04s). The ordinary app loaded the exact retail map, accepted the fresh collapse save through its in-game browser, and captured [explosions](bridge-debris-captures/collapse.png) and [flying debris/smoke](bridge-debris-captures/flight.png) through normal Shift+S. [Metadata](bridge-debris-captures/metadata.json) pins binary, save and pixel-identical PCX/PNG hashes. |
+| PR candidate checks | No claim from a parser pass alone. | Retail-required full `cargo test -p vera20k --lib` on `822161c1`: **9535 passed, 0 failed, 148 ignored** (65.03s), log `/tmp/bridge-debris-full-lib-822161c1.log`. `cargo clippy -p vera20k --lib` completed successfully with961 warnings (18.80s), log `/tmp/bridge-debris-clippy-822161c1.log`. Both explicitly used the owned worktree; the retained test executable SHA-256 is `91f222ba8b50db66afc2c6e5b59eb62e410eaa4fb4d2e7f1cfdb97eaac24f000`. The one fresh read-only critic follows these implementation and validation results. |
 
 The earlier research266-row fixture supplied20 metallic types,16-frame images and
 three synthetic explosions. It established only that supplied producer/constructor
@@ -315,9 +316,9 @@ also adds missing unspawned rule names before building type handles, preserving
 every existing saved string ID. The headless loader now performs the app's
 pre-launch rule-name and handle binding. Separate regressions first reproduced
 foreign explosion IDs and missing unspawned type identities through the real
-load transaction. The clean full library run includes these fixes; focused persistence63,
-current-owner2 and snapshot94 regressions also passed. Final release and visible
-validation remain pending.
+load transaction. The clean full library run on `822161c1` includes these fixes; focused
+persistence63, current-owner2 and snapshot94 regressions also passed. The final
+release, production restore and visible captures above exercise the corrected route.
 
 Saved house color schemes and separate display names remain a required later
 persistence mechanism: they are absent from the saved House/session state, so
@@ -337,22 +338,22 @@ need their own complete implementation; routing the shell button through fresh
 scenario construction would not establish resume parity. The existing
 [shell evidence](shell/2026-09-25-load-saved-game-evidence.md) records this boundary.
 
-### First successful ordinary release capture
+### Ordinary release capture
 
-The release build at `4682eb5b` restored the saved current House and displayed
-the bridge world correctly. The in-game load browser accepted the exact-map
-collapse save, and the normal Shift+S command captured the GPU output at
-[collapse](bridge-debris-captures/collapse.png) and during
-[debris flight](bridge-debris-captures/flight.png). The latter shows the moving
-chunk and its smoke trail after the explosion frames.
-[Capture metadata](bridge-debris-captures/metadata.json) pins the executable,
+The final normal release built from `822161c1` restores the saved current House
+and displays the bridge world correctly. The in-game load browser accepted
+`bridge-debris-candidate-20260926-172204.bin`, generated from the exact map by the
+release witness. Normal Shift+S captured the GPU output during
+[collapse explosions](bridge-debris-captures/collapse.png) and
+[debris flight](bridge-debris-captures/flight.png). The latter shows a moving
+chunk and smoke trail across the destroyed section. The executable SHA-256 is
+`4d741e8bdd34dd5996513b6617cc711dcb4266884a8c3f52f33ede8a3a737023`.
+[Capture metadata](bridge-debris-captures/metadata.json) also pins the save,
 map/rules hashes and pixel-identical PCX-to-PNG conversion. This is a production
-rendering witness, not a native pixel comparison. The saved MCV is at (136,79);
-H centers it, then normal northwest and west edge scrolling reaches the tank at
-(64,72). The camera stays in place when the collapse save is loaded again.
+rendering witness, not a native pixel comparison.
 
-Dependency checks following this capture found three required corrections now
-in progress: tactical picking retained map-load bridge flags after collapse;
-animation destruction stopped one-shot Reports instead of releasing them; and
-the common Verses reader's rounding changed integer HE damage for several armor
-types. These require final checks and a rebuilt release before publication.
+The saved MCV is at (136,79); H centers it. With the game window raised, normal
+northwest edge scrolling reaches the tank near (64,72); selecting it and pressing
+F centers the bridge view. The camera stays in place when the collapse save is
+loaded again. The final captures include the live inverse, sound-release and
+native-input corrections and the latest integrated Ground-key implementation.
