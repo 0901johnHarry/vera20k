@@ -654,6 +654,12 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            // BuildingClass::UpdateRepairAndPower (`0x004401B6`) follows the
+            // Techno AI: the computer's low-credit sale or auto-repair start,
+            // then the repair step.
+            if let Some(rules) = rules {
+                crate::sim::production::update_repair_and_power(sim, rules, id);
+            }
             // BuildingClass::Update consumes the shared C4/PostMortem latch at
             // its late tail. Keep the forced receiver inline in this object's
             // LogicVector visit so nested death effects precede the next slot.
@@ -2032,6 +2038,7 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }
     }
 

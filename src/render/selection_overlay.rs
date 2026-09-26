@@ -106,6 +106,8 @@ pub struct SelectionOverlay {
     tiberium_pip_canvas_adj: (f32, f32),
     /// BOMBCURS.SHP, the Crazy Ivan bomb clock.
     bomb_clock: Option<CenteredShapeStrip>,
+    /// WRENCH.SHP, the repairing building's wrench.
+    repair_wrench: Option<CenteredShapeStrip>,
 }
 
 /// Every frame of one SHP packed side by side at its stored size, each with
@@ -306,6 +308,11 @@ impl SelectionOverlay {
         let bomb_clock = assets.and_then(|assets| {
             load_centered_shape_strip(gpu, batch, assets, "bombcurs.shp", "mousepal.pal")
         });
+        // WRENCH.SHP by name (`0x0045E99E` into `[0x0089DDC8]`), drawn
+        // through the same convert.
+        let repair_wrench = assets.and_then(|assets| {
+            load_centered_shape_strip(gpu, batch, assets, "wrench.shp", "mousepal.pal")
+        });
 
         Self {
             drag_texture,
@@ -340,12 +347,18 @@ impl SelectionOverlay {
             tiberium_pip_frame_h,
             tiberium_pip_canvas_adj: (tib_adj_x, tib_adj_y),
             bomb_clock,
+            repair_wrench,
         }
     }
 
     /// The Crazy Ivan bomb clock art (BOMBCURS.SHP), when the assets have it.
     pub fn bomb_clock(&self) -> Option<&CenteredShapeStrip> {
         self.bomb_clock.as_ref()
+    }
+
+    /// The repair wrench art (WRENCH.SHP), when the assets have it.
+    pub fn repair_wrench(&self) -> Option<&CenteredShapeStrip> {
+        self.repair_wrench.as_ref()
     }
 
     /// Build sprite instances for the selection drag rectangle outline.

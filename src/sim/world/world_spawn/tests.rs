@@ -43,6 +43,7 @@ fn map_entity(type_id: &str, category: EntityCategory, cell: (u16, u16)) -> MapE
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -2029,4 +2030,49 @@ fn a_building_s_ai_sale_byte_follows_its_buildup_or_its_map_line() {
         .map(|id| byte(&authored, id))
         .collect();
     assert_eq!(bytes, [true, false], "the map line decides");
+}
+
+/// The AI repair byte (`BuildingClass+0x6CB`): a map line's AI Repairable
+/// field (`BuildingClass::ReadFromINI` `0x0044FB70`), which Unlimbo sets
+/// outside a campaign for a house no human controls whose type is not
+/// `MultiplayPassive=` (`0x00440B4F..0x00440B7A`), and never clears.
+#[test]
+fn a_building_s_ai_repair_byte_follows_its_map_line_or_its_computer_owner() {
+    let rules = constructor_rules();
+    for (game_mode_nonzero, owner, field, expected) in [
+        (true, "Computer", false, true),
+        (true, "Human", false, false),
+        (true, "Passive", false, false),
+        (true, "Human", true, true),
+        (false, "Computer", false, false),
+        (false, "Human", false, false),
+        (false, "Computer", true, true),
+    ] {
+        let mut sim = Simulation::with_seed(0x6CB);
+        install_constructor_test_playfield(&mut sim);
+        sim.session.game_mode_nonzero = game_mode_nonzero;
+        for (name, human, passive) in [
+            ("Computer", false, false),
+            ("Human", true, false),
+            ("Passive", false, true),
+        ] {
+            let id = sim.interner.intern(name);
+            let mut house = crate::sim::house_state::HouseState::new(id, 0, None, human, 0, 10);
+            house.player_control = human;
+            house.multiplay_passive = passive;
+            sim.houses.insert(id, house);
+        }
+        let mut line = map_entity("UP1", EntityCategory::Structure, (6, 5));
+        line.owner = owner.to_string();
+        line.structure_ai_repairable = field;
+        assert_eq!(
+            sim.spawn_from_map(&[line], Some(&rules), &BTreeMap::new()),
+            1
+        );
+        let building = sim.substrate.entities.values().next().unwrap();
+        assert_eq!(
+            building.ai_repairable, expected,
+            "game mode {game_mode_nonzero}, {owner}, field {field}"
+        );
+    }
 }

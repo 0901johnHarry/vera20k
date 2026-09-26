@@ -95,19 +95,24 @@ pub(crate) fn add_credits(sim: &mut Simulation, owner: InternedId, amount: i32) 
 /// `HouseClass::Spend_Money @ 0x004F9790`, cash arm only (`credits >= amount`
 /// → `credits -= amount`; else `credits = 0` and the silo-drain fallback,
 /// which is dead in stock skirmish because house storage is never filled —
-/// scan §1.2). Returns the amount actually taken from cash.
+/// scan §1.2). The amount taken joins the house's spending statistic
+/// (`+0x2DC`, `ADD` at the tail), which the factory's charges feed too
+/// ([`Economy::spend`](crate::sim::economy::Economy::spend)). Returns the
+/// amount actually taken from cash.
 pub(crate) fn spend_money(sim: &mut Simulation, owner: InternedId, amount: i32) -> i32 {
     let Some(house) = sim.houses.get_mut(&owner) else {
         return 0;
     };
-    if house.economy.credits >= amount {
+    let spent = if house.economy.credits >= amount {
         house.economy.credits -= amount;
         amount
     } else {
         let spent = house.economy.credits.max(0);
         house.economy.credits = 0;
         spent
-    }
+    };
+    house.economy.spent_credits = house.economy.spent_credits.wrapping_add(spent);
+    spent
 }
 
 /// `HouseClass` money-interface slot `+0x18` = `Available_Money @ 0x004F6990`:

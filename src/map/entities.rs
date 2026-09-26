@@ -81,6 +81,11 @@ pub struct MapEntity {
     /// (`0x0044FB5B`), false when the line stops short. False for other
     /// categories.
     pub structure_ai_sellable: bool,
+    /// `[Structures]` field 15, AI Repairable: the same reader stores its
+    /// `atoi != 0` in the building's `+0x6CB` (`0x0044FB70`), before the
+    /// building's Unlimbo (`0x0044FBF9`), false when the line stops short.
+    /// False for other categories.
+    pub structure_ai_repairable: bool,
 }
 
 /// Field index of the `MISSION=` column in `[Units]`, `[Infantry]` and
@@ -231,6 +236,7 @@ fn parse_infantry_section(
             recruitable_b: parse_recruitment_field(fields.get(13).copied()),
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         });
     }
 }
@@ -260,6 +266,9 @@ fn parse_structures_section(
         entity.structure_upgrades = parse_structure_upgrades(&fields);
         entity.structure_ai_sellable = fields
             .get(7)
+            .is_some_and(|value| crate::rules::ini_value::atoi_lenient(value) != 0);
+        entity.structure_ai_repairable = fields
+            .get(15)
             .is_some_and(|value| crate::rules::ini_value::atoi_lenient(value) != 0);
         entities.push(entity);
     }
@@ -356,6 +365,7 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
             || parse_recruitment_field(fields.get(13).copied()),
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     })
 }
 
@@ -498,7 +508,7 @@ mod tests {
     /// as the AI sale byte (`0x0044FB5B`); a line that stops short leaves it
     /// false.
     #[test]
-    fn structures_carry_their_ai_sellable_field() {
+    fn structures_carry_their_ai_sellable_and_ai_repairable_fields() {
         let ini = IniFile::from_str(
             "[Structures]\n\
              0=Americans,GAPOWR,256,15,25,0,None,1,0,1,0,0,None,None,None,1,0\n\
@@ -506,11 +516,17 @@ mod tests {
              2=Americans,GAPOWR,256,19,25,0,None\n\
              3=Americans,GAPOWR,256,21,25,0,None,true\n",
         );
-        let sellable: Vec<bool> = parse_map_entities(&ini)
+        let entities = parse_map_entities(&ini);
+        let sellable: Vec<bool> = entities
             .iter()
             .map(|entity| entity.structure_ai_sellable)
             .collect();
         assert_eq!(sellable, [true, false, false, false]);
+        let repairable: Vec<bool> = entities
+            .iter()
+            .map(|entity| entity.structure_ai_repairable)
+            .collect();
+        assert_eq!(repairable, [true, true, false, false]);
     }
 
     #[test]

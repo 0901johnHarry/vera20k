@@ -620,7 +620,10 @@ use crate::sim::world::Simulation;
 // 213 -> 214: BridgeStrength retains its native signed dword (formerly u16).
 // 214 -> 215: Terrain objects retain their construction-time world Z instead
 // of sampling later ground changes in damage and presentation consumers.
-const SNAPSHOT_VERSION: u32 = 215;
+// 215 -> 216: a building keeps its AI repair byte (`+0x6CB`) and a house its
+// repair delay (`+0x1C0`), auto-repair latch (`+0x245`) and the latch's
+// timer (`+0x280`).
+const SNAPSHOT_VERSION: u32 = 216;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3575,7 +3578,9 @@ mod tests {
         // spawn copy on pack-ups.
         // 213 -> 214: signed BridgeStrength in serialized bridge state.
         // 214 -> 215: Terrain retains its placement height across ground changes.
-        assert_eq!(super::SNAPSHOT_VERSION, 215);
+        // 215 -> 216: the building's AI repair byte; the house's repair
+        // delay, auto-repair latch and its timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 216);
     }
 
     #[test]

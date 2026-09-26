@@ -18,7 +18,7 @@ use crate::app::presentation::sidebar_render::{
 use crate::app::presentation::ui_overlays::{
     build_bomb_clock_instances, build_building_radius_ring_instances,
     build_building_status_instances, build_cargo_pip_instances, build_occupant_pip_instances,
-    build_software_cursor_instances, build_unit_status_bg_instances,
+    build_repair_wrench_instances, build_software_cursor_instances, build_unit_status_bg_instances,
     build_unit_status_fill_instances,
 };
 use crate::map::terrain::TilePlacement;
@@ -70,6 +70,7 @@ pub(super) struct UiInstances {
     pub radius_ring: Vec<SpriteInstance>,
     pub building_status: Vec<SpriteInstance>,
     pub bomb_clock: Vec<SpriteInstance>,
+    pub repair_wrench: Vec<SpriteInstance>,
     pub occupant_pip: Vec<SpriteInstance>,
     pub unit_status_bg: Vec<SpriteInstance>,
     pub unit_status_fill: Vec<SpriteInstance>,
@@ -580,6 +581,7 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
     let radius_ring: Vec<SpriteInstance> = build_building_radius_ring_instances(state, sw, sh);
     let building_status: Vec<SpriteInstance> = build_building_status_instances(state, sw, sh);
     let bomb_clock = build_bomb_clock_instances(state, sw, sh);
+    let repair_wrench = build_repair_wrench_instances(state, sw, sh);
     let occupant_pip = build_occupant_pip_instances(state, sw, sh);
     let unit_status_bg = build_unit_status_bg_instances(state, sw, sh);
     let unit_status_fill = build_unit_status_fill_instances(state, sw, sh);
@@ -627,6 +629,7 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
         radius_ring,
         building_status,
         bomb_clock,
+        repair_wrench,
         occupant_pip,
         unit_status_bg,
         unit_status_fill,

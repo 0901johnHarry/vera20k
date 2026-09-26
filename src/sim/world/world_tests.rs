@@ -55,6 +55,7 @@ fn make_test_entity(type_id: &str, category: EntityCategory) -> MapEntity {
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -4218,6 +4219,7 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &heights,
@@ -4320,6 +4322,7 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &heights,
@@ -4530,6 +4533,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::from([((5, 5), 1)]),
@@ -4593,6 +4597,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4661,6 +4666,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4721,6 +4727,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4784,6 +4791,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4864,6 +4872,7 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&rules),
         &BTreeMap::new(),
@@ -6270,6 +6279,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6351,6 +6361,7 @@ fn test_move_queue_command_appends_waypoint() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6416,6 +6427,7 @@ fn test_stop_command_clears_move_and_attack_intent() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6477,6 +6489,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6728,6 +6741,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6844,6 +6858,7 @@ fn test_move_command_rejects_non_owned_entity() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -7026,6 +7041,7 @@ fn test_attack_command_rejects_friendly_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "British".to_string(),
@@ -7043,6 +7059,7 @@ fn test_attack_command_rejects_friendly_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7092,6 +7109,7 @@ fn test_attack_move_auto_acquires_enemy() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7109,6 +7127,7 @@ fn test_attack_move_auto_acquires_enemy() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7182,6 +7201,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7199,6 +7219,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7290,6 +7311,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7307,6 +7329,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7384,6 +7407,7 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Americans".to_string(),
@@ -7401,6 +7425,7 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7464,6 +7489,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -8158,12 +8184,11 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     );
 }
 
-/// Combat-death counterpart: a structure killed in combat (Phase 5) now lives in the
-/// Dying window through Phase 7 and is freed only by the single end-of-tick drain. The
-/// Phase-7 auto-repair scan is dying-gated, so a destroyed building on auto-repair is
-/// NOT healed (no credits spent) on the death tick, and after the tick it is gone.
+/// Combat-death counterpart: a structure killed in combat (Phase 5) lives in the
+/// Dying window through Phase 7 and is freed only by the single end-of-tick drain. Its
+/// repair took its step in the building's own visit, before its death, and none after.
 #[test]
-fn combat_death_not_repaired_then_freed_at_end_of_tick() {
+fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     use crate::sim::components::Health;
     use crate::sim::house_state::HouseState;
 
@@ -8218,10 +8243,14 @@ fn combat_death_not_repaired_then_freed_at_end_of_tick() {
         sim.substrate.pending_delete.is_empty(),
         "end-of-tick drain emptied the queue"
     );
+    // The repair step belongs to the building's own LogicVector visit
+    // (`BuildingClass::UpdateRepairAndPower`, `0x004401B6`), which VERA runs
+    // before this tick's Phase 5 combat: frame 0 takes one step (Cost 1000 over
+    // 150 steps at 25% costs 1) while the building lives, and none after.
     assert_eq!(
         sim.houses.get(&russia).map(|h| h.economy.credits),
-        Some(1000),
-        "destroyed building must not be repaired at Phase 7 (dying-gated, no credits spent)",
+        Some(999),
+        "one repair step in the building's visit, none after its death",
     );
 }
 

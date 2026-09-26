@@ -159,12 +159,6 @@ pub struct SubCell(pub u8);
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Veterancy(pub u16);
 
-/// Marker component: this building is being repaired (spending credits to heal).
-///
-/// Added by the ToggleRepair command. Removed when health is full or credits run out.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Repairing;
-
 /// A building's construction animation (BState 0), set by
 /// `BuildingClass::Begin_Mode(0)` (`0x00447780`) from the type's control and
 /// stepped once per frame by `BuildingClass::UpdateAnimation` (`0x004509D0`);

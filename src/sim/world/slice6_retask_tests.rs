@@ -72,6 +72,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 

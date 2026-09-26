@@ -997,6 +997,7 @@ impl Simulation {
             };
         }
         if !attached_upgrade {
+            self.mark_ai_repairable_at_unlimbo(stable_id);
             self.append_live_build_const(stable_id);
             self.refresh_waypoint_edge_from_committed_structure(stable_id);
             self.mark_building_base_reservation_with_arg(stable_id, false, context);
@@ -1014,6 +1015,26 @@ impl Simulation {
             false
         };
         RevealOutcome::Revealed { logic_registered }
+    }
+
+    /// `BuildingClass::Unlimbo 0x00440B4F..0x00440B7A`, after the Techno
+    /// Unlimbo and its alive gate: outside a campaign, a building of a house
+    /// no human controls whose house type is not `MultiplayPassive=` becomes
+    /// AI-repairable (`+0x6CB`), whatever its map line said.
+    fn mark_ai_repairable_at_unlimbo(&mut self, stable_id: u64) {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
+            return;
+        };
+        let game_mode_nonzero = self.session.game_mode_nonzero;
+        if entity.category == EntityCategory::Structure
+            && game_mode_nonzero
+            && self.houses.get(&entity.owner()).is_some_and(|house| {
+                !house.is_controlled_by_human(game_mode_nonzero) && !house.multiplay_passive
+            })
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+        {
+            entity.ai_repairable = true;
+        }
     }
 
     /// The owner-receiver portion of Foot4D722F -> Techno6F4960. Constructor

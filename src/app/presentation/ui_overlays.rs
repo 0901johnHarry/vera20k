@@ -668,6 +668,89 @@ pub(crate) fn build_bomb_clock_instances(
     instances
 }
 
+/// The repair wrench's WRENCH.SHP frame at `frame`
+/// (`TechnoClass::DrawExtras 0x006F52D8..0x006F532B`): a cycle of
+/// `SpeedNormalize(14) / 4` frames (at least 2) spread over frames 0..=6,
+/// both signed IDIVs.
+fn repair_wrench_frame(frame: i32, options: &crate::sim::game_options::GameOptions) -> i32 {
+    let cycle = (options.speed_normalize(14) / 4).max(2);
+    frame % cycle * 6 / (cycle - 1)
+}
+
+/// The repair wrench, `TechnoClass::DrawExtras @ 0x006F5190`
+/// (0x006F5253..0x006F5345): over a building being drawn whose repair byte
+/// (`+0x6E8`) is set, whoever owns it, and whose cell is not shrouded
+/// (`0x00487950`), WRENCH.SHP frame [`repair_wrench_frame`] of the frame the
+/// draw sees, centered (flags `0xE00`) on the render point (the building's
+/// art anchor, as the bomb clock's). Drawn after the bomb clock and before
+/// the veterancy chevrons (0x006F5382), as there.
+pub(crate) fn build_repair_wrench_instances(
+    state: &AppState,
+    sw: f32,
+    sh: f32,
+) -> Vec<SpriteInstance> {
+    let (Some(sim), Some(overlay)) = (
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        &state.match_state.match_presentation.selection_overlay,
+    ) else {
+        return Vec::new();
+    };
+    let Some(wrench) = overlay.repair_wrench() else {
+        return Vec::new();
+    };
+    let Ok(index) = usize::try_from(repair_wrench_frame(
+        sim.session.binary_frame as i32,
+        &sim.session.game_options,
+    )) else {
+        return Vec::new();
+    };
+    let ignore_visibility = state.match_state.sandbox_full_visibility;
+    let local = preferred_local_owner_name(state).and_then(|name| sim.interner.get(&name));
+    let mut instances = Vec::new();
+    for entity in sim.entities().values() {
+        if entity.category != EntityCategory::Structure
+            || !entity.repairing
+            || entity.lifecycle.in_limbo
+        {
+            continue;
+        }
+        if !ignore_visibility {
+            let Some(local) = local else {
+                continue;
+            };
+            let (rx, ry) = (entity.position.rx, entity.position.ry);
+            if !sim.fog.is_cell_revealed(local, rx, ry)
+                || sim.fog.is_cell_gap_covered(local, rx, ry)
+            {
+                continue;
+            }
+        }
+        let point = crate::render::locomotor_visual::screen_position(entity);
+        let point = crate::render::locomotor_visual::building_art_anchor(point.0, point.1);
+        let Some(instance) = wrench.instance(index, point, 0.0006) else {
+            continue;
+        };
+        if in_view(
+            instance.position[0],
+            instance.position[1],
+            instance.size[0],
+            instance.size[1],
+            state.match_state.input.camera_x,
+            state.match_state.input.camera_y,
+            sw,
+            sh,
+            48.0,
+        ) {
+            instances.push(instance);
+        }
+    }
+    instances
+}
+
 /// Non-building health bar backgrounds: pipbrd.shp bracket sprites.
 /// Frame 0 = vehicle/aircraft (36×4), frame 1 = infantry (18×4).
 pub(crate) fn build_unit_status_bg_instances(
@@ -1338,6 +1421,35 @@ pub(crate) fn health_fill_color(ratio: f32, condition_yellow: f32, condition_red
 
 #[cfg(test)]
 mod tests {
+    /// `tools/spatial_oracle/building_repair.json` `wrench` rows: the frame
+    /// DrawExtras picks over every stored game speed.
+    #[test]
+    fn the_repair_wrench_frame_matches_the_original() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/building_repair.json"
+        ))
+        .unwrap();
+        let mut compared = 0;
+        for row in corpus["wrench"].as_array().unwrap() {
+            let input = &row["input"];
+            let options = crate::sim::game_options::GameOptions {
+                game_speed: input["speed"].as_i64().unwrap() as i32,
+                ..Default::default()
+            };
+            assert_eq!(
+                i64::from(super::repair_wrench_frame(
+                    input["frame"].as_i64().unwrap() as i32,
+                    &options
+                )),
+                row["frame_index"].as_i64().unwrap(),
+                "{}",
+                input["name"]
+            );
+            compared += 1;
+        }
+        assert_eq!(compared, 144);
+    }
+
     #[test]
     fn health_pips_clamp_signed_actual_without_narrowing_live_strength() {
         assert_eq!(super::display_health_ratio(70_000, 140_000), 0.5);
