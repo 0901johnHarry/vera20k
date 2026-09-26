@@ -51,4 +51,5 @@ packed pixels and unchanged depth through the shared Bullet path. These are
 supplied 64×96 scenes with the corpus Z/ABuffer and palette inputs, not native
 Display cadence or whole-scene captures. [LineTrail](line_trail.md) has separate
 ring/pixel/overlap receipts; body success does not establish trail scheduling.
-Final full-suite, release and visible validation remain pending in the ledger.
+The [IFV ledger](ifv_launch.md) records the passing full retail suite, release
+map load and visible save-restoration checks, with their separate binary identities.

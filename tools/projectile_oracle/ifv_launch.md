@@ -186,9 +186,28 @@ The post-cleanup final release rebuild passes in51.95s, with app SHA256
 Its retail production witness passes again in10.48s with the same196 shots,
 frame5348 collapse and final `4229dfd2711ecdc0`; fresh save hashes and paths are
 in `/tmp/bridge-ifv-final-release/retail-map-load.json`. No simulation or
-rendering behavior changed in this three-line cleanup. The single fresh critic
-is in progress; PR publication remains pending. No whole-chain or whole-bridge
-completion is claimed.
+rendering behavior changed in this three-line cleanup. The single fresh critic is complete (below); PR publication remains pending.
+No whole-bridge completion is claimed.
+
+## Single fresh critic disposition
+
+The read-only critic reviewed `f63ec3833cb5ce4892eb259de389d6e4e0faa70f`
+against `350ae69591928d0054b70ce42acda28b5121f824`, including the Speed
+prerequisite and subsequent documentation receipt corrections. It found no
+confirmed actionable implementation defect or blocking change request in the
+selected empty-FV/static-high-bridge chain, and no consequential additional
+in-scope refactor. It independently passed15 retained Rust tests covering
+homing, two-shot FireAt, AreaDamage/nullify, composed bridge impact and trail
+CPU/GPU behavior, plus the original31-control guidance `--check`. It inspected
+the full-suite, Clippy and final release receipts without rerunning them.
+
+The reviewer's initial homing invocation pointed to the wrong retail directory
+and therefore used fallback tables; correcting the path to the configured
+retail inputs made all4 comparisons pass. The report records that invocation
+error rather than attributing it to the candidate. The single report is retained
+locally at `/tmp/bridge-ifv-critic.md`. Its full-world ID-prefix, Unit scheduling,
+receiver, other-consumer, whole-scene/platform and scaling limitations remain
+explicit in this ledger. This pass does not close the whole-bridge goal.
 
 ## Local Ghidra persistence
 

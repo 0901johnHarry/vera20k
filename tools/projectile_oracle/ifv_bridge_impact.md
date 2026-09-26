@@ -103,5 +103,6 @@ and the final focused Rust composition pass all 6. In the EMEffect control,
 selection consumes its Scenario draw before isolation replaces the selected
 effect with IRONFX. This is separate from the physical retail HE bridge rows
 above, where EMEffect is false. [Trail impact](ifv_trail_impact.md) separately
-establishes physical Bullet destruction as the detach point. Full-suite,
-release and visible validation remain pending in the ledger.
+establishes physical Bullet destruction as the detach point. The [IFV ledger](ifv_launch.md)
+records the passing full retail suite, release map load and visible save-restoration
+checks, with their separate binary identities.
