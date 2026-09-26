@@ -4993,36 +4993,19 @@ impl ResolvedTerrainGrid {
             .map(|cell| ((cell.rx, cell.ry), cell.bridge_deck_level))
             .collect()
     }
+}
 
-    /// Build bridge metadata for the tactical screen-to-cell inverse.
-    ///
-    /// This keeps the existing deck-height map intact for render/debug users,
-    /// while exposing the structural and direction-zero flags consumed by the
-    /// verified gamemd tactical inverse branch.
-    pub fn build_tactical_bridge_inverse_map(
-        &self,
-    ) -> BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell> {
-        self.cells
-            .iter()
-            .filter(|cell| {
-                cell.has_bridge_deck
-                    && !cell
-                        .bridge_layer
-                        .as_ref()
-                        .is_some_and(|bl| bl.direction == BridgeDirection::Low)
-            })
-            .map(|cell| {
-                (
-                    (cell.rx, cell.ry),
-                    crate::map::terrain::TacticalBridgeCell {
-                        structural: cell.bridge_facts.has_structural_bridge(),
-                        direction_zero: cell
-                            .bridge_facts
-                            .has_flag(crate::map::bridge_facts::BRIDGE_FLAG_DIRECTION_ZERO),
-                    },
-                )
-            })
-            .collect()
+impl crate::map::terrain::TacticalBridgeLookup for ResolvedTerrainGrid {
+    fn bridge_cell(&self, rx: u16, ry: u16) -> Option<crate::map::terrain::TacticalBridgeCell> {
+        let facts = &self.cell(rx, ry)?.bridge_facts;
+        // Original6D6760/6D6793 reads raw100/800, independent of inferred
+        // topology or deck-walkability. Collapse and restore already update
+        // this authoritative cell word; retaining a second map makes it stale.
+        // Executed reader: tools/bridge_click_state_oracle/README.md.
+        Some(crate::map::terrain::TacticalBridgeCell {
+            structural: facts.has_structural_bridge(),
+            direction_zero: facts.has_flag(crate::map::bridge_facts::BRIDGE_FLAG_DIRECTION_ZERO),
+        })
     }
 }
 

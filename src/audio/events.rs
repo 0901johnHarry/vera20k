@@ -74,14 +74,14 @@ pub enum GameSoundEvent {
         source: Option<SoundSource>,
     },
 
-    /// Release one animation's active handle, then optionally play StopSound.
+    /// Hard-stop one owner's handle, then optionally play StopSound.
     AnimationStopped {
         anim_id: u64,
         stop_sound_id: Option<String>,
         source: Option<SoundSource>,
     },
     /// `SoundEvent::Release @ 0x00406060` on one owner's handle: its loop
-    /// stops repeating and plays out.
+    /// stops repeating and plays out; one-shots continue unchanged.
     AnimationReleased { anim_id: u64 },
     /// A weapon fired — play the weapon's Report= sound.
     WeaponFired {

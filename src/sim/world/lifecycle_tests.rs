@@ -4416,17 +4416,12 @@ fn gsi_05_02_mixed_fixture() -> (Simulation, [u64; 6]) {
     let terrain_id = sim.allocate_stable_id();
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: sim.interner.intern("TREE01"),
-            rx: 8,
-            ry: 9,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain =
+                TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 8, 9);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     assert!(sim.register_terrain_object(terrain_id, None));
@@ -4718,17 +4713,11 @@ fn gsi_05_02_lethal_terrain_unregisters_and_inactive_slot_cannot_roundtrip() {
     let warhead_ref = sim.interner.intern("WOODWH");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, type_ref, 5, 6);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     sim.production
@@ -4794,17 +4783,11 @@ fn gsi_05_03_terminal_non_entities_remain_resolvable_until_common_drain() {
     let warhead_ref = sim.interner.intern("WOODWH");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_type,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_type, 5, 6);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     sim.production
@@ -6259,18 +6242,7 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
         let terrain_id = sim.allocate_stable_id();
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: sim.interner.intern("TREE01"),
-                rx: 4,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 0,
-                lifecycle: TerrainObjectLifecycle::Live,
-            },
+            TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 4, 5),
         );
         sim.production
             .terrain_object_cells
@@ -6846,8 +6818,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     restored.rebuild_caches_after_load(
         pristine_terrain,
         Default::default(),
-        Vec::new(),
-        Vec::new(),
+        &rules,
     );
     restored
         .restore_map_authority_after_snapshot_load(&rules, &overlay_registry)
@@ -6953,17 +6924,12 @@ fn gsi_05_02_restore_rejects_each_live_modeled_family_missing_from_logic() {
     let terrain_id = terrain.allocate_stable_id();
     terrain.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain.interner.intern("TREE01"),
-            rx: 1,
-            ry: 1,
-            health: 1,
-            max_health: 1,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain =
+                TerrainObjectState::for_test(terrain_id, terrain.interner.intern("TREE01"), 1, 1);
+            terrain.health = 1;
+            terrain.max_health = 1;
+            terrain
         },
     );
     assert_eq!(
@@ -7920,17 +7886,16 @@ fn mixed_display_lifecycle_matches_original_sequences_and_save_restore() {
                         IVec3::from_array(xyz);
                 }
                 "terrain" => {
-                    let terrain = TerrainObjectState {
-                        stable_id: id,
-                        native_unique_id: None,
-                        in_logic_vector: false,
-                        type_ref: sim.interner.intern("TREE"),
-                        rx: (xyz[0] / 256) as u16,
-                        ry: (xyz[1] / 256) as u16,
-                        health: 10,
-                        max_health: 10,
-                        occupation_bits: 0,
-                        lifecycle: TerrainObjectLifecycle::Live,
+                    let terrain = {
+                        let mut terrain = TerrainObjectState::for_test(
+                            id,
+                            sim.interner.intern("TREE"),
+                            (xyz[0] / 256) as u16,
+                            (xyz[1] / 256) as u16,
+                        );
+                        terrain.health = 10;
+                        terrain.max_health = 10;
+                        terrain
                     };
                     sim.production
                         .terrain_object_cells

@@ -740,6 +740,16 @@ impl SoundArbiter {
         live
     }
 
+    /// `SoundEvent::Release @ 0x00406060` on an owner's handle. Release its
+    /// current event before clearing the handle, allowing one-shots and the
+    /// current pass of an uncounted loop to finish after the owner disappears.
+    pub fn release_owner(&mut self, owner: u64) {
+        if let Some(event) = self.validate_loop_handle(owner) {
+            self.release(event);
+        }
+        self.clear_loop_handle(owner);
+    }
+
     /// `SoundEvent::Release @ 0x00406060`'s event half: a live looping event
     /// whose entry has no `Loop=` count and is not already released stops
     /// repeating (`flags |= 0x60`) and plays out its current pass.

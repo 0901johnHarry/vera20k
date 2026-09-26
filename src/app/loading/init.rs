@@ -1445,7 +1445,6 @@ pub struct ScenarioLoadInputs {
     pub height_map: BTreeMap<(u16, u16), u8>,
     /// Cell (rx, ry) → bridge deck elevation z. Only bridge cells present.
     pub bridge_height_map: BTreeMap<(u16, u16), u8>,
-    pub tactical_bridge_inverse_map: BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>,
     /// Parsed rules.ini data — kept for combat system weapon/warhead lookups.
     pub rules: Option<RuleSet>,
     /// Parsed [Lighting] config used for transient lighting rebuilds.
@@ -3020,8 +3019,6 @@ pub(crate) fn load_map_from_initial(
     // with its existing eager grid unchanged.
     let height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_height_map();
     let bridge_height_map: BTreeMap<(u16, u16), u8> = resolved_terrain.build_bridge_height_map();
-    let tactical_bridge_inverse_map: BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell> =
-        resolved_terrain.build_tactical_bridge_inverse_map();
     let anchor_variant_table = theater_result
         .as_ref()
         .and_then(crate::map::theater::BridgeAnchorVariantTable::from_theater);
@@ -3459,7 +3456,6 @@ pub(crate) fn load_map_from_initial(
             house_roster,
             height_map,
             bridge_height_map,
-            tactical_bridge_inverse_map,
             rules,
             map_lighting_config: lighting_config,
             theater_name,

@@ -11,12 +11,15 @@ use crate::map::terrain::TacticalBridgeCell;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::world::Simulation;
 
+#[path = "bridge_live_click_tests.rs"]
+mod live_flags;
+
 fn click_cell(
     point: (f32, f32),
     camera: (f32, f32),
     zoom: f32,
     heights: &BTreeMap<(u16, u16), u8>,
-    bridges: &BTreeMap<(u16, u16), TacticalBridgeCell>,
+    bridges: &dyn crate::map::terrain::TacticalBridgeLookup,
 ) -> (u16, u16) {
     // Only the test's forward view transform is local. Its inverse and the
     // world -> cell resolution are the same owners used by tactical orders.
@@ -274,19 +277,15 @@ fn follow_clicked_goal(
     expected: (u16, u16),
     expected_on_bridge: bool,
 ) {
-    let bridges = scenario
-        .runtime
-        .view()
-        .resolved_terrain()
-        .expect("retail terrain")
-        .build_tactical_bridge_inverse_map();
+    let bridges = crate::app::match_runtime::sim_tick::tactical_bridge_cells(scenario.sim())
+        .expect("retail terrain");
     // Noninteger camera coordinates and zoom exercise the production adapter.
     let goal = click_cell(
         point,
         (-100.25, 1800.5),
         1.25,
         &scenario.runtime.resources.height_map,
-        &bridges,
+        bridges,
     );
     assert_eq!(goal, expected, "retail click {point:?}");
     let facts = scenario

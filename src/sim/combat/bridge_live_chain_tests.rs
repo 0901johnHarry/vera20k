@@ -70,7 +70,7 @@ fn assert_collapsed_bridge_restores(
     template: &crate::map::resolved_terrain::ResolvedTerrainGrid,
     target: (u16, u16),
     attacker: u64,
-) {
+) -> crate::sim::world::Simulation {
     let live = scenario.sim();
     let resources = &scenario.runtime.resources;
     assert!(
@@ -104,8 +104,7 @@ fn assert_collapsed_bridge_restores(
     restored.rebuild_caches_after_load(
         template.clone(),
         live.terrain_speed_config.clone(),
-        live.bridge_explosions.clone(),
-        live.metallic_debris.clone(),
+        &resources.rules,
     );
     restored
         .restore_map_authority_after_snapshot_load(&resources.rules, &resources.overlay_registry)
@@ -172,6 +171,90 @@ fn assert_collapsed_bridge_restores(
         crate::sim::projectile::cell_target_coord(Some(restored_terrain), target.0, target.1),
         crate::sim::projectile::cell_target_coord(Some(terrain), target.0, target.1),
         "future Cell-target fire uses the same surface after restore"
+    );
+    for (&id, original) in live.anims() {
+        let loaded = restored
+            .anim(id)
+            .expect("every saved live AnimClass restores");
+        assert_eq!(loaded.type_id, original.type_id);
+        assert_eq!(loaded.world_coord, original.world_coord);
+        assert_eq!(loaded.bounce, original.bounce, "BounceClass body {id}");
+        assert_eq!(
+            loaded.runtime, original.runtime,
+            "AnimClass timer/lifecycle {id}"
+        );
+    }
+    restored
+}
+
+/// Save/load resets Scenario RNG in native. Compare two independently validated
+/// restores through ordinary frames, not a loaded stream against an unsaved
+/// live stream with intentionally different RNG. The saved flight body/timers
+/// must survive the actual map/cache restoration before either continuation.
+fn assert_debris_restore_continuation(
+    scenario: &mut HeadlessScenario,
+    template: &crate::map::resolved_terrain::ResolvedTerrainGrid,
+    target: (u16, u16),
+    attacker: u64,
+) {
+    let first = assert_collapsed_bridge_restores(scenario, template, target, attacker);
+    let mut second = assert_collapsed_bridge_restores(scenario, template, target, attacker);
+    let flying = first
+        .anims()
+        .filter_map(|(&id, anim)| anim.bounce.is_some().then_some(id))
+        .collect::<Vec<_>>();
+    assert!(!flying.is_empty(), "save must contain live Bouncer flight");
+    assert_eq!(
+        first.state_hash(),
+        second.state_hash(),
+        "independent validated restores"
+    );
+    scenario.runtime.simulation = first;
+    let mut observed_motion = false;
+    for frame in 0..200 {
+        let before = flying
+            .iter()
+            .filter_map(|&id| {
+                scenario
+                    .sim()
+                    .anim_absolute_coord(id)
+                    .map(|coord| (id, coord))
+            })
+            .collect::<Vec<_>>();
+        scenario
+            .runtime
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .expect("first restored continuation frame");
+        for (id, coord) in before {
+            observed_motion |= scenario
+                .sim()
+                .anim_absolute_coord(id)
+                .is_some_and(|after| after != coord);
+        }
+        std::mem::swap(&mut scenario.runtime.simulation, &mut second);
+        scenario
+            .runtime
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .expect("second restored continuation frame");
+        assert_eq!(
+            scenario.sim().state_hash(),
+            second.state_hash(),
+            "restored debris continuation frame {frame}"
+        );
+        std::mem::swap(&mut scenario.runtime.simulation, &mut second);
+    }
+    assert!(
+        observed_motion,
+        "restored Bouncer bodies must resume flight"
+    );
+    assert!(
+        flying.iter().all(|&id| scenario.sim().anim(id).is_none()),
+        "restored chunks must finish their flight/contact/landing lifecycle"
+    );
+    println!(
+        "{} restored Bouncers flew and expired; both validated restores matched all 200 state hashes, final {:016x}",
+        flying.len(),
+        scenario.sim().state_hash()
     );
 }
 
@@ -394,7 +477,7 @@ fn retail_grizzly_forcefire_flies_damages_collapses_and_releases_bridge_target()
             println!(
                 "retail Hills ordinary MTNK chain reached frame {frame}: {shots} shots, {disappeared} ended bullets, flight + bridge mutation + collapse + target release; validating save/restore"
             );
-            assert_collapsed_bridge_restores(&scenario, &pristine_terrain, target, attacker);
+            assert_debris_restore_continuation(&mut scenario, &pristine_terrain, target, attacker);
             println!(
                 "retail bridge save/restore preserves native flags, runtime surfaces, navigation, released target and future fire aim"
             );

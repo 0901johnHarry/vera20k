@@ -302,8 +302,6 @@ fn snapshot_restored_collapsed_high_runtime(
         .capture_real_cell_bridge_flags_0x1180();
 
     let terrain_speed_config = sim.terrain_speed_config.clone();
-    let bridge_explosions = sim.bridge_explosions.clone();
-    let metallic_debris = sim.metallic_debris.clone();
     let bytes = GameSnapshot::save_validated(&sim, 1, 2, "Radar load", 3);
     let mut restored = GameSnapshot::load_validated(&bytes, 1, 2, "RADARLOAD.MAP")
         .expect("validated current snapshot")
@@ -311,13 +309,12 @@ fn snapshot_restored_collapsed_high_runtime(
     restored
         .restore_after_snapshot_load()
         .expect("restored object graph");
+    let resources = SimResources::empty();
     restored.rebuild_caches_after_load(
         terrain_template.clone(),
         terrain_speed_config,
-        bridge_explosions,
-        metallic_debris,
+        &resources.rules,
     );
-    let resources = SimResources::empty();
     restored
         .restore_map_authority_after_snapshot_load(
             &resources.rules,

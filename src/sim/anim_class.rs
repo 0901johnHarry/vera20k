@@ -1024,7 +1024,6 @@ impl Simulation {
                 index += 1;
                 continue;
             }
-            let world = self.anim_absolute_coord(id);
             let start_sound_active = self
                 .substrate
                 .anims
@@ -1032,14 +1031,11 @@ impl Simulation {
                 .is_some_and(|anim| anim.start_sound_active);
             self.clear_damage_fire_anim_reference(id);
             self.release_anim_owner_reference(id);
-            if start_sound_active && let Some(world) = world {
+            if start_sound_active {
                 // `MapClass::InitCellAttributes @ 0x00568BB0` reaches the
-                // scalar-deleting Anim destructor with StopSound forced null.
-                self.sound_events.push(SimSoundEvent::AnimationStopped {
-                    anim_id: id,
-                    stop_sound_id: None,
-                    world,
-                });
+                // scalar destructor4228E0: Release406060, no StopSound.
+                self.sound_events
+                    .push(SimSoundEvent::ObjectSoundReleased { owner: id });
             }
             self.conceal_anim(id);
             self.substrate.pending_delete.retain(|queued| *queued != id);
@@ -1180,11 +1176,11 @@ impl Simulation {
         id: AnimId,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) {
+    ) -> bool {
         // `AnimClass::GetCoords @ 0x00422BE0`, not the stored field: an
         // owner-attached anim stores an owner-relative delta.
         let Some(world_coord) = self.anim_absolute_coord(id) else {
-            return;
+            return false;
         };
         let Some((type_id, first_guard, inactive)) = self.anim(id).map(|anim| {
             (
@@ -1193,12 +1189,12 @@ impl Simulation {
                 anim.runtime.inactive,
             )
         }) else {
-            return;
+            return false;
         };
         let type_name = self.interner.resolve(type_id).to_ascii_uppercase();
         let Some(config) = rules.art_registry.anim_runtime_config(&type_name).cloned() else {
             self.destroy_anim(id, rules);
-            return;
+            return false;
         };
 
         // `AnimClass::AI @ 0x00423AC0`, before the MakeInfantry `vtable+0xF0`
@@ -1225,19 +1221,20 @@ impl Simulation {
         }
         if inactive {
             self.destroy_anim(id, rules);
-            return;
+            return false;
         }
 
         // `AnimClass::AI 0x00423C24`: a bouncing chunk flies its body before
         // the trailer and the first-AI guard; touching down ends it.
         if self.anim(id).is_some_and(|anim| anim.bounce.is_some())
-            && self.anim_bounce_step(id, &config, rules, overlay_registry)
+            && let Some(bridge_state_changed) =
+                self.anim_bounce_step(id, &config, rules, overlay_registry)
         {
-            return;
+            return bridge_state_changed;
         }
         // The trailer spawns at GetCoords after the body moved the anim.
         let Some(world_coord) = self.anim_absolute_coord(id) else {
-            return;
+            return false;
         };
 
         if let Some(trailer_name) = config.trailer_anim.as_deref() {
@@ -1281,7 +1278,7 @@ impl Simulation {
             if let Some(anim) = self.anim_mut_by_id(id) {
                 anim.runtime.first_ai_guard = false;
             }
-            return;
+            return false;
         }
 
         // `AnimClass::AI @ 0x00423AC0` delay countdown: the visit that takes it
@@ -1290,14 +1287,14 @@ impl Simulation {
         // looping anim restarts, and replays its start sound, after each pause.
         {
             let Some(anim) = self.anim_mut_by_id(id) else {
-                return;
+                return false;
             };
             if anim.runtime.delay_remaining > 0 {
                 anim.runtime.delay_remaining -= 1;
                 if anim.runtime.delay_remaining == 0 {
                     self.anim_start(id, &config, rules, overlay_registry);
                 }
-                return;
+                return false;
             }
         }
 
@@ -1306,17 +1303,17 @@ impl Simulation {
         let current_frame = self.session.binary_frame as i32;
         let (middle, boundary) = {
             let Some(anim) = self.anim_mut_by_id(id) else {
-                return;
+                return false;
             };
             //42449B: power pause follows first-AI/delay gates and precedes timer advance.
             if anim.runtime.paused {
-                return;
+                return false;
             }
             if anim.runtime.rate_reload == 0 {
-                return;
+                return false;
             }
             if !anim.runtime.frame_timer.expired(current_frame) {
-                return;
+                return false;
             }
             anim.runtime
                 .frame_timer
@@ -1340,7 +1337,7 @@ impl Simulation {
             self.anim_middle(id, &config, rules, overlay_registry);
         }
         match boundary {
-            AnimBoundary::Continue | AnimBoundary::Bounce => return,
+            AnimBoundary::Continue | AnimBoundary::Bounce => return false,
             AnimBoundary::Loop => {
                 random_loop_delay = config.random_loop_delay;
             }
@@ -1381,6 +1378,7 @@ impl Simulation {
             }
             VisitAction::Next(next) => self.switch_anim_type(id, &next, rules, overlay_registry),
         }
+        false
     }
 
     pub(crate) fn destroy_anim(&mut self, id: AnimId, rules: &RuleSet) {
@@ -1417,11 +1415,21 @@ impl Simulation {
             anim.runtime.inactive = true;
             anim.start_sound_active = false;
         }
-        self.sound_events.push(SimSoundEvent::AnimationStopped {
-            anim_id: id,
-            stop_sound_id: stop_sound,
-            world,
-        });
+        // Destroy4255D5 calls Release406060, leaving a one-shot Report
+        // playing; StopAndClear405D40 would cut it off. Original execution:
+        // tools/rules_oracle/bridge_child_sound.{py,json,md}.
+        self.sound_events
+            .push(SimSoundEvent::ObjectSoundReleased { owner: id });
+        if let Some(stop_sound_id) = stop_sound {
+            // Native425618 plays StopSound after releasing the Report. The
+            // preceding release removes this owner's handle, so the existing
+            // stop/play consumer cannot interrupt the released Report.
+            self.sound_events.push(SimSoundEvent::AnimationStopped {
+                anim_id: id,
+                stop_sound_id: Some(stop_sound_id),
+                world,
+            });
+        }
         if is_feedback {
             self.substrate.multiplayer_feedback_pending_delete.push(id);
         } else {
@@ -1440,17 +1448,13 @@ impl Simulation {
         // Anim VT7E3354+20 ->426590 ->4228E0 releases sound handles but
         // never reaches Destroy4255B0 or its StopSound playback. The slot was
         // cleared by the caller before these synchronous destructor effects.
-        let world = self.anim_absolute_coord(id);
         let sound_active = self.anim(id).is_some_and(|anim| anim.start_sound_active);
         self.clear_damage_fire_anim_reference(id);
         self.release_anim_owner_reference(id);
         self.clear_building_anim_reference(id);
-        if sound_active && let Some(world) = world {
-            self.sound_events.push(SimSoundEvent::AnimationStopped {
-                anim_id: id,
-                stop_sound_id: None,
-                world,
-            });
+        if sound_active {
+            self.sound_events
+                .push(SimSoundEvent::ObjectSoundReleased { owner: id });
         }
         self.conceal_anim(id);
         self.substrate.pending_delete.retain(|queued| *queued != id);
@@ -1918,19 +1922,19 @@ impl Simulation {
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) -> bool {
-        let Some(mut body) = self.anim(id).and_then(|anim| anim.bounce) else {
-            return false;
-        };
+    ) -> Option<bool> {
+        let mut body = self.anim(id).and_then(|anim| anim.bounce)?;
         let outcome = self.anim_bounce_update(&mut body, rules);
         let position = body.position_leptons();
         if let Some(anim) = self.anim_mut_by_id(id) {
             anim.bounce = Some(body);
         }
+        let mut bridge_state_changed = false;
         match outcome {
             BounceOutcome::Falling => {}
             BounceOutcome::Bounced => {
-                self.anim_bounce_contact(id, config, rules, overlay_registry, position)
+                bridge_state_changed |=
+                    self.anim_bounce_contact(id, config, rules, overlay_registry, position);
             }
             BounceOutcome::Stopped => self.destroy_anim(id, rules),
         }
@@ -1942,11 +1946,11 @@ impl Simulation {
             };
         }
         if outcome == BounceOutcome::Falling {
-            return false;
+            return None;
         }
-        self.anim_bounce_landing(config, rules, overlay_registry, position);
+        bridge_state_changed |= self.anim_bounce_landing(config, rules, overlay_registry, position);
         self.destroy_anim(id, rules);
-        true
+        Some(bridge_state_changed)
     }
 
     /// The Bounced arm of `AnimClass::ProcessBounceResult` (`0x00423981..
@@ -1961,7 +1965,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
-    ) {
+    ) -> bool {
         if let (Some(bounce_anim), Some(coord)) =
             (config.bounce_anim.as_deref(), self.anim_absolute_coord(id))
         {
@@ -1972,61 +1976,88 @@ impl Simulation {
             u16::try_from(position.x >> 8),
             u16::try_from(position.y >> 8),
         ) else {
-            return;
+            return false;
         };
         let damage = match X87Chop53::load_f64(config.damage).and_then(X87Chop53::ftol_i64) {
             Ok(damage) => damage as i32,
-            Err(_) => return,
+            Err(_) => return false,
         };
         let warhead_ref = self.interner.intern(warhead_name);
-        // The walk reads each successor after the hit (`0x00423A83`), so a
-        // victim that leaves the cell ends it (its next pointer is cleared).
-        // RESIDUAL: native's FirstObject list also holds the cell's
-        // TerrainClass objects, which VERA keeps outside occupancy, so a tree
-        // under a bouncing chunk takes no hit. Trigger: a chunk reporting
-        // Bounced (a cliff face or building top, 8 of 64 native flights) in a
-        // tree cell. Effect: the tree is not damaged.
+        use crate::sim::combat::combat_aoe::AreaDamageReceiver;
+        use crate::sim::occupancy::CellObjectMember;
         let ground = crate::sim::movement::locomotor::MovementLayer::Ground;
-        let mut current = self
-            .substrate
-            .occupancy
-            .get(rx, ry)
-            .and_then(|cell| cell.first_on_layer(ground));
+        let mut current = self.cell_objects((rx, ry), ground).next();
+        let mut bridge_state_changed = false;
         while let Some(target) = current {
-            let hit = self.substrate.entities.get(target).and_then(|entity| {
-                let object_type = rules.object(self.interner.resolve(entity.type_ref()))?;
-                let center =
-                    crate::sim::movement::ground_pose::object_center_coord(entity, object_type);
+            let center = match target {
+                CellObjectMember::Entity(id) => {
+                    self.substrate.entities.get(id).and_then(|entity| {
+                        let object_type = rules.object(self.interner.resolve(entity.type_ref()))?;
+                        let coord = crate::sim::movement::ground_pose::object_center_coord(
+                            entity,
+                            object_type,
+                        );
+                        Some((coord.x, coord.y))
+                    })
+                }
+                // Loaded Terrain objects retain their map-cell center. This
+                // contact gate uses XY only (GetCoords5F65A0); it does not
+                // substitute ground/deck height for the object's location.
+                CellObjectMember::Terrain(id) => {
+                    self.production.terrain_objects.get(&id).map(|tree| {
+                        let coord = tree.world_coord();
+                        (coord.x, coord.y)
+                    })
+                }
+            };
+            if let Some((x, y)) = center {
                 let distance = position
                     .x
-                    .wrapping_sub(center.x)
+                    .wrapping_sub(x)
                     .wrapping_abs()
-                    .wrapping_add(position.y.wrapping_sub(center.y).wrapping_abs());
-                (distance <= config.damage_radius).then_some(distance)
-            });
-            if let Some(distance) = hit {
-                let receiver = crate::sim::combat::combat_aoe::AreaDamageReceiver::Entity(
-                    crate::sim::combat::EntityDamageEvent::direct_receiver(
-                        target,
-                        damage,
-                        crate::util::native_x87::adjust_for_z_standard(distance),
-                        crate::sim::combat::RAD_NO_ATTACKER,
-                        None,
-                        warhead_ref,
-                        crate::sim::combat::ReceiverCallFlags {
-                            ignore_defenses: false,
-                            arg6: false,
-                        },
-                    ),
-                );
-                self.commit_noncombat_aoe_receivers(rules, overlay_registry, &[receiver]);
+                    .wrapping_add(position.y.wrapping_sub(y).wrapping_abs());
+                if distance <= config.damage_radius {
+                    let distance_leptons = crate::util::native_x87::adjust_for_z_standard(distance);
+                    let receiver = match target {
+                        CellObjectMember::Entity(id) => AreaDamageReceiver::Entity(
+                            crate::sim::combat::EntityDamageEvent::direct_receiver(
+                                id,
+                                damage,
+                                distance_leptons,
+                                crate::sim::combat::RAD_NO_ATTACKER,
+                                None,
+                                warhead_ref,
+                                crate::sim::combat::ReceiverCallFlags {
+                                    ignore_defenses: false,
+                                    arg6: false,
+                                },
+                            ),
+                        ),
+                        CellObjectMember::Terrain(id) => {
+                            let tree = &self.production.terrain_objects[&id];
+                            AreaDamageReceiver::Terrain(crate::sim::combat::TerrainDamageEvent {
+                                stable_id: id,
+                                rx: tree.rx,
+                                ry: tree.ry,
+                                damage,
+                                distance_leptons,
+                                warhead_ref,
+                                near_center_ic_isolation_eligible: false,
+                            })
+                        }
+                    };
+                    bridge_state_changed |= self
+                        .commit_noncombat_aoe_receivers(rules, overlay_registry, &[receiver])
+                        .bridge_state_changed;
+                }
             }
-            current = self
-                .substrate
-                .occupancy
-                .get(rx, ry)
-                .and_then(|cell| cell.next_on_layer(ground, target));
+            // 423A83 reads Object+30 AFTER ReceiveDamage. The native Terrain
+            // lethal tail unlinks synchronously and clears that successor;
+            // collecting a vector up front would incorrectly hit later objects.
+            // Evidence: tools/spatial_oracle/terrain_debris_receiver.json.
+            current = self.next_cell_object(target);
         }
+        bridge_state_changed
     }
 
     /// The landing arm proper (`0x00423C4A..0x00423EF8`); see
@@ -2037,7 +2068,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
-    ) {
+    ) -> bool {
         let location = AnimWorldCoord {
             x: position.x,
             y: position.y,
@@ -2059,10 +2090,10 @@ impl Simulation {
                 };
                 self.spawn_bounce_anim(rules, splash, splash_coord, BOUNCE_CONTACT_DRAW_FLAGS, 0);
             }
-            return;
+            return false;
         }
         let Some(expire) = config.expire_anim.as_deref() else {
-            return;
+            return false;
         };
         self.spawn_bounce_anim(
             rules,
@@ -2072,19 +2103,25 @@ impl Simulation {
             BOUNCE_EXPIRE_Z_ADJUST,
         );
         let Some(warhead_name) = config.warhead.as_deref() else {
-            return;
+            return false;
         };
         let (Some(warhead), Ok(damage)) = (
             rules.warhead(warhead_name),
             X87Chop53::load_f64(config.damage).and_then(X87Chop53::ftol_i64),
         ) else {
-            return;
+            return false;
         };
         let damage = damage as i32;
         let warhead_ref = self.interner.intern(warhead_name);
         let impact =
             crate::sim::projectile::ProjectileCoord::new(position.x, position.y, position.z);
         let (rx, ry, sub_x, sub_y, z_leptons) = crate::sim::combat::projectile_impact_cell(impact);
+        let routed_wall = crate::sim::combat::world_receiver::area_routes_to_wall(
+            self,
+            overlay_registry,
+            (rx, ry),
+            warhead,
+        );
         let aoe = crate::sim::combat::world_receiver::collect_area(
             self,
             rules,
@@ -2100,7 +2137,21 @@ impl Simulation {
             }),
             z_leptons.div_euclid(crate::util::lepton::LEPTONS_PER_LEVEL as i32),
         );
-        self.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
+        let mut bridge_state_changed = self
+            .commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers)
+            .bridge_state_changed;
+        // Anim's Apply_area_damage call at0x423EAB completes its bridge
+        // continuation before the combat-light call at0x423EF8.
+        bridge_state_changed |= crate::sim::combat::world_receiver::continue_area_bridge_damage(
+            self,
+            rules,
+            overlay_registry,
+            (rx, ry),
+            damage,
+            warhead_ref,
+            z_leptons,
+            routed_wall,
+        );
         self.combat_light_requests
             .push(crate::sim::combat::CombatLightRequest {
                 target_id: None,
@@ -2110,6 +2161,7 @@ impl Simulation {
                 force_create: false,
                 flags: 0,
             });
+        bridge_state_changed
     }
 
     /// `new AnimClass(type, coord, 0, 1, flags, zAdjust, 0)` for a landing
@@ -2559,6 +2611,10 @@ mod long_tail_contract_tests {
 }
 
 #[cfg(test)]
+#[path = "anim_debris_tests.rs"]
+mod debris_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
@@ -2690,10 +2746,10 @@ mod tests {
         }
         sim.process_pending_delete();
         assert!(sim.entities().get(building_id).is_none());
-        for (id, coord) in coords {
+        for (id, _) in coords {
             assert!(sim.anim(id).is_none());
             assert!(sim.sound_events.iter().any(|event| matches!(event,
-                SimSoundEvent::AnimationStopped { anim_id, world, .. } if *anim_id == id && *world == coord)));
+                SimSoundEvent::ObjectSoundReleased { owner } if *owner == id)));
         }
     }
 
@@ -3476,10 +3532,7 @@ mod tests {
                 .iter()
                 .filter(|event| matches!(
                     event,
-                    SimSoundEvent::AnimationStopped {
-                        stop_sound_id: None,
-                        ..
-                    }
+                    SimSoundEvent::ObjectSoundReleased { .. }
                 ))
                 .count(),
             2,
@@ -4015,10 +4068,34 @@ mod tests {
         assert_eq!(
             sim.sound_events
                 .iter()
-                .filter(|event| matches!(event, SimSoundEvent::AnimationStopped { .. }))
+                .filter(|event| matches!(event, SimSoundEvent::ObjectSoundReleased { .. }))
                 .count(),
             1,
         );
+    }
+
+    #[test]
+    fn destroy_releases_report_before_optional_stop_sound_once() {
+        let rules = runtime_rules(
+            "[A]\nReport=StartCue\nStopSound=EndCue\nEnd=2\nLoopCount=1\n",
+            &[("A", 2)],
+        );
+        let mut sim = Simulation::new();
+        let type_id = sim.interner.intern("A");
+        let id = sim
+            .spawn_anim_object(&rules, runtime_descriptor(type_id, 0))
+            .unwrap();
+        let world = sim.anim_absolute_coord(id).unwrap();
+        let stop = sim.interner.intern("ENDCUE");
+        sim.sound_events.clear();
+        sim.destroy_anim(id, &rules);
+        sim.destroy_anim(id, &rules);
+        // Original4255D5 releases +1A0 before425618 plays the optional
+        // StopSound. Repeated queued Destroy cannot stop the released cue.
+        assert!(matches!(sim.sound_events.as_slice(), [
+            SimSoundEvent::ObjectSoundReleased { owner },
+            SimSoundEvent::AnimationStopped { anim_id, stop_sound_id: Some(sound), world: at },
+        ] if *owner == id && *anim_id == id && *sound == stop && *at == world));
     }
 
     #[test]
@@ -4035,7 +4112,9 @@ mod tests {
             .spawn_anim_object(&rules, runtime_descriptor(parent_type, 0))
             .unwrap();
 
-        sim.for_each_live_object(|sim, id| sim.visit_anim(id, &rules, None));
+        sim.for_each_live_object(|sim, id| {
+            sim.visit_anim(id, &rules, None);
+        });
 
         let order = sim.live_object_order_snapshot();
         assert_eq!(order.len(), 2);
@@ -4079,10 +4158,14 @@ mod tests {
                 .is_none()
         );
 
-        sim.for_each_multiplayer_feedback_anim(|sim, id| sim.visit_anim(id, &rules, None));
+        sim.for_each_multiplayer_feedback_anim(|sim, id| {
+            sim.visit_anim(id, &rules, None);
+        });
         assert!(!sim.anim(id).unwrap().runtime.first_ai_guard);
         sim.session.binary_frame = 1;
-        sim.for_each_multiplayer_feedback_anim(|sim, id| sim.visit_anim(id, &rules, None));
+        sim.for_each_multiplayer_feedback_anim(|sim, id| {
+            sim.visit_anim(id, &rules, None);
+        });
         assert!(sim.anim(id).unwrap().runtime.inactive);
         assert_eq!(sim.substrate.multiplayer_feedback_pending_delete, vec![id]);
 
@@ -4534,7 +4617,7 @@ mod tests {
         assert_eq!(
             sim.sound_events
                 .iter()
-                .filter(|event| matches!(event, SimSoundEvent::AnimationStopped { .. }))
+                .filter(|event| matches!(event, SimSoundEvent::ObjectSoundReleased { .. }))
                 .count(),
             2,
         );

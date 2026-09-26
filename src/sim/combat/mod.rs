@@ -3296,7 +3296,7 @@ mod impact_height_tests {
     }
 
     /// `TechnoClass::ReceiveDamage`'s metallic debris loop
-    /// (`0x007024E0..0x0070256B`, `tools/spatial_oracle/anim_bouncer_launch.py`,
+    /// (`0x007024E0..0x0070256B`, `tools/spatial_oracle/bridge_debris_producer.py`,
     /// executed with the whole AnimClass constructor per piece) on retail
     /// rules and art: each piece's `MetallicDebris=` pick, then that piece's
     /// constructor draws, before the next pick. The budget is pinned (equal
@@ -3313,11 +3313,11 @@ mod impact_height_tests {
             crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
         rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
         let golden: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/anim_bouncer_launch.json"
+            "../../../tools/spatial_oracle/bridge_debris_producer.json"
         ))
         .unwrap();
-        let rows = golden["debris_loop"].as_array().unwrap();
-        assert_eq!(rows.len(), 9);
+        let rows = golden["death_loop"].as_array().unwrap();
+        assert_eq!(rows.len(), 12);
         for row in rows {
             let input = &row["input"];
             let pieces = input["pieces"].as_i64().unwrap() as i32;
@@ -3375,10 +3375,13 @@ mod impact_height_tests {
                     std::array::from_fn(|i| location[i].as_i64().unwrap() as i32),
                     "{input}"
                 );
-                let body = spawn
-                    .draws
-                    .and_then(|draws| draws.bounce)
-                    .expect("a bouncing chunk");
+                let draws = spawn.draws.expect("the resolved type supplies constructor draws");
+                if native["is_bouncing"].as_u64().unwrap() == 0 {
+                    assert!(draws.bounce.is_none(), "unread retail D is not a Bouncer: {input}");
+                    assert_eq!(native["type"], "D");
+                    continue;
+                }
+                let body = draws.bounce.expect("an ART-read bouncing chunk");
                 let bits = |key: &str, i: usize| native["bounce"][key][i].as_u64().unwrap() as u32;
                 for axis in 0..3 {
                     assert_eq!(body.position[axis].bits(), bits("position_bits", axis));

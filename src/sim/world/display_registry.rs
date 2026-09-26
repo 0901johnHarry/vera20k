@@ -158,12 +158,11 @@ impl GroundSortKeys for GroundSortView<'_> {
             return (key, kept);
         }
         if let Some(terrain) = self.terrain.get(&id) {
-            // Terrain ctor71BC4A..71BC76 sign-extends the cell coordinates,
-            // centers them and passes Z=0 to Unlimbo. VT7F522C inherits
-            // Object GetYSort5F6BD0; terrain has no runtime relocation writer.
-            let x = i32::from(terrain.rx as i16) * 256 + 128;
-            let y = i32::from(terrain.ry as i16) * 256 + 128;
-            let key = x.wrapping_add(y);
+            // Terrain VT7F522C inherits Object GetYSort5F6BD0: retained
+            // GetCoords XY, independent of presentation lift. Terrain has
+            // no runtime relocation writer, so the Ground key can be kept.
+            let coord = terrain.world_coord();
+            let key = coord.x.wrapping_add(coord.y);
             return (key, KeptSortKey::Key(key));
         }
         panic!("unrepresented Ground display identity {id}");

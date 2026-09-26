@@ -403,7 +403,9 @@ pub(crate) fn tactical_centre_cell(state: &AppState) -> (u16, u16) {
         world_x,
         world_y,
         &state.height_map(),
-        Some(&state.match_state.match_presentation.tactical_bridge_inverse_map),
+        state.sim_view().and_then(|view| {
+            crate::app::match_runtime::sim_tick::tactical_bridge_cells(view.simulation())
+        }),
     )
 }
 

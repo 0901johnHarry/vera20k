@@ -379,7 +379,7 @@ fn production_pair(rules: &RuleSet) -> (Simulation, u64, u64) {
     (sim, firer, target)
 }
 
-fn restore_production_pair(sim: &Simulation) -> Simulation {
+fn restore_production_pair(sim: &Simulation, rules: &RuleSet) -> Simulation {
     let bytes = GameSnapshot::save(sim, 0, 0, "fire_facing", 0);
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
     restored.retain_in_scenario_process_state_from(sim);
@@ -389,8 +389,7 @@ fn restore_production_pair(sim: &Simulation) -> Simulation {
     restored.rebuild_caches_after_load(
         flat_level_zero_terrain(16, 16),
         crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-        Vec::new(),
-        Vec::new(),
+        rules,
     );
     restored
 }
@@ -438,7 +437,7 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     );
 
     // Body FacingClass is already serialized/hashed; no second stored heading.
-    let mut restored = restore_production_pair(&sim);
+    let mut restored = restore_production_pair(&sim, &rules);
     // Native Scenario load reseeds its RNG; compare against that load state.
     sim.scenario_rng = SimRng::new(0);
     assert_eq!(sim.state_hash(), restored.state_hash());
@@ -500,7 +499,7 @@ fn production_pending_fire_restores_heading_and_reaches_emission() {
         .body_facing
         .expect("facing written at sequence start");
     assert!(sim.fire_events.is_empty());
-    let mut restored = restore_production_pair(&sim);
+    let mut restored = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseed.
     assert_eq!(sim.state_hash(), restored.state_hash());
     for _ in 0..24 {
@@ -633,7 +632,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
         "order keeps the paid-step heading"
     );
     assert_eq!(entity.foot_speed.applied_fraction, SimFixed::ONE);
-    let mut resumed = restore_production_pair(&sim);
+    let mut resumed = restore_production_pair(&sim, &rules);
     sim.scenario_rng = SimRng::new(0); // Native Scenario load reseeds this stream.
     assert_eq!(sim.state_hash(), resumed.state_hash());
     let mut refused_frames = 0;

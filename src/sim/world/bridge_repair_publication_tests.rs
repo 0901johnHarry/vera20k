@@ -1417,8 +1417,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         replay.rebuild_caches_after_load(
             map_terrain,
             sim.terrain_speed_config.clone(),
-            sim.bridge_explosions.clone(),
-            sim.metallic_debris.clone(),
+            &rules,
         );
         replay
             .restore_map_authority_after_snapshot_load(&rules, &registry)
@@ -1851,8 +1850,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
         restored.rebuild_caches_after_load(
             map_terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
         restored
             .restore_map_authority_after_snapshot_load(&rules, &registry)

@@ -2538,17 +2538,17 @@ fn gsi_04_10_terrain_object(
     cell: (u16, u16),
     occupation_bits: u8,
 ) -> crate::sim::terrain_object::TerrainObjectState {
-    crate::sim::terrain_object::TerrainObjectState {
-        stable_id,
-        native_unique_id: None,
-        in_logic_vector: false,
-        type_ref: sim.interner.intern("TREE01"),
-        rx: cell.0,
-        ry: cell.1,
-        health: 10,
-        max_health: 10,
-        occupation_bits,
-        lifecycle: crate::sim::terrain_object::TerrainObjectLifecycle::Live,
+    {
+        let mut terrain = crate::sim::terrain_object::TerrainObjectState::for_test(
+            stable_id,
+            sim.interner.intern("TREE01"),
+            cell.0,
+            cell.1,
+        );
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain.occupation_bits = occupation_bits;
+        terrain
     }
 }
 
@@ -5132,7 +5132,11 @@ fn test_bridge_orchestrator_state_machine_path_collapses_anchor_and_deactivates_
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(terrain_cache, Default::default(), Vec::new(), Vec::new());
+    restored.rebuild_caches_after_load(
+        terrain_cache,
+        Default::default(),
+        &rules,
+    );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert_eq!(restored.path_grid(), Some(expected_path.as_ref()));
 }

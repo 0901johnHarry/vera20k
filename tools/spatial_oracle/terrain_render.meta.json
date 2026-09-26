@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "82 original Terrain render captures: 41 tracked terrain_coordinate inputs crossed with two supplied viewport/dirty pairs. Original type adjustment, Object coordinate storage, Render suffix projection/rebasing and DrawIt body/shadow arguments execute. No visibility admission, shape decoding, GPU pixels or complete scene parity.",
+  "assumptions": [
+    "Input enumeration comes from tracked terrain_coordinate.generate: levels -128,-1,0,2,127; slopes0,1,2,15; structural flags0/0x100; inputZ0, plus level2/inputZ999. All sourceXY2688,5248 is cell10,20 center. Original71E0D0 clamps placement to ground, then5F6940 stores it. Cell changes to level7/flat before native retained getter and rendering.",
+    "Original vtables: Terrain7F522C+48=5F65A0,+AC=41BE00,+104=71CC50,+114=71C1B0,+1D0=5F5F30; TerrainType7F5458+9C=41CFA0. Render suffix71CD22..71CD81 bypasses prior visibility and render-rectangle admission, supplies EDI=Terrain and ESI=clip. Native71CD30 calls center/getter,71CD3D projects,71CD7B invokes DrawIt.",
+    "Ordinary nonanimated, non-SpawnsTiberium Terrain with health200, death byte0; synthetic SHP frame count4 and no decoded image; supplied nonnull Cell Convert and both brightness fields1000; shadow enable byte1. No constructors, retail type/image binding or gameplay state transitions claimed here.",
+    "LevelHeight104 and startup AdjustForZ multiplier bits0x3FC25E5374344960 supplied; slope matrices produced by original initializer. Native x87 control0x0E7F. Tactical camera offsets0,0 and dimensions800,600; viewport/dirtyY pairs0/0 and37/100. Native pixels exclude VERA world-row bias15."
+  ],
+  "substitutions": [
+    "CC_Draw_Shape4AED70 records original caller, all14 raw stack arguments and pointed coordinate bytes; supplies return0 and callee cleanup56. No actual shape decode, blitter, surface, pixels or Z-buffer write. All other reached native calls execute unchanged.",
+    "Prepared map/cell/object/type/shape/tactical storage and caller locals are fixture inputs. Original executable code is not patched. Visibility admission and image/resource loading precede the bounded entry and are not emulated."
+  ],
+  "entry_points": {
+    "type_coordinate": "0x0071E0D0",
+    "set_coords": "0x005F6940",
+    "get_coords": "0x005F65A0",
+    "terrain_render": "0x0071CC50",
+    "render_suffix_begin": "0x0071CD22",
+    "render_suffix_end": "0x0071CD81",
+    "projection": "0x006D2140",
+    "terrain_draw": "0x0071C1B0",
+    "get_height": "0x005F5F30",
+    "adjust_for_z": "0x006D20E0",
+    "draw_sink": "0x004AED70"
+  },
+  "payload_sha256": "0e092e136935b7797b808312d171eaf10053e4938c66218ec6d0a7d33c6d33c9"
+}

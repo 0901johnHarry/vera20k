@@ -290,7 +290,7 @@ impl Simulation {
         };
         if self.substrate.anims.contains_key(id) {
             if let Some(rules) = rules {
-                self.visit_anim(id, rules, ctx.overlay_registry);
+                outcome.bridge_state_changed = self.visit_anim(id, rules, ctx.overlay_registry);
             }
             return outcome;
         }

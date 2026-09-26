@@ -139,6 +139,7 @@ fn apply_mutate_explosion(
         .collect();
     let fatal_ids: BTreeSet<_> = sim
         .commit_noncombat_aoe_receivers(rules, overlay_registry, &receivers)
+        .fatal_ids
         .into_iter()
         .collect();
 
