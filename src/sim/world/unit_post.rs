@@ -39,6 +39,7 @@
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 
 /// When true, Unit barrel facing is owned by the per-object path (combat
@@ -93,23 +94,78 @@ pub(crate) fn apply_unit_facing(
 ) {
     for update in updates {
         let id = update.entity_id;
-        let rot = rules
-            .object(interner.resolve(entities.get(id).map(|e| e.type_ref()).unwrap_or_default()))
-            .map(|obj| obj.turret_rot)
-            .unwrap_or(5);
-        let Some(entity) = entities.get_mut(id) else {
+        let Some(entity) = entities.get(id) else {
             continue;
         };
+        let rot = rules
+            .object(interner.resolve(entity.type_ref()))
+            .map(|obj| obj.turret_rot)
+            .unwrap_or(5);
+        let before = UnitFacing::of(entity);
+        let mut after = before;
+        after.apply(update, rot, entity.movement_target.is_some(), binary_frame);
+        // Most units hold their aim, so their `Set`s repeat the destination
+        // and write nothing: hand a unit out only when a field changes.
+        if after != before {
+            after.store(
+                entities
+                    .get_mut(id)
+                    .expect("a facing update's unit was just read"),
+            );
+        }
+    }
+}
+
+/// The fields the Facing slot writes, stepped on a copy.
+#[derive(Clone, Copy, PartialEq)]
+struct UnitFacing {
+    /// VERA's 8-bit heading, which mirrors the animated hull.
+    facing: u8,
+    /// The hull, `+0x388`.
+    hull: Option<crate::sim::movement::FacingClass>,
+    /// The turret, `+0x3A0`.
+    barrel: Option<crate::sim::movement::FacingClass>,
+    /// The `+0x6AF` rotation latch.
+    latch: bool,
+}
+
+impl UnitFacing {
+    fn of(entity: &GameEntity) -> Self {
+        Self {
+            facing: entity.facing,
+            hull: entity.body_facing,
+            barrel: entity.barrel_facing,
+            latch: entity.turret_rotation_latch,
+        }
+    }
+
+    fn store(self, entity: &mut GameEntity) {
+        entity.facing = self.facing;
+        entity.body_facing = self.hull;
+        entity.barrel_facing = self.barrel;
+        entity.turret_rotation_latch = self.latch;
+    }
+
+    /// Steps 1–4 in binary order, then the heading mirror, which the movement
+    /// tick owns while a path is live (`path_live`).
+    fn apply(
+        &mut self,
+        update: &crate::sim::combat::UnitFacingUpdate,
+        rot: i32,
+        path_live: bool,
+        binary_frame: u32,
+    ) {
         // 1. `Fire_At_Target` case 2's hull turn, which native completes before
         //    `Facing_Update` is entered at all (`0x007365E1`/`0x007365E8`).
         if let Some(desired) = update.hull_destination {
-            let hull = entity.body_facing.get_or_insert_with(|| {
-                crate::sim::movement::FacingClass::new(u16::from(entity.facing) << 8, rot)
+            let facing = self.facing;
+            let hull = self.hull.get_or_insert_with(|| {
+                crate::sim::movement::FacingClass::new(u16::from(facing) << 8, rot)
             });
             hull.set_rot(rot);
             hull.set(desired, binary_frame);
             let raw_destination = hull.destination();
-            if let Some(ref mut barrel) = entity.barrel_facing {
+            if let Some(ref mut barrel) = self.barrel {
                 barrel.set_rot(rot);
                 barrel.set(raw_destination, binary_frame);
             }
@@ -117,7 +173,7 @@ pub(crate) fn apply_unit_facing(
         // 2. arm A's aim `Set` (`0x00736A89`) — before the latch store.
         if let Some(desired) = update.turret_destination
             && !update.turret_destination_is_idle_return
-            && let Some(ref mut barrel) = entity.barrel_facing
+            && let Some(ref mut barrel) = self.barrel
         {
             barrel.set_rot(rot);
             barrel.set(desired, binary_frame);
@@ -127,26 +183,22 @@ pub(crate) fn apply_unit_facing(
         //    `0x00736AD5` clear for a turretless unit, which native leaves at 0
         //    because the `Type+0xCA1` test at `0x00736ADC` sends it past both
         //    `Is_Rotating` calls.
-        let latch = entity
-            .barrel_facing
+        self.latch = self
+            .barrel
             .as_ref()
             .is_some_and(|barrel| barrel.is_rotating(binary_frame));
-        entity.turret_rotation_latch = latch;
         // 4. arm B's idle-return `Set` (`0x00736BDD`) — after the latch store,
         //    so the swing-back arc does not arm it.
         if let Some(desired) = update.turret_destination
             && update.turret_destination_is_idle_return
-            && let Some(ref mut barrel) = entity.barrel_facing
+            && let Some(ref mut barrel) = self.barrel
         {
             barrel.set_rot(rot);
             barrel.set(desired, binary_frame);
         }
-        // Mirror the animated hull into the 8-bit heading. The movement tick
-        // owns that mirror while a path is live.
-        if entity.movement_target.is_none()
-            && let Some(ref hull) = entity.body_facing
-        {
-            entity.facing = (hull.current(binary_frame) >> 8) as u8;
+        // Mirror the animated hull into the 8-bit heading.
+        if !path_live && let Some(ref hull) = self.hull {
+            self.facing = (hull.current(binary_frame) >> 8) as u8;
         }
     }
 }

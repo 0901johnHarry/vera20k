@@ -4417,17 +4417,12 @@ fn gsi_05_02_mixed_fixture() -> (Simulation, [u64; 6]) {
     let terrain_id = sim.allocate_stable_id();
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: sim.interner.intern("TREE01"),
-            rx: 8,
-            ry: 9,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain =
+                TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 8, 9);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     assert!(sim.register_terrain_object(terrain_id, None));
@@ -4719,17 +4714,11 @@ fn gsi_05_02_lethal_terrain_unregisters_and_inactive_slot_cannot_roundtrip() {
     let warhead_ref = sim.interner.intern("WOODWH");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, type_ref, 5, 6);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     sim.production
@@ -4795,17 +4784,11 @@ fn gsi_05_03_terminal_non_entities_remain_resolvable_until_common_drain() {
     let warhead_ref = sim.interner.intern("WOODWH");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_type,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_type, 5, 6);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain
         },
     );
     sim.production
@@ -6260,18 +6243,7 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
         let terrain_id = sim.allocate_stable_id();
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: sim.interner.intern("TREE01"),
-                rx: 4,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 0,
-                lifecycle: TerrainObjectLifecycle::Live,
-            },
+            TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 4, 5),
         );
         sim.production
             .terrain_object_cells
@@ -6847,8 +6819,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     restored.rebuild_caches_after_load(
         pristine_terrain,
         Default::default(),
-        Vec::new(),
-        Vec::new(),
+        &rules,
     );
     restored
         .restore_map_authority_after_snapshot_load(&rules, &overlay_registry)
@@ -6954,17 +6925,12 @@ fn gsi_05_02_restore_rejects_each_live_modeled_family_missing_from_logic() {
     let terrain_id = terrain.allocate_stable_id();
     terrain.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain.interner.intern("TREE01"),
-            rx: 1,
-            ry: 1,
-            health: 1,
-            max_health: 1,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain =
+                TerrainObjectState::for_test(terrain_id, terrain.interner.intern("TREE01"), 1, 1);
+            terrain.health = 1;
+            terrain.max_health = 1;
+            terrain
         },
     );
     assert_eq!(
@@ -7173,6 +7139,35 @@ fn detach_sweep_never_matches_a_cell_target() {
         attacker.mission.current(),
         MissionId::from_known(MissionType::Attack),
         "a cell-targeted object is never restored by the detach sweep"
+    );
+}
+
+#[test]
+fn bridge_cell_success_restores_before_conditional_target_clear() {
+    let mut sim = Simulation::new();
+    insert_entity(&mut sim, 1, EntityCategory::Infantry);
+    insert_entity(&mut sim, 2, EntityCategory::Unit);
+    let attacker = sim.substrate.entities.get_mut(1).unwrap();
+    attacker.attack_target = Some(AttackTarget::for_cell(9, 11));
+    attacker.suspended_attack_target = Some(TargetKind::Entity(2));
+    attacker.navigation.suspended_nav_com = Some(NavTargetRef::Cell { rx: 7, ry: 8 });
+    attacker.mission.apply_test_fixture(attack_fixture(
+        MissionType::Attack,
+        MissionId::from_known(MissionType::Move),
+    ));
+    sim.stop_all_targeting_cell(9, 11, None);
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        attacker.attack_target.as_ref().map(|target| target.target),
+        Some(TargetKind::Entity(2))
+    );
+    assert_eq!(
+        attacker.navigation.nav_com,
+        Some(NavTargetRef::Cell { rx: 7, ry: 8 })
+    );
+    assert_eq!(
+        attacker.mission.current(),
+        MissionId::from_known(MissionType::Move)
     );
 }
 
@@ -7831,7 +7826,7 @@ fn display_lifecycle_is_independent_of_logic_and_survives_production_save() {
     restored
         .substrate
         .display
-        .submit(999, Some(DisplayLayer::TOP), |_| 0);
+        .submit(999, Some(DisplayLayer::TOP), &|_| 0);
     assert!(matches!(
         restored.restore_after_snapshot_load(),
         Err(SnapshotRestoreError::MissingDisplayIdentity { object_id: 999 })
@@ -7892,17 +7887,16 @@ fn mixed_display_lifecycle_matches_original_sequences_and_save_restore() {
                         IVec3::from_array(xyz);
                 }
                 "terrain" => {
-                    let terrain = TerrainObjectState {
-                        stable_id: id,
-                        native_unique_id: None,
-                        in_logic_vector: false,
-                        type_ref: sim.interner.intern("TREE"),
-                        rx: (xyz[0] / 256) as u16,
-                        ry: (xyz[1] / 256) as u16,
-                        health: 10,
-                        max_health: 10,
-                        occupation_bits: 0,
-                        lifecycle: TerrainObjectLifecycle::Live,
+                    let terrain = {
+                        let mut terrain = TerrainObjectState::for_test(
+                            id,
+                            sim.interner.intern("TREE"),
+                            (xyz[0] / 256) as u16,
+                            (xyz[1] / 256) as u16,
+                        );
+                        terrain.health = 10;
+                        terrain.max_health = 10;
+                        terrain
                     };
                     sim.production
                         .terrain_object_cells
@@ -8038,7 +8032,7 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     // queries and leaves this history alone while the Process answer is stable.
     sim.substrate
         .display
-        .submit(id, Some(DisplayLayer::TOP), |_| 0);
+        .submit(id, Some(DisplayLayer::TOP), &|_| 0);
     sim.tick_air_movement_with_cell_lists_one(id, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 

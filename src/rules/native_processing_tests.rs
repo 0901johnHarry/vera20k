@@ -2,6 +2,129 @@
 
 use super::*;
 
+/// Each row is the next original ReadGeneral call on the same RulesClass.
+/// Exercise the production pass owner and its RuleSet publication, not a second
+/// list parser. The native corpus also checks ctor emptiness and factory order.
+#[test]
+fn bridge_animation_lists_match_original_retained_vectors() {
+    use crate::rules::ruleset::RuleSet;
+    let oracle: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/rules_oracle/bridge_anim_lists.json"
+    ))
+    .unwrap();
+    let mut layers = RulesLayerStack::new(IniFile::empty());
+    let initial = RuleSet::from_rules_layers(&layers).unwrap();
+    assert!(initial.general.metallic_debris.is_empty());
+    assert!(initial.bridge_rules.explosions.is_empty());
+    for (index, row) in oracle["rows"].as_array().unwrap().iter().enumerate() {
+        let key = row["key"].as_str().unwrap();
+        let mut pass = IniFile::empty();
+        if let Some(raw) = row["raw"].as_str() {
+            // Set allows cached empty/whitespace inputs that the physical file
+            // loader drops. ReadString must retain the vector for either path.
+            let mut general = IniSection::new("General".to_owned());
+            general.set(key, raw);
+            pass.replace_first_section(general);
+        }
+        layers.push(RulesLayerKind::Scenario, pass);
+        let processed = layers.process().unwrap();
+        let rules = RuleSet::from_processed_rules(&processed).unwrap();
+        let actual = if key == "MetallicDebris" {
+            assert_eq!(rules.general.metallic_debris, processed.metallic_debris());
+            &rules.general.metallic_debris
+        } else {
+            assert_eq!(rules.bridge_rules.explosions, processed.bridge_explosions());
+            &rules.bridge_rules.explosions
+        };
+        let expected = row["result"]["names"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(actual, &expected, "native sequential row {index}: {row}");
+    }
+}
+
+#[test]
+fn bridge_animation_vectors_belong_to_rules_stack_not_type_registry() {
+    use crate::rules::ruleset::RuleSet;
+    let processed = RulesLayerStack::new(IniFile::from_str(
+        "[General]\nMetallicDebris=ONE,ONE\nBridgeExplosions=TWO\n",
+    ))
+    .process()
+    .unwrap();
+    let (_, receipt) = processed.into_ini_and_native_type_construction_trace();
+    let fresh_rules = RulesLayerStack::new(IniFile::empty())
+        .process_with_fixed_art_and_registry_state(
+            &IniFile::empty(),
+            receipt.into_registry_state_discarding_events(),
+        )
+        .unwrap();
+    let rules = RuleSet::from_processed_rules(&fresh_rules).unwrap();
+    assert!(rules.general.metallic_debris.is_empty());
+    assert!(rules.bridge_rules.explosions.is_empty());
+    assert!(rules.anim_type_names.iter().any(|name| name == "ONE"));
+    assert!(rules.anim_type_names.iter().any(|name| name == "TWO"));
+}
+
+#[test]
+fn retail_bridge_animation_vectors_match_original_reader_and_unread_d() {
+    use crate::rules::{art_data::ArtRegistry, ruleset::RuleSet};
+    let Some((ini, fixed_art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let oracle: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tools/rules_oracle/bridge_anim_lists.json"
+    ))
+    .unwrap();
+    let processed = RulesLayerStack::new(ini)
+        .process_with_fixed_art(&fixed_art)
+        .unwrap();
+    let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
+    for (key, actual) in [
+        ("MetallicDebris", &rules.general.metallic_debris),
+        ("BridgeExplosions", &rules.bridge_rules.explosions),
+    ] {
+        let row = oracle["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["file"] == "RULESMD.INI" && row["key"] == key)
+            .unwrap();
+        let expected = row["result"]["names"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(actual, &expected);
+    }
+    assert_eq!(rules.general.metallic_debris.len(), 15);
+    assert_eq!(
+        rules.general.metallic_debris.last().map(String::as_str),
+        Some("D")
+    );
+    assert!(
+        rules
+            .anim_type_art_read_states
+            .iter()
+            .any(|(name, read)| name == "D" && !read)
+    );
+    assert!(fixed_art.section("D").is_none());
+    rules.merge_art_data(&ArtRegistry::from_ini(&fixed_art));
+    let d = rules
+        .art_registry
+        .anim_runtime_config("D")
+        .expect("registered unread D");
+    assert!(!d.art_body_read);
+    assert!(!d.bouncer);
+    assert_eq!(d.end, 0);
+    assert_eq!(d.loop_end, 0);
+    assert_eq!(d.rate_logic_frames, 1);
+    assert_eq!(d.raw_shp_frame_count, None);
+}
+
 #[test]
 fn projectile_flat_matches_original_art_reader_and_retained_defaults() {
     use crate::rules::ruleset::RuleSet;
@@ -372,9 +495,11 @@ fn side_registry_and_house_side_lookup_do_not_apply_generic_none_sentinels() {
             (NativeTypeConstructorFamily::Side, "<NONE>"),
         ]
     );
-    assert!(explicit_events
-        .iter()
-        .all(|(family, _)| *family != NativeTypeConstructorFamily::HouseType));
+    assert!(
+        explicit_events
+            .iter()
+            .all(|(family, _)| *family != NativeTypeConstructorFamily::HouseType)
+    );
 
     let lazy = RulesLayerStack::new(IniFile::from_str(
         "[Countries]\n0=House\n[House]\nSide=<none>\n",
@@ -397,18 +522,10 @@ fn side_registry_and_house_side_lookup_do_not_apply_generic_none_sentinels() {
 #[test]
 fn constructor_lists_collapse_empty_fields_without_trimming_individual_tokens() {
     assert_eq!(
-        native_strtok_comma_tokens(
-            "FIRST, SECOND ,,FIRST,,,none,<NoNe>, none , THIRD",
-        )
-        .collect::<Vec<_>>(),
+        native_strtok_comma_tokens("FIRST, SECOND ,,FIRST,,,none,<NoNe>, none , THIRD",)
+            .collect::<Vec<_>>(),
         vec![
-            "FIRST",
-            " SECOND ",
-            "FIRST",
-            "none",
-            "<NoNe>",
-            " none ",
-            " THIRD",
+            "FIRST", " SECOND ", "FIRST", "none", "<NoNe>", " none ", " THIRD",
         ]
     );
     let processed = RulesLayerStack::new(IniFile::from_str(
@@ -490,10 +607,7 @@ fn retail_rulesmd_artmd_constructor_trace_matches_verified_base_oracle() {
     let events = processed.native_type_construction_trace().events();
 
     assert_eq!(events.len(), 1_975);
-    assert_eq!(
-        native_type_event_oracle_hash(events),
-        0x24516fbd1a096a12
-    );
+    assert_eq!(native_type_event_oracle_hash(events), 0x24516fbd1a096a12);
 
     let explicit_boundary = events[1_699..1_704]
         .iter()
@@ -516,9 +630,7 @@ fn retail_rulesmd_artmd_constructor_trace_matches_verified_base_oracle() {
         for &(family, identity) in expected {
             let relative = events[cursor..]
                 .iter()
-                .position(|event| {
-                    event.family() == family && event.native_stored_id() == identity
-                })
+                .position(|event| event.family() == family && event.native_stored_id() == identity)
                 .unwrap_or_else(|| {
                     panic!("missing ordered retail constructor {family:?} {identity}")
                 });
@@ -746,7 +858,10 @@ fn native_startup_prepass_repeat_and_reset_keep_each_phase_on_one_registry_owner
         .map(NativeTypeConstructionEvent::native_stored_id)
         .collect::<Vec<_>>();
     for expected in ["W", "BA", "U", "B2", "BOV", "W2", "B2OV"] {
-        assert!(startup_ids.contains(&expected), "missing startup event {expected}");
+        assert!(
+            startup_ids.contains(&expected),
+            "missing startup event {expected}"
+        );
     }
     for forbidden in [
         "RULES_ANIM_BODY_IGNORED",
@@ -768,10 +883,7 @@ fn native_startup_prepass_repeat_and_reset_keep_each_phase_on_one_registry_owner
             .iter()
             .map(|event| (event.family(), event.native_stored_id()))
             .collect::<Vec<_>>(),
-        vec![(
-            NativeTypeConstructorFamily::AnimType,
-            "TOO_LATE_ANIM_BODY"
-        )],
+        vec![(NativeTypeConstructorFamily::AnimType, "TOO_LATE_ANIM_BODY")],
         "the repeat's live Anim sweep must reach BA, which the prior Building sweep allocated after the first Anim sweep",
     );
 
@@ -824,7 +936,11 @@ fn fixed_art_drives_constructors_without_entering_rules_content_or_bodies() {
 
     assert_eq!(without_art.content_hash(), with_art.content_hash());
     assert_eq!(
-        with_art.ini().section("ROOT").expect("Rules body").get("Next"),
+        with_art
+            .ini()
+            .section("ROOT")
+            .expect("Rules body")
+            .get("Next"),
         None,
         "standalone Art keys must not merge into the Rules body projection",
     );
@@ -950,11 +1066,15 @@ fn techno_weapon_bank_uses_effective_native_gates_and_elite_slot_order() {
 
     assert_eq!(
         weapon_ids,
-        vec!["W1", "E1", "W2", "E2", "P", "S", "EP", "ES", "MAPW1", "MAPE1"]
+        vec![
+            "W1", "E1", "W2", "E2", "P", "S", "EP", "ES", "MAPW1", "MAPE1"
+        ]
     );
-    assert!(weapon_ids
-        .iter()
-        .all(|id| !matches!(*id, "WRONG" | "ALSO_WRONG" | "MAP_WRONG")));
+    assert!(
+        weapon_ids
+            .iter()
+            .all(|id| !matches!(*id, "WRONG" | "ALSO_WRONG" | "MAP_WRONG"))
+    );
 }
 
 #[test]
@@ -1102,10 +1222,7 @@ fn ai_and_general_constructor_sites_cover_the_verified_20_and_89_order() {
             "WeatherConBoltExplosion",
             NativeTypeConstructorFamily::AnimType,
         ),
-        (
-            "DominatorWarhead",
-            NativeTypeConstructorFamily::WarheadType,
-        ),
+        ("DominatorWarhead", NativeTypeConstructorFamily::WarheadType),
         ("DominatorFirstAnim", NativeTypeConstructorFamily::AnimType),
         ("DominatorSecondAnim", NativeTypeConstructorFamily::AnimType),
         ("ChronoPlacement", NativeTypeConstructorFamily::AnimType),
@@ -1145,8 +1262,14 @@ fn ai_and_general_constructor_sites_cover_the_verified_20_and_89_order() {
             "ExplosiveVoxelDebris",
             NativeTypeConstructorFamily::VoxelAnimType,
         ),
-        ("TireVoxelDebris", NativeTypeConstructorFamily::VoxelAnimType),
-        ("ScrapVoxelDebris", NativeTypeConstructorFamily::VoxelAnimType),
+        (
+            "TireVoxelDebris",
+            NativeTypeConstructorFamily::VoxelAnimType,
+        ),
+        (
+            "ScrapVoxelDebris",
+            NativeTypeConstructorFamily::VoxelAnimType,
+        ),
         ("RepairBay", NativeTypeConstructorFamily::BuildingType),
         ("GDIGateOne", NativeTypeConstructorFamily::BuildingType),
         ("GDIGateTwo", NativeTypeConstructorFamily::BuildingType),
@@ -1156,7 +1279,10 @@ fn ai_and_general_constructor_sites_cover_the_verified_20_and_89_order() {
         ("Shipyard", NativeTypeConstructorFamily::BuildingType),
         ("GDIPowerPlant", NativeTypeConstructorFamily::BuildingType),
         ("NodRegularPower", NativeTypeConstructorFamily::BuildingType),
-        ("NodAdvancedPower", NativeTypeConstructorFamily::BuildingType),
+        (
+            "NodAdvancedPower",
+            NativeTypeConstructorFamily::BuildingType,
+        ),
         ("ThirdPowerPlant", NativeTypeConstructorFamily::BuildingType),
         (
             "PrerequisiteProcAlternate",
@@ -1183,15 +1309,15 @@ fn ai_and_general_constructor_sites_cover_the_verified_20_and_89_order() {
         ("SovParaDropInf", NativeTypeConstructorFamily::InfantryType),
         ("YuriParaDropInf", NativeTypeConstructorFamily::InfantryType),
         ("AnimToInfantry", NativeTypeConstructorFamily::InfantryType),
-        (
-            "LightningWarhead",
-            NativeTypeConstructorFamily::WarheadType,
-        ),
+        ("LightningWarhead", NativeTypeConstructorFamily::WarheadType),
         ("PrismType", NativeTypeConstructorFamily::BuildingType),
         ("V3RocketType", NativeTypeConstructorFamily::AircraftType),
         ("DMislType", NativeTypeConstructorFamily::AircraftType),
         ("CMislType", NativeTypeConstructorFamily::AircraftType),
-        ("VeinholeTypeClass", NativeTypeConstructorFamily::TerrainType),
+        (
+            "VeinholeTypeClass",
+            NativeTypeConstructorFamily::TerrainType,
+        ),
         (
             "DefaultMirageDisguises",
             NativeTypeConstructorFamily::TerrainType,
@@ -1564,7 +1690,10 @@ fn gsi_05_01_type_allocation_rejects_native_none_sentinels() {
     );
 
     let mut processor = RulesPassProcessor::default();
-    assert_eq!(processor.find_or_allocate(RulesTypeFamily::Vehicle, ""), None);
+    assert_eq!(
+        processor.find_or_allocate(RulesTypeFamily::Vehicle, ""),
+        None
+    );
     assert_eq!(
         processor.find_or_allocate(RulesTypeFamily::Vehicle, "none"),
         None
@@ -1885,4 +2014,3 @@ fn map_colors_keep_existing_identity_and_allocate_new_name() {
         Some("12,200,255")
     );
 }
-

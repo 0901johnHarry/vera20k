@@ -86,12 +86,7 @@ fn health_bar_hover_target(
         state.match_state.sandbox_full_visibility,
         state.rules(),
         &state.height_map(),
-        Some(
-            &state
-                .match_state
-                .match_presentation
-                .tactical_bridge_inverse_map,
-        ),
+        crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
     )?;
     match hover.kind {
         HoverTargetKind::FriendlyStructure

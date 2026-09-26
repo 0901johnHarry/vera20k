@@ -19,8 +19,9 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::rules::ini_value::atoi_lenient;
+use crate::rules::ini_value::{atoi_lenient, parse_leading_f64};
 use crate::util::fixed_math::{SimFixed, sim_from_f32};
+use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
 /// A warhead definition parsed from a rules.ini section.
 ///
@@ -322,7 +323,7 @@ impl WarheadType {
         let verses: Vec<u8> = section.get("Verses").map(parse_verses).unwrap_or_default();
         let verses_f64: [f64; 11] = section
             .get("Verses")
-            .map(parse_verses_f64)
+            .map(|_| parse_verses_f64(&section.read_string("Verses", "", 128)))
             .unwrap_or([1.0; 11]);
 
         let cell_spread_native = section.get_f32("CellSpread").unwrap_or(0.0);
@@ -458,54 +459,40 @@ fn parse_verses(raw: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Parse the Verses= value into a fixed-size `[f64; 11]` (gamemd `double[11]`).
+/// Original WarheadType ReadINI75DDCC..75DE5A, after ReadString128.
+/// `strtok` skips empty comma tokens. Each nonempty token containing `%`
+/// takes signed32 atoi, FILD and PC53/chop multiplication by the original
+/// binary64 0.01 constant; other tokens use CRT atof's binary64 numeric prefix.
+/// Original-reader and damage goldens: rules_oracle/bridge_landing_inputs.
 ///
-/// Per token, branch on '%' presence (gamemd `strchr`):
-/// - has '%': `(atoi(token) as f64) * 0.01` — INTEGER-truncating atoi BEFORE the
-///   x0.01 (`"50.5%"` -> 0.5, `"0.5%"` -> 0.0, `"-50%"` -> -0.5). Reuses the
-///   slice-1 `atoi_lenient`.
-/// - no '%': `parse_leading_f32` widened to f64 (`"0.505"` -> 0.505). Reuses the
-///   slice-1 `parse_leading_f32` (the float path `read_double` uses for the bare
-///   case).
-///
-/// Missing trailing tokens default to 1.0 (100%); absent `Verses=` -> `[1.0; 11]`
-/// (gamemd's all-100% default).
+/// Rust retains safe trailing 1.0 entries for malformed short lists. Native
+/// unconditionally performs eleven strchr calls and faults on a null strtok
+/// result; this recovery is deliberately not described as native equivalence.
 fn parse_verses_f64(raw: &str) -> [f64; 11] {
+    // Original literal at7E3808. Nearest-rounded host multiplication changes
+    // retail HE's integer damage by one for several armor classes.
+    const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
+    let scale = X87Chop53::load_f64(PERCENT_SCALE).expect("finite original constant");
     let mut out = [1.0_f64; 11];
-    for (i, tok) in raw.split(',').enumerate().take(11) {
-        let t: &str = tok.trim();
-        out[i] = if t.contains('%') {
-            atoi_lenient(t) as f64 * 0.01_f64
+    for (i, token) in raw
+        .split(',')
+        .filter(|token| !token.is_empty())
+        .take(11)
+        .enumerate()
+    {
+        let token = token.trim_ascii();
+        out[i] = if token.contains('%') {
+            let scaled = X87Chop53::mul(X87Chop53::load_i32(atoi_lenient(token)), scale);
+            f64::from_bits(
+                X87Chop53::store_f64(scaled)
+                    .expect("signed32 percentage is finite")
+                    .bits(),
+            )
         } else {
-            parse_leading_f64(t)
+            parse_leading_f64(token)
         };
     }
     out
-}
-
-/// Leading-numeric f64 parse for the bare (no-'%') Verses branch. Mirrors the
-/// slice-1 `parse_leading_f32` scan (optional sign, digits, single dot, stop at
-/// first non-float char) but parses to FULL f64 — Verses is gamemd's single
-/// "kept full f64" exception, so the bare branch must NOT narrow through f32
-/// (`"0.505"` -> 0.505, not the f32-rounded 0.50499...). Empty/junk -> 0.0.
-fn parse_leading_f64(s: &str) -> f64 {
-    let b = s.as_bytes();
-    let mut end = 0usize;
-    let mut seen_dot = false;
-    while end < b.len() {
-        let c = b[end];
-        let ok = c.is_ascii_digit()
-            || (end == 0 && (c == b'-' || c == b'+'))
-            || (c == b'.' && !seen_dot);
-        if c == b'.' {
-            seen_dot = true;
-        }
-        if !ok {
-            break;
-        }
-        end += 1;
-    }
-    s[..end].parse::<f64>().unwrap_or(0.0)
 }
 
 fn parse_prone_damage_basis_points(section: &IniSection) -> u32 {
@@ -535,6 +522,39 @@ fn parse_prone_damage_basis_points(section: &IniSection) -> u32 {
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
+
+    #[test]
+    fn native_bridge_landing_verses_reader_bits() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/rules_oracle/bridge_landing_inputs.json"
+        ))
+        .unwrap();
+        let mut completed = 0;
+        let mut native_faults = 0;
+        for row in native["verses_cases"].as_array().unwrap() {
+            if row["status"] == "null_strtok_token_fault" {
+                native_faults += 1;
+                continue; // Native crashes here; Rust's safe recovery is not a parity claim.
+            }
+            let raw = row["raw"].as_str();
+            let mut text = "[HE]\nFixtureOnly=1\n".to_string();
+            if let Some(raw) = raw {
+                text.push_str(&format!("Verses={raw}\n"));
+            }
+            let ini = IniFile::from_str(&text);
+            let actual = WarheadType::from_ini_section("HE", ini.section("HE").unwrap());
+            for (index, value) in actual.verses_f64.iter().enumerate() {
+                assert_eq!(
+                    format!("{:016x}", value.to_bits()),
+                    row["verses_bits"][index],
+                    "raw={raw:?}, armor{index}"
+                );
+            }
+            completed += 1;
+        }
+        assert_eq!(completed, 13);
+        assert_eq!(native_faults, 4);
+    }
 
     #[test]
     fn test_parse_warhead() {
@@ -581,7 +601,7 @@ mod tests {
         assert!((pct[2] - 0.0).abs() < 1e-9); // 0.5%   -> atoi(0)*0.01
         assert!((bare[0] - 0.505).abs() < 1e-9);
         assert!((bare[2] - 0.005).abs() < 1e-9);
-        // Trailing unspecified entries default to 1.0.
+        // Rust-only safe recovery: native faults on missing strtok tokens.
         assert!((pct[3] - 1.0).abs() < 1e-9);
     }
 

@@ -26,9 +26,10 @@ pub(crate) struct DamageConsequences {
     delivery: DamageDelivery,
 }
 
-pub(super) struct DamageCommitReceipt {
+pub(crate) struct DamageCommitReceipt {
+    pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
-    pub(super) bridge_state_changed: bool,
+    pub(crate) bridge_state_changed: bool,
     pub(super) path_grid: Option<Arc<PathGrid>>,
 }
 
@@ -135,12 +136,10 @@ impl DamageConsequences {
             world.uninit_with_rules(dead_id, rules);
         }
 
-        let bridge_state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(
-            world,
-            rules,
-            &effects.bridge_damage_events,
-            overlay_registry,
-        );
+        // Apply_area_damage already completed its bridge callbacks before
+        // returning to the caller's animation/cluster tail. Delivery carries
+        // only the resulting frame notification, never deferred gameplay.
+        let bridge_state_changed = effects.bridge_state_changed;
         debug_assert!(effects.tiberium_reduction_requests.is_empty());
         for request in &effects.tiberium_reduction_requests {
             world.reduce_tiberium_at_with_native_context(
@@ -231,6 +230,7 @@ impl DamageConsequences {
                 .append(&mut effects.smudge_spawn_requests);
         }
         DamageCommitReceipt {
+            fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
             path_grid,

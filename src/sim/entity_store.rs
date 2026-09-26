@@ -8,7 +8,9 @@
 //! - Single entity mutation: `store.get_mut(id)` borrows only that entry
 //! - Cross-entity reads during mutation: read target first (clone needed data),
 //!   then get_mut on the other entity
-//! - Batch iteration with mutation: collect `keys_sorted()`, loop with `get_mut()`
+//! - Batch iteration with mutation: collect `keys_sorted()`, loop with
+//!   `get_mut_if()` so an entity the walk leaves unchanged is not handed out
+//!   (every hand-out enters the touch logs; see `touched`)
 //! - One entity mutated while it reads the others live: `store.take_turn(id)`
 //!
 //! ## Dependency rules
@@ -18,6 +20,7 @@
 use std::collections::BTreeMap;
 
 use crate::sim::game_entity::GameEntity;
+use crate::sim::touch_log::{TouchLog, Touched};
 
 /// Only this module can authorize a live indexed-owner write.
 /// Payload consumers can read owner identity but cannot construct this capability.
@@ -112,60 +115,63 @@ pub struct EntityStore {
         ),
         u32,
     >,
-    /// Which entities may have changed since the last [`Self::take_touched`].
-    /// Transient: never saved, never hashed, and no simulation result reads it.
-    touched: TouchLog,
+    /// Which entities may have changed since each reader last took its log
+    /// ([`Self::take_touched`]). Every route to a `&mut GameEntity` goes
+    /// through the store, so an entity missing from a log has not changed.
+    touched: TouchLogs,
 }
 
-/// Ids handed out mutably since the log was last taken.
-///
-/// Every route to a `&mut GameEntity` goes through the store, so an entity that
-/// is not in the log has not changed. That lets a derived product (the movement
-/// pass's owner block sets) re-derive only what may have moved instead of
-/// walking the world. The log records the hand-out, not a change, so it
-/// over-reports, which is harmless.
+/// A product derived from the entities that re-derives from the touch log.
+/// Each reads its own log, so one reader's take leaves the others' intact.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TouchReader {
+    /// The movement pass's owner block index, which passes on what it takes
+    /// to the blocker plane.
+    BlockIndex = 0,
+    /// The kept Ground display sort keys.
+    GroundKeys = 1,
+}
+
+impl TouchReader {
+    const COUNT: usize = 2;
+}
+
 #[derive(Debug, Clone)]
-struct TouchLog {
-    ids: Vec<u64>,
-    /// Set when ids are not enough: a fresh, cloned or restored store, an
-    /// all-entity mutable walk, or an overflowed log.
-    all: bool,
+struct TouchLogs {
+    logs: [TouchLog; TouchReader::COUNT],
+    /// Every hand-out so far, for test checks that a pass handed nothing out
+    /// ([`EntityStore::hand_outs`]).
+    #[cfg(test)]
+    hand_outs: u64,
 }
 
-/// What [`EntityStore::take_touched`] hands its one consumer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TouchedEntities {
-    /// Anything may have changed: rebuild from the entities.
-    All,
-    /// Only these ids (unsorted, repeats possible).
-    Ids(Vec<u64>),
-}
-
-impl TouchLog {
+impl TouchLogs {
     fn everything() -> Self {
         Self {
-            ids: Vec::new(),
-            all: true,
+            logs: std::array::from_fn(|_| TouchLog::everything()),
+            #[cfg(test)]
+            hand_outs: 0,
         }
     }
 
     fn note(&mut self, id: u64, stored: usize) {
-        if self.all || self.ids.last() == Some(&id) {
-            return;
+        #[cfg(test)]
+        {
+            self.hand_outs += 1;
         }
-        // Nobody is taking the log (no moving object for a long stretch): stop
-        // growing and ask the next reader to rebuild instead.
-        if self.ids.len() > stored.saturating_mul(4) + 4096 {
-            self.ids = Vec::new();
-            self.all = true;
-            return;
+        for log in &mut self.logs {
+            log.note(id, stored);
         }
-        self.ids.push(id);
     }
 
     fn note_all(&mut self) {
-        self.ids = Vec::new();
-        self.all = true;
+        #[cfg(test)]
+        {
+            self.hand_outs += 1;
+        }
+        for log in &mut self.logs {
+            log.note_all();
+        }
     }
 }
 
@@ -178,27 +184,21 @@ impl Clone for EntityStore {
             infantry_registry: self.infantry_registry.clone(),
             by_owner: self.by_owner.clone(),
             by_owner_type: self.by_owner_type.clone(),
-            touched: TouchLog::everything(),
+            touched: TouchLogs::everything(),
         }
     }
 }
 
 impl EntityStore {
-    /// Take the touch log, leaving it empty. One consumer only (the movement
-    /// pass's block index): a second reader would see what the first left.
-    pub(crate) fn take_touched(&mut self) -> TouchedEntities {
-        let log = std::mem::replace(
-            &mut self.touched,
-            TouchLog {
-                ids: Vec::new(),
-                all: false,
-            },
-        );
-        if log.all {
-            TouchedEntities::All
-        } else {
-            TouchedEntities::Ids(log.ids)
-        }
+    /// Take `reader`'s touch log, leaving it empty.
+    pub(crate) fn take_touched(&mut self, reader: TouchReader) -> Touched {
+        self.touched.logs[reader as usize].take()
+    }
+
+    /// How many mutable hand-outs the store has made (test builds only).
+    #[cfg(test)]
+    pub(crate) fn hand_outs(&self) -> u64 {
+        self.touched.hand_outs
     }
 
     /// Create an empty store.
@@ -208,7 +208,7 @@ impl EntityStore {
             infantry_registry: Vec::new(),
             by_owner: BTreeMap::new(),
             by_owner_type: BTreeMap::new(),
-            touched: TouchLog::everything(),
+            touched: TouchLogs::everything(),
         }
     }
 
@@ -316,6 +316,23 @@ impl EntityStore {
         Some(entity.as_mut())
     }
 
+    /// `get_mut` for an entity `admit` accepts, which it reads first: one it
+    /// refuses is not handed out, so it stays out of the touch logs. For walks
+    /// that visit every entity and change few.
+    pub(crate) fn get_mut_if(
+        &mut self,
+        stable_id: u64,
+        admit: impl FnOnce(&GameEntity) -> bool,
+    ) -> Option<&mut GameEntity> {
+        let stored = self.entities.len();
+        let entity = self.entities.get_mut(&stable_id)?;
+        if !admit(entity) {
+            return None;
+        }
+        self.touched.note(stable_id, stored);
+        Some(entity.as_mut())
+    }
+
     /// Lift one entity out of the store for its own turn, so it can be mutated
     /// while every other entity stays readable. The entity returns to the map
     /// when the guard drops, on every exit path. Its indexed identity (owner,
@@ -347,11 +364,11 @@ impl EntityStore {
 
     /// Get sorted keys for deterministic iteration.
     ///
-    /// Callers typically iterate with `get()` or `get_mut()`:
+    /// Callers typically iterate with `get()` or `get_mut_if()`:
     /// ```ignore
     /// let keys = store.keys_sorted();
     /// for &id in &keys {
-    ///     if let Some(entity) = store.get_mut(id) { ... }
+    ///     if let Some(entity) = store.get_mut_if(id, |entity| entity.rocking.is_some()) { ... }
     /// }
     /// ```
     pub fn keys_sorted(&self) -> Vec<u64> {
@@ -499,7 +516,7 @@ impl<'de> serde::Deserialize<'de> for EntityStore {
             infantry_registry: Vec::new(),
             by_owner: BTreeMap::new(),
             by_owner_type: BTreeMap::new(),
-            touched: TouchLog::everything(),
+            touched: TouchLogs::everything(),
         };
         store.rebuild_owner_index();
         Ok(store)
@@ -519,6 +536,40 @@ mod tests {
 
     fn make_entity(id: u64) -> GameEntity {
         GameEntity::test_default(id, "HTNK", "Americans", 10, 10)
+    }
+
+    /// Each reader takes its own log, so one reader's take leaves the other's
+    /// notes in place; a clone reports everything to both.
+    #[test]
+    fn each_touch_reader_takes_its_own_log() {
+        let mut store = EntityStore::new();
+        for id in [1, 2, 3] {
+            store.insert(make_entity(id));
+        }
+        // Nothing has been derived from a fresh store yet.
+        assert_eq!(store.take_touched(TouchReader::BlockIndex), Touched::All);
+        assert_eq!(store.take_touched(TouchReader::GroundKeys), Touched::All);
+        store.get_mut(2).unwrap().position.rx += 1;
+        drop(store.take_turn(3));
+        assert_eq!(
+            store.take_touched(TouchReader::BlockIndex),
+            Touched::Ids(vec![2, 3])
+        );
+        store.get_mut(1);
+        assert_eq!(
+            store.take_touched(TouchReader::GroundKeys),
+            Touched::Ids(vec![2, 3, 1])
+        );
+        assert_eq!(
+            store.take_touched(TouchReader::BlockIndex),
+            Touched::Ids(vec![1])
+        );
+        let mut copy = store.clone();
+        assert_eq!(copy.take_touched(TouchReader::GroundKeys), Touched::All);
+        assert_eq!(copy.take_touched(TouchReader::BlockIndex), Touched::All);
+        let _ = store.values_mut().count();
+        assert_eq!(store.take_touched(TouchReader::GroundKeys), Touched::All);
+        assert_eq!(store.take_touched(TouchReader::BlockIndex), Touched::All);
     }
 
     #[test]

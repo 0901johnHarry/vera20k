@@ -171,19 +171,8 @@ pub(crate) struct ReceiverRun {
 }
 
 impl ReceiverRun {
-    pub(crate) fn finish(self, world: &mut Simulation) -> Vec<(u16, u16)> {
+    pub(crate) fn finish(self) -> Vec<(u16, u16)> {
         debug_assert!(self.finalizing_terrain.is_empty());
-        let inactive: Vec<_> = world
-            .production
-            .terrain_objects
-            .values()
-            .filter(|object| !object.is_live() && object.in_logic_vector)
-            .map(|object| object.stable_id)
-            .collect();
-        for stable_id in inactive {
-            let retired = world.retire_non_entity_object(stable_id);
-            debug_assert!(retired);
-        }
         self.navigation_changed_cells
     }
 }
@@ -302,22 +291,26 @@ pub(crate) fn commit_terrain(
         && let Some(c4_warhead) = rules.warhead(&rules.bridge_warheads.c4_name).cloned()
     {
         let c4_id = world.interner.intern(&c4_warhead.id);
-        let impact_z = world
-            .resolved_terrain
-            .as_ref()
-            .and_then(|grid| grid.cell(lethal.cell.0, lethal.cell.1))
-            .map_or(0, |cell| i32::from(cell.level));
+        // Terrain71BABF passes its retained Object Location, not a fresh
+        // sample of the ground/deck after nested callbacks.
+        let impact = world.production.terrain_objects[&lethal.stable_id].world_coord();
+        let (rx, ry, sub_x, sub_y, world_z) = projectile_impact_cell(impact);
+        let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), &c4_warhead);
         let aoe = {
             let collected = collect_area(
                 world,
                 rules,
                 overlay_registry,
-                lethal.cell,
+                (rx, ry),
                 100,
                 &c4_warhead,
                 (RAD_NO_ATTACKER, None, c4_id),
-                None,
-                impact_z,
+                Some(combat_aoe::AoEAirImpact {
+                    sub_x,
+                    sub_y,
+                    z_leptons: world_z,
+                }),
+                world_z.div_euclid(LEPTONS_PER_LEVEL as i32),
             );
             append_fixture_tiberium(world, &mut effects.tiberium_reduction_requests);
             collected
@@ -332,9 +325,19 @@ pub(crate) fn commit_terrain(
         let (nested, mut pings) = commit_area(world, run, &aoe.receivers, rules, overlay_registry);
         effects.append(nested);
         under_attack_events.append(&mut pings);
+        effects.bridge_state_changed |= continue_area_bridge_damage(
+            world,
+            rules,
+            overlay_registry,
+            (rx, ry),
+            100,
+            c4_id,
+            world_z,
+            routed_wall,
+        );
     }
 
-    let _ = crate::sim::terrain_object::finalize_terrain_lethal(
+    let finalized = crate::sim::terrain_object::finalize_terrain_lethal(
         crate::sim::terrain_object::production_authority_parts(
             &mut world.production,
             &mut world.substrate.raw_cell_occupation,
@@ -344,6 +347,13 @@ pub(crate) fn commit_terrain(
         lethal,
         world.resolved_terrain.as_mut(),
     );
+    if finalized {
+        // Terrain's common tail 0x71BB2C -> ObjectUnInit 0x5F65F0 retires Logic membership before
+        // returning to the current receiver walk; physical deletion is deferred.
+        // Native executable comparison: terrain_debris_receiver.json.
+        let retired = world.retire_non_entity_object(lethal.stable_id);
+        debug_assert!(retired);
+    }
     (effects, under_attack_events)
 }
 
@@ -986,9 +996,6 @@ pub(crate) fn handle_death(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> DeathEffects {
-    let handles = world.rule_handles;
-    let scenario_no_damage = world.session.no_damage;
-
     debug_assert!(
         dead_entities.len() <= 1,
         "ReceiveDamage enters one concrete fatal postlude at a time"
@@ -1006,7 +1013,7 @@ pub(crate) fn handle_death(
     let mut explosion_effects: Vec<ExplosionEffect> = Vec::new();
     let mut voxel_debris: Vec<crate::sim::voxel_anim::VoxelDebrisSpawn> = Vec::new();
     let mut combat_light_requests: Vec<CombatLightRequest> = Vec::new();
-    let mut bridge_damage_events: Vec<BridgeDamageEvent> = Vec::new();
+    let mut bridge_state_changed = false;
     #[cfg(test)]
     let mut wall_mutations: Vec<WallMutation> = Vec::new();
     #[cfg(test)]
@@ -1233,9 +1240,7 @@ pub(crate) fn handle_death(
             bridge_hut,
         } = blast;
         if let Some(warhead) = rules.warhead(world.interner.resolve(*wh_id)) {
-            let routed_wall =
-                wall_overlay_flags_at(world.overlay_grid.as_ref(), overlay_registry, *rx, *ry)
-                    .is_some_and(|flags| warhead_damages_wall(warhead, flags));
+            let routed_wall = area_routes_to_wall(world, overlay_registry, (*rx, *ry), warhead);
             let aoe = {
                 let collected = collect_area(
                     world,
@@ -1256,22 +1261,6 @@ pub(crate) fn handle_death(
 
             #[cfg(test)]
             cell_target_detaches.extend(aoe.cell_target_detaches);
-            // The bullet's DetonateAtCoord damages a bridge; a bomb calls
-            // Apply_area_damage directly.
-            if weapon.is_some() && !scenario_no_damage && !routed_wall && warhead.wall && *dmg > 0 {
-                let wh_iid = *wh_id;
-                bridge_damage_events.push(BridgeDamageEvent {
-                    rx: *rx,
-                    ry: *ry,
-                    damage: (*dmg).min(i32::from(u16::MAX)) as u16,
-                    warhead_ref: wh_iid,
-                    is_ion_cannon: wh_iid
-                        == handles
-                            .expect("Simulation::resolve_type_handles must run before combat")
-                            .ion_cannon,
-                    impact_z: *z as i32,
-                });
-            }
             if let Some(weapon) =
                 weapon.and_then(|weapon| rules.weapon(world.interner.resolve(weapon)))
                 && weapon.rad_level > 0
@@ -1294,7 +1283,7 @@ pub(crate) fn handle_death(
             explosion_effects.append(&mut nested.explosion_effects);
             voxel_debris.append(&mut nested.voxel_debris);
             combat_light_requests.append(&mut nested.combat_light_requests);
-            bridge_damage_events.append(&mut nested.bridge_damage_events);
+            bridge_state_changed |= nested.bridge_state_changed;
             #[cfg(test)]
             wall_mutations.append(&mut nested.wall_mutations);
 
@@ -1308,6 +1297,19 @@ pub(crate) fn handle_death(
             #[cfg(test)]
             receiver_stage_trace.append(&mut nested.receiver_stage_trace);
             under_attack_events.append(&mut pings);
+            // Both a DeathWeapon and BombClass's direct Apply_area_damage
+            // reach 489E87 after their receivers. Nested areas have completed
+            // their own bridge continuations before this parent resumes.
+            bridge_state_changed |= continue_area_bridge_damage(
+                world,
+                rules,
+                overlay_registry,
+                (*rx, *ry),
+                *dmg,
+                *wh_id,
+                *world_z_leptons,
+                routed_wall,
+            );
             emit_warhead_detonation_effects(
                 warhead,
                 *dmg,
@@ -1339,7 +1341,7 @@ pub(crate) fn handle_death(
         explosion_effects,
         voxel_debris,
         combat_light_requests,
-        bridge_damage_events,
+        bridge_state_changed,
         #[cfg(test)]
         wall_mutations,
         #[cfg(test)]
@@ -1702,10 +1704,73 @@ fn run_special_detonation_arm(
     }
 }
 
+/// Snapshot the native primary-cell wall branch before its receiver collection
+/// mutates the overlay. Its return skips the bridge tail even if the wall dies.
+pub(crate) fn area_routes_to_wall(
+    world: &Simulation,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    cell: (u16, u16),
+    warhead: &WarheadType,
+) -> bool {
+    wall_overlay_flags_at(
+        world.overlay_grid.as_ref(),
+        overlay_registry,
+        cell.0,
+        cell.1,
+    )
+    .is_some_and(|flags| warhead_damages_wall(warhead, flags))
+}
+
+/// Apply_area_damage's bridge continuation489E87..48A2C4 runs after all
+/// ordinary receivers and their recursive deaths, before returning to the
+/// caller. In particular Bullet469033 completes it before cluster RNG469057.
+/// A negative nonzero packet still reaches the native strength draw.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn continue_area_bridge_damage(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    cell: (u16, u16),
+    damage: i32,
+    warhead_ref: InternedId,
+    impact_z_leptons: i32,
+    routed_wall: bool,
+) -> bool {
+    if world.session.no_damage
+        || damage == 0
+        || routed_wall
+        || !rules
+            .warhead(world.interner.resolve(warhead_ref))
+            .is_some_and(|warhead| warhead.wall)
+    {
+        return false;
+    }
+    let event = BridgeDamageEvent {
+        rx: cell.0,
+        ry: cell.1,
+        damage,
+        warhead_ref,
+        is_ion_cannon: warhead_ref
+            == world
+                .rule_handles
+                .expect("Simulation::resolve_type_handles must run before combat")
+                .ion_cannon,
+        impact_z_leptons,
+    };
+    crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(
+        world,
+        rules,
+        std::slice::from_ref(&event),
+        overlay_registry,
+    )
+}
+
 /// `BulletClass::DetonateAtCoord @ 0x004690B0` up to its receivers: the
 /// radiation site, then the special-warhead chain or, in its final else, the
 /// shrapnel (`0x00469A51`) and `Apply_area_damage` (`0x00489280`) records,
-/// then bridge damage. The receivers commit before the anim tail
+/// then bridge damage. Returns the ordinary area's wall-route decision, or
+/// None for a special arm without Apply_area_damage. The receivers and bridge
+/// continuation commit before the anim tail
 /// ([`emit_detonation_anim`]), as native's area damage returns before
 /// `LAB_00469AA4`.
 ///
@@ -1719,9 +1784,7 @@ fn emit_detonation_receivers(
     detonation: &ProjectileDetonation,
     warhead: &WarheadType,
     out: &mut CombatEmit,
-) {
-    let handles = world.rule_handles;
-    let scenario_no_damage = world.session.no_damage;
+) -> Option<bool> {
     let (impact_rx, impact_ry, impact_sub_x, impact_sub_y, world_z_leptons) =
         projectile_impact_cell(detonation.impact);
     let impact_z = world_z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32);
@@ -1788,13 +1851,8 @@ fn emit_detonation_receivers(
                 out,
             );
 
-            let routed_wall = wall_overlay_flags_at(
-                world.overlay_grid.as_ref(),
-                overlay_registry,
-                impact_rx,
-                impact_ry,
-            )
-            .is_some_and(|flags| warhead_damages_wall(warhead, flags));
+            let routed_wall =
+                area_routes_to_wall(world, overlay_registry, (impact_rx, impact_ry), warhead);
             // `0x00469A69..0x00469A75`: the bullet's live Owner's house, or
             // none once the owner is gone (`BulletClass+0xB0` is detached).
             let source_house = world
@@ -1830,22 +1888,7 @@ fn emit_detonation_receivers(
                 .extend(aoe.cell_target_detaches);
             out.damage_events.extend(aoe.receivers);
 
-            if !scenario_no_damage && detonation.payload.base_damage > 0 {
-                let damage = detonation.payload.base_damage.min(i32::from(u16::MAX)) as u16;
-                if !routed_wall && warhead.wall {
-                    out.effects.bridge_damage_events.push(BridgeDamageEvent {
-                        rx: impact_rx,
-                        ry: impact_ry,
-                        damage,
-                        warhead_ref: detonation.payload.warhead,
-                        is_ion_cannon: detonation.payload.warhead
-                            == handles
-                                .expect("Simulation::resolve_type_handles must run before combat")
-                                .ion_cannon,
-                        impact_z,
-                    });
-                }
-            }
+            Some(routed_wall)
         }
         claimed => {
             let target = match detonation.target {
@@ -1856,6 +1899,7 @@ fn emit_detonation_receivers(
                 ProjectileTarget::None => SpecialArmTarget::None,
             };
             run_special_detonation_arm(world, rules, claimed, detonation.source_id, target);
+            None
         }
     }
 }
@@ -1979,7 +2023,8 @@ pub(crate) fn commit_projectile_detonations_inline(
             let damage_start = emit.damage_events.len();
             let explosion_start = emit.effects.explosion_effects.len();
             let smudge_start = emit.effects.smudge_spawn_requests.len();
-            emit_detonation_receivers(world, rules, overlay_registry, &clustered, warhead, emit);
+            let area_wall_route =
+                emit_detonation_receivers(world, rules, overlay_registry, &clustered, warhead, emit);
             let outer_explosion_effects = emit.effects.explosion_effects.split_off(explosion_start);
             let outer_anim_requests = emit.effects.smudge_spawn_requests.split_off(smudge_start);
             let (inline_death, mut pings) = commit_area(
@@ -1990,6 +2035,19 @@ pub(crate) fn commit_projectile_detonations_inline(
                 overlay_registry,
             );
             emit.effects.append(inline_death);
+            if let Some(routed_wall) = area_wall_route {
+                let (rx, ry, _, _, z) = projectile_impact_cell(clustered.impact);
+                emit.effects.bridge_state_changed |= continue_area_bridge_damage(
+                    world,
+                    rules,
+                    overlay_registry,
+                    (rx, ry),
+                    clustered.payload.base_damage,
+                    clustered.payload.warhead,
+                    z,
+                    routed_wall,
+                );
+            }
             emit.effects
                 .explosion_effects
                 .extend(outer_explosion_effects);
@@ -3513,11 +3571,7 @@ fn emit_admitted_fire(
     let launched = {
         let impact_world_z_leptons = attack_world_z_leptons(
             snap.target,
-            target_rx,
-            target_ry,
-            target_sub_x,
-            target_sub_y,
-            &mut world.substrate.entities,
+            &world.substrate.entities,
             world.resolved_terrain.as_ref(),
         );
         let origin_world_z_leptons = fire.source_z;
@@ -4463,11 +4517,11 @@ pub(crate) fn tick_combat(
         if fire_suppressed.contains(&id) {
             continue;
         }
-        // Mutable borrow: capture the per-attacker scalars and garrison cargo
-        // info. Entity field-reads move into `build_attacker_snapshot` (pure)
-        // below, after this borrow releases.
-        let (attack_target, pending_infantry_fire, pending_building_fire, garrison_cargo) = {
-            let entity = match world.substrate.entities.get_mut(id) {
+        // Read without a hand-out: only an armed building's delayed-fire
+        // latch is written here. Entity field-reads move into
+        // `build_attacker_snapshot` (pure) below.
+        let (attack_target, pending_infantry_fire, pending_building_fire) = {
+            let entity = match world.substrate.entities.get(id) {
                 Some(e) => e,
                 None => continue,
             };
@@ -4484,77 +4538,79 @@ pub(crate) fn tick_combat(
                 .attack_target
                 .as_ref()
                 .map(|attack| (attack.target, attack.pending_infantry_fire));
+            // Skip snapshot for entities blocked by locomotor state.
+            // An aircraft's Mission_Attack visit runs whenever its dispatch asked
+            // for it; the visit opens with its own prefix.
+            let requested = aircraft_fire_requests.contains(&id);
+            let blocked = !requested
+                && (fire_blocked.contains(&id)
+                    || entity
+                        .aircraft_mission
+                        .as_ref()
+                        .is_some_and(|mission| mission.is_attacking()));
 
             // gamemd-derived: BuildingClass::Update @ 0x0043FB20 invokes
             // ProcessDelayedFire @ 0x004503F0 after mission dispatch. The
             // signed counter is pre-decremented and values <= 0 clamp to zero
             // and expire on this visit.
-            let pending_building_fire = entity.pending_building_fire.as_mut().map(|pending| {
-                pending.remaining_ticks = pending.remaining_ticks.saturating_sub(1).max(0);
-                *pending
-            });
-            if pending_building_fire.is_some_and(|pending| pending.remaining_ticks != 0) {
-                // GetFireError @ 0x00447F10 blocks ordinary fire while armed.
-                continue;
-            }
-            let Some((attack_target, pending_infantry_fire)) = attack_state else {
-                // Expiry reads only the live target. A missing target clears
-                // the latch and does not acquire or drop another target.
-                if pending_building_fire.is_some() {
-                    entity.pending_building_fire = None;
+            let pending_building_fire = if entity.pending_building_fire.is_some() {
+                let latch = &mut world
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .expect("an attacker was just read")
+                    .pending_building_fire;
+                let pending = latch.as_mut().map(|pending| {
+                    pending.remaining_ticks = pending.remaining_ticks.saturating_sub(1).max(0);
+                    *pending
+                });
+                if pending.is_some_and(|pending| pending.remaining_ticks != 0) {
+                    // GetFireError @ 0x00447F10 blocks ordinary fire while armed.
+                    continue;
                 }
+                // Expiry reads only the live target, so a missing target clears
+                // the latch. Delayed expiry rechecks fire admissibility and
+                // clears on any failure rather than postponing until the
+                // building is usable.
+                if attack_state.is_none() || blocked {
+                    *latch = None;
+                    continue;
+                }
+                pending
+            } else {
+                None
+            };
+            // A missing target does not acquire or drop another target.
+            let Some((attack_target, pending_infantry_fire)) = attack_state else {
                 continue;
             };
-            // Skip snapshot for entities blocked by locomotor state.
-            // An aircraft's Mission_Attack visit runs whenever its dispatch asked
-            // for it; the visit opens with its own prefix.
-            let requested = aircraft_fire_requests.contains(&id);
-            if !requested
-                && (fire_blocked.contains(&id)
-                    || entity
-                        .aircraft_mission
-                        .as_ref()
-                        .is_some_and(|mission| mission.is_attacking()))
-            {
-                // Delayed expiry rechecks fire admissibility and clears on any
-                // failure rather than postponing until the building is usable.
-                if pending_building_fire.is_some() {
-                    entity.pending_building_fire = None;
-                }
+            if blocked {
                 continue;
             }
+            (attack_target, pending_infantry_fire, pending_building_fire)
+        };
 
-            // Extract garrison cargo info while we have the entity.
-            let garrison_cargo: Option<(u8, u8, u64)> =
-                if entity.category == EntityCategory::Structure {
-                    entity.passenger_role.cargo().and_then(|c| {
-                        if c.is_empty() {
-                            return None;
-                        }
-                        let fi = c.garrison_fire_index;
-                        let count = c.count() as u8;
-                        let oi = fi as usize % count as usize;
-                        Some((fi, count, c.passengers[oi]))
-                    })
-                } else {
-                    None
-                };
-
-            (
-                attack_target,
-                pending_infantry_fire,
-                pending_building_fire,
-                garrison_cargo,
-            )
-        }; // mutable borrow released
-
-        // Re-fetch the attacker immutably (nothing mutated `entities` since the
-        // borrow above released) and resolve any garrison occupant, then build the
+        // Re-fetch the attacker after the latch write above and resolve any
+        // garrison occupant, then build the
         // snapshot through the shared `build_attacker_snapshot` so the field-reads
         // stay byte-identical to the per-object Fire→Facing host.
         let entity = match world.substrate.entities.get(id) {
             Some(e) => e,
             None => continue,
+        };
+        let garrison_cargo: Option<(u8, u8, u64)> = if entity.category == EntityCategory::Structure
+        {
+            entity.passenger_role.cargo().and_then(|c| {
+                if c.is_empty() {
+                    return None;
+                }
+                let fi = c.garrison_fire_index;
+                let count = c.count() as u8;
+                let oi = fi as usize % count as usize;
+                Some((fi, count, c.passengers[oi]))
+            })
+        } else {
+            None
         };
         let garrison = garrison_cargo.and_then(|(fire_idx, count, occ_id)| {
             let obj = rules.object(world.interner.resolve(entity.type_ref()))?;

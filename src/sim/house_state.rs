@@ -501,19 +501,19 @@ pub struct HouseState {
     /// `RepairDelay=`, which [`HouseState::set_difficulty`] copies (the
     /// constructor's 0.0 until then). The computer's auto-repair start draws
     /// its latch time from it (`production::update_repair_and_power`).
-    /// Persisted and hashed (schema v214).
+    /// Persisted and hashed (schema v216).
     #[serde(default)]
     pub(crate) repair_delay: f64,
     /// Native `HouseClass+0x245`: a building's auto-repair start sets it
     /// (`0x004506FF`), and while set no other building of the house starts
     /// one. [`HouseState::release_repair_latch`] clears it. Persisted and
-    /// hashed (schema v214).
+    /// hashed (schema v216).
     #[serde(default)]
     pub(crate) repair_start_latch: bool,
     /// Native `HouseClass+0x280` timer: the auto-repair start of a house no
     /// human controls arms it (`0x00450764..0x00450779`), and the latch holds
     /// until it expires. The constructor starts it at the construction frame
-    /// with no time left. Persisted and hashed (schema v214).
+    /// with no time left. Persisted and hashed (schema v216).
     pub(crate) repair_latch_timer: HouseFrameTimer,
 }
 

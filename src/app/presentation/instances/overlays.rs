@@ -817,12 +817,15 @@ pub(crate) fn build_overlay_instances(
             }
         }
 
-        let z: u8 = state
-            .height_map()
-            .get(&(obj.rx, obj.ry))
-            .copied()
-            .unwrap_or(0);
-        let (screen_x, screen_y) = terrain::iso_to_screen(obj.rx, obj.ry, z);
+        // Terrain Render71CD30 reads the retained Location through GetCoords
+        // 5F65A0; DrawIt71C1B0 applies AdjustForZ to that retained height.
+        // Original call-chain outputs: tools/spatial_oracle/terrain_render.json.
+        // a later map/deck change must not move a stationary tree's artwork.
+        let coord = obj.world_coord();
+        let point = crate::util::lepton::absolute_leptons_to_screen(coord.x, coord.y, coord.z);
+        let lift_px = crate::util::native_x87::adjust_for_z_standard(coord.z);
+        let screen_x = point.0 - TILE_WIDTH / 2.0;
+        let screen_y = point.1 - TILE_HEIGHT / 2.0;
         if !in_view(
             screen_x, screen_y, 120.0, 120.0, cam_x, cam_y, sw, sh, 120.0,
         ) {
@@ -846,7 +849,12 @@ pub(crate) fn build_overlay_instances(
         };
         let Some(spr) = atlas.get(&key) else { continue };
 
-        let depth: f32 = compute_sprite_depth_params(origin_y, world_height, screen_y, z);
+        let depth = super::helpers::compute_sprite_depth_params_lifted(
+            origin_y,
+            world_height,
+            screen_y,
+            lift_px,
+        );
         let spawns_tiberium = state
             .rules()
             .and_then(|rules| rules.terrain_object_type_case_insensitive(name))
@@ -885,8 +893,15 @@ pub(crate) fn build_overlay_instances(
             // body and shadow. Each SHP's own integer canvas/frame offsets
             // then locate the stored rectangle. No FA2 editor Y adjustment.
             let point = [screen_x + TILE_WIDTH / 2.0, screen_y + TILE_HEIGHT / 2.0];
-            let [body_instance, shadow_instance] =
-                native_static_terrain_instances(body, shadow, point, z, depth, tint, palette_light);
+            let [body_instance, shadow_instance] = native_static_terrain_instances(
+                body,
+                shadow,
+                point,
+                lift_px,
+                depth,
+                tint,
+                palette_light,
+            );
             let mut parent = parent;
             parent.policy.render_z = RenderZPolicy::ReadWrite;
             ground_objects.push(PlannedGroundObjectInstance::object(
@@ -938,7 +953,7 @@ fn native_static_terrain_instances(
     body: &crate::render::overlay_atlas::OverlaySpriteEntry,
     shadow: &crate::render::overlay_atlas::OverlaySpriteEntry,
     point: [f32; 2],
-    height_level: u8,
+    lift_px: i32,
     depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
@@ -953,7 +968,7 @@ fn native_static_terrain_instances(
         palette_light,
         alpha: 1.0,
         z_gradient: gradient,
-        z_adjust: super::helpers::ground_z_adjust(height_level, class_z),
+        z_adjust: super::helpers::lifted_z_adjust(lift_px, class_z),
         ..Default::default()
     })
 }
@@ -1268,6 +1283,10 @@ pub(crate) fn build_parachute_instances(
 }
 
 #[cfg(test)]
+#[path = "terrain_render_tests.rs"]
+mod terrain_render_tests;
+
+#[cfg(test)]
 mod tests {
     /// The sprite is projected from the anim's exact Z. Half a level up lands
     /// between the two level rows; the old level-byte projection drew it on the
@@ -1433,21 +1452,14 @@ mod tests {
         let mut interner = StringInterner::default();
         let stable_id = 1;
         production.terrain_object_cells.insert((4, 7), stable_id);
-        production.terrain_objects.insert(
-            stable_id,
-            TerrainObjectState {
-                stable_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: interner.intern("TREE01"),
-                rx: 4,
-                ry: 7,
-                health: 10,
-                max_health: 10,
-                occupation_bits: 7,
-                lifecycle: TerrainObjectLifecycle::Live,
-            },
-        );
+        production.terrain_objects.insert(stable_id, {
+            let mut terrain =
+                TerrainObjectState::for_test(stable_id, interner.intern("TREE01"), 4, 7);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
+        });
         assert!(terrain_object_is_render_visible(
             &registered,
             Some(&rules),

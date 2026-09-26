@@ -159,7 +159,7 @@ pub(super) enum HashFeature {
     /// (`+0x6CB`); a house's repair delay (`HouseClass+0x1C0`), auto-repair
     /// latch (`+0x245`) and its timer (`+0x280`). Earlier schemas fold
     /// nothing.
-    BuildingRepair = 214,
+    BuildingRepair = 216,
 }
 
 impl HashSchema {

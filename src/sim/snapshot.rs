@@ -105,8 +105,7 @@ use crate::sim::world::Simulation;
 // ground/deck occupation bytes instead of reconstructing them from object lists.
 // Bumped 40 -> 41: HouseState gains the serialized MultiplayPassive house-type
 // fact. Defeat evaluation and the game-over alive scan both skip passive houses,
-// so it is an authoritative outcome input and cannot be re-derived on load —
-// `rebuild_caches_after_load` takes no RuleSet. Serialized but NOT hashed.
+// so the saved house-type fact remains authority on load. Serialized but NOT hashed.
 // Bumped 41 -> 42: GameEntity gains the passive target-acquisition bookkeeping
 // — `last_target_scan_frame` and `passively_acquired_target` — and its
 // `passive_scan_timer` is now armed at the construction frame instead of left
@@ -618,10 +617,13 @@ use crate::sim::world::Simulation;
 // (`+0xBC`) and marks the player's undeploy order instead of carrying the
 // undeploy's unit type, owner, cell and selection; a building keeps its AI
 // sale byte (`+0x6DC`) and a house its authored IQ (`+0x1D0`).
-// 213 -> 214: a building keeps its AI repair byte (`+0x6CB`) and a house its
+// 213 -> 214: BridgeStrength retains its native signed dword (formerly u16).
+// 214 -> 215: Terrain objects retain their construction-time world Z instead
+// of sampling later ground changes in damage and presentation consumers.
+// 215 -> 216: a building keeps its AI repair byte (`+0x6CB`) and a house its
 // repair delay (`+0x1C0`), auto-repair latch (`+0x245`) and the latch's
 // timer (`+0x280`).
-const SNAPSHOT_VERSION: u32 = 214;
+const SNAPSHOT_VERSION: u32 = 216;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2347,7 +2349,7 @@ mod tests {
         use crate::sim::overlay_grid::OverlayGrid;
         use crate::sim::rng::SimRng;
         use crate::sim::snapshot::{GameSnapshot, SnapshotRestoreError};
-        use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+        use crate::sim::terrain_object::TerrainObjectState;
         use crate::sim::world::Simulation;
         use std::collections::{BTreeMap, BTreeSet};
 
@@ -2452,17 +2454,11 @@ mod tests {
             let type_ref = sim.interner.intern("TREE01");
             sim.production.terrain_objects.insert(
                 stable_id,
-                TerrainObjectState {
-                    stable_id,
-                    native_unique_id: None,
-                    in_logic_vector: true,
-                    type_ref,
-                    rx: cell.0,
-                    ry: cell.1,
-                    health: 100,
-                    max_health: 100,
-                    occupation_bits: 7,
-                    lifecycle: TerrainObjectLifecycle::Live,
+                {
+                    let mut terrain = TerrainObjectState::for_test(stable_id, type_ref, cell.0, cell.1);
+                    terrain.in_logic_vector = true;
+                    terrain.occupation_bits = 7;
+                    terrain
                 },
             );
             sim.production.terrain_object_cells.insert(cell, stable_id);
@@ -2530,8 +2526,7 @@ mod tests {
             restored.rebuild_caches_after_load(
                 resolved,
                 Default::default(),
-                Vec::new(),
-                Vec::new(),
+                &crate::sim::runtime::SimResources::empty().rules,
             );
             restored
         }
@@ -2854,8 +2849,7 @@ mod tests {
         sim.rebuild_caches_after_load(
             terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
     }
 
@@ -2933,8 +2927,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             map_terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
 
         let restore_output = restored
@@ -3583,9 +3576,11 @@ mod tests {
         // 211 -> 212: no copy of the last selection's weapon id.
         // 212 -> 213: Sell's stage in the Selling mission; no undeploy
         // spawn copy on pack-ups.
-        // 213 -> 214: the building's AI repair byte; the house's repair
+        // 213 -> 214: signed BridgeStrength in serialized bridge state.
+        // 214 -> 215: Terrain retains its placement height across ground changes.
+        // 215 -> 216: the building's AI repair byte; the house's repair
         // delay, auto-repair latch and its timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 214);
+        assert_eq!(super::SNAPSHOT_VERSION, 216);
     }
 
     #[test]
@@ -6959,8 +6954,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             terrain_template,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
         let rebuilt_dummy = restored
             .resolved_terrain
@@ -7093,8 +7087,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             pristine_load_template,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
         let rebuilt_terrain = restored.resolved_terrain.as_ref().unwrap();
         assert_eq!(
@@ -7759,41 +7752,33 @@ mod tests {
         let spawner_id = 3;
         let tree_type = sim.interner.intern("TREE01");
         let spawner_type = sim.interner.intern("TIBTRE01");
-        let damaged = TerrainObjectState {
-            stable_id: damaged_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: tree_type,
-            rx: damaged_cell.0,
-            ry: damaged_cell.1,
-            health: 6,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let damaged = {
+            let mut terrain =
+                TerrainObjectState::for_test(damaged_id, tree_type, damaged_cell.0, damaged_cell.1);
+            terrain.health = 6;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
-        let destroyed = TerrainObjectState {
-            stable_id: destroyed_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: sim.interner.intern("TREE01"),
-            rx: destroyed_cell.0,
-            ry: destroyed_cell.1,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let destroyed = {
+            let mut terrain = TerrainObjectState::for_test(
+                destroyed_id,
+                sim.interner.intern("TREE01"),
+                destroyed_cell.0,
+                destroyed_cell.1,
+            );
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
-        let spawner = TerrainObjectState {
-            stable_id: spawner_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: spawner_type,
-            rx: spawner_cell.0,
-            ry: spawner_cell.1,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let spawner = {
+            let mut terrain =
+                TerrainObjectState::for_test(spawner_id, spawner_type, spawner_cell.0, spawner_cell.1);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
         for terrain in [&damaged, &destroyed, &spawner] {
             sim.production
@@ -7874,8 +7859,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             stale_original_grid,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
 
         assert_eq!(

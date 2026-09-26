@@ -52,7 +52,8 @@ Distinguish and cite:
   bounded by stated coverage. A sample cannot certify the whole mechanism.
 
 Parity goldens come from native execution/emulation, capture or retail bytes,
-not hand calculations or prior Rust. Avoid unqualified “VERIFIED”/“complete”.
+not hand calculations or prior Rust; inputs a comparison takes from VERA need
+their own native evidence. Avoid unqualified “VERIFIED”/“complete”.
 
 Arithmetic, rounding, RNG draws (count, order, stream) and timer cadences derived from
 reading are uncertain until executed. Before merging a mechanism, compare them against
@@ -189,6 +190,7 @@ Choose validation appropriate to the change, considering native fidelity, connec
 production behavior and protection against regressions.
 
 Avoid tests that merely mirror the implementation or require maintaining a second implementation of the same logic.
+Before fixing a bug whose expected behavior is established, first make a focused test fail on it where practical.
 
 - Working Rust: `cargo check -p vera20k` as needed; focused
   `cargo test -p vera20k --lib <module_path>::`.

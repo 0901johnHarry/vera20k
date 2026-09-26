@@ -727,7 +727,7 @@ where
         .effective_destroyable_bridges(bridge_destroyability_mode);
     let bridge_strength = rules
         .map(|rules| rules.bridge_rules.strength)
-        .unwrap_or(1500);
+        .unwrap_or(1000);
     sim.bridge_state = Some(
         crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
             resolved_terrain,
@@ -736,24 +736,12 @@ where
             (map_data.header.width as i32, map_data.header.height as i32),
         ),
     );
-    sim.bridge_explosions = rules
-        .map(|r| {
-            r.bridge_rules
-                .explosions
-                .iter()
-                .map(|s| sim.interner.intern(s))
-                .collect()
-        })
-        .unwrap_or_default();
-    sim.metallic_debris = rules
-        .map(|r| {
-            r.general
-                .metallic_debris
-                .iter()
-                .map(|s| sim.interner.intern(s))
-                .collect()
-        })
-        .unwrap_or_default();
+    if let Some(rules) = rules {
+        sim.resolve_rule_animation_lists(rules);
+    } else {
+        sim.bridge_explosions.clear();
+        sim.metallic_debris.clear();
+    }
     // gamemd `TerrainClass::Read_Map_Section` runs while the map sections are
     // walked, ahead of `[Units]`/`[Aircraft]`/`[Infantry]`/`[Structures]`: every
     // tree owns its cell before the first map object is placed on it. The

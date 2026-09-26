@@ -470,11 +470,16 @@ pub struct GeneralRules {
     /// (`TreeTargeting=` in `[CombatDamage]`).
     /// Default false in vanilla RA2.
     pub tree_targeting: bool,
+    /// Signed Terrain Strength fallback. Rules ctor666DF8 stores25;
+    /// General671DD2..671DF1 reads TreeStrength (retail200). Native reader
+    /// evidence: tools/rules_oracle/bridge_landing_inputs.
+    pub tree_strength: i32,
     /// Health ratio threshold below which the bar turns yellow (ConditionYellow= in [AudioVisual]).
     /// Default 0.5 (50%).
     pub condition_yellow: f64,
     /// Health ratio threshold below which the bar turns red (ConditionRed= in [AudioVisual]).
-    /// Default 0.25 (25%).
+    /// Constructor default0.5 at667568..66756E; retail authors0.25.
+    /// Native reader evidence: tools/rules_oracle/bridge_landing_inputs.
     pub condition_red: f64,
     /// `[General] CloakingStages=` — native signed progress divisor. The
     /// constructor and stock rules both use 9.
@@ -1159,9 +1164,9 @@ pub struct GeneralRules {
     pub mutate_explosion_warhead: String,
     /// Whether MutateExplosion is enabled (MutateExplosion= in [General]). Default true.
     pub mutate_explosion: bool,
-    /// `[General] MetallicDebris=` — list of animation names to spawn (50%-RNG
-    /// gated, count-checked) on bridge-cell collapse. Default 20 entries.
-    /// Mirrors gamemd `Rules+0x140` (data ptr) / `+0x14C` (count).
+    /// Ordered `[General] MetallicDebris=` AnimType references from the native
+    /// ReadGeneral128/factory pass. Constructor default is empty, not retail's
+    /// authored list. Mirrors Rules+0x140 (data) / +0x14C (count).
     pub metallic_debris: Vec<String>,
 }
 
@@ -1373,8 +1378,9 @@ impl Default for GeneralRules {
             default_mirage_disguises: Vec::new(),
             infantry_blink_disguise_time: 0,
             tree_targeting: false,
+            tree_strength: 25,
             condition_yellow: 0.5,
-            condition_red: 0.25,
+            condition_red: 0.5,
             cloaking_stages: 9,
             cloak_delay_frames: 18,
             cloak_sound: None,
@@ -1538,14 +1544,7 @@ impl Default for GeneralRules {
             mutate_warhead: "Mutate".to_string(),
             mutate_explosion_warhead: "MutateExplosion".to_string(),
             mutate_explosion: true,
-            metallic_debris: vec![
-                "DBRIS1LG", "DBRIS2LG", "DBRIS3LG", "DBRIS4LG", "DBRIS5LG", "DBRIS6LG", "DBRIS7LG",
-                "DBRIS8LG", "DBRIS9LG", "DBRS10LG", "DBRIS1SM", "DBRIS2SM", "DBRIS3SM", "DBRIS4SM",
-                "DBRIS5SM", "DBRIS6SM", "DBRIS7SM", "DBRIS8SM", "DBRIS9SM", "DBRS10SM",
-            ]
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect(),
+            metallic_debris: Vec::new(),
         }
     }
 }
@@ -1619,8 +1618,8 @@ impl GarrisonRules {
 /// Bridge damage/destruction rules parsed from `rules(md).ini`.
 #[derive(Debug, Clone)]
 pub struct BridgeRules {
-    /// Hit points shared by a destroyable bridge span.
-    pub strength: u16,
+    /// Signed upper bound of the per-hit bridge damage admission draw.
+    pub strength: i32,
     /// Reset/default value for `SpecialFlags::DestroyableBridges`.
     ///
     /// `[CombatDamage] DestroyableBridges=` exists in retail INI text but is
@@ -1644,7 +1643,7 @@ pub struct BridgeRules {
 impl Default for BridgeRules {
     fn default() -> Self {
         Self {
-            strength: 1500,
+            strength: 1000,
             destroyable_by_default: true,
             explosions: Vec::new(),
             voxel_max: 3,
@@ -1655,17 +1654,14 @@ impl Default for BridgeRules {
 
 impl BridgeRules {
     fn from_ini(ini: &IniFile) -> Self {
+        // Rules ctor6675DA sets1000; ReadCombatDamage66CD66..66CD86 retains
+        // the current signed dword as ReadInteger's default, with no clamp.
         let strength = ini
             .section("CombatDamage")
-            .and_then(|section| section.get_i32("BridgeStrength"))
-            .unwrap_or(1500)
-            .max(1) as u16;
+            .map_or(1000, |section| section.read_int("BridgeStrength", 1000));
         let destroyable_by_default = true;
-        let explosions = ini
-            .section("General")
-            .and_then(|section| section.get_list("BridgeExplosions"))
-            .map(|list| list.into_iter().map(|s| s.to_uppercase()).collect())
-            .unwrap_or_default();
+        // Published from the ordered RulesClass reader by from_processed_rules.
+        let explosions = Vec::new();
         let voxel_max = ini
             .section("General")
             .and_then(|section| section.get_i32("BridgeVoxelMax"))
@@ -1833,8 +1829,8 @@ impl GeneralRules {
             .map(|s| s.read_double("ConditionYellow", 0.5))
             .unwrap_or(0.5);
         let condition_red_native = audio_visual
-            .map(|s| s.read_double("ConditionRed", 0.25))
-            .unwrap_or(0.25);
+            .map(|s| s.read_double("ConditionRed", defaults.condition_red))
+            .unwrap_or(defaults.condition_red);
         // The bomb sounds (Rules+0x20C/+0x210) come from the same pass.
         let audio_visual_sound = |key: &str| {
             audio_visual
@@ -2170,6 +2166,7 @@ impl GeneralRules {
             tree_targeting: combat_damage
                 .and_then(|section| section.get_bool("TreeTargeting"))
                 .unwrap_or(false),
+            tree_strength: general.read_int("TreeStrength", defaults.tree_strength),
             condition_yellow: condition_yellow_native,
             condition_red: condition_red_native,
             cloaking_stages: general.get_i32("CloakingStages").unwrap_or(9),
@@ -2676,16 +2673,9 @@ impl GeneralRules {
                 .unwrap_or("MutateExplosion")
                 .to_string(),
             mutate_explosion: general.get_bool("MutateExplosion").unwrap_or(true),
-            metallic_debris: general
-                .get("MetallicDebris")
-                .map(|v| {
-                    v.split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<_>>()
-                })
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| Self::default().metallic_debris),
+            // The processed RulesClass vector is authoritative; a merged INI
+            // cannot reproduce successful-read replacement or factory identity.
+            metallic_debris: Vec::new(),
         }
     }
 
@@ -3148,6 +3138,8 @@ impl RuleSet {
         let mut rules = Self::from_projected_ini(processed.ini())?;
         rules.crate_rules = processed.crate_rules().clone();
         rules.powerups = processed.powerups().clone();
+        rules.general.metallic_debris = processed.metallic_debris().to_vec();
+        rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
@@ -3618,10 +3610,6 @@ impl RuleSet {
         // Parse [TerrainTypes] registry → per-type sections (TIBTRE01, TREE01, etc.).
         let mut terrain_object_types: HashMap<String, TerrainObjectType> = HashMap::new();
         let terrain_names: Vec<String> = parse_registry(ini, "TerrainTypes");
-        let tree_strength = ini
-            .section("General")
-            .and_then(|section| section.get_i32("TreeStrength"))
-            .unwrap_or(200);
         for name in &terrain_names {
             if let Some(section) = ini.section(name) {
                 terrain_object_types.insert(
@@ -3629,7 +3617,7 @@ impl RuleSet {
                     TerrainObjectType::from_ini_section_with_tree_strength(
                         name,
                         section,
-                        tree_strength,
+                        general.tree_strength,
                     ),
                 );
             }
@@ -3959,8 +3947,12 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v6".hash(&mut hasher);
+        b"rules-simulation-config-v7".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
+        // Selection order and duplicate references affect the scenario RNG's
+        // consumers, including the truncated retail pool's unread AnimType D.
+        self.general.metallic_debris.hash(&mut hasher);
+        self.bridge_rules.explosions.hash(&mut hasher);
         self.animation_sequences.hash(&mut hasher);
         self.effect_assets.hash(&mut hasher);
         self.buildup_assets.hash(&mut hasher);
@@ -5321,7 +5313,7 @@ CellSpread=0
         assert!((rules.production.low_power_penalty_modifier - 1.25).abs() < 0.0001);
         assert!((rules.production.min_low_power_production_speed - 0.4).abs() < 0.0001);
         assert!((rules.production.max_low_power_production_speed - 0.85).abs() < 0.0001);
-        assert_eq!(rules.bridge_rules.strength, 1500);
+        assert_eq!(rules.bridge_rules.strength, 1000);
         assert!(rules.bridge_rules.destroyable_by_default);
     }
 
@@ -5837,18 +5829,40 @@ MutateWarhead=MyMutate\n\
     }
 
     #[test]
-    fn metallic_debris_default_matches_retail() {
-        let g = GeneralRules::default();
-        assert_eq!(g.metallic_debris.len(), 20);
-        assert_eq!(g.metallic_debris[0], "DBRIS1LG");
-        assert_eq!(g.metallic_debris[19], "DBRS10SM");
+    fn bridge_animation_vectors_have_empty_constructor_defaults() {
+        assert!(GeneralRules::default().metallic_debris.is_empty());
+        assert!(BridgeRules::default().explosions.is_empty());
+        let rules = RuleSet::from_ini(&IniFile::empty()).unwrap();
+        assert!(rules.general.metallic_debris.is_empty());
+        assert!(rules.bridge_rules.explosions.is_empty());
     }
 
     #[test]
     fn metallic_debris_parses_from_ini() {
         let ini = IniFile::from_str("[General]\nMetallicDebris=ANIM1,ANIM2,ANIM3\n");
-        let g = GeneralRules::from_ini(&ini);
-        assert_eq!(g.metallic_debris, vec!["ANIM1", "ANIM2", "ANIM3"]);
+        let rules = RuleSet::from_ini(&ini).unwrap();
+        assert_eq!(
+            rules.general.metallic_debris,
+            vec!["ANIM1", "ANIM2", "ANIM3"]
+        );
+    }
+
+    #[test]
+    fn resolved_bridge_animation_order_and_duplicates_affect_simulation_hash() {
+        let mut rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nMetallicDebris=A,B,A\nBridgeExplosions=X,Y\n",
+        ))
+        .unwrap();
+        let original = rules.simulation_config_hash();
+        rules.general.metallic_debris.swap(0, 1);
+        assert_ne!(original, rules.simulation_config_hash());
+        rules.general.metallic_debris.swap(0, 1);
+        rules.general.metallic_debris.pop();
+        assert_ne!(original, rules.simulation_config_hash());
+        rules.general.metallic_debris.push("A".to_owned());
+        assert_eq!(original, rules.simulation_config_hash());
+        rules.bridge_rules.explosions.reverse();
+        assert_ne!(original, rules.simulation_config_hash());
     }
 
     #[test]
@@ -6745,7 +6759,7 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             rules.general.condition_red,
-            section.read_double("ConditionRed", 0.25)
+            section.read_double("ConditionRed", GeneralRules::default().condition_red)
         );
     }
 
@@ -6795,7 +6809,7 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             general.condition_red.to_bits(),
-            section.read_double("ConditionRed", 0.25).to_bits()
+            section.read_double("ConditionRed", GeneralRules::default().condition_red).to_bits()
         );
         assert_ne!(
             general.condition_yellow.to_bits(),

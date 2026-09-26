@@ -873,7 +873,7 @@ fn gsi_04_10_projectile_inert_suppresses_bridge_ore_and_collector_rng() {
     assert!(emit.damage_events.is_empty());
     assert!(emit.effects.wall_mutations.is_empty());
     assert!(emit.effects.cell_target_detaches.is_empty());
-    assert!(emit.effects.bridge_damage_events.is_empty());
+    assert!(!emit.effects.bridge_state_changed);
     assert!(emit.effects.tiberium_reduction_requests.is_empty());
     assert_eq!(scenario_rng.state(), before_rng);
 }
@@ -1092,7 +1092,7 @@ fn test_armor_index_lookup() {
 }
 
 #[test]
-fn cell_center_coords_remains_ground_z_for_cell_targets() {
+fn cell_center_coords_and_mapless_launch_height() {
     let (rx, ry, sub_x, sub_y) = cell_center_coords(7, 9);
     assert_eq!((rx, ry), (7, 9));
     assert_eq!(sub_x.to_num::<i32>(), 128);
@@ -1100,7 +1100,7 @@ fn cell_center_coords_remains_ground_z_for_cell_targets() {
 
     let entities = EntityStore::new();
     assert_eq!(
-        attack_impact_z(TargetKind::Cell(7, 9), &entities, None),
+        attack_world_z_leptons(TargetKind::Cell(7, 9), &entities, None),
         0,
         "with no loaded terrain there is no cell floor to read; the cell-centre \
          helper never invents one. The terrain-backed cases live in \
@@ -1501,103 +1501,6 @@ fn ic_target_takes_zero_damage() {
 }
 
 #[test]
-fn test_tick_combat_only_emits_bridge_damage_for_wall_warheads() {
-    let mut store = EntityStore::new();
-    let rules_without_wall = test_rules();
-    store.insert(make_entity(1, "MTNK", 5, 5, 300));
-    store.insert(make_entity(2, "MTNK", 8, 5, 300));
-    let mut interner = test_interner();
-    issue_attack_command(&mut store, 1, 2, None, &interner);
-    let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut store, &rules_without_wall, &interner);
-    let result = tick_combat_with_fog(
-        &mut store,
-        &mut OccupancyGrid::new(),
-        &rules_without_wall,
-        &mut interner,
-        None,
-        &BTreeMap::<InternedId, PowerState>::new(),
-        None,
-        None,
-        None,
-        None,
-        0u64,
-        100,
-        0u32,
-        &[],
-        None,
-        &mut main_rng,
-    );
-    assert!(
-        result
-            .consequences
-            .effects()
-            .bridge_damage_events
-            .is_empty(),
-        "non-wall warheads must not emit bridge damage"
-    );
-    assert!(
-        result.consequences.effects().wall_mutations.is_empty(),
-        "non-wall warheads must not emit wall damage"
-    );
-
-    let mut bridge_rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n\
-         [VehicleTypes]\n0=MTNK\n\n\
-         [AircraftTypes]\n\n\
-         [BuildingTypes]\n\n\
-         [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
-         [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
-         [AP]\nWall=yes\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
-    ))
-    .expect("bridge combat rules should parse");
-    // Combat reads IonCannonWarhead at the bridge-damage emit boundary; tests
-    // that drive tick_combat must resolve before invoking it.
-    let _handles =
-        crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&bridge_rules, &mut interner);
-    let mut wall_store = EntityStore::new();
-    wall_store.insert(make_entity(3, "MTNK", 5, 5, 300));
-    wall_store.insert(make_entity(4, "MTNK", 8, 5, 300));
-    issue_attack_command(&mut wall_store, 3, 4, None, &interner);
-    align_attackers_to_targets(&mut wall_store, &bridge_rules, &interner);
-    let wall_result = tick_combat_with_fog(
-        &mut wall_store,
-        &mut OccupancyGrid::new(),
-        &bridge_rules,
-        &mut interner,
-        None,
-        &BTreeMap::<InternedId, PowerState>::new(),
-        None,
-        None,
-        None,
-        None,
-        0u64,
-        100,
-        0u32,
-        &[],
-        None,
-        &mut main_rng,
-    );
-    assert_eq!(
-        wall_result.consequences.effects().bridge_damage_events,
-        vec![BridgeDamageEvent {
-            rx: 8,
-            ry: 5,
-            damage: 65,
-            warhead_ref: interner
-                .get("AP")
-                .expect("AP warhead interned by tick_combat"),
-            is_ion_cannon: false,
-            impact_z: 0,
-        }]
-    );
-    // Without an overlay grid+registry, the discriminator can't identify a wall
-    // cell — events fall through to bridge_damage_events. Immediate wall
-    // mutation requires both a grid lookup and Wall=yes in the registry.
-    assert!(wall_result.consequences.effects().wall_mutations.is_empty());
-}
-
-#[test]
 fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
     fn fire(extra_warhead_flags: &str, overlay_armor: &str) -> (CombatTickResult, OverlayGrid) {
         let ini = IniFile::from_str(&format!(
@@ -1657,13 +1560,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
         "WallAbsoluteDestroyer wins and commits forced removal inline"
     );
     assert_eq!(absolute_grid.cell(8, 5).overlay_id, None);
-    assert!(
-        absolute
-            .consequences
-            .effects()
-            .bridge_damage_events
-            .is_empty()
-    );
+    assert!(!absolute.consequences.effects().bridge_state_changed);
 
     let (wood, wood_grid) = fire("Wood=yes", "wood");
     assert!(!wood.consequences.effects().wall_mutations.is_empty());
@@ -7704,11 +7601,31 @@ fn rad_combat_tick(
 }
 
 /// Radiation damage applies only on `frame % RadApplicationDelay == 0`
-/// boundaries, scaled by the RadSiteWarhead Verses per armor class:
-/// trunc(min(500, 500) × 0.2) = 100 base → 100 vs none, 10 vs heavy.
+/// boundaries. Original reader/Foot producer/Object receiver outcomes are
+/// pinned in spatial_oracle/radiation_damage_boundary. This checks selected
+/// final health/admission, not the known intermediate radiation precision gap.
 #[test]
 fn rad_damage_fires_on_application_delay_boundary_only() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/radiation_damage_boundary.json"
+    ))
+    .unwrap();
+    let native_row = |frame: u32, armor: u8| {
+        native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["frame"] == frame && row["armor"] == armor)
+            .unwrap()
+    };
     let rules = radiation_rules();
+    for (index, verse) in rules.warhead("RadSite").unwrap().verses_f64.iter().enumerate() {
+        assert_eq!(
+            format!("{:016x}", verse.to_bits()),
+            native_row(16, 5)["verses_bits"][index],
+            "original RadSite reader, armor{index}"
+        );
+    }
     let mut sim = crate::sim::world::Simulation::new();
     let heights = BTreeMap::new();
     let inf = sim
@@ -7729,23 +7646,36 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
         None,
     );
 
-    // Frame 15: not an application boundary — nobody takes damage.
+    // Original Foot4DA554 skips the application on frame15.
+    assert_eq!(native_row(15, 0)["admitted"], false);
+    assert_eq!(native_row(15, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 15);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 300);
     assert_eq!(
-        sim.substrate.entities.get(tank).unwrap().health.current,
-        300
+        i64::from(sim.substrate.entities.get(inf).unwrap().health.current),
+        native_row(15, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(sim.substrate.entities.get(tank).unwrap().health.current),
+        native_row(15, 5)["final_health"].as_i64().unwrap()
     );
 
-    // Frame 16: boundary. E2 stands on the center cell (level 500, clamped
-    // 500): trunc(500 × 0.2) = 100, Verses none = 100% → 100 damage. The
-    // tank is one cell out (falloff (640−256)/640 × 500 = 300): trunc(300 ×
-    // 0.2) = 60, Verses heavy = 10% → 6 damage.
+    // Original spread65B9C0/Cell487CB0/Foot4DA5FA emits base59 at the
+    // side cell, while Rust currently emits60. Original 10% reader bits and
+    // Object5F5390 nevertheless produce the same selected health295. See
+    // the companion's required radiation precision follow-up; no base parity.
+    assert_eq!(native_row(16, 0)["admitted"], true);
+    assert_eq!(native_row(16, 5)["admitted"], true);
     rad_combat_tick(&mut sim, &rules, 16);
     let inf_hp = sim.substrate.entities.get(inf).unwrap().health.current;
     let tank_hp = sim.substrate.entities.get(tank).unwrap().health.current;
-    assert_eq!(inf_hp, 200, "100 rad damage vs armor none");
-    assert_eq!(tank_hp, 294, "6 rad damage vs heavy armor (10% Verses)");
+    assert_eq!(
+        i64::from(inf_hp),
+        native_row(16, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(tank_hp),
+        native_row(16, 5)["final_health"].as_i64().unwrap()
+    );
     // Sourceless damage must not arm retaliation.
     assert!(
         sim.substrate
@@ -7757,8 +7687,11 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
     );
 
     // Frame 17: off-boundary again.
+    assert_eq!(native_row(17, 0)["admitted"], false);
+    assert_eq!(native_row(17, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 17);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 200);
+    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, inf_hp);
+    assert_eq!(sim.substrate.entities.get(tank).unwrap().health.current, tank_hp);
 }
 
 #[test]
@@ -8740,7 +8673,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
 fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
     use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
-    use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+    use crate::sim::terrain_object::TerrainObjectState;
 
     fn run(kind: InvulnKind, techno_distance: i32) -> i32 {
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
@@ -8775,17 +8708,10 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
         let terrain_ref = sim.interner.intern("TREE01");
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: terrain_ref,
-                rx: 5,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 4,
-                lifecycle: TerrainObjectLifecycle::Live,
+            {
+                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+                terrain.occupation_bits = 4;
+                terrain
             },
         );
         sim.production
@@ -8864,17 +8790,12 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
     let terrain_ref = sim.interner.intern("TREE01");
     sim.production.terrain_objects.insert(
         terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_ref,
-            rx: 5,
-            ry: 5,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 4,
-            lifecycle: TerrainObjectLifecycle::Live,
+        {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 4;
+            terrain
         },
     );
     sim.production

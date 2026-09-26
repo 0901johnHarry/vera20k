@@ -180,7 +180,8 @@ impl SuperWeaponInstance {
         self.ready_tick = -1;
     }
 
-    /// Deactivate (revoke) this SW when the granting building is lost.
+    /// Deactivate (revoke) this SW when the granting building is lost. The
+    /// entry stays; a later grant activates it again.
     pub fn deactivate(&mut self) {
         self.is_active = false;
         self.is_ready = false;
@@ -370,8 +371,19 @@ pub fn tick_active_superweapon_effects(
 
 /// Refresh superweapon grants for a specific owner by scanning their buildings.
 ///
-/// Call when a building is completed, sold, or destroyed. Activates new grants
-/// and deactivates revoked ones.
+/// Call when a building is completed, sold, or destroyed. Grants each weapon
+/// the owner's buildings provide and the owner does not hold, including one
+/// revoked earlier, and revokes each one no building provides.
+///
+/// gamemd: the grant pass `HouseClass @ 0x0050B1D0` (Ghidra label
+/// `HouseClass__AI_ResumeProduction`, called from `BuildingClass::Unlimbo`
+/// and `HouseClass::Update`) calls `SuperClass::Grant @ 0x006CB560` for each
+/// weapon whose present flag `+0x6D` is clear. The revoke pass
+/// `HouseClass @ 0x0050AF10` (label `HouseClass__AI_ManageProduction`) calls
+/// `SuperClass @ 0x006CB7B0` (label `SuperClass__Deactivate`), which clears
+/// `+0x6D` and the charged flag `+0x6F`. Grant returns early only while
+/// `+0x6D` is set, and otherwise restarts the recharge timer at the full
+/// recharge time.
 pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
     use std::collections::BTreeSet;
 
@@ -414,18 +426,20 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
 
     let weapons = sim.super_weapons.entry(owner).or_default();
 
-    // Activate new grants.
+    // Grant each weapon the owner does not hold: a new one, or one revoked
+    // when its building was lost.
     for &sw_iid in &granted {
-        if !weapons.contains_key(&sw_iid) {
-            let sw_str = sim.interner.resolve(sw_iid).to_string();
-            let recharge = rules
-                .super_weapon(&sw_str)
-                .map_or(4500, |sw| sw.recharge_time_frames);
-            let mut inst = SuperWeaponInstance::new(sw_iid, owner);
-            inst.activate(recharge, sim.session.binary_frame);
-            log::info!("SuperWeapon '{}' granted to '{}'", sw_str, owner_str);
-            weapons.insert(sw_iid, inst);
+        if weapons.get(&sw_iid).is_some_and(|inst| inst.is_active) {
+            continue;
         }
+        let sw_str = sim.interner.resolve(sw_iid).to_string();
+        let recharge = rules
+            .super_weapon(&sw_str)
+            .map_or(4500, |sw| sw.recharge_time_frames);
+        let mut inst = SuperWeaponInstance::new(sw_iid, owner);
+        inst.activate(recharge, sim.session.binary_frame);
+        log::info!("SuperWeapon '{}' granted to '{}'", sw_str, owner_str);
+        weapons.insert(sw_iid, inst);
     }
 
     // Deactivate revoked (building destroyed, no other provides it).
@@ -524,5 +538,57 @@ mod frame_tests {
 
         tick_superweapon_instances(&mut sim, &rules);
         assert_eq!(ready(&sim), 1, "a ready weapon is not re-announced");
+    }
+
+    /// `SuperClass::Grant @ 0x006CB560` returns early only while the present
+    /// flag `+0x6D` is set, and the revoke at `0x006CB7B0` clears it: a house
+    /// that sells its only superweapon building and builds another gets the
+    /// weapon back, charging from the full recharge time.
+    #[test]
+    fn a_rebuilt_superweapon_building_grants_its_weapon_again() {
+        use crate::rules::ini_parser::IniFile;
+        let ini = IniFile::from_str(
+            "[SuperWeaponTypes]\n1=NukeSpecial\n[NukeSpecial]\nType=MultiMissile\n\
+             RechargeTime=1\nIsPowered=no\n\
+             [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+             [BuildingTypes]\n1=NAMISL\n\
+             [NAMISL]\nStrength=1000\nCost=100\nTechLevel=1\nOwner=Americans\n\
+             SuperWeapon=NukeSpecial\n",
+        );
+        let mut rules = RuleSet::from_ini(&ini).expect("superweapon grant rules should parse");
+        rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        let nuke = sim.interner.intern("NukeSpecial");
+        let no_heights = std::collections::BTreeMap::new();
+        let weapon = |sim: &Simulation| {
+            let inst = &sim.super_weapons[&owner][&nuke];
+            (
+                inst.is_active,
+                inst.is_ready,
+                inst.charge_start_tick,
+                inst.charge_duration,
+            )
+        };
+
+        let first = sim
+            .spawn_object("NAMISL", "Americans", 10, 10, 0, &rules, &no_heights)
+            .expect("first silo spawns");
+        refresh_super_weapons_for_owner(&mut sim, &rules, owner);
+        assert_eq!(weapon(&sim), (true, false, 0, 900));
+
+        assert!(crate::sim::production::sell_building_now_for_test(
+            &mut sim, &rules, first
+        ));
+        assert!(
+            !sim.super_weapons[&owner][&nuke].is_active,
+            "the sale revokes"
+        );
+
+        sim.session.binary_frame = 300;
+        sim.spawn_object("NAMISL", "Americans", 20, 20, 0, &rules, &no_heights)
+            .expect("second silo spawns");
+        refresh_super_weapons_for_owner(&mut sim, &rules, owner);
+        assert_eq!(weapon(&sim), (true, false, 300, 900));
     }
 }

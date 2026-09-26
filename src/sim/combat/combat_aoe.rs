@@ -578,7 +578,6 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
                             impact_rx,
                             impact_ry,
                             exact_impact,
-                            layer_context.terrain.as_deref(),
                             spread_leptons,
                             base_damage,
                             origin.warhead_ref,
@@ -616,7 +615,6 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
                     impact_rx,
                     impact_ry,
                     exact_impact,
-                    layer_context.terrain.as_deref(),
                     spread_leptons,
                     base_damage,
                     origin.warhead_ref,
@@ -1091,7 +1089,6 @@ fn push_terrain_aoe_damage(
     impact_rx: u16,
     impact_ry: u16,
     impact: AoEAirImpact,
-    terrain: Option<&ResolvedTerrainGrid>,
     spread_leptons: i64,
     base_damage: i32,
     warhead_ref: crate::sim::intern::InternedId,
@@ -1118,21 +1115,10 @@ fn push_terrain_aoe_damage(
     let impact_y = i32::from(impact_ry)
         .wrapping_mul(256)
         .wrapping_add(impact.sub_y.to_num::<i32>());
-    let target_x = i32::from(scan_rx)
-        .wrapping_mul(256)
-        .wrapping_add(CELL_CENTER_LEPTON.to_num::<i32>());
-    let target_y = i32::from(scan_ry)
-        .wrapping_mul(256)
-        .wrapping_add(CELL_CENTER_LEPTON.to_num::<i32>());
-    let target_z = terrain
-        .and_then(|grid| grid.cell(scan_rx, scan_ry))
-        .and_then(|cell| {
-            ground_height_leptons(cell.level, cell.slope_type, target_x, target_y).ok()
-        })
-        .unwrap_or(0);
+    let target_coord = object.world_coord();
     let distance_leptons = native_distance_leptons(
         (impact_x, impact_y, impact.z_leptons),
-        (target_x, target_y, target_z),
+        (target_coord.x, target_coord.y, target_coord.z),
     );
     if i64::from(distance_leptons) > spread_leptons {
         return;
@@ -4140,17 +4126,10 @@ mod tests {
         for (stable_id, rx) in [(100, 5), (101, 6), (102, 8)] {
             terrain_objects.insert(
                 stable_id,
-                TerrainObjectState {
-                    stable_id,
-                    native_unique_id: None,
-                    in_logic_vector: false,
-                    type_ref: tree_ref,
-                    rx,
-                    ry: 5,
-                    health: 100,
-                    max_health: 100,
-                    occupation_bits: 4,
-                    lifecycle: TerrainObjectLifecycle::Live,
+                {
+                    let mut terrain = TerrainObjectState::for_test(stable_id, tree_ref, rx, 5);
+                    terrain.occupation_bits = 4;
+                    terrain
                 },
             );
             terrain_cells.insert((rx, 5), stable_id);
@@ -4286,17 +4265,12 @@ mod tests {
 
         let terrain_id = 900;
         let terrain_ref = sim.interner.intern("TIBTREE");
-        let terrain_state = TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_ref,
-            rx: 5,
-            ry: 5,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 4,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let terrain_state = {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 4;
+            terrain
         };
         sim.production
             .terrain_objects
@@ -4447,17 +4421,12 @@ mod tests {
         let terrain_ref = sim.interner.intern("TIBTREE");
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: terrain_ref,
-                rx: 5,
-                ry: 5,
-                health: 10,
-                max_health: 10,
-                occupation_bits: 4,
-                lifecycle: TerrainObjectLifecycle::Live,
+            {
+                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+                terrain.health = 10;
+                terrain.max_health = 10;
+                terrain.occupation_bits = 4;
+                terrain
             },
         );
         sim.production

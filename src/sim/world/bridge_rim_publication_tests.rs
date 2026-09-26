@@ -117,7 +117,7 @@ fn bridge_rim_stock_damage_events_match_original_body_perpendicular_and_cleanup(
         for hit in case["hits"].as_array().unwrap() {
             let coord = serde_json::from_value(hit["input"].clone()).unwrap();
             let mut damage = event(&mut sim, coord);
-            damage.impact_z = i32::from(
+            damage.impact_z_leptons = 416 + 104 * i32::from(
                 sim.resolved_terrain
                     .as_ref()
                     .unwrap()
@@ -217,7 +217,7 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
         .enumerate()
     {
         let mut damage = event(&mut sim, coord);
-        damage.impact_z = i32::from(
+        damage.impact_z_leptons = 416 + 104 * i32::from(
             sim.resolved_terrain
                 .as_ref()
                 .unwrap()
@@ -242,7 +242,11 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(pristine, Default::default(), Vec::new(), Vec::new());
+    restored.rebuild_caches_after_load(
+        pristine,
+        Default::default(),
+        &rules,
+    );
     restored
         .restore_map_authority_after_snapshot_load(
             &rules,

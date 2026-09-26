@@ -90,9 +90,6 @@ pub(crate) struct MatchPresentationState {
     /// SHROUD.SHP brightness pixels blitted per-cell, then a full-screen multiply pass
     /// darkens the scene.
     pub(crate) shroud_buffer: Option<crate::render::shroud_buffer::ShroudBuffer>,
-    /// Cell (rx, ry) -> high-bridge facts used by the tactical cursor inverse.
-    pub(crate) tactical_bridge_inverse_map:
-        BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>,
     /// Active map theater name (e.g., DESERT).
     pub(crate) theater_name: String,
     /// Active map theater extension (e.g., des).

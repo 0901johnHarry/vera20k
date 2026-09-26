@@ -374,7 +374,7 @@ mod tests {
         ProjectileTarget, ProjectileTrajectory, ProjectileVelocity, ProjectileVisualState,
         TargetExpiryPolicy,
     };
-    use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+    use crate::sim::terrain_object::TerrainObjectState;
     use crate::sim::timer::CdTimer;
     use crate::sim::wave::Wave;
     use crate::sim::world::Simulation;
@@ -482,17 +482,11 @@ mod tests {
         let terrain_id = sim.allocate_stable_id();
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: InternedId::from_index(0),
-                rx: 7,
-                ry: 9,
-                health: 10,
-                max_health: 10,
-                occupation_bits: 0,
-                lifecycle: TerrainObjectLifecycle::Live,
+            {
+                let mut terrain = TerrainObjectState::for_test(terrain_id, InternedId::from_index(0), 7, 9);
+                terrain.health = 10;
+                terrain.max_health = 10;
+                terrain
             },
         );
 
