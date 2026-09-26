@@ -8,7 +8,9 @@
 //! - Single entity mutation: `store.get_mut(id)` borrows only that entry
 //! - Cross-entity reads during mutation: read target first (clone needed data),
 //!   then get_mut on the other entity
-//! - Batch iteration with mutation: collect `keys_sorted()`, loop with `get_mut()`
+//! - Batch iteration with mutation: collect `keys_sorted()`, loop with
+//!   `get_mut_if()` so an entity the walk leaves unchanged is not handed out
+//!   (every hand-out enters the touch logs; see `touched`)
 //! - One entity mutated while it reads the others live: `store.take_turn(id)`
 //!
 //! ## Dependency rules
@@ -290,6 +292,23 @@ impl EntityStore {
         Some(entity.as_mut())
     }
 
+    /// `get_mut` for an entity `admit` accepts, which it reads first: one it
+    /// refuses is not handed out, so it stays out of the touch logs. For walks
+    /// that visit every entity and change few.
+    pub(crate) fn get_mut_if(
+        &mut self,
+        stable_id: u64,
+        admit: impl FnOnce(&GameEntity) -> bool,
+    ) -> Option<&mut GameEntity> {
+        let stored = self.entities.len();
+        let entity = self.entities.get_mut(&stable_id)?;
+        if !admit(entity) {
+            return None;
+        }
+        self.touched.note(stable_id, stored);
+        Some(entity.as_mut())
+    }
+
     /// Lift one entity out of the store for its own turn, so it can be mutated
     /// while every other entity stays readable. The entity returns to the map
     /// when the guard drops, on every exit path. Its indexed identity (owner,
@@ -321,11 +340,11 @@ impl EntityStore {
 
     /// Get sorted keys for deterministic iteration.
     ///
-    /// Callers typically iterate with `get()` or `get_mut()`:
+    /// Callers typically iterate with `get()` or `get_mut_if()`:
     /// ```ignore
     /// let keys = store.keys_sorted();
     /// for &id in &keys {
-    ///     if let Some(entity) = store.get_mut(id) { ... }
+    ///     if let Some(entity) = store.get_mut_if(id, |entity| entity.rocking.is_some()) { ... }
     /// }
     /// ```
     pub fn keys_sorted(&self) -> Vec<u64> {

@@ -9140,6 +9140,68 @@ fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
     );
 }
 
+/// Idle objects are handed out mutably only for their own turn, plus an
+/// infantry's frame-end animation clock: the per-frame walks read first and
+/// borrow only what they change. The tanks carry turrets, whose idle return
+/// the facing pass sets every frame. Every hand-out lands in the entity store's
+/// touch logs, whose per-object budget (`TouchLog::note`) a 20k-object world
+/// overran when each walk borrowed every entity, so the block index and the
+/// kept Ground keys rebuilt from every object each tick.
+#[test]
+fn idle_objects_are_handed_out_only_for_their_own_turn() {
+    use crate::sim::entity_store::TouchReader;
+    use crate::sim::touch_log::Touched;
+
+    let (mut sim, _, grid) = stacking_crusher_world(24);
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n\
+         [E1]\nStrength=125\nArmor=flak\nSpeed=4\n\
+         [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\n\
+         Armor=heavy\nSpeed=6\nTurret=yes\n\
+         [GAPOWR]\nStrength=750\nArmor=wood\nFoundation=2x2\nPower=100\n",
+    ))
+    .expect("idle object rules parse");
+    let heights = empty_heights();
+    let mut vehicles = Vec::new();
+    let mut infantry = Vec::new();
+    let mut buildings = Vec::new();
+    for x in 4..12u16 {
+        for y in [6u16, 12] {
+            vehicles.push(
+                sim.spawn_object("MTNK", "Americans", x, y, 64, &rules, &heights)
+                    .expect("tank spawns"),
+            );
+            infantry.push(
+                sim.spawn_object("E1", "Americans", x, y + 3, 0, &rules, &heights)
+                    .expect("infantry spawns"),
+            );
+        }
+    }
+    for x in [4u16, 7, 10] {
+        buildings.push(
+            sim.spawn_object("GAPOWR", "Americans", x, 19, 0, &rules, &heights)
+                .expect("power plant spawns"),
+        );
+    }
+    for _ in 0..3 {
+        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    }
+    let _ = sim.substrate.entities.take_touched(TouchReader::BlockIndex);
+    let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    let Touched::Ids(ids) = sim.substrate.entities.take_touched(TouchReader::BlockIndex) else {
+        panic!("an idle tick overflowed the touch log");
+    };
+    // A log drops a repeat of its last id, so this counts the runs of
+    // hand-outs; an object's own turn is one run.
+    let handed_out = |id: u64| ids.iter().filter(|&&noted| noted == id).count();
+    for &id in vehicles.iter().chain(&buildings) {
+        assert!(handed_out(id) <= 1, "idle vehicle or building {id}");
+    }
+    for &id in &infantry {
+        assert!(handed_out(id) <= 2, "idle infantry {id}");
+    }
+}
+
 /// FAITHFUL CASE: eight vehicles selected as a group, one Move order each to
 /// a single destination cell, issued in one batch exactly as a group order is.
 #[test]
