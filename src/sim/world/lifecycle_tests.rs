@@ -6818,8 +6818,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     restored.rebuild_caches_after_load(
         pristine_terrain,
         Default::default(),
-        Vec::new(),
-        Vec::new(),
+        &rules,
     );
     restored
         .restore_map_authority_after_snapshot_load(&rules, &overlay_registry)

@@ -105,8 +105,7 @@ use crate::sim::world::Simulation;
 // ground/deck occupation bytes instead of reconstructing them from object lists.
 // Bumped 40 -> 41: HouseState gains the serialized MultiplayPassive house-type
 // fact. Defeat evaluation and the game-over alive scan both skip passive houses,
-// so it is an authoritative outcome input and cannot be re-derived on load —
-// `rebuild_caches_after_load` takes no RuleSet. Serialized but NOT hashed.
+// so the saved house-type fact remains authority on load. Serialized but NOT hashed.
 // Bumped 41 -> 42: GameEntity gains the passive target-acquisition bookkeeping
 // — `last_target_scan_frame` and `passively_acquired_target` — and its
 // `passive_scan_timer` is now armed at the construction frame instead of left
@@ -2524,8 +2523,7 @@ mod tests {
             restored.rebuild_caches_after_load(
                 resolved,
                 Default::default(),
-                Vec::new(),
-                Vec::new(),
+                &crate::sim::runtime::SimResources::empty().rules,
             );
             restored
         }
@@ -2848,8 +2846,7 @@ mod tests {
         sim.rebuild_caches_after_load(
             terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
     }
 
@@ -2927,8 +2924,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             map_terrain,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
 
         let restore_output = restored
@@ -6953,8 +6949,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             terrain_template,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
         let rebuilt_dummy = restored
             .resolved_terrain
@@ -7087,8 +7082,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             pristine_load_template,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &crate::sim::runtime::SimResources::empty().rules,
         );
         let rebuilt_terrain = restored.resolved_terrain.as_ref().unwrap();
         assert_eq!(
@@ -7860,8 +7854,7 @@ mod tests {
         restored.rebuild_caches_after_load(
             stale_original_grid,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
 
         assert_eq!(

@@ -335,6 +335,10 @@ pub(crate) fn load_with_launch(
     let overlay_grid = output.overlay_grid;
     let height_map = resolved_terrain.build_height_map();
     let bridge_height_map = resolved_terrain.build_bridge_height_map();
+    // Match the ordinary app's pre-launch binding: production options need
+    // identities for unspawned types too, and snapshots carry this interner.
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
     let _launch_result = crate::sim::scenario_bootstrap::
         apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
             &mut sim,
@@ -631,6 +635,25 @@ mod retail_construction_tests {
         let mut b = load(&ra2, "Dustbowl.mmx", seed).expect("second headless load");
 
         let rules = &a.runtime.resources.rules;
+        for name in rules
+            .infantry_ids
+            .iter()
+            .chain(&rules.vehicle_ids)
+            .chain(&rules.aircraft_ids)
+            .chain(&rules.building_ids)
+        {
+            let id = a
+                .sim()
+                .interner
+                .get(name)
+                .expect("bound unspawned type identity");
+            assert!(a.sim().interner.resolve(id).eq_ignore_ascii_case(name));
+            assert_eq!(
+                a.sim().object_type(id, rules).map(|object| &object.id),
+                rules.object(name).map(|object| &object.id)
+            );
+        }
+        assert!(a.sim().rule_handles.is_some(), "headless combat rule bindings");
         assert_eq!(rules.general.metallic_debris.len(), 15);
         assert_eq!(
             rules.general.metallic_debris.last().map(String::as_str),

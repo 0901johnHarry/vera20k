@@ -104,8 +104,7 @@ fn assert_collapsed_bridge_restores(
     restored.rebuild_caches_after_load(
         template.clone(),
         live.terrain_speed_config.clone(),
-        live.bridge_explosions.clone(),
-        live.metallic_debris.clone(),
+        &resources.rules,
     );
     restored
         .restore_map_authority_after_snapshot_load(&resources.rules, &resources.overlay_registry)

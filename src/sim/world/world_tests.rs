@@ -5132,7 +5132,11 @@ fn test_bridge_orchestrator_state_machine_path_collapses_anchor_and_deactivates_
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(terrain_cache, Default::default(), Vec::new(), Vec::new());
+    restored.rebuild_caches_after_load(
+        terrain_cache,
+        Default::default(),
+        &rules,
+    );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert_eq!(restored.path_grid(), Some(expected_path.as_ref()));
 }

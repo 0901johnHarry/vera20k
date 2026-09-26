@@ -87,8 +87,7 @@ fn bridge_neighbor_terrain_retains_native_surface_coords_through_damage_and_rest
         restored.rebuild_caches_after_load(
             changed_grid,
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
-            Vec::new(),
-            Vec::new(),
+            &rules,
         );
         assert_eq!(
             restored.production.terrain_objects[&id].world_coord(),

@@ -403,10 +403,8 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     for group in &mut state.match_state.input.control_groups {
         group.clear();
     }
-    // Pin the match-scoped local player once at launch. When the launch flow
-    // supplies no identity (dev/sandbox), the pin stays None and the legacy
-    // override/heuristic path resolves the owner instead.
-    state.match_state.local_player_owner = result.scenario.initial_local_owner.clone();
+    // Ordinary identity is already bound in Simulation.session.current_house.
+    // Keep a preference only for development worlds without that authority.
     state.match_state.local_owner_override = result.scenario.initial_local_owner;
     // F11: reset the whole per-match audio owner. The old reset cleared only
     // three EVA latches — the tick-indexed under-attack suppression window
@@ -455,8 +453,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
             let simulation = &rt.simulation;
             let local_side = state
                 .match_state
-                .local_player_owner
-                .as_deref()
+                .local_player_owner()
                 .and_then(|owner| {
                     crate::sim::house_state::house_state_for_owner(
                         &simulation.houses,

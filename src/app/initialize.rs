@@ -614,7 +614,6 @@ impl App {
                 scenario_elapsed_clock:
                     crate::app::match_runtime::frame_pacer::ScenarioElapsedClock::new(),
                 configured_input_delay_ticks: input_delay_ticks,
-                local_player_owner: None,
                 local_owner_override: None,
                 sandbox_full_visibility: false,
                 paused: false,

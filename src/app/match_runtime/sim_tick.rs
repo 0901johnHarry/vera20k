@@ -102,7 +102,7 @@ pub(crate) fn drive_local_player_outcome_voice_wait(state: &mut AppState, wall_m
         return;
     }
     if state.match_state.scenario_outcome.is_none() {
-        let Some(owner) = state.match_state.local_player_owner.as_deref() else {
+        let Some(owner) = state.match_state.local_player_owner() else {
             return;
         };
         let outcome = state

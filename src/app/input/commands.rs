@@ -29,8 +29,8 @@ fn intern_in_sim(state: &mut AppState, s: &str) -> InternedId {
 
 /// Resolve the local owner and return the owned String.
 ///
-/// Read-only: identity comes from the match-scoped pin (or the sandbox
-/// heuristic when unpinned). Command issue must never REWRITE identity —
+/// Read-only: identity comes from the live scenario's saved current House
+/// (or the sandbox heuristic when absent). Command issue never rewrites it —
 /// the old per-action override write made "who am I" drift with whatever
 /// the heuristic last returned, a lockstep hazard.
 fn resolve_owner(state: &mut AppState) -> String {
@@ -651,10 +651,9 @@ pub(crate) fn spawn_test_units_for_local_owner(state: &mut AppState) {
 }
 
 pub(crate) fn cycle_local_owner(state: &mut AppState) {
-    // Debug-only control: inert whenever a match pinned the local player at
-    // launch — identity must not move mid-match. Cycling remains available in
-    // unpinned sandbox flows (empty-map dev sessions).
-    if state.match_state.local_player_owner.is_some() {
+    // Debug cycling is available only without a scenario current House.
+    // It cannot repoint ordinary saved identity through a presentation choice.
+    if state.match_state.local_player_owner().is_some() {
         log::info!("Cycle owner ignored: local player is pinned for this match");
         return;
     }
@@ -680,19 +679,26 @@ pub(crate) fn preferred_local_owner_name(state: &AppState) -> Option<String> {
 }
 
 pub(crate) fn preferred_local_owner(state: &AppState) -> Option<String> {
-    // Match-scoped pinned identity — set once at launch, never rewritten.
-    // Selection must NEVER repoint the local player: under lockstep each
-    // client issues commands as its fixed house, so identity cannot be a
-    // per-call heuristic. Everything below is the legacy dev/sandbox
-    // fallback, reachable only when no launch flow pinned an owner.
-    if let Some(owner) = &state.match_state.local_player_owner {
-        return Some(owner.clone());
+    let sim = &state.match_state.sim_runtime.as_ref()?.simulation;
+    preferred_local_owner_for_sim(
+        sim,
+        state.rules(),
+        &state.match_state.match_presentation.house_roster,
+        state.match_state.local_owner_override.as_deref(),
+    )
+}
+
+fn preferred_local_owner_for_sim(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    roster: &crate::map::houses::HouseRoster,
+    sandbox_override: Option<&str>,
+) -> Option<String> {
+    // Normal command and presentation consumers share saved native identity.
+    // App debug preferences and selection apply only to identity-less sandboxes.
+    if let Some(owner) = crate::app::match_runtime::state::scenario_local_owner(sim) {
+        return Some(owner.to_string());
     }
-    let sim = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)?;
     // Sandbox fallback: prefer owner of selected unit first.
     for entity in sim.entities().values() {
         let owner_str = sim.interner.resolve(entity.owner());
@@ -702,9 +708,9 @@ pub(crate) fn preferred_local_owner(state: &AppState) -> Option<String> {
     }
 
     // Then explicit local override set by debug actions.
-    if let Some(owner) = &state.match_state.local_owner_override {
+    if let Some(owner) = sandbox_override {
         if is_playable_house_name(owner) {
-            return Some(owner.clone());
+            return Some(owner.to_string());
         }
     }
 
@@ -720,7 +726,7 @@ pub(crate) fn preferred_local_owner(state: &AppState) -> Option<String> {
         let mut ranked: Vec<(usize, String)> = structure_counts
             .into_iter()
             .filter_map(|(owner, count)| {
-                let strict_buildable = state.rules().is_some_and(|rules| {
+                let strict_buildable = rules.is_some_and(|rules| {
                     production::has_strict_build_option_for_owner(sim, rules, &owner)
                 });
                 strict_buildable.then_some((count, owner))
@@ -728,14 +734,14 @@ pub(crate) fn preferred_local_owner(state: &AppState) -> Option<String> {
             .collect();
         ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
         if let Some((_, owner)) = ranked.first() {
-            return Some(owner.clone());
+            return Some(owner.to_string());
         }
     }
 
     // Next fallback: playable houses from map config.
-    let houses = collect_playable_owners(state);
+    let houses = collect_playable_owners_from(roster, Some(sim));
     if let Some(owner) = houses.first() {
-        return Some(owner.clone());
+        return Some(owner.to_string());
     }
 
     // Last fallback: any playable owner present in entity store.
@@ -751,22 +757,24 @@ pub(crate) fn preferred_local_owner(state: &AppState) -> Option<String> {
 }
 
 pub(crate) fn collect_playable_owners(state: &AppState) -> Vec<String> {
-    let mut owners: Vec<String> = state
-        .match_state
-        .match_presentation
-        .house_roster
+    collect_playable_owners_from(
+        &state.match_state.match_presentation.house_roster,
+        state.match_state.sim_runtime.as_ref().map(|rt| &rt.simulation),
+    )
+}
+
+fn collect_playable_owners_from(
+    roster: &crate::map::houses::HouseRoster,
+    simulation: Option<&crate::sim::world::Simulation>,
+) -> Vec<String> {
+    let mut owners: Vec<String> = roster
         .houses
         .iter()
         .filter(|house| is_playable_house_name(&house.name))
         .filter(|house| house.player_control != Some(false))
         .map(|house| house.name.clone())
         .collect();
-    if let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    {
+    if let Some(sim) = simulation {
         for entity in sim.entities().values() {
             let owner_str = sim.interner.resolve(entity.owner());
             if is_playable_house_name(owner_str) {
@@ -1420,3 +1428,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "local_owner_tests.rs"]
+mod local_owner_tests;

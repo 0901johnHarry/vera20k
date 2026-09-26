@@ -2851,6 +2851,25 @@ impl Simulation {
         }
     }
 
+    /// Resolve the rules-owned ordered AnimType lists in this world's interner.
+    /// These IDs are derived, never portable between independently constructed
+    /// worlds. Native ReadGeneral owns the list names/order; both map binding
+    /// and snapshot restoration project those names through this one writer.
+    pub(crate) fn resolve_rule_animation_lists(&mut self, rules: &RuleSet) {
+        self.bridge_explosions = rules
+            .bridge_rules
+            .explosions
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
+        self.metallic_debris = rules
+            .general
+            .metallic_debris
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
+    }
+
     /// Pre-resolved rule handles for combat comparisons.
     ///
     /// # Panics
@@ -4748,13 +4767,13 @@ impl Simulation {
     ///
     /// Overlay, bridge, and navigation authority are restored separately by
     /// `restore_map_authority_after_snapshot_load` once rules and the overlay
-    /// registry are bound.
+    /// registry are bound. Rule animation lists are re-interned from names:
+    /// an outgoing simulation's numeric IDs do not belong to this saved world.
     pub fn rebuild_caches_after_load(
         &mut self,
         mut resolved_terrain: ResolvedTerrainGrid,
         terrain_speed_config: terrain_speed::TerrainSpeedConfig,
-        bridge_explosions: Vec<InternedId>,
-        metallic_debris: Vec<InternedId>,
+        rules: &RuleSet,
     ) {
         resolved_terrain.bind_shared_cell_dummy(self.shared_cell_dummy.clone());
         // Restore externally-derived data only. Substrate caches are rebuilt
@@ -4784,8 +4803,7 @@ impl Simulation {
 
         self.resolved_terrain = Some(resolved_terrain);
         self.terrain_speed_config = terrain_speed_config;
-        self.bridge_explosions = bridge_explosions;
-        self.metallic_debris = metallic_debris;
+        self.resolve_rule_animation_lists(rules);
         self.terrain_costs = terrain_costs;
     }
 
