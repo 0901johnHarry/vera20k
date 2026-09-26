@@ -167,6 +167,19 @@ impl GpuContext {
                 downlevel.flags
             );
         }
+        // TerrainDrawRenderer reduces ordered read-only Bullet destinations
+        // with fragment atomics. Reject an insufficient downlevel adapter here
+        // rather than panicking later during render-pipeline validation.
+        if !downlevel
+            .flags
+            .contains(wgpu::DownlevelFlags::FRAGMENT_WRITABLE_STORAGE)
+        {
+            bail!(
+                "native projectile drawing requires fragment-writable storage, \
+                 adapter downlevel flags are {:?}",
+                downlevel.flags
+            );
+        }
         let surface_format: wgpu::TextureFormat = surface_caps
             .formats
             .iter()

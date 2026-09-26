@@ -3118,13 +3118,13 @@ impl RuleSet {
             .collect();
         // The registry processor owns native read timing and retained values;
         // the runtime definition receives that result, not another ART read.
-        for (name, flat) in processed.projectile_flat_states() {
+        for (name, art) in processed.projectile_art_states() {
             if let Some(projectile) = rules
                 .projectiles
                 .values_mut()
                 .find(|projectile| projectile.id.eq_ignore_ascii_case(name))
             {
-                projectile.flat = flat;
+                art.apply_to(projectile);
             }
         }
         rules.source_ini_hash = processed.content_hash();
@@ -3919,7 +3919,7 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v7".hash(&mut hasher);
+        b"rules-simulation-config-v8".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Selection order and duplicate references affect the scenario RNG's
         // consumers, including the truncated retail pool's unread AnimType D.
@@ -3951,10 +3951,32 @@ impl RuleSet {
         // These effective ART values feed ordinary FireAt after load. Hash
         // consumed values in canonical type order, not ART insertion order,
         // authored-key presence, or unrelated presentation metadata.
-        b"art-projectile-launch-config-v2".hash(&mut hasher);
+        b"art-projectile-config-v3".hash(&mut hasher);
         self.projectiles
             .iter()
-            .map(|(id, projectile)| (id.to_ascii_uppercase(), (projectile.voxel, projectile.flat)))
+            .map(|(id, p)| {
+                (
+                    id.to_ascii_uppercase(),
+                    (
+                        (
+                            &p.image,
+                            &p.image_load,
+                            p.voxel,
+                            p.theater,
+                            p.new_theater,
+                            p.inviso,
+                        ),
+                        (p.rotates, p.flat, p.anim_palette),
+                        (
+                            p.anim_low,
+                            p.anim_high,
+                            p.anim_rate,
+                            p.spawn_delay,
+                            &p.trailer,
+                        ),
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>()
             .hash(&mut hasher);
         self.object_list
@@ -4282,16 +4304,8 @@ impl RuleSet {
         self.art_registry = art.clone();
         self.art_registry
             .apply_anim_type_read_states(&self.anim_type_art_read_states);
-        // ObjectRead 5F933B/5F962E precedes BulletRead 46C1E8. On a fresh
-        // type the Object image defaults to its ID, even though Bullet's later
-        // missing-Image read clears its separate rendering name. An explicit
-        // Image never falls back to the type ID or follows ART Image redirects.
-        for projectile in self.projectiles.values_mut() {
-            let image = projectile.image.as_deref().unwrap_or(&projectile.id);
-            if let Some(voxel) = art.get(image).and_then(|entry| entry.authored_voxel) {
-                projectile.voxel = voxel;
-            }
-        }
+        // Projectile ART is already projected from the per-pass registry owner.
+        // A final-image reread here would lose omission/cache/default semantics.
         let ai_base_spacing = self.ai_base_spacing;
         let mut patched: u32 = 0;
         let mut dock_patched: u32 = 0;

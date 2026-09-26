@@ -2,9 +2,11 @@
 //! Native row/leaf goldens are checked separately; this gate checks caller
 //! ordering, fresh destination snapshots and real pipeline read/write policies.
 use super::super::draw_plan_lowering::{
-    GroundPieceInstance, PlannedGroundObjectInstance, lower_ground_object_instances,
+    ObjectPieceInstance, PlannedObjectInstance, lower_ground_object_instances,
+    lower_object_instances,
 };
 use super::*;
+use crate::render::batch::InstanceBufferPool;
 use crate::render::tactical_draw_plan::{BlitPolicy, ObjectDraw, SpriteEncoding, TacticalLayer};
 use crate::render::terrain_draw::{TerrainDrawRenderer, TerrainPiece};
 use crate::render::terrain_draw_gpu_tests::{Gpu, camera, clear, encoded, extent, sprite};
@@ -13,7 +15,7 @@ use wgpu::util::DeviceExt;
 #[test]
 #[ignore = "requires GPU; retained native Display history through production lowering and draw replay"]
 fn retained_ground_history_controls_overlapping_atlas_pixels() {
-    use super::super::draw_plan_lowering::NativeGroundOrder;
+    use super::super::draw_plan_lowering::NativeDisplayOrder;
     use crate::sim::world::display_layers::{DisplayLayer, DisplayLayers};
 
     // Execute the same relocation/sort history as the original-instruction
@@ -67,7 +69,7 @@ fn retained_ground_history_controls_overlapping_atlas_pixels() {
     // Save/restore must not replace retained history with freshly sorted keys.
     let display: DisplayLayers =
         bincode::deserialize(&bincode::serialize(&display).unwrap()).unwrap();
-    let order = NativeGroundOrder::new(display.members(DisplayLayer::GROUND));
+    let order = NativeDisplayOrder::new(display.members(DisplayLayer::GROUND));
     let gpu = Gpu::new();
     let size = [4, 2];
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
@@ -77,7 +79,7 @@ fn retained_ground_history_controls_overlapping_atlas_pixels() {
     let cv = color.create_view(&Default::default());
     let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
     let dv = depth.create_view(&Default::default());
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     terrain.prepare(&gpu.device, &color, &dv, batch.camera_uniform());
     let shp = SpriteAtlas::from_test_pages(
         [[0, 252, 0, 255], [248, 0, 0, 255], [0, 0, 248, 255]]
@@ -105,10 +107,10 @@ fn retained_ground_history_controls_overlapping_atlas_pixels() {
                     4 => (0., 1),
                     _ => unreachable!(),
                 };
-                PlannedGroundObjectInstance::object(
+                PlannedObjectInstance::object(
                     order.object_draw(id, SpriteEncoding::Plain).unwrap(),
-                    vec![GroundPieceInstance {
-                        target: GroundTexture::ShpPage(page),
+                    vec![ObjectPieceInstance {
+                        target: ObjectTexture::ShpPage(page),
                         render_z: RenderZPolicy::None,
                         instance: sprite([x, 0.], [2., 2.], 0.),
                     }],
@@ -127,15 +129,16 @@ fn retained_ground_history_controls_overlapping_atlas_pixels() {
         65535,
         wgpu::LoadOp::Clear(wgpu::Color::WHITE),
     );
-    draw_native_ground_object_pass(
+    draw_native_object_pass(
         &mut encoder,
         &cv,
         &dv,
         &mut terrain,
         [0, 0, 4, 2],
         &batch,
-        &pool,
+        pool.get("ground_objects"),
         &ground,
+        None,
         None,
         None,
         &VxlSlopeTransitionCache::default(),
@@ -169,7 +172,7 @@ fn vehicle_shadow_after_body_preserves_body_and_clipped_read_only_depth() {
     let cv = color.create_view(&Default::default());
     let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
     let dv = depth.create_view(&Default::default());
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     terrain.prepare(&gpu.device, &color, &dv, batch.camera_uniform());
     let mut mask = vec![1; 24];
     for y in 0..2 {
@@ -214,7 +217,7 @@ fn vehicle_shadow_after_body_preserves_body_and_clipped_read_only_depth() {
             shadow.z_gradient = body.z_gradient;
             shadow.zshape_origin = [3., 4.];
             shadow.draw_state.fx_flags = crate::render::draw_state::FX_SHADOW;
-            PlannedGroundObjectInstance::object(
+            PlannedObjectInstance::object(
                 ObjectDraw {
                     id: i,
                     layer: TacticalLayer(2),
@@ -222,13 +225,19 @@ fn vehicle_shadow_after_body_preserves_body_and_clipped_read_only_depth() {
                     policy: BlitPolicy::z_read(SpriteEncoding::Plain),
                 },
                 vec![
-                    GroundPieceInstance {
-                        target: GroundTexture::UnitAtlasPage(0),
+                    ObjectPieceInstance {
+                        // Both ordinary unit sources must preserve the same body/shadow
+                        // order; the second body exercises the cached-pose binding.
+                        target: if i == 0 {
+                            ObjectTexture::UnitAtlasPage(0)
+                        } else {
+                            ObjectTexture::UnitPose
+                        },
                         render_z: RenderZPolicy::ReadOnly,
                         instance: body,
                     },
-                    GroundPieceInstance {
-                        target: GroundTexture::UnitAtlasPage(1),
+                    ObjectPieceInstance {
+                        target: ObjectTexture::UnitAtlasPage(1),
                         render_z: RenderZPolicy::ReadOnly,
                         instance: shadow,
                     },
@@ -256,17 +265,18 @@ fn vehicle_shadow_after_body_preserves_body_and_clipped_read_only_depth() {
         65535,
         wgpu::LoadOp::Clear(wgpu::Color::WHITE),
     );
-    let stats = draw_native_ground_object_pass(
+    let stats = draw_native_object_pass(
         &mut encoder,
         &cv,
         &dv,
         &mut terrain,
         [2, 0, 8, 6],
         &batch,
-        &pool,
+        pool.get("ground_objects"),
         &ground,
         None,
         Some(&units),
+        Some(&units.page(0).unwrap().texture),
         &VxlSlopeTransitionCache::default(),
         None,
         Some(&palettes),
@@ -322,7 +332,7 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
     let cv = color.create_view(&Default::default());
     let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
     let dv = depth.create_view(&Default::default());
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     terrain.prepare(&gpu.device, &color, &dv, batch.camera_uniform());
     let rgba = |rgb: [u8; 3]| {
         batch.create_texture_on_device(
@@ -379,39 +389,39 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
         });
     let steps = [
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Body),
+            ObjectTexture::TerrainStatic(TerrainPiece::Body),
             RenderZPolicy::ReadWrite,
             32767,
         ),
-        (GroundTexture::ShpPage(0), RenderZPolicy::ReadOnly, 32766),
+        (ObjectTexture::ShpPage(0), RenderZPolicy::ReadOnly, 32766),
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32766,
         ),
-        (GroundTexture::ShpPage(1), RenderZPolicy::ReadWrite, 32765),
+        (ObjectTexture::ShpPage(1), RenderZPolicy::ReadWrite, 32765),
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32765,
         ), // equality rejects
         (
-            GroundTexture::UnitAtlasPage(0),
+            ObjectTexture::UnitAtlasPage(0),
             RenderZPolicy::ReadOnly,
             32764,
         ),
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             32764,
         ),
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             -1,
         ),
         (
-            GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+            ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
             RenderZPolicy::ReadWrite,
             -1,
         ),
@@ -441,14 +451,14 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
                     // Three disjoint tile lanes exercise real multi-member waves.
                     // Every ordinary run still separates the next native event.
                     let id = i * 3 + lane;
-                    PlannedGroundObjectInstance::object(
+                    PlannedObjectInstance::object(
                         ObjectDraw {
                             id: id as u64,
                             layer: TacticalLayer(2),
                             display_order: id as u64,
                             policy: BlitPolicy::z_read(SpriteEncoding::Plain),
                         },
-                        vec![GroundPieceInstance {
+                        vec![ObjectPieceInstance {
                             target,
                             render_z,
                             instance: sprite(
@@ -484,17 +494,18 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
             batch.draw_with_buffer_zdepth(&mut pass, &tmp_group, &tmp_buffer, 1);
         }
         // Clip both edges; every restarted normal pass must restore this clip.
-        let stats = draw_native_ground_object_pass(
+        let stats = draw_native_object_pass(
             &mut encoder,
             &cv,
             &dv,
             &mut terrain,
             [1, 0, 74, 8],
             &batch,
-            &pool,
+            pool.get("ground_objects"),
             &ground,
             Some(&overlay),
             Some(&units),
+            None,
             &cache,
             Some(&shp),
             Some(&palettes),
@@ -502,7 +513,7 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
         );
         let tree_steps = steps[..count]
             .iter()
-            .filter(|step| matches!(step.0, GroundTexture::TerrainStatic(_)))
+            .filter(|step| matches!(step.0, ObjectTexture::TerrainStatic(_)))
             .count();
         assert_eq!(stats.pieces, tree_steps * 3);
         assert_eq!(
@@ -544,8 +555,8 @@ fn tree_transactions_preserve_tmp_shp_voxel_overlap_and_coalesced_order() {
 }
 
 #[test]
-#[ignore = "requires GPU; actual20k ordinary UnitAtlas range remains outside TREE planner"]
-fn tree_batching_ground_fences_do_not_plan_ordinary_unit_instances() {
+#[ignore = "requires GPU; actual20k ordinary UnitAtlas range remains outside Ground/Air destination planner"]
+fn destination_batching_layer_fences_do_not_plan_ordinary_unit_instances() {
     let gpu = Gpu::new();
     let size = [96, 8];
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
@@ -555,7 +566,7 @@ fn tree_batching_ground_fences_do_not_plan_ordinary_unit_instances() {
     let cv = color.create_view(&Default::default());
     let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
     let dv = depth.create_view(&Default::default());
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     terrain.prepare(&gpu.device, &color, &dv, batch.camera_uniform());
     let overlay = OverlayAtlas::from_test_texture(batch.create_texture_on_device(
         &gpu.device,
@@ -565,6 +576,16 @@ fn tree_batching_ground_fences_do_not_plan_ordinary_unit_instances() {
         1,
         Some(&[1]),
     ));
+    let shp = SpriteAtlas::from_test_pages(vec![crate::render::sprite_atlas::SpriteAtlasPage {
+        texture: batch.create_texture_on_device(
+            &gpu.device,
+            &gpu.queue,
+            &[80, 180, 80, 255],
+            1,
+            1,
+            Some(&[1]),
+        ),
+    }]);
     let units = UnitAtlas::from_test_pages(vec![crate::render::unit_atlas::UnitAtlasPage {
         texture: batch.create_unit_atlas_texture_on_device(&gpu.device, &gpu.queue, 1, 1, &[0]),
     }]);
@@ -575,106 +596,128 @@ fn tree_batching_ground_fences_do_not_plan_ordinary_unit_instances() {
     let palettes = PaletteSet::new_on_device(&gpu.device, &gpu.queue, &palette, &ramps, &[]);
     let cache = VxlSlopeTransitionCache::default();
     let mut pool = InstanceBufferPool::new();
-    for ordinary_count in [1usize, 20_000] {
-        let entries = (0..ordinary_count + 2)
-            .map(|i| {
-                let (target, instance) = if i == 0 {
-                    (
-                        GroundTexture::TerrainStatic(TerrainPiece::Body),
-                        sprite([0., 4.], [12., 1.], 3.),
-                    )
-                } else if i == ordinary_count + 1 {
-                    (
-                        GroundTexture::TerrainStatic(TerrainPiece::Shadow),
-                        sprite([64., 4.], [12., 1.], 3.),
-                    )
-                } else {
-                    // Real UnitAtlas draw range, deliberately outside this tiny
-                    // attachment. This is a planner-work/fence gate, not20k FPS.
-                    (
-                        GroundTexture::UnitAtlasPage(0),
-                        sprite([200., 200.], [1., 1.], 0.),
-                    )
-                };
-                PlannedGroundObjectInstance::object(
-                    ObjectDraw {
-                        id: i as u64,
-                        layer: TacticalLayer(2),
-                        display_order: i as u64,
-                        policy: BlitPolicy::z_read(SpriteEncoding::Plain),
-                    },
-                    vec![GroundPieceInstance {
-                        target,
-                        render_z: RenderZPolicy::ReadWrite,
-                        instance,
-                    }],
-                )
-            })
-            .collect();
-        let ground = lower_ground_object_instances(entries);
-        assert_eq!(ground.runs.len(), 3);
-        assert_eq!(ground.runs[1].count, ordinary_count as u32);
-        pool.upload_on_device(&gpu.device, &gpu.queue, "ground_objects", &ground.instances);
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        clear(
-            &mut encoder,
-            &cv,
-            &dv,
-            65535,
-            wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-        );
-        let start = std::time::Instant::now();
-        let stats = draw_native_ground_object_pass(
-            &mut encoder,
-            &cv,
-            &dv,
-            &mut terrain,
-            [0, 0, 96, 8],
-            &batch,
-            &pool,
-            &ground,
-            Some(&overlay),
-            Some(&units),
-            &cache,
-            None,
-            Some(&palettes),
-            batch.default_zshape_bind_group(),
-        );
-        let encode_us = start.elapsed().as_secs_f64() * 1e6;
-        assert_eq!(
-            stats,
-            crate::render::terrain_draw::TerrainBatchStats {
-                pieces: 2,
-                waves: 2,
-                tile_dependencies: 2
+    for (layer_index, read_only) in [(2usize, false), (3usize, true)] {
+        let destination = |piece| {
+            if read_only {
+                ObjectTexture::ProjectileShp(0, piece)
+            } else {
+                ObjectTexture::TerrainStatic(piece)
             }
-        );
-        let reads = [
-            gpu.read(&mut encoder, &color),
-            gpu.read(&mut encoder, &depth),
-        ];
-        let output = gpu.finish(encoder, &reads, size);
-        for y in 0..8 {
-            for x in 0..96 {
-                let (word, z) = if y == 4 && x < 12 {
-                    (0x55aa, 32767)
-                } else if y == 4 && (64..76).contains(&x) {
-                    (0x7bef, 32767)
-                } else {
-                    (0xffff, 65535)
-                };
-                let p = (y * 96 + x) * 4;
-                assert_eq!(&output[0][p..p + 4], &encoded(word, format));
-                assert_eq!(
-                    crate::render::native_z::stored_z(f32::from_le_bytes(
-                        output[1][p..p + 4].try_into().unwrap()
-                    )),
-                    z
+        };
+        for ordinary_count in [1usize, 20_000] {
+            let entries = (0..ordinary_count + 2)
+                .map(|i| {
+                    let (target, instance) = if i == 0 {
+                        (
+                            destination(TerrainPiece::Body),
+                            sprite([0., 4.], [12., 1.], 3.),
+                        )
+                    } else if i == ordinary_count + 1 {
+                        (
+                            destination(TerrainPiece::Shadow),
+                            sprite([64., 4.], [12., 1.], 3.),
+                        )
+                    } else {
+                        // Real UnitAtlas draw range, deliberately outside this tiny
+                        // attachment. This is a planner-work/fence gate, not20k FPS.
+                        (
+                            ObjectTexture::UnitAtlasPage(0),
+                            sprite([200., 200.], [1., 1.], 0.),
+                        )
+                    };
+                    PlannedObjectInstance::object(
+                        ObjectDraw {
+                            id: i as u64,
+                            layer: TacticalLayer(layer_index as u8),
+                            display_order: i as u64,
+                            policy: BlitPolicy::z_read(SpriteEncoding::Plain),
+                        },
+                        vec![ObjectPieceInstance {
+                            target,
+                            render_z: if read_only {
+                                RenderZPolicy::ReadOnly
+                            } else {
+                                RenderZPolicy::ReadWrite
+                            },
+                            instance,
+                        }],
+                    )
+                })
+                .collect();
+            let layers = lower_object_instances(entries);
+            let layer = &layers[layer_index];
+            assert_eq!(layer.runs.len(), 3);
+            assert_eq!(layer.runs[1].count, ordinary_count as u32);
+            pool.upload_on_device(&gpu.device, &gpu.queue, "object_layer", &layer.instances);
+            let mut samples = Vec::with_capacity(3);
+            for sample in 0..4 {
+                let mut encoder = gpu.device.create_command_encoder(&Default::default());
+                clear(
+                    &mut encoder,
+                    &cv,
+                    &dv,
+                    65535,
+                    wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                 );
+                let start = std::time::Instant::now();
+                let stats = draw_native_object_pass(
+                    &mut encoder,
+                    &cv,
+                    &dv,
+                    &mut terrain,
+                    [0, 0, 96, 8],
+                    &batch,
+                    pool.get("object_layer"),
+                    layer,
+                    Some(&overlay),
+                    Some(&units),
+                    None,
+                    &cache,
+                    Some(&shp),
+                    Some(&palettes),
+                    batch.default_zshape_bind_group(),
+                );
+                let encode_us = start.elapsed().as_secs_f64() * 1e6;
+                if sample > 0 {
+                    samples.push(encode_us);
+                }
+                assert_eq!(
+                    stats,
+                    crate::render::terrain_draw::TerrainBatchStats {
+                        pieces: 2,
+                        waves: 2,
+                        passes: if read_only { 8 } else { 4 },
+                        tile_dependencies: if read_only { 0 } else { 2 }
+                    }
+                );
+                let reads = [
+                    gpu.read(&mut encoder, &color),
+                    gpu.read(&mut encoder, &depth),
+                ];
+                let output = gpu.finish(encoder, &reads, size);
+                for y in 0..8 {
+                    for x in 0..96 {
+                        let (word, z) = if y == 4 && x < 12 {
+                            (0x55aa, if read_only { 65535 } else { 32767 })
+                        } else if y == 4 && (64..76).contains(&x) {
+                            (0x7bef, if read_only { 65535 } else { 32767 })
+                        } else {
+                            (0xffff, 65535)
+                        };
+                        let p = (y * 96 + x) * 4;
+                        assert_eq!(&output[0][p..p + 4], &encoded(word, format));
+                        assert_eq!(
+                            crate::render::native_z::stored_z(f32::from_le_bytes(
+                                output[1][p..p + 4].try_into().unwrap()
+                            )),
+                            z
+                        );
+                    }
+                }
             }
+            eprintln!(
+                "Layer{layer_index} planner gate: {ordinary_count} offscreen UnitAtlas instances in one run, 2 destination pieces, 2 destination transactions (Ground4passes/2tiledeps, Air8passes/0tiledeps); three warmed encoding samples_us={samples:?} (excludes lowering/upload/submit/wait; not FPS evidence)"
+            );
         }
-        eprintln!(
-            "Ground planner gate: {ordinary_count} offscreen UnitAtlas instances, 2 TREE pieces, 2 dependency waves, 2 tile dependencies; one encoding sample {encode_us:.3}us (not FPS evidence)"
-        );
     }
 }

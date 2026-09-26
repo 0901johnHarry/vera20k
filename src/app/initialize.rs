@@ -157,6 +157,7 @@ impl App {
         let batch_renderer: BatchRenderer = BatchRenderer::new(&gpu);
         let terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
             &gpu.device,
+            &gpu.queue,
             gpu.surface_format,
             &batch_renderer,
         );
@@ -577,8 +578,6 @@ impl App {
                     target_lines: startup_target_lines,
                     idle_anim_elapsed_ms: 0,
                     cached_overlay_instances: Vec::new(),
-                    cached_unit_instances: Vec::new(),
-                    cached_unit_pages: Vec::new(),
                     terrain_grid: None,
                     installed_playfield_authority: None,
                     overlays: Default::default(),

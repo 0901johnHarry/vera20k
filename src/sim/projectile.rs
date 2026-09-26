@@ -370,7 +370,9 @@ pub(crate) fn cell_target_coord(
         .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
     let mut coord = cell_ground_coord(terrain, rx, ry);
     if structural {
-        coord.z = coord.z.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        coord.z = coord
+            .z
+            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
     }
     coord
 }
@@ -403,7 +405,9 @@ pub(crate) fn dummy_cell_target_coord(dummy: &SharedCellDummy) -> ProjectileCoor
         dummy.retained_bridge_flags() & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0;
     let mut coord = dummy_cell_ground_coord(dummy);
     if structural {
-        coord.z = coord.z.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        coord.z = coord
+            .z
+            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
     }
     coord
 }
@@ -2346,9 +2350,17 @@ fn horizontal_distance(a: ProjectileCoord, b: ProjectileCoord) -> i32 {
 }
 
 /// YR `BulletClass_GetAnimFrame` @ 0x00468000.
-pub fn projectile_shp_frame(projectile: &Projectile) -> u8 {
+pub fn projectile_shp_frame(
+    projectile: &Projectile,
+    projectile_type: &crate::rules::projectile_type::ProjectileType,
+) -> u8 {
     if projectile.visual.anim_low != 0 || projectile.visual.anim_high != 0 {
         return projectile.visual.runtime_frame;
+    }
+    // 46800C..468014 uses the retained inverse ART Rotates byte. The
+    // animation override above wins even when the shape does not rotate.
+    if projectile_type.rotates {
+        return 0;
     }
     const FACING_FRAMES: [u8; 32] = [
         28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5,
@@ -2904,7 +2916,13 @@ mod tests {
     fn shp_facing_and_animation_match_yr_vectors() {
         let mut store = ProjectileStore::new();
         let id = store.spawn(1, spawn(ProjectileTarget::Cell { rx: 0, ry: 0 }));
-        assert_eq!(projectile_shp_frame(store.get(id).unwrap()), 20);
+        let ini = crate::rules::ini_parser::IniFile::from_str("[P]\nImage=P\nRotates=yes\n");
+        let kind = crate::rules::projectile_type::ProjectileType::from_ini_section(
+            "P",
+            ini.section("P").unwrap(),
+            ini.section("P"),
+        );
+        assert_eq!(projectile_shp_frame(store.get(id).unwrap(), &kind), 20);
 
         let projectile = store.projectiles.get_mut(&id).unwrap();
         projectile.visual = ProjectileVisualState {
@@ -2917,6 +2935,49 @@ mod tests {
         projectile.visual.advance();
         assert_eq!(projectile.visual.runtime_frame, 2);
         assert_eq!(projectile.visual.runtime_countdown, 3);
+    }
+
+    #[test]
+    fn frame_inverse_rotates_and_animation_precedence_match_original_draws() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/projectile_oracle/bridge_render.json"
+        ))
+        .unwrap();
+        let ini = crate::rules::ini_parser::IniFile::from_str("[P]\nImage=P\n");
+        let mut kind = crate::rules::projectile_type::ProjectileType::from_ini_section(
+            "P",
+            ini.section("P").unwrap(),
+            None,
+        );
+        let mut compared = 0;
+        for row in corpus["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["input"]["name"].as_str().unwrap().starts_with("frame_"))
+        {
+            let input = &row["input"];
+            kind.rotates = input["inverse_rotates"] == 1;
+            let mut store = ProjectileStore::new();
+            let id = store.spawn(1, spawn(ProjectileTarget::None));
+            let projectile = store.get_mut(id).unwrap();
+            if let Some(v) = input["velocity"].as_array() {
+                projectile.velocity = ProjectileVelocity::new(
+                    v[0].as_f64().unwrap() as i32,
+                    v[1].as_f64().unwrap() as i32,
+                    v[2].as_f64().unwrap() as i32,
+                );
+            }
+            projectile.visual.anim_low = input["anim_low"].as_u64().unwrap_or(0) as u8;
+            projectile.visual.anim_high = input["anim_high"].as_u64().unwrap_or(0) as u8;
+            projectile.visual.runtime_frame = input["runtime_frame"].as_u64().unwrap_or(0) as u8;
+            let frame = projectile_shp_frame(projectile, &kind);
+            for draw in row["draws"].as_array().unwrap() {
+                assert_eq!(u64::from(frame), draw["frame"].as_u64().unwrap(), "{input}");
+            }
+            compared += 1;
+        }
+        assert_eq!(compared, 4);
     }
 
     #[test]

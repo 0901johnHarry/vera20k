@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 
 use crate::app::AppState;
-use crate::map::lighting::DEFAULT_TINT;
 use crate::map::overlay_types::is_bridge_overlay_index;
 use crate::map::terrain::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::render::batch::SpriteInstance;
@@ -18,12 +17,10 @@ use crate::render::bridge_atlas::is_high_bridge_body_identity;
 use crate::render::native_z::{self, ZGradient, pack_z_gradient};
 use crate::render::overlay_atlas::{CRATE_BODY_FRAME, OverlaySpriteKey};
 use crate::render::sprite_atlas::ShpSpriteKey;
-use crate::render::tactical_draw_plan::{BlitPolicy, ObjectDraw, RenderZPolicy, SpriteEncoding};
+use crate::render::tactical_draw_plan::{BlitPolicy, RenderZPolicy, SpriteEncoding};
 use crate::rules::art_data::{AnimTypeRuntimeConfig, anim_translucency_source_alpha};
 use crate::rules::house_colors::HouseColorIndex;
 use crate::rules::overlay_types::OverlayTypeFlags;
-use crate::sim::projectile::ProjectileCoord;
-use crate::util::fixed_math::SimFixed;
 
 use super::helpers::{
     ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth_params, in_view,
@@ -202,41 +199,13 @@ fn overlay_display_identity(
     (display_overlay_id, overlay_data)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AnimRenderDestination {
-    Ground(ObjectDraw),
-    Top,
-    Existing,
-}
-
-fn anim_render_destination(
-    stable_id: u64,
-    layer: Option<crate::sim::world::display_layers::DisplayLayer>,
-    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder,
-) -> Option<AnimRenderDestination> {
-    use crate::sim::world::display_layers::DisplayLayer;
-    // Next424801 changes type without resubmitting. Tactical6D8F39 consumes
-    // retained membership, not the new type's Layer or current owner query.
-    match layer? {
-        DisplayLayer::GROUND => ground_order
-            .object_draw(stable_id, SpriteEncoding::Plain)
-            .map(AnimRenderDestination::Ground),
-        DisplayLayer::TOP => Some(AnimRenderDestination::Top),
-        _ => Some(AnimRenderDestination::Existing),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_anim_class_instances(
     state: &AppState,
-    paged: &mut [Vec<SpriteInstance>],
-    top_instances: &mut Vec<SpriteInstance>,
-    top_pages: &mut Vec<usize>,
-    top_ids: &mut Vec<u64>,
     ground_objects: &mut Vec<
-        crate::app::presentation::render::draw_plan_lowering::PlannedGroundObjectInstance,
+        crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance,
     >,
-    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder,
+    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder,
 ) {
     let (sim, atlas) = match (
         state
@@ -403,32 +372,17 @@ pub(crate) fn build_anim_class_instances(
             ),
             ..Default::default()
         };
-        match anim_render_destination(
-            anim.stable_id,
-            sim.display_layers().layer_of(anim.stable_id),
-            ground_order,
-        ) {
-            Some(AnimRenderDestination::Ground(parent)) => ground_objects.push(
-                crate::app::presentation::render::draw_plan_lowering::PlannedGroundObjectInstance::object(
+        if let Some(parent) = ground_order.object_draw(anim.stable_id, SpriteEncoding::Plain) {
+            ground_objects.push(
+                crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance::object(
                     parent,
-                    vec![crate::app::presentation::render::draw_plan_lowering::GroundPieceInstance {
-                        target: crate::app::presentation::render::draw_plan_lowering::GroundTexture::ShpPage(
-                            entry.page as usize,
-                        ),
+                    vec![crate::app::presentation::render::draw_plan_lowering::ObjectPieceInstance {
+                        target: crate::app::presentation::render::draw_plan_lowering::ObjectTexture::ShpPage(entry.page as usize),
                         render_z: parent.policy.render_z,
                         instance,
                     }],
                 ),
-            ),
-            Some(AnimRenderDestination::Top) => {
-                top_instances.push(instance);
-                top_pages.push(entry.page as usize);
-                top_ids.push(anim.stable_id);
-            }
-            Some(AnimRenderDestination::Existing) => {
-                paged[entry.page as usize].push(instance);
-            }
-            None => {}
+            );
         }
     }
 }
@@ -557,9 +511,9 @@ pub(crate) fn build_overlay_instances(
     instances: &mut Vec<SpriteInstance>,
     render_z: &mut Vec<RenderZPolicy>,
     ground_objects: &mut Vec<
-        crate::app::presentation::render::draw_plan_lowering::PlannedGroundObjectInstance,
+        crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance,
     >,
-    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder,
+    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder,
 ) {
     let atlas = match &state.match_state.match_presentation.overlay_atlas {
         Some(a) => a,
@@ -885,7 +839,7 @@ pub(crate) fn build_overlay_instances(
         };
         if let Some((body, shadow)) = atlas.native_static_terrain_pair(name) {
             use crate::app::presentation::render::draw_plan_lowering::{
-                GroundPieceInstance, GroundTexture, PlannedGroundObjectInstance,
+                ObjectPieceInstance, ObjectTexture, PlannedObjectInstance,
             };
             use crate::render::tactical_draw_plan::RenderZPolicy;
             use crate::render::terrain_draw::TerrainPiece;
@@ -904,16 +858,16 @@ pub(crate) fn build_overlay_instances(
             );
             let mut parent = parent;
             parent.policy.render_z = RenderZPolicy::ReadWrite;
-            ground_objects.push(PlannedGroundObjectInstance::object(
+            ground_objects.push(PlannedObjectInstance::object(
                 parent,
                 vec![
-                    GroundPieceInstance {
-                        target: GroundTexture::TerrainStatic(TerrainPiece::Body),
+                    ObjectPieceInstance {
+                        target: ObjectTexture::TerrainStatic(TerrainPiece::Body),
                         render_z: RenderZPolicy::ReadWrite,
                         instance: body_instance,
                     },
-                    GroundPieceInstance {
-                        target: GroundTexture::TerrainStatic(TerrainPiece::Shadow),
+                    ObjectPieceInstance {
+                        target: ObjectTexture::TerrainStatic(TerrainPiece::Shadow),
                         render_z: RenderZPolicy::ReadWrite,
                         instance: shadow_instance,
                     },
@@ -922,10 +876,10 @@ pub(crate) fn build_overlay_instances(
             continue;
         }
         ground_objects.push(
-            crate::app::presentation::render::draw_plan_lowering::PlannedGroundObjectInstance::object(
+            crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance::object(
                 parent,
-                vec![crate::app::presentation::render::draw_plan_lowering::GroundPieceInstance {
-                    target: crate::app::presentation::render::draw_plan_lowering::GroundTexture::OverlayAtlas,
+                vec![crate::app::presentation::render::draw_plan_lowering::ObjectPieceInstance {
+                    target: crate::app::presentation::render::draw_plan_lowering::ObjectTexture::OverlayAtlas,
                     render_z: parent.policy.render_z,
                     instance: SpriteInstance {
                         position: [
@@ -971,110 +925,6 @@ fn native_static_terrain_instances(
         z_adjust: super::helpers::lifted_z_adjust(lift_px, class_z),
         ..Default::default()
     })
-}
-
-fn projectile_authoritative_screen_position(
-    coordinate: ProjectileCoord,
-) -> Option<(f32, f32, u16, u16, u8)> {
-    let rx = u16::try_from(coordinate.x.div_euclid(256)).ok()?;
-    let ry = u16::try_from(coordinate.y.div_euclid(256)).ok()?;
-    let sub_x = SimFixed::from_num(coordinate.x.rem_euclid(256));
-    let sub_y = SimFixed::from_num(coordinate.y.rem_euclid(256));
-    let z = coordinate.z.clamp(0, i32::from(u8::MAX)) as u8;
-    let (screen_x, screen_y) = crate::util::lepton::lepton_to_screen(rx, ry, sub_x, sub_y, z);
-    Some((screen_x, screen_y, rx, ry, z))
-}
-
-/// Build visible persistent shots from `Simulation::projectiles`.
-///
-/// YR `BulletClass::AI` linkage: rendering reads the same committed CoordStruct
-/// that the next authoritative flight pass will advance.
-pub(crate) fn build_projectile_visual_instances(
-    state: &AppState,
-    paged: &mut [Vec<SpriteInstance>],
-) {
-    let (sim, rules, atlas) = match (
-        state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .map(|rt| &rt.simulation),
-        state.rules().map(|r| r),
-        &state.match_state.match_presentation.sprite_atlas,
-    ) {
-        (Some(sim), Some(rules), Some(atlas)) => (sim, rules, atlas),
-        _ => return,
-    };
-    let z = state.match_state.input.zoom_level;
-    let (cam_x, cam_y, sw, sh) = (
-        state.match_state.input.camera_x,
-        state.match_state.input.camera_y,
-        state.render_width() as f32 / z,
-        state.render_height() as f32 / z,
-    );
-    let (origin_y, world_height) = state
-        .match_state
-        .match_presentation
-        .terrain_grid
-        .as_ref()
-        .map(|grid| (grid.origin_y, grid.world_height))
-        .unwrap_or((0.0, 1.0));
-
-    for (_, projectile) in sim.projectiles.iter() {
-        let Some(weapon) = rules.weapon(sim.interner.resolve(projectile.payload.weapon)) else {
-            continue;
-        };
-        let Some(projectile_type_id) = weapon.projectile.as_deref() else {
-            continue;
-        };
-        let Some(projectile_type) = rules.projectile(projectile_type_id) else {
-            continue;
-        };
-        let Some(image) = projectile_type.image.as_deref() else {
-            continue;
-        };
-        let Some((screen_x, screen_y, _rx, _ry, projectile_z)) =
-            projectile_authoritative_screen_position(projectile.position)
-        else {
-            continue;
-        };
-        if !in_view(screen_x, screen_y, 96.0, 96.0, cam_x, cam_y, sw, sh, 96.0) {
-            continue;
-        }
-        let frame_count =
-            presentation_anim_frame_count(&atlas.active_anim_frame_counts, image).unwrap_or(32);
-        let key = ShpSpriteKey {
-            palette_context: crate::render::sprite_atlas::ShpPaletteContext::Legacy,
-            type_id: image.to_string(),
-            facing: 0,
-            frame: if frame_count == 0 {
-                0
-            } else {
-                u16::from(crate::sim::projectile::projectile_shp_frame(projectile)) % frame_count
-            },
-            house_color: HouseColorIndex(0),
-        };
-        let Some(entry) = atlas.get(&key) else {
-            continue;
-        };
-        // In-flight projectile shapes draw at FIXED full brightness: the native
-        // bullet draw passes a literal neutral value for both its shadow and
-        // body passes and never reads a cell lighting field at all. (An earlier
-        // revision sampled the grid here; a merge briefly reintroduced that —
-        // do not re-lit projectiles.)
-        let tint = DEFAULT_TINT;
-        let depth = compute_sprite_depth_params(origin_y, world_height, screen_y, projectile_z);
-        paged[entry.page as usize].push(SpriteInstance {
-            position: [screen_x + entry.offset_x, screen_y + entry.offset_y],
-            size: entry.pixel_size,
-            uv_origin: entry.uv_origin,
-            uv_size: entry.uv_size,
-            depth,
-            tint,
-            alpha: 1.0,
-            ..Default::default()
-        });
-    }
 }
 
 /// Build persistent WaveClass polygon edges from simulation registration state.
@@ -1141,7 +991,7 @@ pub(crate) fn build_weapon_wave_instances(state: &AppState) -> Vec<SpriteInstanc
 /// Downstream risk: presentation only.
 pub(crate) fn build_parachute_instances(
     state: &AppState,
-    ground_objects: &mut [crate::app::presentation::render::draw_plan_lowering::PlannedGroundObjectInstance],
+    ground_objects: &mut [crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance],
     body_depths: &super::shp::ParachuteBodyDepths,
 ) {
     /// Depth epsilon — chute sorts slightly above the GI body. Half of the
@@ -1250,9 +1100,9 @@ pub(crate) fn build_parachute_instances(
             continue;
         };
         parent.pieces.push(
-            crate::app::presentation::render::draw_plan_lowering::GroundPieceInstance {
+            crate::app::presentation::render::draw_plan_lowering::ObjectPieceInstance {
                 target:
-                    crate::app::presentation::render::draw_plan_lowering::GroundTexture::ShpPage(
+                    crate::app::presentation::render::draw_plan_lowering::ObjectTexture::ShpPage(
                         entry.page as usize,
                     ),
                 // VERA-internal: the chute's native Z term (an anim ZAdjust of
@@ -1357,10 +1207,9 @@ mod tests {
     }
 
     use super::{
-        ANIM_DRAW_DEPTH_BIAS_PX, AnimRenderDestination, CRATE_BODY_FRAME, anim_instance_alpha,
-        anim_render_destination, apply_shape_z_adjust, ordinary_overlay_accepts_identity,
-        ordinary_overlay_z, overlay_body_frame, overlay_display_identity, overlay_render_identity,
-        terrain_object_is_render_visible,
+        ANIM_DRAW_DEPTH_BIAS_PX, CRATE_BODY_FRAME, anim_instance_alpha, apply_shape_z_adjust,
+        ordinary_overlay_accepts_identity, ordinary_overlay_z, overlay_body_frame,
+        overlay_display_identity, overlay_render_identity, terrain_object_is_render_visible,
     };
     use crate::map::overlay::TerrainObject;
     use crate::map::overlay_types::OverlayTypeRegistry;
@@ -1383,32 +1232,6 @@ mod tests {
         assert!(!ordinary_overlay_accepts_identity(0xED, "RENAMED_NS"));
         assert!(!ordinary_overlay_accepts_identity(0xEE, "BRIDGEB2"));
         assert!(ordinary_overlay_accepts_identity(0x20, "HIGHANCHOR"));
-    }
-
-    #[test]
-    fn animation_destination_uses_retained_display_membership() {
-        use crate::sim::world::display_layers::DisplayLayer;
-        let order =
-            crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder::new(&[20, 10]);
-        let Some(AnimRenderDestination::Ground(draw)) =
-            anim_render_destination(10, Some(DisplayLayer::GROUND), &order)
-        else {
-            panic!("registered Ground animation");
-        };
-        assert_eq!(draw.display_order, 1);
-        assert_eq!(
-            anim_render_destination(10, Some(DisplayLayer::TOP), &order),
-            Some(AnimRenderDestination::Top)
-        );
-        assert_eq!(
-            anim_render_destination(10, Some(DisplayLayer::AIR), &order),
-            Some(AnimRenderDestination::Existing)
-        );
-        assert_eq!(anim_render_destination(10, None, &order), None);
-        assert_eq!(
-            anim_render_destination(99, Some(DisplayLayer::GROUND), &order),
-            None
-        );
     }
 
     #[test]

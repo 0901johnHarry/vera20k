@@ -14,7 +14,7 @@
 //! ## Sub-modules
 //! - `build_instances` — phase 1-4 builders: named functions + structs per phase
 //! - `draw_passes` — phase 6: render pass creation and GPU draw call dispatch
-//! - `merge_passes` — Y-sorted multi-way merge algorithm for interleaving atlas textures
+//! - `merge_passes` — replay retained native object layers across atlas textures
 //!
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
@@ -179,20 +179,10 @@ pub(crate) fn render_game(
         &composition_view,
         &draw_passes::DrawPassData {
             overlay_render_z: &world.overlay_render_z,
-            ground: &world.ground,
-            unit_instances: &world.unit,
-            unit_pages: &world.unit_pages,
-            unit_transition_paged: &world.unit_transition_paged,
-            shp_paged: &world.shp_paged,
-            top_unit_pages: &world.top_unit_pages,
-            top_shp_pages: &world.top_shp_pages,
+            object_layers: &world.object_layers,
             ghost_page: ui.ghost_page,
         },
     );
-    // Return unit instances vec to AppState (deferred until after the draw pass
-    // because the multi-way merge needs the CPU-side Y values).
-    state.match_state.match_presentation.cached_unit_instances = world.unit;
-    state.match_state.match_presentation.cached_unit_pages = world.unit_pages;
     Ok(GameRenderOutput {
         instance_counts: sidebar.emitted_instance_counts(),
         sidebar_view: sidebar.view,
@@ -230,11 +220,9 @@ fn upload_to_gpu(
     // Terrain + overlays
     pool.upload(&state.renderer.gpu, "terrain", &world.terrain.normal);
     pool.upload(&state.renderer.gpu, "overlay", &world.overlay);
-    pool.upload(
-        &state.renderer.gpu,
-        "ground_objects",
-        &world.ground.instances,
-    );
+    for (layer, objects) in world.object_layers.iter().enumerate() {
+        pool.upload_page(&state.renderer.gpu, "object_layer", layer, &objects.instances);
+    }
     pool.upload(
         &state.renderer.gpu,
         "overlay_bridge_body",
@@ -254,23 +242,7 @@ fn upload_to_gpu(
     // before overlays, matching the native per-cell tile-then-smudge dispatch.
     pool.upload(&state.renderer.gpu, "smudge", &world.smudge);
 
-    // Entities (VXL + SHP)
-    pool.upload(&state.renderer.gpu, "unit", &world.unit);
-    for (page, page_inst) in world.unit_transition_paged.iter().enumerate() {
-        pool.upload_page(&state.renderer.gpu, "unit_transition", page, page_inst);
-    }
-    for (page, page_inst) in world.shp_paged.iter().enumerate() {
-        pool.upload_page(&state.renderer.gpu, "shp_page", page, page_inst);
-    }
-    // The band above Ground (gamemd layers 3 and 4) — drawn after every ground
-    // object. Voxel bodies and SHP bodies keep separate streams because they
-    // sample different atlases; the band is unsorted either way.
-    pool.upload(&state.renderer.gpu, "unit_top", &world.top_unit);
-    pool.upload(&state.renderer.gpu, "shp_top", &world.top_shp);
-    // (No `building_turret` buffer: a building's voxel turret rides the `unit`
-    // stream and is drawn inside the sorted ground pass, as gamemd draws it.)
-    // PixelFX water/ore sparkles — drawn after the ground object pass.
-    // Empty when the live `[Options] DetailLevel` projection is zero.
+    // Residual effects keep their existing uploads and pass ownership.
     pool.upload(&state.renderer.gpu, "cell_sparkles", &world.cell_sparkles);
     pool.upload(&state.renderer.gpu, "weapon_waves", &world.weapon_waves);
     pool.upload(

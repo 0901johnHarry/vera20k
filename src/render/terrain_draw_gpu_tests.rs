@@ -4,10 +4,20 @@
 
 use super::{
     batch::{BatchRenderer, CameraUniform, SpriteInstance},
-    terrain_draw::{TerrainDrawRenderer, TerrainPiece},
+    terrain_draw::{DestinationEditCommand, TerrainDrawRenderer, TerrainPiece},
 };
+use crate::render::tactical_draw_plan::RenderZPolicy;
 use std::time::Duration;
 use wgpu::util::DeviceExt;
+
+fn terrain_command(index: u32, piece: TerrainPiece) -> DestinationEditCommand {
+    DestinationEditCommand {
+        index,
+        piece,
+        render_z: RenderZPolicy::ReadWrite,
+        atlas_slot: 0,
+    }
+}
 
 pub(crate) struct Gpu {
     pub(crate) device: wgpu::Device,
@@ -300,7 +310,7 @@ fn production_shadow_exhausts_all_65536_destination_words() {
     ] {
         let size = [256; 2];
         let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-        let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+        let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
         batch.write_camera(&gpu.queue, camera(size));
         let color = gpu.target(size, format);
         let cv = color.create_view(&Default::default());
@@ -344,9 +354,8 @@ fn production_shadow_exhausts_all_65536_destination_words() {
             &batch,
             &atlas,
             &buffer,
-            0,
             &instance,
-            TerrainPiece::Shadow,
+            terrain_command(0, TerrainPiece::Shadow),
             [0, 0, 256, 256],
         );
         let reads = [
@@ -379,7 +388,7 @@ fn production_tree_signed_depth_and_repeated_overlap_match_original_leaves() {
     .unwrap();
     let cases = fixture["depth_cases"].as_array().unwrap();
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     batch.write_camera(&gpu.queue, camera(size));
     let color = gpu.target(size, format);
     let cv = color.create_view(&Default::default());
@@ -436,11 +445,11 @@ fn production_tree_signed_depth_and_repeated_overlap_match_original_leaves() {
                 &cv,
                 &dv,
                 &batch,
-                &atlas,
+                |_| Some(&atlas),
                 &buffer,
                 &instances,
                 selected.iter().enumerate().map(|(i, c)| {
-                    (
+                    terrain_command(
                         i as u32,
                         if c[0].as_i64() == Some(1) {
                             TerrainPiece::Shadow
@@ -489,7 +498,7 @@ fn production_tree_clipping_and_viewport_origin_match_original_rows() {
     let cases = fixture["cases"].as_array().unwrap();
     let size = [cases.len() as u32, 550];
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     let atlas = batch.create_texture_on_device(
         &gpu.device,
         &gpu.queue,
@@ -546,9 +555,8 @@ fn production_tree_clipping_and_viewport_origin_match_original_rows() {
                 &batch,
                 &atlas,
                 &buffer,
-                i as u32,
                 &instances[i],
-                TerrainPiece::Body,
+                terrain_command(i as u32, TerrainPiece::Body),
                 [i as u32, first, 1, size[1] - first],
             );
         }
@@ -597,7 +605,7 @@ fn production_tree_empty_depth_holes_and_target_rebinding_are_preserved() {
     let gpu = Gpu::new();
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     // Nonzero black source1 must write; source0 must not write either target.
     let atlas = batch.create_texture_on_device(
         &gpu.device,
@@ -648,9 +656,8 @@ fn production_tree_empty_depth_holes_and_target_rebinding_are_preserved() {
                 &batch,
                 &atlas,
                 &buffer,
-                i as u32,
                 instance,
-                TerrainPiece::Body,
+                terrain_command(i as u32, TerrainPiece::Body),
                 [0, 0, size[0], size[1]],
             );
         }
@@ -685,7 +692,7 @@ fn production_tree_camera_zoom_matches_unscissored_shp_coverage() {
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
     let size = [48, 48];
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     let atlas = batch.create_texture_on_device(
         &gpu.device,
         &gpu.queue,
@@ -755,9 +762,8 @@ fn production_tree_camera_zoom_matches_unscissored_shp_coverage() {
                         &batch,
                         &atlas,
                         &buffer,
-                        0,
                         &instance,
-                        TerrainPiece::Body,
+                        terrain_command(0, TerrainPiece::Body),
                         [0, 7, 48, 41],
                     );
                 } else {
@@ -924,7 +930,7 @@ fn production_batch_stamp_bracket_and_ui_keep_near_equal_and_map_edge_policies()
 
 #[test]
 #[ignore = "requires GPU; multi-piece wave equivalence, clips, camera and target reuse"]
-fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
+fn production_mixed_destination_waves_preserve_pixels_depth_and_atlas_order() {
     let gpu = Gpu::new();
     let mut cases = 0;
     for format in [
@@ -932,7 +938,7 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
         wgpu::TextureFormat::Rgba8UnormSrgb,
     ] {
         let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
-        let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+        let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
         // Actual source-zero stencil and alternating nonzero palette entries.
         // Native leaf goldens cover each operation; these generated mixtures
         // compare the optimized schedule to that sequential production owner.
@@ -949,6 +955,16 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
             .collect();
         let atlas =
             batch.create_texture_on_device(&gpu.device, &gpu.queue, &rgba, 4, 4, Some(&indices));
+        let second_rgba: Vec<u8> = indices.iter().flat_map(|_| [16, 64, 240, 255]).collect();
+        let second_atlas = batch.create_texture_on_device(
+            &gpu.device,
+            &gpu.queue,
+            &second_rgba,
+            4,
+            4,
+            Some(&indices),
+        );
+        let atlases = [&atlas, &second_atlas];
         let specs = [
             ([2., 2.], [24., 28.], TerrainPiece::Body, -33000.),
             ([66., 2.], [24., 28.], TerrainPiece::Body, -33000.),
@@ -963,7 +979,25 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
             ([-40., -40.], [5., 5.], TerrainPiece::Shadow, -33000.),
             ([140., 88.], [30., 30.], TerrainPiece::Body, -32768.),
             ([0., 0.], [0., 0.], TerrainPiece::Shadow, -33000.),
+            // Read-only Bullet-like pieces cross both atlas pages and overlap
+            // stored Terrain depth. Native leaf tests independently establish
+            // admission/color semantics; this tests scheduling and page order.
+            ([2., 2.], [24., 28.], TerrainPiece::Body, -33000.),
+            ([66., 2.], [24., 28.], TerrainPiece::Body, -33000.),
+            ([2., 2.], [24., 28.], TerrainPiece::Shadow, -33000.),
+            ([66., 2.], [24., 28.], TerrainPiece::Shadow, -33000.),
+            ([2., 2.], [24., 28.], TerrainPiece::Shadow, -33000.),
         ];
+        let command = |index: usize| DestinationEditCommand {
+            index: index as u32,
+            piece: specs[index].2,
+            render_z: if index < 13 {
+                RenderZPolicy::ReadWrite
+            } else {
+                RenderZPolicy::ReadOnly
+            },
+            atlas_slot: if index < 13 { 0 } else { index % 2 },
+        };
         let instances = specs
             .iter()
             .map(|&(position, size, _, z)| sprite(position, size, z))
@@ -1012,10 +1046,10 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
                             &cv,
                             &dv,
                             &batch,
-                            &atlas,
+                            |slot| atlases.get(slot).copied(),
                             &buffer,
                             &instances,
-                            specs.iter().enumerate().map(|(i, spec)| (i as u32, spec.2)),
+                            (0..specs.len()).map(command),
                             tactical,
                         );
                         assert!(
@@ -1029,11 +1063,10 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
                                 &cv,
                                 &dv,
                                 &batch,
-                                &atlas,
+                                atlases[command(i).atlas_slot],
                                 &buffer,
-                                i as u32,
                                 instance,
-                                specs[i].2,
+                                command(i),
                                 tactical,
                             );
                         }
@@ -1081,10 +1114,13 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
             &cv,
             &dv,
             &batch,
-            &atlas,
+            |slot| atlases.get(slot).copied(),
             &buffer,
             &instances,
-            [(0, TerrainPiece::Body), (1, TerrainPiece::Shadow)],
+            [
+                terrain_command(0, TerrainPiece::Body),
+                terrain_command(1, TerrainPiece::Shadow),
+            ],
             [10, 10, 0, 0],
         );
         assert_eq!(stats, Default::default(), "empty clip submits no passes");
@@ -1108,7 +1144,7 @@ fn production_tree_dependency_waves_match_sequential_pixels_and_depth() {
         );
     }
     eprintln!(
-        "TREE batching: {cases} multi-wave source/target/camera cases matched sequential color+depth in both target formats; empty clips preserved"
+        "Mixed Terrain/Bullet batching: {cases} multi-wave/page/source/target/camera cases matched sequential color+depth in both target formats; empty clips preserved"
     );
 }
 
@@ -1123,7 +1159,7 @@ fn production_tree_piece_workload_timing() {
     let size = [800, 600];
     let batch = BatchRenderer::new_with_device(&gpu.device, &gpu.queue, format);
     batch.write_camera(&gpu.queue, camera(size));
-    let mut terrain = TerrainDrawRenderer::new(&gpu.device, format, &batch);
+    let mut terrain = TerrainDrawRenderer::new(&gpu.device, &gpu.queue, format, &batch);
     let color = gpu.target(size, format);
     let cv = color.create_view(&Default::default());
     let depth = gpu.target(size, wgpu::TextureFormat::Depth32Float);
@@ -1222,10 +1258,10 @@ fn production_tree_piece_workload_timing() {
                             &cv,
                             &dv,
                             &batch,
-                            &atlas,
+                            |_| Some(&atlas),
                             &buffer,
                             &instances,
-                            (0..instances.len()).map(|i| (i as u32, kind(i))),
+                            (0..instances.len()).map(|i| terrain_command(i as u32, kind(i))),
                             [0, 0, 800, 600],
                         )
                     } else {
@@ -1237,15 +1273,15 @@ fn production_tree_piece_workload_timing() {
                                 &batch,
                                 &atlas,
                                 &buffer,
-                                i as u32,
                                 instance,
-                                kind(i),
+                                terrain_command(i as u32, kind(i)),
                                 [0, 0, 800, 600],
                             );
                         }
                         super::terrain_draw::TerrainBatchStats {
                             pieces: instances.len(),
                             waves: instances.len(),
+                            passes: instances.len() * 2,
                             tile_dependencies: 0,
                         }
                     };
@@ -1295,12 +1331,10 @@ fn production_tree_piece_workload_timing() {
                     if sample > 0 {
                         eprintln!(
                             "TREE timing sample: pairs={count}, layout={layout}, batched={batched}, sample={sample}, waves={}, passes={}, tile_dependencies={}, gpu_ms={gpu_ms}, cpu_prepare_encode_ms={encode_ms}",
-                            stats.waves,
-                            stats.waves * 2,
-                            stats.tile_dependencies
+                            stats.waves, stats.passes, stats.tile_dependencies
                         );
                         results.push(serde_json::json!({"tree_pairs":count,"layout":layout,"overlap":layout=="repeated","batched":batched,"sample":sample,
-                            "frames":1,"pieces":stats.pieces,"waves":stats.waves,"passes":stats.waves*2,"tile_dependencies":stats.tile_dependencies,
+                            "frames":1,"pieces":stats.pieces,"waves":stats.waves,"passes":stats.passes,"tile_dependencies":stats.tile_dependencies,
                             "gpu_ms_per_frame":gpu_ms,"cpu_prepare_encode_ms_per_frame":encode_ms}));
                     }
                 }
