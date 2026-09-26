@@ -7,6 +7,7 @@ use crate::sim::combat::TargetKind;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::MissionType;
+use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::passenger::{BoardingPhase, PassengerRole};
 use crate::sim::world::{SimFrameOutput, TickLane};
 
@@ -169,9 +170,7 @@ fn order(fortress: &Fortress, payload: Command) -> CommandEnvelope {
 fn distance(fortress: &Fortress, a: u64, b: u64) -> i32 {
     let entities = &fortress.scenario.sim().substrate.entities;
     let [a, b] = [a, b].map(|id| {
-        let coord = crate::sim::movement::ground_pose::position_world_coord(
-            &entities.get(id).expect("object lives").position,
-        );
+        let coord = position_world_coord(&entities.get(id).expect("object lives").position);
         [coord.x, coord.y, coord.z]
     });
     crate::util::native_x87::distance_3d_leptons(a, b)
@@ -333,9 +332,9 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
 ///   0x00710550` from MEGAMISSION `0x004C749D`), and each drops it on its next
 ///   AI pass because it cannot fire at it and, on Guard, may not chase it
 ///   (`Approach_Target 0x004D5690` from `0x006FAAEF`).
-/// - The Fortress drives on past its own 20mm's 5.5 cells and stops the first
-///   time its 3-D distance falls under GetWeaponRange, which caps its range at
-///   the riders' M60 (4 cells, `0x004D885C..0x004D88F4`).
+/// - The Fortress drives on past its own 20mm's 5.5 cells and stops at the
+///   first cell centre where its 3-D distance is under GetWeaponRange, which
+///   caps its range at the riders' M60 (4 cells, `0x004D885C..0x004D88F4`).
 /// - A Stop clears the riders' targets with the Fortress's (`0x004C7650`).
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
@@ -402,10 +401,22 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
     let (frame, before, at) = stop.expect("the Fortress stops");
     println!("stopped at frame {frame}: {before} -> {at} leptons");
     assert!(passed_own_range, "drives on inside its own 5.5 cells");
-    // Native tests at each cell centre, VERA each frame: either way the
-    // Fortress stops within a cell of first coming under 4 cells.
+    // Straight along the row, the first centre under 4 cells is 3 cells out.
+    let rest = fortress
+        .scenario
+        .sim()
+        .substrate
+        .entities
+        .get(bfrt)
+        .map(|transport| position_world_coord(&transport.position))
+        .unwrap();
+    assert_eq!(
+        (rest.x % 256, rest.y % 256),
+        (128, 128),
+        "rests on a centre"
+    );
     assert!(
-        (1024 - 256 - 64..1024).contains(&at),
+        (1024 - 256..1024).contains(&at),
         "stops at the riders' M60 range: {at}"
     );
 

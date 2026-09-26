@@ -1452,6 +1452,22 @@ impl Simulation {
             crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
                 self, id, rules,
             );
+            // `0x004D882F..0x004D896E`: the range stop's OpenTopped arm (the
+            // pursuit stage stands in for its InRange arm), then the class
+            // Set_Destination(NULL, 1) and `+0x5E0 = -1`.
+            if self
+                .substrate
+                .entities
+                .get(id)
+                .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                .is_some_and(|obj| obj.open_topped)
+                && self.foot_per_cell_range_stop(id, rules, None)
+            {
+                self.set_unit_null_destination(id, Some(rules));
+                if let Some(entity) = self.substrate.entities.get_mut(id) {
+                    entity.navigation.path_replay.clear_live_head();
+                }
+            }
         }
         // `0x006F5090`'s head lets a held Temporal target go.
         self.temporal_release_if_warping(id);

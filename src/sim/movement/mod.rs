@@ -71,6 +71,7 @@ mod foot_path;
 pub(crate) use foot_path::FindPathResult;
 pub(crate) use foot_path::FootPathOutcome;
 pub(crate) use track_fresh::ProcessMovementArgs;
+mod foot_range_stop;
 mod foot_speed;
 pub(crate) mod ground_pose;
 pub(crate) mod infantry_action;

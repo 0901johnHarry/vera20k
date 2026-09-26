@@ -136,9 +136,8 @@ impl Simulation {
     }
 
     /// FootPerCell(mode2)4D882F..896E, reached after Infantry's own PerCell
-    /// work. Select against TarCom first, then range against the Cell returned
-    /// from the target's current XYZ. The range call precedes mission/queue
-    /// gates; in particular its native map lookup can stamp the shared Dummy.
+    /// work: the range stop ([`Self::foot_per_cell_range_stop`]) with the
+    /// Infantry null destination.
     /// See tools/spatial_oracle/walk_percell_stop.{py,json,meta.json}.
     fn finish_walk_pursuit_at_per_cell(
         &mut self,
@@ -146,66 +145,7 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        use crate::map::entities::EntityCategory;
-        use crate::sim::combat::{self, TargetKind};
-
-        let Some(actor) = self.substrate.entities.get(id) else {
-            return;
-        };
-        let range_stop = (|| {
-            let target = &actor.attack_target.as_ref()?.target;
-            // 4D883A selects the weapon before the target/Foot-bit gates.
-            let weapon = combat::pursuit_selected_weapon(
-                actor,
-                target,
-                &self.substrate.entities,
-                rules,
-                &self.interner,
-                self.resolved_terrain.as_ref(),
-                Some(&self.house_alliances),
-            )?;
-            let TargetKind::Entity(target_id) = *target else {
-                return None;
-            };
-            let target_entity = self.substrate.entities.get(target_id)?;
-            if target_entity.category == EntityCategory::Structure {
-                return None;
-            }
-            let actor_type = self.object_type(actor.type_ref(), rules)?;
-            if actor_type.open_topped {
-                // Type+5E4 is the actor's own OpenTopped type property. Its
-                // separate strict-distance arm has no stock Infantry producer
-                // in the reviewed rules/9 modes/184 maps. It remains outside
-                // this ordinary Infantry completion slice.
-                return None;
-            }
-            let terrain = self.resolved_terrain.as_ref()?;
-            // Foot+4F0 ->4D9FF0->41BDD0->5F65A0 returns actual owner XYZ,
-            // independently of its retained locomotor head or destination.
-            let xyz = ground_pose::position_world_coord(&target_entity.position);
-            let cell = terrain.native_cell_identity(((xyz.x / 256) as i16, (xyz.y / 256) as i16));
-            // Reuse the existing range/source owners with the SAME weapon;
-            // selecting again against a Cell would change the native slot.
-            combat::in_range::cell_target_in_range(
-                actor,
-                cell,
-                weapon,
-                rules,
-                &self.interner,
-                &self.substrate.entities,
-                terrain,
-                &combat::line_of_fire::LineOfFireInputs {
-                    overlay_grid: self.overlay_grid.as_ref(),
-                    overlay_registry: registry,
-                    alliances: Some(&self.fog.alliances),
-                },
-            )
-        })()
-        .unwrap_or(false);
-        if ![21, 11, 1, 15].contains(&actor.mission.effective().raw())
-            || !range_stop
-            || !actor.navigation.nav_queue.is_empty()
-        {
+        if !self.foot_per_cell_range_stop(id, rules, registry) {
             return;
         }
         let accepts = self.set_walk_null_destination(id, Some(rules));

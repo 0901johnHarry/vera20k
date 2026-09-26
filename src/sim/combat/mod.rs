@@ -983,8 +983,25 @@ pub(crate) fn pursuit_selected_weapon<'a>(
     terrain: Option<&ResolvedTerrainGrid>,
     alliances: Option<&HouseAllianceMap>,
 ) -> Option<&'a WeaponType> {
+    pursuit_selection(
+        entity, target, entities, rules, interner, terrain, alliances,
+    )
+    .map(|selected| selected.weapon)
+}
+
+/// [`pursuit_selected_weapon`]'s whole selection, native weapon index
+/// included.
+pub(crate) fn pursuit_selection<'a>(
+    entity: &GameEntity,
+    target: &TargetKind,
+    entities: &EntityStore,
+    rules: &'a RuleSet,
+    interner: &StringInterner,
+    terrain: Option<&ResolvedTerrainGrid>,
+    alliances: Option<&HouseAllianceMap>,
+) -> Option<combat_weapon::SelectedWeapon<'a>> {
     let attacker_obj = rules.object(interner.resolve(entity.type_ref()))?;
-    let selected = select_weapon_against(
+    select_weapon_against(
         rules,
         attacker_obj,
         &combat_weapon::attacker_facts(entity, attacker_obj),
@@ -994,8 +1011,7 @@ pub(crate) fn pursuit_selected_weapon<'a>(
         interner,
         terrain,
         alliances,
-    )?;
-    Some(selected.weapon)
+    )
 }
 
 /// What the pursuit stage should do with an attacker that is holding a target.

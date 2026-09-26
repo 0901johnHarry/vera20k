@@ -1276,40 +1276,19 @@ impl Simulation {
                 },
             );
 
-            // `FootClass::Per_Cell_Process @ 0x004D885C..0x004D88F4`: an
-            // `OpenTopped=` mover chasing a Foot target stops once its 3-D
-            // distance falls under GetWeaponRange, which caps the weapon at
-            // its riders' shortest one, instead of by InRange. A loaded
+            // `FootClass::Per_Cell_Process @ 0x004D885C`: an `OpenTopped=`
+            // mover chasing a Foot target stops only on entering a cell, by
+            // distance (`foot_per_cell_range_stop`), never by InRange. A loaded
             // Battle Fortress drives on to its GIs' M60 range.
-            if entity.movement_target.is_some()
-                && let combat::TargetKind::Entity(target_id) = attack.target
-                && let Some(target) = self.substrate.entities.get(target_id)
-                && target.category != EntityCategory::Structure
-                && let Some(obj) = self.object_type(entity.type_ref(), rules)
-                && obj.open_topped
-            {
-                let range = combat::combat_weapon::open_topped_cargo_range(
-                    entity,
-                    obj,
-                    &self.substrate.entities,
-                    rules,
-                    &self.interner,
-                )
-                .map_or(weapon.range_leptons, |cargo| {
-                    weapon.range_leptons.min(cargo)
-                });
-                let own = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-                let theirs =
-                    crate::sim::movement::ground_pose::position_world_coord(&target.position);
-                let distance = crate::util::native_x87::distance_3d_leptons(
-                    [own.x, own.y, own.z],
-                    [theirs.x, theirs.y, theirs.z],
-                );
-                if distance < range {
-                    actions.push(PursuitAction::ClearMovement { entity_id: id });
-                }
-                continue;
-            }
+            let open_topped_chase = matches!(
+                attack.target,
+                combat::TargetKind::Entity(target_id)
+                    if self.substrate.entities.get(target_id).is_some_and(|target| {
+                        target.category != EntityCategory::Structure
+                    })
+            ) && self
+                .object_type(entity.type_ref(), rules)
+                .is_some_and(|obj| obj.open_topped);
 
             if verdict == combat::PursuitRangeVerdict::CloseIn {
                 // **Sticky never chases.** The one place the engine tells
@@ -1333,7 +1312,7 @@ impl Simulation {
                     });
                 }
                 // else: existing pursuit movement is still running; let it continue.
-            } else if entity.movement_target.is_some() {
+            } else if entity.movement_target.is_some() && !open_topped_chase {
                 // `CanFire` — halt for firing. `HoldInsideMinimumRange` halts
                 // here too: closing further cannot help, and this is the arm it
                 // took before the walk landed.
@@ -1414,7 +1393,8 @@ impl Simulation {
                     // holds no NavCom. GetFireError's NavCom tests (U7..U10)
                     // would otherwise keep refusing a spark, flame, drain or
                     // temporal weapon. Infantry take the Walk port's stop
-                    // (`finish_walk_pursuit_at_per_cell`).
+                    // (`finish_walk_pursuit_at_per_cell`), an open-topped unit
+                    // the track PerCell's (`foot_per_cell_range_stop`).
                     if e.category == EntityCategory::Unit
                         && [21, 11, 1, 15].contains(&e.mission.effective().raw())
                         && e.navigation.nav_queue.is_empty()
