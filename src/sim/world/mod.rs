@@ -5547,18 +5547,17 @@ impl Simulation {
         let keys = self.substrate.entities.keys_sorted();
         let mut finished: Vec<u64> = Vec::new();
         for &sid in &keys {
-            if let Some(entity) = self.substrate.entities.get_mut(sid) {
-                // Construction and deconstruction are the building's missions,
-                // which hold while it is warped (`GameEntity::ai_frozen`).
-                if entity.ai_frozen() {
-                    continue;
-                }
-                if let Some(ref mut bu) = entity.building_up
-                    && bu.frame(now, options)
-                        == crate::sim::building_construction::ConstructionFrame::Complete
-                {
-                    finished.push(sid);
-                }
+            // Construction and deconstruction are the building's missions,
+            // which hold while it is warped (`GameEntity::ai_frozen`).
+            if let Some(bu) = self
+                .substrate
+                .entities
+                .get_mut_if(sid, |entity| entity.building_up.is_some() && !entity.ai_frozen())
+                .and_then(|entity| entity.building_up.as_mut())
+                && bu.frame(now, options)
+                    == crate::sim::building_construction::ConstructionFrame::Complete
+            {
+                finished.push(sid);
             }
         }
         for &sid in &finished {
