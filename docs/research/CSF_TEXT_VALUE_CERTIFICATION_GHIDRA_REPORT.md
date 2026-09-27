@@ -16,7 +16,7 @@ a real drift (e.g. `Tip:ThumbClosed` renders as
 `"Click to show \n advanced commands"` in our table). The normalization is
 now implemented in `src/assets/csf_file.rs::normalize_whitespace` and every
 retail string is certified by `certify_csf_text_values`
-(tests/retail_goldens/certify_structural.rs): parser output ==
+(src/asset_tools/retail_corpus/certify_structural.rs): parser output ==
 independently-restated NOT-decode + normalization from the raw bytes, for
 all labels of both retail CSFs (9,687 unique labels).
 

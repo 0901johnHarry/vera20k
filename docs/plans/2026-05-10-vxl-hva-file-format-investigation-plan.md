@@ -435,7 +435,7 @@ function in Section 3 is silently dropped without a written justification.
 - **INI files checked:** `ini/rulesmd.ini`, `ini/artmd.ini`.
 - **Rust source surveyed:** `src/assets/{vxl_file,hva_file,vxl_decode,vpl_file}.rs`,
   `src/render/{vxl_raster,vxl_normals,vxl_compute,unit_atlas}.rs`,
-  `src/bin/audit-assets.rs`.
+  `asset parse-check` (the historical `src/bin/audit-assets.rs` tool is retired).
 - **Related plans:** `2026-05-10-vxl-slope-tilt-constants-plan.md`,
   `2026-05-10-vxl-slopes-9-20-investigation-plan.md` (slope-tilt-only — no
   format coverage).

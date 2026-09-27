@@ -6,8 +6,8 @@
 //! that half, in the library, behind a machine-readable interface — see the
 //! `asset` binary in `src/bin/asset.rs`.
 //!
-//! Read-only by design. Nothing here writes into an archive, re-encodes an
-//! asset, or emits a golden: what it reports about retail *file contents*
+//! Archives are read-only. Explicit export verbs write separate files, including
+//! candidate corpus baselines for review. What it reports about retail *file contents*
 //! (dimensions, frame geometry, string values) is read straight from retail
 //! bytes, but a render it produces is not parity evidence.
 //!
@@ -29,6 +29,7 @@ pub mod render_still;
 pub mod render_tmp;
 pub mod render_vxl;
 pub mod report;
+pub mod retail_corpus;
 pub mod root;
 pub mod verb_art;
 pub mod verb_compare;

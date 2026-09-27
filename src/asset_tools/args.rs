@@ -38,6 +38,7 @@ pub enum Verb {
     ArtFor { type_id: String },
     Scan,
     ParseCheck,
+    CorpusBaseline,
     Compare { name: String },
     Help,
 }
@@ -60,6 +61,7 @@ pub struct Cli {
     pub scan: ScanOptions,
     pub parse_check: ParseCheckOptions,
     pub compare: CompareOptions,
+    pub corpus_baseline_out: Option<PathBuf>,
 }
 
 pub fn usage() -> &'static str {
@@ -87,6 +89,9 @@ VERBS
   compare <NAME>       Every archive's copy of one name, side by side.
   scan                 Search every archive by format and field predicates.
   parse-check          Run every parser over the whole corpus; report failures.
+  corpus-baseline      Export a complete candidate inventory and decoder ratchets.
+                       Requires --all-mixes --out <NEW_FILE>; never overwrites.
+                       Rust decoder baselines are not native parity evidence.
 
 GLOBAL OPTIONS
   --ra2-dir <PATH>     Retail install root. Overrides $RA2_DIR and config.toml.
@@ -189,6 +194,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         scan: ScanOptions::default(),
         parse_check: ParseCheckOptions::default(),
         compare: CompareOptions::default(),
+        corpus_baseline_out: None,
     };
 
     let mut args = argv.into_iter().peekable();
@@ -202,7 +208,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
     // The corpus-wide verbs sweep everything and so take no positional target.
     let needs_target = !matches!(
         verb_word.as_str(),
-        "archives" | "bag-ls" | "scan" | "parse-check"
+        "archives" | "bag-ls" | "scan" | "parse-check" | "corpus-baseline"
     );
     let target = if needs_target {
         match args.peek() {
@@ -251,10 +257,19 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         },
         "scan" => Verb::Scan,
         "parse-check" => Verb::ParseCheck,
+        "corpus-baseline" => Verb::CorpusBaseline,
         other => return Err(format!("unknown verb \"{other}\"")),
     };
 
     while let Some(flag) = args.next() {
+        if matches!(cli.verb, Verb::CorpusBaseline)
+            && !matches!(
+                flag.as_str(),
+                "--all-mixes" | "--ra2-dir" | "--out" | "-h" | "--help"
+            )
+        {
+            return Err(flag_not_valid(&flag, &cli.verb));
+        }
         match flag.as_str() {
             "-h" | "--help" => {
                 cli.verb = Verb::Help;
@@ -265,6 +280,10 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
             // One output root serves every verb that writes files.
             "--out" => {
                 let dir = PathBuf::from(value(&mut args, "--out")?);
+                if matches!(cli.verb, Verb::CorpusBaseline) {
+                    cli.corpus_baseline_out = Some(dir);
+                    continue;
+                }
                 cli.render.out = dir.clone();
                 cli.extract.out = dir.clone();
                 cli.compare.out = dir.clone();
@@ -379,6 +398,17 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         }
     }
 
+    if matches!(cli.verb, Verb::CorpusBaseline) {
+        if !cli.all_mixes {
+            return Err("corpus-baseline requires --all-mixes: the reference includes archives outside startup reach".to_string());
+        }
+        if cli.corpus_baseline_out.is_none() {
+            return Err(
+                "corpus-baseline requires --out <NEW_FILE>; existing files are never overwritten"
+                    .to_string(),
+            );
+        }
+    }
     Ok(cli)
 }
 
@@ -424,6 +454,7 @@ fn flag_not_valid(flag: &str, verb: &Verb) -> String {
         Verb::Compare { .. } => "compare",
         Verb::Scan => "scan",
         Verb::ParseCheck => "parse-check",
+        Verb::CorpusBaseline => "corpus-baseline",
         Verb::Help => "help",
     };
     format!("{flag} is not valid for `{verb_name}`")
@@ -435,6 +466,36 @@ mod tests {
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|w| (*w).to_string()).collect()
+    }
+
+    #[test]
+    fn corpus_baseline_requires_explicit_scope_and_destination() {
+        assert!(parse(args(&["corpus-baseline"])).is_err());
+        assert!(parse(args(&["corpus-baseline", "--all-mixes"])).is_err());
+        assert!(parse(args(&["corpus-baseline", "--out", "new.json"])).is_err());
+        assert!(
+            parse(args(&[
+                "corpus-baseline",
+                "--all-mixes",
+                "--out",
+                "new.json",
+                "--format",
+                "shp"
+            ]))
+            .is_err()
+        );
+        let cli = parse(args(&[
+            "corpus-baseline",
+            "--all-mixes",
+            "--out",
+            "new.json",
+        ]))
+        .unwrap();
+        assert!(matches!(cli.verb, Verb::CorpusBaseline));
+        assert_eq!(
+            cli.corpus_baseline_out.as_deref(),
+            Some(std::path::Path::new("new.json"))
+        );
     }
 
     #[test]

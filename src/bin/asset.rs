@@ -10,8 +10,8 @@ use vera20k::asset_tools::args::{self, Cli, Verb};
 use vera20k::asset_tools::names::NameDict;
 use vera20k::asset_tools::report::{ErrorReport, to_json};
 use vera20k::asset_tools::{
-    palette, render_dispatch, root, verb_art, verb_compare, verb_csf, verb_extract, verb_find,
-    verb_info, verb_ls, verb_palette, verb_parse_check, verb_scan, verb_sound,
+    palette, render_dispatch, retail_corpus, root, verb_art, verb_compare, verb_csf, verb_extract,
+    verb_find, verb_info, verb_ls, verb_palette, verb_parse_check, verb_scan, verb_sound,
 };
 
 const EXIT_FAILED: i32 = 1;
@@ -148,6 +148,13 @@ fn run(cli: Cli) -> Result<(), ErrorReport> {
         Verb::Scan => {
             let dict = NameDict::build(&manager);
             let report = verb_scan::run(&manager, &dict, &cli.scan)?;
+            println!("{}", to_json(&report));
+        }
+
+        Verb::CorpusBaseline => {
+            let destination = cli.corpus_baseline_out.as_deref().expect("validated --out");
+            let report = retail_corpus::export_candidate(&manager, destination)
+                .map_err(|error| ErrorReport { error, hint: Some("Use a new candidate file and review the result; never rebaseline to hide a test failure.".to_string()) })?;
             println!("{}", to_json(&report));
         }
 

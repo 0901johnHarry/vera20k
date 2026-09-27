@@ -2,8 +2,7 @@
 
 use super::*;
 
-use vera20k::assets::aud_file::{decode_aud, parse_header};
-use vera20k::assets::audio_bag::{AudioIndex, decode_bag_audio};
+use crate::assets::aud_file::{decode_aud, parse_header};
 
 /// AUD chunk header: u16 compressed size + u16 output size + u32 magic.
 const AUD_HEADER_SIZE: usize = 12;
@@ -11,13 +10,9 @@ const CHUNK_HEADER_SIZE: usize = 8;
 const CHUNK_MAGIC: u32 = 0x0000_DEAF;
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_aud_chunk_walk() {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
     let names = xcc_name_map();
     let mut failures: Vec<String> = Vec::new();
     let mut trailing_sample_files: Vec<String> = Vec::new();
@@ -112,7 +107,9 @@ fn certify_aud_chunk_walk() {
                 ce.archive, ce.id as u32, ce.size
             ));
         }
-    });
+    })
+    .expect("read every indexed corpus entry");
+    assert!(total > 0, "retail corpus contained no AUD files");
     assert!(
         failures.is_empty(),
         "aud: {} of {total} retail files failed chunk accounting:\n{}",
@@ -132,7 +129,7 @@ fn certify_aud_chunk_walk() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_bag_adpcm_block_invariants() {
     // Value-parity certification for bag IMA-ADPCM decode, block level.
     // The original engine's block decoder (see docs/research/
@@ -153,11 +150,7 @@ fn certify_bag_adpcm_block_invariants() {
     // it records which entries carry a *real* tail that is not group-aligned,
     // which is what the pre-2026-09-03 reading mistook for a dropped block.
     const KNOWN_RAGGED: &[&str] = &["GREXSELB"];
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
     let mut failures: Vec<String> = Vec::new();
     let mut ragged_known: Vec<String> = Vec::new();
     let mut ima_entries = 0usize;
@@ -165,27 +158,16 @@ fn certify_bag_adpcm_block_invariants() {
     let mut short_tail_entries = 0usize;
     let mut shorter_than_stride_entries = 0usize;
     for mix_name in ["AUDIOMD.MIX", "AUDIO.MIX"] {
-        let Some(mix) = am.archive(mix_name) else {
-            continue;
-        };
-        let (Some(idx_data), Some(bag_data)) = (
-            mix.get_by_name("audio.idx"),
-            mix.get_by_name("audio.bag").map(|d| d.to_vec()),
-        ) else {
-            continue;
-        };
-        let Some(index) = AudioIndex::from_idx_bag(idx_data, bag_data) else {
-            continue;
-        };
+        let index = audio_index(&am, mix_name).expect("required retail audio index");
         let names: Vec<String> = index
             .names_with_prefix("")
             .into_iter()
             .map(str::to_string)
             .collect();
         for name in &names {
-            let Some((entry, data)) = index.get(name) else {
-                continue;
-            };
+            let (entry, data) = index
+                .get(name)
+                .unwrap_or_else(|| panic!("{mix_name}: entry '{name}' failed lookup"));
             if !entry.is_ima_adpcm() {
                 continue;
             }
@@ -273,78 +255,13 @@ fn certify_bag_adpcm_block_invariants() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_audio_bag_total() {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
 
-    // Mirror the runtime lookup exactly (src/app_transitions.rs
-    // load_audio_indices): each of AUDIOMD.MIX / AUDIO.MIX contains entries
-    // named "audio.idx" / "audio.bag" internally.
-    let mut failures: Vec<String> = Vec::new();
-    let mut total_entries = 0usize;
-    let mut mixes_found = 0usize;
-    for mix_name in ["AUDIOMD.MIX", "AUDIO.MIX"] {
-        let Some(mix) = am.archive(mix_name) else {
-            failures.push(format!("{mix_name}: archive not loaded"));
-            continue;
-        };
-        let Some(idx_data) = mix.get_by_name("audio.idx") else {
-            failures.push(format!("{mix_name}: no audio.idx entry"));
-            continue;
-        };
-        let Some(bag_data) = mix.get_by_name("audio.bag").map(|d| d.to_vec()) else {
-            failures.push(format!("{mix_name}: no audio.bag entry"));
-            continue;
-        };
-        let Some(index) = AudioIndex::from_idx_bag(idx_data, bag_data) else {
-            failures.push(format!("{mix_name}: audio.idx failed to parse"));
-            continue;
-        };
-        mixes_found += 1;
-        total_entries += index.len();
-        let names: Vec<String> = index
-            .names_with_prefix("")
-            .into_iter()
-            .map(str::to_string)
-            .collect();
-        for name in &names {
-            let Some((entry, data)) = index.get(name) else {
-                failures.push(format!("{mix_name}: entry '{name}' failed lookup"));
-                continue;
-            };
-            if decode_bag_audio(entry, data).is_none() {
-                failures.push(format!(
-                    "{mix_name}: entry '{name}' ({} bytes, flags {:#x}) failed to decode",
-                    entry.size, entry.flags
-                ));
-            }
-        }
-    }
-    assert_eq!(
-        mixes_found,
-        2,
-        "expected both audio MIXes:\n{}",
-        failures.join("\n")
-    );
-    assert!(
-        failures.is_empty(),
-        "audio.bag: {} failures across {total_entries} entries:\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
+    let total_entries = audio_bag_total(&am).expect("decode all retail audio bag entries");
 
-    if write_mode() {
-        let mut m = read_manifest().unwrap_or_default();
-        m.bag_aud = total_entries;
-        write_manifest(&m);
-        println!("manifest updated: bag_aud = {total_entries}");
-        return;
-    }
-    let m = read_manifest().expect("manifest.json missing — run once with RETAIL_GOLDENS_WRITE=1");
+    let m = read_manifest().expect("read committed retail corpus manifest");
     assert_eq!(
         m.bag_aud, total_entries,
         "CORPUS-DRIFT: audio.bag entry count changed"

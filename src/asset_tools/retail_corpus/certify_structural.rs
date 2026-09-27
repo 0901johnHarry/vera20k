@@ -3,57 +3,27 @@
 
 use super::*;
 
-use vera20k::assets::aud_file::decode_aud;
-use vera20k::assets::csf_file::CsfFile;
-use vera20k::assets::fnt_file::FntFile;
-use vera20k::assets::hva_file::HvaFile;
-use vera20k::assets::pal_file::Palette;
-use vera20k::assets::pcx_file::PcxFile;
-use vera20k::assets::shp_file::ShpFile;
-use vera20k::assets::tmp_file::TmpFile;
-use vera20k::assets::vpl_file::VplFile;
-use vera20k::assets::vxl_file::VxlFile;
+use crate::assets::csf_file::CsfFile;
+use crate::assets::fnt_file::FntFile;
+use crate::assets::hva_file::HvaFile;
+use crate::assets::pcx_file::PcxFile;
+use crate::assets::shp_file::ShpFile;
+use crate::assets::tmp_file::TmpFile;
+use crate::assets::vxl_file::VxlFile;
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_corpus_manifest() {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
 
-    let mut archives: BTreeMap<String, (usize, u64)> = BTreeMap::new();
-    let mut format_counts: BTreeMap<String, usize> = BTreeMap::new();
-    am.visit_archives(|arch_name, archive| {
-        let mut h = FNV_OFFSET;
-        for e in archive.entries() {
-            h = fnv1a(&(e.id as u32).to_le_bytes(), h);
-            h = fnv1a(&e.size.to_le_bytes(), h);
-        }
-        archives.insert(arch_name.to_string(), (archive.entry_count(), h));
-    });
-    walk_sniffed(&am, |ce, _| {
-        *format_counts.entry(ce.format.to_string()).or_default() += 1;
-    });
+    let (archives, format_counts) = corpus_inventory(&am).expect("inventory retail corpus");
 
-    if write_mode() {
-        let mut m = read_manifest().unwrap_or_default();
-        m.schema = 1;
-        m.archives = archives;
-        m.format_counts = format_counts;
-        write_manifest(&m);
-        println!("manifest written: {MANIFEST_PATH}");
-        return;
-    }
-
-    let m = read_manifest().expect("manifest.json missing — run once with RETAIL_GOLDENS_WRITE=1");
+    let m = read_manifest().expect("read committed retail corpus manifest");
     assert_eq!(
         m.archives, archives,
         "CORPUS-DRIFT: the install's archive set/index differs from the committed \
-         manifest. This is an install change, not a parser failure. If intentional, \
-         regenerate with RETAIL_GOLDENS_WRITE=1 (golden re-baseline discipline: one \
-         session at a time, note the reason in the commit)."
+         manifest. Check archive traversal, naming and input changes before rebaselining. \
+         export a candidate with asset corpus-baseline --all-mixes --out <NEW_FILE> and review the drift."
     );
     assert_eq!(
         m.format_counts, format_counts,
@@ -62,57 +32,24 @@ fn certify_corpus_manifest() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_parse_total_zero_failures() {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
     let mut failures: Vec<String> = Vec::new();
     let mut total = 0usize;
     walk_sniffed(&am, |ce, data| {
         total += 1;
-        let outcome: Result<(), String> = match ce.format {
-            "shp" => ShpFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "vxl" => VxlFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "hva" => HvaFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "tmp" => TmpFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "pal" => Palette::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "csf" => CsfFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "vpl" => VplFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "fnt" => FntFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "pcx" => PcxFile::from_bytes(data)
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "aud" => decode_aud(data)
-                .map(|_| ())
-                .ok_or_else(|| "decode_aud returned None".to_string()),
-            _ => Ok(()),
-        };
+        let outcome = crate::asset_tools::verb_parse_check::run_parser(ce.format, data)
+            .unwrap_or_else(|| Err(format!("no parser for sniffed format {}", ce.format)));
         if let Err(msg) = outcome {
             failures.push(format!(
                 "{} {:#010X} ({} bytes): {msg}",
                 ce.archive, ce.id as u32, ce.size
             ));
         }
-    });
+    })
+    .expect("read every indexed corpus entry");
+    assert!(total > 0, "retail corpus contained no sniffed files");
     // Baseline 2026-07-19: 8,824/8,824 pass (incl. 271 pcx). Empty allowlist is
     // intentional — a new failure is a real finding to investigate, never to
     // allowlist blind.
@@ -125,40 +62,8 @@ fn certify_parse_total_zero_failures() {
     );
 }
 
-/// Shared skeleton for the per-format structural certifies: walk the corpus
-/// filtered to one format, collect per-file failure strings, assert none.
-fn certify_format(format: &str, mut check: impl FnMut(&CorpusEntry, &[u8]) -> Result<(), String>) {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
-    let mut failures: Vec<String> = Vec::new();
-    let mut total = 0usize;
-    walk_sniffed(&am, |ce, data| {
-        if ce.format != format {
-            return;
-        }
-        total += 1;
-        if let Err(msg) = check(ce, data) {
-            failures.push(format!(
-                "{} {:#010X} ({} bytes): {msg}",
-                ce.archive, ce.id as u32, ce.size
-            ));
-        }
-    });
-    assert!(
-        failures.is_empty(),
-        "{}: {} of {} retail files violated structural invariants:\n{}",
-        format,
-        failures.len(),
-        total,
-        failures.join("\n")
-    );
-}
-
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_shp_structural() {
     certify_format("shp", |_, data| {
         let shp = ShpFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -193,7 +98,7 @@ fn certify_shp_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_shp_rle_row_exactness() {
     // Structural certification for every nonempty bit-1-set SHP frame.
     //
@@ -201,7 +106,7 @@ fn certify_shp_rle_row_exactness() {
     // bound (grammar verified from the binary's RLE blitters: nonzero byte =
     // one literal pixel; 0x00,count = count transparent pixels; rows framed
     // by a self-inclusive u16 length prefix consumed by the row walker — see
-    // docs/research/SHP_LOAD_DECODE_FRAME_METADATA_GHIDRA_REPORT.md).
+    // docs/research/SHP_RLE_ZERO_VALUE_CERTIFICATION_GHIDRA_REPORT.md).
     // Formats 2 and 3 share this grammar; the header byte is a bitfield rather
     // than a four-codec enum. This replay proves every retail extended row can
     // produce its visible width without crossing the declared row boundary.
@@ -281,7 +186,7 @@ fn certify_shp_rle_row_exactness() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_tmp_structural() {
     certify_format("tmp", |_, data| {
         let tmp = TmpFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -329,29 +234,14 @@ fn certify_tmp_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_tmp_value_layout() {
-    // Value-parity certification for TMP tile pixels.
-    //
-    // The original engine's tile blitter (see docs/research/
-    // TMP_DIAMOND_VALUE_CERTIFICATION_GHIDRA_REPORT.md):
-    // - reads diamond pixels via a binary-embedded 29-row template whose row
-    //   widths (4,8,..,60,..,8,4; 900 bytes) and x-indents ((60-w)/2) are
-    //   bit-identical to our unpack_diamond formula (verified from the
-    //   template bytes), starting at cell offset 52;
-    // - locates ZData / ExtraData / ExtraZData via OFFSETS STORED in the
-    //   cell header (+0x0C / +0x08 / +0x10), where our decoder assumes they
-    //   follow sequentially (52+900, then +900 if ZData, then +w*h);
-    // - anchors the extra rect with the STORED tile origin (+0x00/+0x04),
-    //   where our decoder computes the origin from (col,row);
-    // - draws ExtraData AFTER the diamond, overwriting where extra != 0 —
-    //   our decoder composites extra BEHIND the diamond (only into zeros).
-    //
-    // The three assumptions and the composition order are all corpus
-    // properties: this test proves the stored offsets/origins equal our
-    // assumptions for every retail tile, and that no nonzero extra pixel
-    // ever coincides with a nonzero diamond pixel (making behind-vs-over
-    // composition value-identical on all retail data).
+    // Retail color-layout proof from the cited native template/blitter reading.
+    // The current decoder uses stored offsets/origins and draws covered extra
+    // color over the diamond. Preserve the corpus facts that also explained
+    // the historical sequential/origin-derived, behind-diamond implementation:
+    // stored layouts agree and nonzero colors never conflict. This check does
+    // not establish ExtraZ composition parity; see the baseline migration note.
     let mut tiles_with_extra = 0usize;
     let mut overlap_conflicts = 0usize;
     certify_format("tmp", |_, data| {
@@ -452,17 +342,17 @@ fn certify_tmp_value_layout() {
     });
     println!("RECORD: tiles with extra data: {tiles_with_extra}");
     println!("RECORD: nonzero-extra-over-nonzero-diamond conflicts: {overlap_conflicts}");
-    // The original draws extra OVER the diamond; we composite it BEHIND.
-    // Zero conflicts on the corpus makes the two orders value-identical.
+    // Zero color conflicts made historical behind/over orders equivalent on
+    // this corpus. Depth composition is a separate, unproven mechanism.
     assert_eq!(
         overlap_conflicts, 0,
-        "extra data overlaps nonzero diamond pixels — behind-vs-over \
-         composition diverges from the original on this corpus"
+        "extra data overlaps nonzero diamond pixels — revisit the historical \
+         color-layout equivalence proof for this corpus"
     );
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_vxl_structural() {
     // Normal-table sizes per src/render/vxl_normals.rs: mode 2 = TS table (36
     // entries), mode 4 = RA2 table (245 entries; 245–254 absent/stale).
@@ -667,7 +557,7 @@ fn certify_vxl_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_hva_structural() {
     certify_format("hva", |_, data| {
         let hva = HvaFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -704,7 +594,7 @@ fn certify_hva_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_csf_structural() {
     let mut languages: Vec<u32> = Vec::new();
     certify_format("csf", |_, data| {
@@ -746,7 +636,7 @@ fn certify_csf_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_csf_text_values() {
     // Value-parity certification for CSF display text. The original engine
     // NOT-decodes each UTF-16 string and applies load-time whitespace
@@ -875,53 +765,14 @@ fn walk_raw_csf_label_with_text(
     Ok((name, values, pos))
 }
 
-/// Walk one raw CSF label record. Returns (uppercased name, next offset).
-/// Mirrors the on-disk format: " LBL" magic, u32 pair count, u32 name length,
-/// name bytes, then per pair a string record (magic, u32 char count, chars×2
-/// bytes, plus a length-prefixed extra blob for the "W" variants).
+/// Structural checks share the raw record walker with the text-value check.
 fn walk_raw_csf_label(data: &[u8], offset: usize) -> Result<(String, usize), String> {
-    let rd = |off: usize| -> Result<u32, String> {
-        data.get(off..off + 4)
-            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-            .ok_or_else(|| format!("read past EOF at {off}"))
-    };
-    let magic = rd(offset)?;
-    // " LBL" and the alt spelling "LBL " (see src/assets/csf_file.rs).
-    if magic != 0x4C42_4C20 && magic != 0x204C_424C {
-        return Err(format!("bad label magic {magic:#010X}"));
-    }
-    let pair_count = rd(offset + 4)?;
-    let name_len = rd(offset + 8)? as usize;
-    let name_start = offset + 12;
-    let name = data
-        .get(name_start..name_start + name_len)
-        .map(|b| String::from_utf8_lossy(b).to_ascii_uppercase())
-        .ok_or("name past EOF")?;
-    let mut pos = name_start + name_len;
-    for _ in 0..pair_count {
-        let str_magic = rd(pos)?;
-        // " RTS"/" STR"/"STR " plain, "STRW"/"WRTS" with extra blob.
-        let has_extra = str_magic == 0x5752_5453 || str_magic == 0x5354_5257;
-        let is_plain =
-            str_magic == 0x5354_5220 || str_magic == 0x5254_5320 || str_magic == 0x2052_5453;
-        if !is_plain && !has_extra {
-            return Err(format!("bad string magic {str_magic:#010X} at {pos}"));
-        }
-        let char_count = rd(pos + 4)? as usize;
-        pos += 8 + char_count * 2;
-        if has_extra {
-            let extra_len = rd(pos)? as usize;
-            pos += 4 + extra_len;
-        }
-        if pos > data.len() {
-            return Err(format!("string data past EOF at {pos}"));
-        }
-    }
-    Ok((name, pos))
+    let (name, _, next) = walk_raw_csf_label_with_text(data, offset)?;
+    Ok((name.to_ascii_uppercase(), next))
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_fnt_structural() {
     certify_format("fnt", |_, data| {
         let fnt = FntFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -954,7 +805,7 @@ fn certify_fnt_structural() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_pcx_structural() {
     certify_format("pcx", |_, data| {
         let pcx = PcxFile::from_bytes(data).map_err(|e| e.to_string())?;
