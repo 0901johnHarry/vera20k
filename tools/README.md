@@ -9,6 +9,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | --- | --- |
 | Run all Python tool and source-skill tests | `python -m tools.run_tests` (below) |
 | Wait for builds; test, check, lint or build the current checkout; preserve A/B binaries | `python -m tools.cargo_run` (below) |
+| Find a built host executable for shell use | `python -m tools.cargo_run --resolve asset --profile release` (below) |
 | Run retail corpus checks or export a decoder-baseline candidate | [retail corpus](retail_corpus.md) |
 | Inspect/extract/render assets | [asset browser](asset_browser/README.md), `asset` binary |
 | Reproduce FireAt-tail launch goldens | [projectile fixture family](projectile_oracle/README.md) |
@@ -26,6 +27,7 @@ python -m tools.cargo_run -- test -p vera20k --lib
 python -m tools.cargo_run -- clippy -p vera20k --lib
 python -m tools.cargo_run --label release-before -- build --locked --release -p vera20k --bin vera20k
 python -m tools.cargo_run --label tests-before -- test -p vera20k --lib --no-run
+python -m tools.cargo_run --resolve asset --profile release
 python -m unittest tools.tests.test_cargo_run -v
 ```
 
@@ -65,6 +67,20 @@ user configuration and arbitrary build-script environment inputs are not sealed.
 Capture and native-oracle tools retain responsibility for their own input evidence.
 Debug-symbol sidecars are not copied. Keep the source checkout and its cache when
 debugging a preserved binary; the executable alone suffices for ordinary A/B runs.
+
+For shell use, `--resolve <BIN> --profile release|debug` prints only the absolute
+verified path to stdout. Missing records/files or changed bytes produce a nonzero
+exit and diagnostics on stderr. It never builds or falls back to another profile;
+resolve mode accepts no Cargo arguments, label or build-wait option. For example:
+
+```sh
+asset_bin=$(python -m tools.cargo_run --resolve asset --profile release)
+"$asset_bin" parse-check --all-mixes
+```
+
+Resolution checks recorded binary bytes, not whether they reflect current source.
+Build after source changes; use a preserved label when exact build provenance is
+needed. The Python API permits an omitted profile for the existing MCP preference.
 
 The asset-browser MCP uses `cargo_run.resolve_binary` to discover emitted host
 release/debug executables from the per-checkout record in

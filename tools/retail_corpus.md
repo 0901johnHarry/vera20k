@@ -42,13 +42,16 @@ Build the existing `asset` tool through the shared owner:
 python -m tools.cargo_run --label corpus-tool -- build --release -p vera20k --bin asset
 ```
 
-Use the emitted binary path recorded in that label's `manifest.json` (or the
-existing `cargo_run.resolve_binary` API). Do not assume a conventional
-`target/release/asset` path. With that path substituted for `<asset>`:
+Resolve the emitted release binary through the same build owner:
 
 ```sh
-<asset> corpus-baseline --all-mixes --out target/retail-corpus-candidate.json
+asset_bin=$(python -m tools.cargo_run --resolve asset --profile release)
+"$asset_bin" corpus-baseline --all-mixes --out target/retail-corpus-candidate.json
 ```
+
+The resolver requires an unchanged recorded release executable and never chooses
+another profile or guesses a conventional target path. The label's `manifest.json`
+retains the build's source identity; resolution alone does not assert source freshness.
 
 The exporter calculates the whole candidate before writing a new destination.
 It refuses an existing destination and never replaces the committed reference.
