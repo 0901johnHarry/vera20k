@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use anyhow::Context;
+
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
 use crate::app::persistence::options_profile::{RetailOptionsLoad, RetailOptionsProfile};
 
@@ -24,6 +26,19 @@ fn startup_window_projection(
         (profile_screen.width, profile_screen.height, true),
         |(width, height)| (width, height, false),
     )
+}
+
+/// Keep the first actionable failure while still constructing the error-screen state.
+fn startup_asset_or_error<T>(result: Result<T>, error: &mut Option<String>) -> Option<T> {
+    match result {
+        Ok(asset) => Some(asset),
+        Err(err) => {
+            let message = format!("{err:#}");
+            log::warn!("{message}");
+            error.get_or_insert(message);
+            None
+        }
+    }
 }
 
 fn select_startup_options_load<LoadProfile>(
@@ -107,10 +122,8 @@ impl App {
         // full-read profile retained by persistence. Capture is a sealed
         // automation lane, so it uses exact defaults and its explicit
         // dimensions instead of ingesting operator argv/profile screen state.
-        let (game_config, mut main_menu_shell_error) = match GameConfig::load() {
-            Ok(config) => (Some(config), None),
-            Err(err) => (None, Some(format!("{err:#}"))),
-        };
+        let mut main_menu_shell_error = None;
+        let game_config = startup_asset_or_error(GameConfig::load(), &mut main_menu_shell_error);
         let options_load = select_startup_options_load(
             capture_dimensions,
             &startup_options,
@@ -181,15 +194,11 @@ impl App {
         let ui_scale = 1.0;
         let sidebar_layout_spec = SidebarChromeLayoutSpec::stock();
         let mut startup_asset_manager = game_config.as_ref().and_then(|config| {
-            match AssetManager::new(&config.paths.ra2_dir) {
-                Ok(manager) => Some(manager),
-                Err(err) => {
-                    let message = format!("Could not load the game archives: {err:#}");
-                    log::warn!("{message}");
-                    main_menu_shell_error = Some(message);
-                    None
-                }
-            }
+            startup_asset_or_error(
+                AssetManager::new(&config.paths.ra2_dir)
+                    .context("Could not load the game archives"),
+                &mut main_menu_shell_error,
+            )
         });
         // Native process startup seeds Scenario before the MPModes loader. The
         // Cooperative factory reached by that loader then advances this cursor
@@ -201,8 +210,8 @@ impl App {
         // after the mix mount and lets the rules/type initialization run under
         // the artwork, padding out the remaining hold only if that work
         // finished early. The string-table load has to stay ahead of the
-        // present — all five text layers fall back to English literals when the
-        // CSF is absent.
+        // present. A missing or corrupt required CSF belongs to the startup
+        // error screen, so it must not abort AppState construction or show the splash.
         //
         // What makes the move safe is that the archive stack is identical at
         // both positions: the only registration that changes it sits after the
@@ -211,10 +220,12 @@ impl App {
         // do share the asset manager mutably in effect — its mix cache is
         // interior-mutable behind a lock — but caching a lookup does not change
         // which archive wins it.)
-        let startup_csf = startup_asset_manager
-            .as_ref()
-            .map(crate::app::loading::init::load_csf)
-            .transpose()?;
+        let startup_csf = startup_asset_manager.as_ref().and_then(|assets| {
+            startup_asset_or_error(
+                crate::app::loading::init::load_csf(assets),
+                &mut main_menu_shell_error,
+            )
+        });
         let startup_fnt = startup_asset_manager.as_ref().and_then(|assets| {
             assets.get_ref("GAME.FNT").and_then(|data| {
                 crate::assets::fnt_file::FntFile::from_bytes(data)
@@ -225,7 +236,8 @@ impl App {
         if let Some(fnt) = startup_fnt.as_ref() {
             bit_font = BitFont::from_fnt(&gpu, &batch_renderer, &fnt);
         }
-        let mut startup_splash = if capture_dimensions.is_none() {
+        let mut startup_splash = if capture_dimensions.is_none() && main_menu_shell_error.is_none()
+        {
             startup_asset_manager
                 .as_ref()
                 .zip(startup_fnt.as_ref())
@@ -304,15 +316,15 @@ impl App {
         }
         let skirmish_shell_chrome = None;
         let main_menu_shell_chrome = startup_asset_manager.as_ref().and_then(|assets| {
-            crate::render::main_menu_shell_chrome::build_main_menu_shell_chrome_atlas(
-                &gpu,
-                &batch_renderer,
-                assets,
+            startup_asset_or_error(
+                crate::render::main_menu_shell_chrome::build_main_menu_shell_chrome_atlas(
+                    &gpu,
+                    &batch_renderer,
+                    assets,
+                ),
+                &mut main_menu_shell_error,
             )
         });
-        if main_menu_shell_chrome.is_none() && main_menu_shell_error.is_none() {
-            main_menu_shell_error = Some("Required game-menu artwork is missing or unreadable. Check that the installation includes Yuri's Revenge.".to_owned());
-        }
         let version_txt = Self::load_version_txt();
         let available_maps = list_maps::list_available_maps().unwrap_or_else(|err| {
             log::warn!("Could not list maps for menu: {:#}", err);
@@ -797,6 +809,34 @@ fn quickplay_launch_session(selected_map: String) -> crate::skirmish_launch::Ski
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn required_string_table_failure_is_retained_for_the_startup_error_screen() {
+        let root = std::env::temp_dir().join(format!("vera-startup-csf-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        for malformed in [false, true] {
+            if malformed {
+                std::fs::write(root.join("ra2md.csf"), b"bad").unwrap();
+            }
+            let assets = AssetManager::from_loose_root_for_test(&root);
+            let mut error = None;
+            let csf =
+                startup_asset_or_error(crate::app::loading::init::load_csf(&assets), &mut error);
+            assert!(csf.is_none());
+            let first = error
+                .clone()
+                .expect("error screen must receive the failure");
+            assert!(first.contains("ra2md.csf"), "{first}");
+            assert!(
+                first.contains(if malformed { "3 bytes" } else { "missing" }),
+                "{first}"
+            );
+            // Later resource failures must not replace the original diagnosis.
+            startup_asset_or_error::<()>(Err(anyhow::anyhow!("later artwork failure")), &mut error);
+            assert_eq!(error.as_deref(), Some(first.as_str()));
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn quickplay_authored_fixture_does_not_add_starting_forces() {
