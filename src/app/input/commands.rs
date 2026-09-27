@@ -1146,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn gsi_16_01_local_scheduler_uses_move_bytes_and_fences_queued_move_metadata() {
+    fn gsi_16_01_local_scheduler_sends_ordinary_moves_through_their_bytes() {
         let mut sim = Simulation::new();
         let local = sim.interner.intern("Local");
         let type_ref = sim.interner.intern("TESTUNIT");
@@ -1171,6 +1171,23 @@ mod tests {
         );
         entity.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(entity);
+
+        // A cell the Megamission record cannot hold shows the ordinary Move
+        // takes its bytes: the codec refuses it and nothing is queued.
+        assert_eq!(
+            schedule_command_in_sim(
+                &mut sim,
+                "Local",
+                Command::Move {
+                    entity_id: 42,
+                    target_rx: u16::MAX,
+                    target_ry: 12,
+                    queue: false,
+                },
+            ),
+            None
+        );
+        assert!(sim.pending_commands_for_tests().is_empty());
 
         assert_eq!(
             schedule_command_in_sim(
@@ -1197,7 +1214,7 @@ mod tests {
                     queue: false,
                 }
             ),
-            "an ordinary Move round-trips through its Megamission bytes"
+            "an ordinary Move keeps its cell through its Megamission bytes"
         );
 
         schedule_command_in_sim(

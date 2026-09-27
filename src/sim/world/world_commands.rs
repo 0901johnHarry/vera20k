@@ -148,7 +148,7 @@ impl Simulation {
     /// `EventClass__BuildMegaMissionEnvelope` at `gamemd.exe` `0x004C6860`
     /// stores HouseClass registration and Abstract stable identity separately;
     /// the source therefore need not belong to the issuing house. Rust-only
-    /// queued waypoints and move-group metadata are not representable here.
+    /// queued waypoints are not representable here.
     pub(crate) fn encode_megamission_move_record(
         &self,
         command_owner: crate::sim::intern::InternedId,
