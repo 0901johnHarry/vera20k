@@ -114,9 +114,6 @@ fn try_spawn_refinery_free_unit(
         return false;
     };
     let free_unit_type = free_unit_type.to_owned();
-    let refund = rules
-        .object(&free_unit_type)
-        .map_or(0, |object| object.cost.max(0));
 
     let primary = primary_free_unit_cell(building_rx, building_ry, width, height);
     // Both nearby searches are seeded from the building's NORTH-WEST footprint cell —
@@ -142,7 +139,7 @@ fn try_spawn_refinery_free_unit(
         initial_z,
         rules,
     ) else {
-        refund_failed_free_unit(sim, owner, refund);
+        let refund = refund_free_unit(sim, rules, owner, &free_unit_type);
         log::warn!(
             "Completed refinery {} could not construct free unit {}; refunded {} to {}",
             building_type_id,
@@ -216,7 +213,7 @@ fn try_spawn_refinery_free_unit(
     }
 
     // gamemd refunds before uninitializing the constructed UnitClass.
-    refund_failed_free_unit(sim, owner, refund);
+    let refund = refund_free_unit(sim, rules, owner, &free_unit_type);
     sim.uninit_with_rules(free_unit_id, rules);
     log::warn!(
         "Completed refinery {} could not place free unit {}; refunded {} to {}",
@@ -262,9 +259,31 @@ fn try_place_free_unit(
     .is_some()
 }
 
-fn refund_failed_free_unit(sim: &mut Simulation, owner: &str, refund: i32) {
-    let credits = super::credits_entry_for_owner(sim, owner);
-    *credits = credits.saturating_add(refund.max(0));
+/// A free unit that cannot be made or placed pays its house its GetRefund with
+/// `full` set ([`super::type_refund`]; `0x00446E71..0x00446E8F`,
+/// `0x00446EB9..0x00446EDD`) through `HouseClass::Add_Credits @ 0x004F9950`.
+/// Returns the amount credited.
+fn refund_free_unit(sim: &mut Simulation, rules: &RuleSet, owner: &str, unit_type: &str) -> i32 {
+    let Some(owner_id) = sim.interner.get(owner) else {
+        return 0;
+    };
+    let refund = match (
+        rules.object(unit_type),
+        sim.houses.get(&owner_id),
+        sim.house_cost_factors(owner_id, rules),
+    ) {
+        (Some(object), Some(house), Some(factors)) => super::type_refund(
+            rules,
+            object,
+            house,
+            &factors,
+            sim.session.game_mode_nonzero,
+            true,
+        ),
+        _ => return 0,
+    };
+    crate::sim::credit_income::add_credits(sim, owner_id, refund);
+    refund
 }
 
 fn primary_free_unit_cell(

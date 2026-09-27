@@ -3925,8 +3925,7 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
         ObjectCategory::Infantry,
     );
 
-    let kill_half =
-        score_award_for_victim(Some(&rhino), 0) + score_award_for_victim(Some(&gi), 100);
+    let kill_half = score_award_for_victim(rhino.cost, 0) + score_award_for_victim(gi.cost, 100);
     assert_eq!(kill_half, 1_300);
 
     let stats = MatchStatistics {

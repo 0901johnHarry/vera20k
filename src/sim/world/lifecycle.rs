@@ -2833,10 +2833,10 @@ impl Simulation {
             "PostMortem Object callbacks run at exact zero"
         );
         if !dont_score {
-            let award = crate::sim::combat::score_award_for_victim(
-                rules.object(self.interner.resolve(type_ref)),
-                veterancy,
-            );
+            let victim_cost = self
+                .object_type(type_ref, rules)
+                .map_or(0, |object| self.cost_of(owner, object, rules));
+            let award = crate::sim::combat::score_award_for_victim(victim_cost, veterancy);
             self.record_match_kill_and_loss(owner, category, killer_owner, award);
         }
         #[cfg(test)]

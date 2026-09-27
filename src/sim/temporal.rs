@@ -740,17 +740,7 @@ impl Simulation {
             self.dispatch_unit_lost_events(&[event]);
         }
         // vtable +0xE0 Record_The_Kill(Owner): experience, kill and score.
-        if let Some(victim) = self.substrate.entities.get_mut(target) {
-            crate::sim::combat::record_kill_credit(victim, killer_owner, rules, &self.interner);
-        }
-        crate::sim::combat::award_kill_experience(
-            &mut self.substrate.entities,
-            rules,
-            &self.interner,
-            &self.house_alliances,
-            head,
-            target,
-        );
+        self.record_the_kill(target, Some(head), killer_owner, rules);
         // vtable +0xF8 UnInit: no death effects, no survivors.
         self.uninit_with_context(target, UninitContext::with_rules(rules));
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
@@ -761,11 +751,9 @@ impl Simulation {
     }
 
     /// `VeterancyStruct::Add(OwnerType cost, TargetType cost)` for a
-    /// `Trainable=` attacker (`0x0071A917..0x0071A978`).
-    ///
-    /// RESIDUAL: both costs are `TechnoTypeClass::vt+0x84` evaluated with the
-    /// owning house, as in Record_The_Kill; VERA reads the bare `Cost=`
-    /// (equal for stock countries).
+    /// `Trainable=` attacker (`0x0071A917..0x0071A978`). Each cost is the
+    /// type's Cost_Of for its own object's house: the target's
+    /// (`0x0071A952`) and the attacker's (`0x0071A968`).
     fn temporal_veterancy(&mut self, attacker: u64, target: u64, rules: &RuleSet) {
         let (Some(attacker_entity), Some(target_entity)) = (
             self.substrate.entities.get(attacker),
@@ -782,7 +770,10 @@ impl Simulation {
         if !owner_type.trainable {
             return;
         }
-        let (owner_cost, target_cost) = (owner_type.cost, target_type.cost);
+        let (owner_cost, target_cost) = (
+            self.cost_of(attacker_entity.owner(), owner_type, rules),
+            self.cost_of(target_entity.owner(), target_type, rules),
+        );
         if let Some(attacker_entity) = self.substrate.entities.get_mut(attacker) {
             crate::sim::combat::veterancy::award_kill(
                 attacker_entity,

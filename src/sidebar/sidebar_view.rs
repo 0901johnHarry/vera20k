@@ -812,7 +812,7 @@ mod tests {
                     &mut interner,
                     &format!("BUILDING{i}"),
                     false,
-                    Some(BuildDisabledReason::InsufficientCredits),
+                    Some(BuildDisabledReason::AtBuildLimit),
                 )
             })
             .collect();
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_gate_hides_blocked_items_and_greys_credit_shortfalls() {
+    fn strict_gate_hides_blocked_items_and_greys_build_limits() {
         let mut interner = StringInterner::new();
         let build_options = vec![
             option(&mut interner, "GACNST", true, None),
@@ -879,12 +879,6 @@ mod tests {
                 "GAAIRC",
                 false,
                 Some(BuildDisabledReason::WrongOwner),
-            ),
-            option(
-                &mut interner,
-                "GAREFN",
-                false,
-                Some(BuildDisabledReason::InsufficientCredits),
             ),
             option(
                 &mut interner,
@@ -915,11 +909,10 @@ mod tests {
 
         // Missing prereq / no factory / wrong faction are hidden entirely.
         let shown: Vec<&str> = view.items.iter().map(|i| i.type_id.as_str()).collect();
-        assert_eq!(shown, ["GACNST", "GAREFN", "GADEPT"]);
-        // Buildable item is enabled; credit shortfall and build limit are greyed.
+        assert_eq!(shown, ["GACNST", "GADEPT"]);
+        // Buildable item is enabled; a reached build limit is greyed.
         assert!(view.items[0].enabled);
         assert!(!view.items[1].enabled);
-        assert!(!view.items[2].enabled);
     }
 
     #[test]

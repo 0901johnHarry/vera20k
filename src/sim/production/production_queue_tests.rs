@@ -1156,6 +1156,8 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     let rules = build_catalog_rules();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+    // The refund goes to an existing house; a cancel never creates one.
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 5000;
 
     // Place a building in the ready queue (simulating completion).
     let americans_id = sim.interner.intern("Americans");

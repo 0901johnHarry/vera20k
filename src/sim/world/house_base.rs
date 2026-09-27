@@ -250,6 +250,21 @@ fn clamp_house_cell(
     Err("House map clamp has no admitted packed cell on its diagonal".into())
 }
 
+impl crate::sim::house_state::HouseState {
+    /// The House factors TechnoType `Cost_Of` (`0x00711F00`) reads: its
+    /// country's `Cost*Mult=` and its FactoryPlant products.
+    pub(crate) fn cost_factors(
+        &self,
+        rules: &RuleSet,
+        interner: &StringInterner,
+    ) -> HouseCostFactors {
+        HouseCostFactors {
+            country: rules.country_cost_mults(interner.resolve(self.house_type_id())),
+            factory_plant: self.base_projection.factory_plant_factors(),
+        }
+    }
+}
+
 impl Simulation {
     /// Shared56DC20 argument shape used by4FD2C0 and5002E5. Their speed
     /// and required zone differ; neither requests occupancy or height filtering.
@@ -299,20 +314,15 @@ impl Simulation {
         .filter(|cell| *cell != (0, 0))
     }
 
-    /// The House factors TechnoType `Cost_Of` (`0x00711F00`) reads for
-    /// `owner`: its country's `Cost*Mult=` and its FactoryPlant products.
-    /// `None` without a House, which takes Cost_Of's null-House arm
-    /// (`0x00711F4E`, the raw cost).
+    /// [`HouseState::cost_factors`] for `owner`. `None` without a House, which
+    /// takes Cost_Of's null-House arm (`0x00711F4E`, the raw cost).
     pub(crate) fn house_cost_factors(
         &self,
         owner: InternedId,
         rules: &RuleSet,
     ) -> Option<HouseCostFactors> {
         let house = self.houses.get(&owner)?;
-        Some(HouseCostFactors {
-            country: rules.country_cost_mults(self.interner.resolve(house.house_type_id())),
-            factory_plant: house.base_projection.factory_plant_factors(),
-        })
+        Some(house.cost_factors(rules, &self.interner))
     }
 
     /// TechnoType virtual `+0x84` for `owner`'s House ([`RuleSet::cost_of`]).

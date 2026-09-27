@@ -393,7 +393,8 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
             .test_factory_mut(owner, ProductionCategory::Vehicle)
             .unwrap();
         assert!(factory.progress > 0 && factory.progress < 54);
-        factory.original_balance - factory.balance
+        let balance = factory.balance;
+        sim.cost_of(owner, rules.object("SMIN").unwrap(), &rules) - balance
     };
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
@@ -556,7 +557,8 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
                 .test_factory_mut(owner, ProductionCategory::Vehicle)
                 .unwrap();
             assert!(factory.progress > 0 && factory.progress < 54);
-            factory.original_balance - factory.balance
+            let balance = factory.balance;
+            sim.cost_of(owner, rules.object(parent_type).unwrap(), &rules) - balance
         };
         sim.substrate.entities.remove(1);
         let before = sim.houses[&owner].economy.credits;
@@ -691,4 +693,94 @@ fn a_held_vehicle_goes_with_the_last_war_factory() {
     assert_gone(&sim, held, &child_ids);
     assert_eq!(sim.houses[&owner].tracking.units_for_test(), 0);
     assert_eq!(sim.houses[&owner].economy.credits, credits + 700);
+}
+
+/// A 900-credit tank buildable from a war factory, and an Industrial Plant type
+/// (`UnitsCostBonus=.75`) that is not yet on the map, for a house with no money.
+fn plant_world() -> (Simulation, RuleSet, InternedId) {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[VehicleTypes]\n0=HTNK\n\
+         [BuildingTypes]\n0=NAWEAP\n1=NAINDP\n\
+         [HTNK]\nCost=900\nStrength=400\nSpeed=5\nTechLevel=1\n\
+         [NAWEAP]\nFactory=UnitType\n\
+         [NAINDP]\nStrength=1000\nFoundation=1x1\nFactoryPlant=yes\nUnitsCostBonus=.75\n",
+    ))
+    .expect("FactoryPlant fixture");
+    let mut sim = Simulation::with_seed(0xc057_0f01);
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
+        32,
+    ));
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    let owner = sim.interner.intern("Russians");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+    );
+    spawn_structure(&mut sim, 1, "Russians", "NAWEAP", 10, 10);
+    (sim, rules, owner)
+}
+
+fn spawn_plant(sim: &mut Simulation, rules: &RuleSet) {
+    sim.spawn_object("NAINDP", "Russians", 20, 20, 0, rules, &BTreeMap::new())
+        .expect("the Industrial Plant unlimbos");
+}
+
+/// With no money the tank still starts (`HouseClass::CanBuild @ 0x004F7870` has no
+/// money check) owing its house's Cost_Of (`0x004C9DE1`), which a live Industrial
+/// Plant discounts, and the sidebar offers it at that price, not greyed.
+#[test]
+fn a_build_starts_without_money_owing_its_cost_of() {
+    let (mut sim, rules, owner) = plant_world();
+    spawn_plant(&mut sim, &rules);
+    let options = super::build_options_for_owner(&sim, &rules, "Russians");
+    let tank = options
+        .iter()
+        .find(|option| sim.interner.resolve(option.type_id) == "HTNK")
+        .expect("the tank is offered");
+    assert!(tank.enabled);
+    assert_eq!(tank.cost, 675);
+    assert!(enqueue_by_type(&mut sim, &rules, "Russians", "HTNK"));
+    for _ in 0..30 {
+        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    }
+    let factory = sim
+        .production
+        .factory_shadow
+        .test_factory_mut(owner, ProductionCategory::Vehicle)
+        .unwrap();
+    assert_eq!(factory.balance, 675);
+    assert!(factory.on_hold && factory.progress == 0);
+}
+
+/// The cancel refund is the Cost_Of at cancel time less the Balance still owed
+/// (`0x004CA029..0x004CA046`). An Industrial Plant built after the first step
+/// lowers the Cost_Of below that Balance, so the cancel takes money.
+#[test]
+fn a_cancel_refunds_the_cost_of_at_cancel_time() {
+    let (mut sim, rules, owner) = plant_world();
+    assert!(enqueue_by_type(&mut sim, &rules, "Russians", "HTNK"));
+    crate::sim::credit_income::add_credits(&mut sim, owner, 1000);
+    let progress = |sim: &mut Simulation| {
+        let factory = sim
+            .production
+            .factory_shadow
+            .test_factory_mut(owner, ProductionCategory::Vehicle)
+            .unwrap();
+        (factory.progress, factory.balance)
+    };
+    for _ in 0..2000 {
+        if progress(&mut sim).0 > 0 {
+            break;
+        }
+        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    }
+    // The first step pays 900 / 53.
+    assert_eq!(progress(&mut sim), (1, 884));
+    spawn_plant(&mut sim, &rules);
+    let before = sim.houses[&owner].economy.credits;
+    assert!(cancel_by_type_for_owner(
+        &mut sim, &rules, "Russians", "HTNK"
+    ));
+    assert_eq!(sim.houses[&owner].economy.credits, before + 675 - 884);
 }

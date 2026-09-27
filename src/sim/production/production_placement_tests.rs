@@ -3468,9 +3468,8 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
         2,
     );
 
-    // Simulate a partly-charged MTNK (the latest item) so the abandon refunds its SPENT
-    // portion (700-300=400), not the full cost — the legacy full-refund of a partly-charged
-    // build is the retired DRIFT.
+    // Simulate a partly-charged MTNK (the latest item, Cost 700) so the abandon refunds
+    // Cost_Of - Balance (700-300=400), not the full cost.
     {
         let f = sim
             .production
@@ -3479,7 +3478,6 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
             .expect("vehicle factory armed");
         f.progress = 20;
         f.balance = 300;
-        f.original_balance = 700;
     }
 
     let canceled = cancel_last_for_owner(&mut sim, &rules, "Americans");

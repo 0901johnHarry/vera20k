@@ -4025,7 +4025,7 @@ impl RuleSet {
     /// adjusts its actual cost (`+0xAC` = `0x0045ED50`) the same way, adds the
     /// halved sum of both PadAircraft costs when it bundles them, and adds its
     /// FreeUnit's cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
-    /// Native comparison: `tools/spatial_oracle/building_weight_cost`.
+    /// Native comparison: `tools/spatial_oracle/cost_of`.
     pub fn cost_of(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
         let cost = self.adjusted_cost(object, house);
         if object.category != ObjectCategory::Building {
@@ -4041,7 +4041,7 @@ impl RuleSet {
         match object
             .free_unit
             .as_deref()
-            .and_then(|name| self.object_case_insensitive(name))
+            .and_then(|name| self.object(name))
         {
             Some(free) => cost.wrapping_add(self.adjusted_cost(free, house)).max(0),
             None => cost,
@@ -4051,11 +4051,7 @@ impl RuleSet {
     /// `0x00711F00` over the type's `+0xAC` cost.
     fn adjusted_cost(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
         use crate::util::native_x87::MaskedX87Chop53 as X87;
-        let cost = if object.category == ObjectCategory::Building {
-            self.building_actual_cost(object)
-        } else {
-            object.cost
-        };
+        let cost = self.type_cost(object);
         let Some(house) = house else {
             return cost;
         };
@@ -4079,15 +4075,22 @@ impl RuleSet {
         let [first_id, second_id, ..] = self.general.pad_aircraft_types.as_slice() else {
             return None;
         };
-        let (first, second) = (
-            self.object_case_insensitive(first_id)?,
-            self.object_case_insensitive(second_id)?,
-        );
+        let (first, second) = (self.object(first_id)?, self.object(second_id)?);
         first
             .dock
             .first()
             .is_some_and(|dock| dock.eq_ignore_ascii_case(&object.id))
             .then_some((first, second))
+    }
+
+    /// TechnoType virtual `+0xAC` (GetCost): `Cost=` (`0x00711EB0`), or a
+    /// BuildingType's [`Self::building_actual_cost`] (`0x0045ED50`).
+    pub fn type_cost(&self, object: &ObjectType) -> i32 {
+        if object.category == ObjectCategory::Building {
+            self.building_actual_cost(object)
+        } else {
+            object.cost
+        }
     }
 
     /// BuildingType virtual `+0xAC` value. Wall sale invokes and discards it;
@@ -4099,10 +4102,7 @@ impl RuleSet {
         }
         if let Some(free_unit) = object.free_unit.as_deref() {
             value = value
-                .wrapping_sub(
-                    self.object_case_insensitive(free_unit)
-                        .map_or(0, |free| free.cost),
-                )
+                .wrapping_sub(self.object(free_unit).map_or(0, |free| free.cost))
                 .max(0);
         }
         value

@@ -406,6 +406,7 @@ impl Simulation {
             .merge(movement::movement_tick::finish_movement_pass(
                 pending_movement,
                 &mut sim.substrate.entities,
+                &sim.houses,
                 &sim.house_alliances,
                 &mut sim.substrate.cell_occupation,
                 sim.session.tick,

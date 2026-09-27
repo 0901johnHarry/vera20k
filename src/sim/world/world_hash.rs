@@ -1301,7 +1301,6 @@ impl Simulation {
             f.step_timer.start_frame().hash(hasher);
             f.step_timer.duration().hash(hasher);
             f.balance.hash(hasher);
-            f.original_balance.hash(hasher);
             match &f.object {
                 Some(o) => {
                     1u8.hash(hasher);

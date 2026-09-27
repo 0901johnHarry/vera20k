@@ -87,9 +87,8 @@ pub fn enqueue_default_unit_for_owner(
 
 /// Build a production list across supported sidebar categories for an owner.
 ///
-/// In RA2, only items the player has unlocked via the tech tree are shown.
-/// Items with missing prerequisites, wrong faction, or no factory are hidden
-/// entirely — only items with insufficient credits are shown greyed out.
+/// In RA2, only items the player has unlocked via the tech tree are shown
+/// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
     let strict: Vec<BuildOption> =
         super::production_tech::build_options_for_owner_mode(sim, rules, owner, BuildMode::Strict);
@@ -108,7 +107,6 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
                 Some(BuildDisabledReason::MissingPrerequisite(_)) => "MissingPrerequisite",
                 Some(BuildDisabledReason::NoFactory) => "NoFactory",
                 Some(BuildDisabledReason::AtBuildLimit) => "AtBuildLimit",
-                Some(BuildDisabledReason::InsufficientCredits) => "InsufficientCredits",
                 Some(BuildDisabledReason::PlacementModeUnavailable) => "PlacementModeUnavailable",
                 None => "Enabled",
             };
@@ -148,14 +146,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
 
     let visible: Vec<BuildOption> = strict
         .into_iter()
-        .filter(|opt| {
-            opt.enabled
-                || matches!(
-                    opt.reason,
-                    Some(BuildDisabledReason::InsufficientCredits)
-                        | Some(BuildDisabledReason::AtBuildLimit)
-                )
-        })
+        .filter(BuildOption::visible_in_sidebar)
         .collect();
     let visible = dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner);
     if !visible.is_empty() || !super::production_tech::prototype_fallback_enabled() {

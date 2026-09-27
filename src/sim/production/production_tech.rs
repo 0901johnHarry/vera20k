@@ -10,7 +10,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::world::Simulation;
 
-use super::production_queue::credits_for_owner;
 use super::production_types::*;
 
 pub(super) fn build_option_for_owner(
@@ -83,14 +82,15 @@ pub(super) fn build_option_for_owner(
             }
         }
     }
-    if reason.is_none() && (obj.cost <= 0 || credits_for_owner(sim, owner) < obj.cost) {
-        reason = Some(BuildDisabledReason::InsufficientCredits);
-    }
     let type_interned = sim.interner.get(type_id).unwrap_or_default();
+    let cost = match sim.interner.get(owner) {
+        Some(owner_id) => sim.cost_of(owner_id, obj, rules),
+        None => rules.cost_of(obj, None),
+    };
     Some(BuildOption {
         type_id: type_interned,
         display_name: obj.name.clone().unwrap_or_else(|| obj.id.clone()),
-        cost: obj.cost,
+        cost,
         object_category: obj.category,
         queue_category,
         enabled: reason.is_none(),
@@ -102,8 +102,8 @@ pub(super) fn build_option_for_owner(
 /// so a build whose prerequisites / producing factory were lost is disposed of. Reproduces
 /// gamemd's `FindFactoryBuilding(1,0,1)` gate (the embedded `HouseClass::CanBuild` scan across
 /// the owner's candidate factory buildings): a tech-tree / owner / factory-presence failure ->
-/// `PermanentlyBlocked` (abandon); a pure credit stall (`on_hold`, handled per-step) or a
-/// build-limit "busy" is NOT a mid-build abandon -> `Buildable` (keep charging).
+/// `PermanentlyBlocked` (abandon); a build-limit "busy" is NOT a mid-build abandon ->
+/// `Buildable` (keep charging).
 ///
 /// `TemporarilyBlocked` (gamemd's `(1,0,1)` passes but `(1,1,1)` fails = a factory building
 /// exists but is UNPOWERED via an EMP/spy/trigger GoOffline event) is intentionally
@@ -122,10 +122,8 @@ pub(in crate::sim) fn revalidate_eligibility(
         None => BuildEligibility::PermanentlyBlocked,
         Some(opt) if opt.enabled => BuildEligibility::Buildable,
         Some(opt) => match opt.reason {
-            // Credit stall + build-limit "busy" are not abandons in gamemd — keep building.
-            Some(BuildDisabledReason::InsufficientCredits)
-            | Some(BuildDisabledReason::AtBuildLimit)
-            | None => BuildEligibility::Buildable,
+            // A build-limit "busy" is not an abandon in gamemd — keep building.
+            Some(BuildDisabledReason::AtBuildLimit) | None => BuildEligibility::Buildable,
             // Tech-tree / owner / factory loss -> CanBuild fails -> abandon.
             Some(_) => BuildEligibility::PermanentlyBlocked,
         },

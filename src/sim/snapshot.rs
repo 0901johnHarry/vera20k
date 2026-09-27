@@ -656,7 +656,10 @@ use crate::sim::world::Simulation;
 // 225 -> 226: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
 // armed when a build starts (`0x004C9EA0`), and the stored sidebar build-time
 // estimates go. The factory and queue-entry schemas change.
-const SNAPSHOT_VERSION: u32 = 226;
+// 226 -> 227: Cost_Of. A house's building registrations carry the FactoryPlant
+// cost bonuses (House+0x140) instead of a raw cost, which a 226 save never
+// filled, and a factory keeps no VERA-only full-cost copy of its Balance.
+const SNAPSHOT_VERSION: u32 = 227;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3608,7 +3611,8 @@ mod tests {
         // 224 -> 225: Prism forwarding.
         // 225 -> 226: the factory step timer is the CDTimer a build start arms;
         // no stored build-time estimates.
-        assert_eq!(super::SNAPSHOT_VERSION, 226);
+        // 226 -> 227: FactoryPlant cost bonuses; no full-cost Balance copy.
+        assert_eq!(super::SNAPSHOT_VERSION, 227);
     }
 
     #[test]
