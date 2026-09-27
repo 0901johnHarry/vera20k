@@ -3,6 +3,12 @@
 [AGENTS.md](../../AGENTS.md) defines evidence and delivery. These notes cover tool
 behavior and recurring interpretation errors; choose the investigation method yourself.
 
+For repeatable static byte reads, disassembly, direct caller candidates and field
+scans beside Ghidra, use [the shared native inspection tool](../../tools/native_inspect.md).
+It checks the original executable identity and maps file-backed PE ranges through
+the oracle owner. Its linear sweeps do not establish instruction boundaries,
+reachability or exhaustive aliases; preserve those limits in findings.
+
 ## Connect to the intended program
 
 Discover the instance and confirm the program path, binary identity and image base
