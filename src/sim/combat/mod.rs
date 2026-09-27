@@ -2795,12 +2795,11 @@ fn emit_projectile_shrapnel(
             origin: detonation.impact,
             target,
             initial_target_position: target_coord,
-            payload: ProjectilePayload {
-                base_damage: child_weapon.damage,
-                warhead: interner.intern(child_warhead_name),
-                weapon: interner.intern(child_weapon_name),
-                damage_multiplier: ProjectilePayload::UNSCALED,
-            },
+            payload: ProjectilePayload::new(
+                child_weapon.damage,
+                interner.intern(child_warhead_name),
+                interner.intern(child_weapon_name),
+            ),
             speed_leptons_per_frame: child_weapon.speed.clamp(1, i32::from(u16::MAX)) as u16,
             velocity: crate::sim::projectile::launch::shrapnel_launch_velocity(
                 detonation.impact,
