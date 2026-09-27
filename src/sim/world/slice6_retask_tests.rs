@@ -497,7 +497,13 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD7C6_B3FA_0CBC_464
 // repair diagnostic reproduced the prior current pin with Before(217), and
 // all earlier projections, replay/behavior checks and RNG receipts still passed.
 // These Rust regression receipts do not establish native gameplay parity.
-const SLICE6_BASELINE_HASH: u64 = 0xE8CC_96D3_473B_D3FB;
+// Schema220 retires the two VERA rally copies (the house's `rally_point` and
+// each building's `rally_target`; the rally is the factory's ArchiveTarget):
+// composition only, as no rally is set here. Before(220) folds their empty
+// values and reproduces the prior current pin; every earlier projection,
+// per-tick replay and the RNG receipts are unchanged.
+const SLICE6_BASELINE_HASH: u64 = 0x498E_F189_907F_B2F2;
+const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xE8CC_96D3_473B_D3FB;
 const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xBC54_5E9B_173C_AEC2;
 const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2A32_AF12_7767_94D1;
 const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0xE873_DCE2_1778_7464;
@@ -810,6 +816,11 @@ fn replay_hash_stable_through_slice6() {
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
         SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217,
         "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
+    );
+    assert_eq!(
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
+        SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220,
+        "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
         hash, SLICE6_BASELINE_HASH,

@@ -5147,7 +5147,7 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
         100,
         &[],
         &std::collections::BTreeSet::new(),
-        &std::collections::BTreeSet::new(),
+        &Default::default(),
         &[detonation],
         &[],
     );
@@ -5220,7 +5220,7 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         100,
         &logic_order,
         &std::collections::BTreeSet::new(),
-        &std::collections::BTreeSet::new(),
+        &Default::default(),
         &[detonation],
         &[],
     );
@@ -5343,7 +5343,7 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         100,
         &logic_order,
         &std::collections::BTreeSet::new(),
-        &std::collections::BTreeSet::new(),
+        &Default::default(),
         &[detonation],
         &[],
     );

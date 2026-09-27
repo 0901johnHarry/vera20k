@@ -935,7 +935,8 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     sim.playfield_size_height = Some(4);
     sim.resolved_terrain = Some(terrain);
     sim.zone_grid = Some(zone_grid);
-    sim.spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules, &height_map)
+    let factory = sim
+        .spawn_object("GAWEAP", "Americans", 0, 0, 0, &rules, &height_map)
         .expect("war factory should spawn");
     sim.spawn_object("MTNK", "Russians", 0, 2, 0, &rules, &height_map)
         .expect("dynamic blocker should spawn");
@@ -946,7 +947,11 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, true, STARTING_CREDITS, 10),
     );
-    sim.houses.get_mut(&owner).unwrap().rally_point = Some((5, 0));
+    sim.substrate
+        .entities
+        .get_mut(factory)
+        .unwrap()
+        .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(5, 0)));
     let started = sim.production.factory_shadow.test_enqueue_kernel(
         owner,
         ProductionCategory::Vehicle,
@@ -1004,7 +1009,10 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
     );
     assert_eq!(movement.path.last().copied(), Some((5, 0)));
     assert!(sim.production.factory_shadow.is_empty());
-    assert_eq!(sim.houses.get(&owner).unwrap().rally_point, Some((5, 0)));
+    assert_eq!(
+        sim.substrate.entities.get(factory).unwrap().rally_cell(),
+        Some((5, 0))
+    );
 }
 
 #[test]

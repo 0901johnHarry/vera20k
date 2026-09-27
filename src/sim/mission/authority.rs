@@ -894,13 +894,18 @@ impl Simulation {
         attacker: u64,
         rules: &RuleSet,
     ) -> bool {
+        // A building's setter admits the attacker first (BuildingClass::
+        // SetTarget `0x00443B90`: out of range, it takes none).
+        let admitted =
+            self.building_admits_target(receiver, Some(TargetKind::Entity(attacker)), rules);
         let entities = &mut self.substrate.entities;
         if entities.get(attacker).is_none() {
             return false;
         }
         // A dying source (its DeathWeapon's blast) still overrides the mission,
         // but Assign_Target refuses the Health-0 object and commits NULL.
-        let attacker_commits = assign_target_commits(entities, Some(TargetKind::Entity(attacker)));
+        let attacker_commits =
+            admitted && assign_target_commits(entities, Some(TargetKind::Entity(attacker)));
         let Some(entity) = entities.get_mut(receiver) else {
             return false;
         };
@@ -1094,8 +1099,13 @@ impl Simulation {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) fn mission_try_consume_building_ready_exact(
+    /// A building's ready check in its Update (`0x0043FE27..0x0043FE54`
+    /// before the Techno AI, which also needs BState out of 0, and
+    /// `0x0043FF91..0x0043FFB4` after it): with `+0x6DD` set
+    /// (Ready_To_Commence, building vt+0x200 = `0x00454250`), a successful
+    /// Commence clears the byte. Commence fails with nothing queued and then
+    /// leaves it set.
+    pub(crate) fn mission_building_ready_commence(
         &mut self,
         receiver: u64,
         now: u32,
@@ -2169,7 +2179,7 @@ mod tests {
         building.mission_leaf = MissionLeafState::building_raw_for_test(1);
         let mut sim = sim_with(building);
 
-        assert!(!sim.mission_try_consume_building_ready_exact(1, 10).unwrap());
+        assert!(!sim.mission_building_ready_commence(1, 10).unwrap());
         assert_eq!(
             sim.substrate
                 .entities
@@ -2199,7 +2209,7 @@ mod tests {
         });
         let mut sim = sim_with(building);
 
-        assert!(sim.mission_try_consume_building_ready_exact(1, 10).unwrap());
+        assert!(sim.mission_building_ready_commence(1, 10).unwrap());
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(entity.mission.current(), MOVE);
         assert_eq!(entity.mission_leaf.as_building().unwrap().ready_latch(), 0);

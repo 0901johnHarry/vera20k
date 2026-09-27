@@ -106,8 +106,10 @@ fn default_base_plan_type_index() -> i32 {
 }
 
 /// Persistent TechnoClass state used by the active House base-defence
-/// responder. The two admission bytes are constructor-true; archive/cooldown
-/// writes occur only after a responder assignment or strict budget overshoot.
+/// responder. The two admission bytes are constructor-true; cooldown writes
+/// occur only after a responder assignment or strict budget overshoot. The
+/// ArchiveTarget (`+0x218`) stored here is the general Techno field, which
+/// responders, miners, the slave manager and the rally click all write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BaseDefenseResponseState {
     pub(crate) recruitable_a: bool,
@@ -646,10 +648,6 @@ pub struct GameEntity {
     /// clear it.
     #[serde(default)]
     pub dock_entered_with: Option<u64>,
-    /// Per-producer rally target cell for selected factory rally visuals.
-    /// Owner-level `HouseState.rally_point` remains the production fallback.
-    #[serde(default)]
-    pub rally_target: Option<(u16, u16)>,
     /// Persistent TechnoClass hostile-hit latch (`WasAttackedByEnemy`, native
     /// byte +0x3D1). It is independent of retaliation's transient attacker
     /// pointer and is consumed by the building AI low-credit sell decision.
@@ -1186,8 +1184,9 @@ pub struct GameEntity {
 
 impl GameEntity {
     /// `TechnoClass::ArchiveTarget` (`Techno+0x218`): the base-defence
-    /// responder's post and a harvester's archived ore cell share this one
-    /// field, stored in [`BaseDefenseResponseState`].
+    /// responder's post, a harvester's archived ore cell and a factory's
+    /// rally point share this one field, stored in
+    /// [`BaseDefenseResponseState`].
     pub(crate) fn archive_target(&self) -> Option<crate::sim::combat::TargetKind> {
         self.base_defense_response.archive_target
     }
@@ -1195,6 +1194,18 @@ impl GameEntity {
     /// `TechnoClass::Set_ArchiveTarget @ 0x0070C610`, a plain store.
     pub(crate) fn set_archive_target(&mut self, target: Option<crate::sim::combat::TargetKind>) {
         self.base_defense_response.archive_target = target;
+    }
+
+    /// A factory's rally point is its ArchiveTarget: `BuildingClass::
+    /// SetRallyPoint @ 0x00443860` archives the clicked cell through event
+    /// 0x1E (`Set_ArchiveTarget`), and `BuildingClass::ExitObject_Main @
+    /// 0x00443C60` reads `+0x218` for the object leaving it. The rally click
+    /// is the only writer that archives a cell on a rally-line building.
+    pub(crate) fn rally_cell(&self) -> Option<(u16, u16)> {
+        match self.archive_target() {
+            Some(crate::sim::combat::TargetKind::Cell(rx, ry)) => Some((rx, ry)),
+            _ => None,
+        }
     }
 
     pub(crate) const fn is_mission_only(&self) -> bool {
@@ -1312,20 +1323,21 @@ impl GameEntity {
     /// and do nothing" ([`MissionType::holds_until_retasked`]). Those never
     /// finish, so letting the derived Guard reading win there would make every
     /// map-authored Sleep/Sticky/Harmless placement scan and shoot.
+    ///
+    /// A building needs no bridge: its Update dispatches its committed
+    /// missions (`world::techno_ai::building_missions`), so the block reads
+    /// `+0xAC` as it stands.
     pub fn passive_acquire_mission(&self) -> MissionType {
         // A Health-0 wreck runs no mission handler (`MissionClass::AI @
         // 0x005B30A7`), so no job of its can finish and hand it back to Guard:
         // the passive block reads its committed mission as it stands
         // (`0x006FA697`).
-        if self.health.current <= 0 {
+        if self.health.current <= 0 || self.category == EntityCategory::Structure {
             return self.mission.current().known().unwrap_or(MissionType::None);
         }
         let (derived, _) = self.derived_mission_with(!self.passively_acquired_target);
         let derived = if derived == MissionType::None
-            && matches!(
-                self.category,
-                EntityCategory::Structure | EntityCategory::Infantry
-            )
+            && self.category == EntityCategory::Infantry
             && self.guards_when_idle()
         {
             MissionType::Guard
@@ -1540,7 +1552,6 @@ impl GameEntity {
             current_weapon_index: 0,
             radio_contacts: Contacts::default(),
             dock_entered_with: None,
-            rally_target: None,
             was_attacked_by_enemy: false,
             ai_sellable: false,
             ai_repairable: false,
@@ -1937,7 +1948,7 @@ mod tests {
         assert!(e.movement_target.is_none());
         assert!(e.attack_target.is_none());
         assert!(e.radio_contacts.is_empty());
-        assert_eq!(e.rally_target, None);
+        assert_eq!(e.rally_cell(), None);
         assert!(!e.was_attacked_by_enemy);
         assert!(e.barrel_facing.is_none());
         assert!(e.miner.is_none());
@@ -1976,12 +1987,6 @@ mod tests {
             Some(MovementLayer::Ground),
             "list layer must follow on_bridge when off the deck"
         );
-    }
-
-    #[test]
-    fn new_entity_has_no_rally_target() {
-        let e = GameEntity::test_default(1, "GAWEAP", "Americans", 30, 40);
-        assert_eq!(e.rally_target, None);
     }
 
     #[test]

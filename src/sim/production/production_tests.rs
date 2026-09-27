@@ -1523,7 +1523,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
         yard.foundation = "4x4".to_string();
-        yard.rally_target = Some((20, 10));
+        yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(20, 10)));
     }
     sim.add_entity_occupancy(1);
 
@@ -1633,7 +1633,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
         yard.foundation = "4x4".to_string();
-        yard.rally_target = Some((20, 10));
+        yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(20, 10)));
     }
     sim.add_entity_occupancy(1);
     arm_build_via(
@@ -1712,7 +1712,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
         yard.foundation = "4x4".to_string();
-        yard.rally_target = Some((39, 39));
+        yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(39, 39)));
     }
     sim.add_entity_occupancy(1);
     arm_build_via(

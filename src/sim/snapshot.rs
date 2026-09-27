@@ -633,12 +633,19 @@ use crate::sim::world::Simulation;
 // cell-query order; low/high flight reads live physical height. Layout is
 // unchanged, but an old save can acquire different targets and evolve its
 // shared Dummy differently on the next scan, so reject mixed continuations.
-// 219 -> 220: Infantry uses its native Foot SpeedType default, live AStar/Walk
+// 219 -> 220: a factory's rally point lives only in its ArchiveTarget
+// (`Techno+0x218`); the house's rally copy and the building's rally cell go.
+// 220 -> 221: buildings run their Guard and Attack missions
+// (`techno_ai::building_missions`): a placed building queues Guard with
+// `+0x6DD` set, and combat serves a building's Mission_Attack request instead
+// of deciding its shot. Layout is unchanged, but a 220 save's buildings hold
+// no mission and would idle on a MissionClass stub, so reject it.
+// 221 -> 222: Infantry uses its native Foot SpeedType default, live AStar/Walk
 // cell admission and ordered Walk responses. Engineer hut entry and repaired
 // structural side-cell consumers consequently change saved continuations.
 // Foot+68A now retains its exact path-failure sound byte through a snapshot.
 // Existing valid SpeedType variant tags and zero-latch hash streams are preserved.
-const SNAPSHOT_VERSION: u32 = 220;
+const SNAPSHOT_VERSION: u32 = 222;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3582,8 +3589,10 @@ mod tests {
         // 216 -> 217: native constructor IDs and signed guided control state.
         // 217 -> 218: a passenger's `+0x82`; no open-transport weapon override.
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
-        // 219 -> 220: live Infantry movement/repair and structural side consumers.
-        assert_eq!(super::SNAPSHOT_VERSION, 220);
+        // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
+        // 220 -> 221: buildings' Guard and Attack missions.
+        // 221 -> 222: live Infantry movement/repair and structural side consumers.
+        assert_eq!(super::SNAPSHOT_VERSION, 222);
     }
 
     #[test]

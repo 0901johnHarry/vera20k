@@ -770,36 +770,30 @@ fn save_load_round_trip_on_kill_tick() {
 }
 
 #[test]
-fn non_unit_barrel_still_driven_by_global_sweep() {
-    // Non-Unit categories keep the legacy post-batch sweep until their slices
-    // land (S7/S8): a turreted Structure's barrel is still driven toward its
-    // target by tick_turret_rotation after the flip.
+fn a_building_barrel_turns_through_mission_attack_not_the_sweep() {
+    // A building's turret (`+0x388`) turns only through Mission_Attack's
+    // Set_Desired (`0x0044B16F`, `0x0044B1A8`, `0x0044B1FF`;
+    // `techno_ai::building_missions`): the per-frame turret sweep leaves it
+    // alone, so a building holding a target off Attack keeps its aim, and
+    // one on Attack turns toward its target on its dispatch.
     let mut sim = Simulation::new();
-    // Armed type (the fixture GAPILE has no Primary, which would remove the
-    // attack pre-sweep); the CATEGORY is what routes facing ownership.
+    // Armed type; the CATEGORY is what routes facing ownership.
     let mut tower = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
     tower.category = crate::map::entities::EntityCategory::Structure;
-    tower.lifecycle.in_limbo = false;
+    tower.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
+        crate::map::entities::EntityCategory::Structure,
+    );
     tower.barrel_facing = Some(FacingClass::new(body_facing_to_turret(0), 100));
     tower.attack_target = Some(AttackTarget::new(2));
     sim.substrate.entities.insert(tower);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     spawn_target(&mut sim, 2, 5, 9);
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
-
-    let want = {
-        let e = sim.substrate.entities.get(1).unwrap();
-        desired_turret_facing(
-            e,
-            &sim.substrate.entities,
-            Some(&rules),
-            &sim.interner,
-            sim.session.binary_frame,
-        )
-        .expect("turreted structure")
-    };
-    sim.advance_tick(&[], Some(&rules), &empty_height_map(), None, None, 67);
-    assert_eq!(
+    let aim = |sim: &Simulation| {
         sim.substrate
             .entities
             .get(1)
@@ -807,10 +801,32 @@ fn non_unit_barrel_still_driven_by_global_sweep() {
             .barrel_facing
             .as_ref()
             .unwrap()
-            .destination(),
-        want,
-        "Structure barrel still driven by the legacy tick_turret_rotation sweep"
-    );
+            .destination()
+    };
+
+    sim.advance_tick(&[], Some(&rules), &empty_height_map(), None, None, 67);
+    assert_eq!(aim(&sim), body_facing_to_turret(0), "no mission, no turn");
+
+    let now = sim.session.binary_frame;
+    sim.mission_assign_exact(
+        1,
+        crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+        now,
+    )
+    .unwrap();
+    let want = {
+        let e = sim.substrate.entities.get(1).unwrap();
+        crate::sim::movement::turret::facing_toward_target(
+            e,
+            &crate::sim::combat::TargetKind::Entity(2),
+            &sim.substrate.entities,
+            Some(&rules),
+            &sim.interner,
+        )
+        .expect("a live target")
+    };
+    sim.advance_tick(&[], Some(&rules), &empty_height_map(), None, None, 67);
+    assert_eq!(aim(&sim), want, "Mission_Attack's FACING arm aims it");
 }
 
 #[test]
@@ -1202,13 +1218,27 @@ fn gsi_08_14_building_turret_holds_its_last_aim() {
     let mut sim = Simulation::new();
     let mut tower = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
     tower.category = crate::map::entities::EntityCategory::Structure;
-    tower.lifecycle.in_limbo = false;
+    tower.mission_leaf = crate::sim::mission::MissionLeafState::for_entity_category(
+        crate::map::entities::EntityCategory::Structure,
+    );
     tower.barrel_facing = Some(FacingClass::new(body_facing_to_turret(0), 100));
     tower.attack_target = Some(AttackTarget::new(2));
     sim.substrate.entities.insert(tower);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
     spawn_target(&mut sim, 2, 5, 9); // due south
     use_test_interner(&mut sim);
     let rules = rules_with_mtnk_rot(100);
+    // On Attack, whose FACING arm aims the turret (`0x0044B187`).
+    let now = sim.session.binary_frame;
+    sim.mission_assign_exact(
+        1,
+        crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+        now,
+    )
+    .unwrap();
 
     sim.advance_tick(&[], Some(&rules), &empty_height_map(), None, None, 67);
     let aimed = sim
