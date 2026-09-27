@@ -44,7 +44,7 @@
     "command": "python -m tools.cargo_run -- test -p vera20k --lib projectile",
     "passed": 98,
     "ignored": 19,
-    "filtered": 9664,
+    "filtered": 9677,
     "collision_golden_consumers": 8
   },
   "python_regression": {
@@ -91,5 +91,13 @@
     "tools/projectile_oracle/ordinary_collision_vectors.json": "d63b965ddeb1a12adb7fa200273273e2a2f0adeb48d0294ff9544dba467948c3",
     "tools/projectile_oracle/shared_collision_vectors.json": "665683f47e344b966fe68a681cb0a3170202e4300fe22edf0c694d8e3dc5beef",
     "tools/projectile_oracle/homing_impact_vectors.json": "a99eeb9facbab74785ad9a704ee27a2f695a72653e113a146c1df63bc58cfd9a"
+  },
+  "integration": {
+    "upstream_main": "0be4174e",
+    "merge_commit": "3381025afdcb52a5ea049a6ad1d915b5f0b8a50b",
+    "conflicts": false,
+    "focused_rust_repeated": true,
+    "python_suite_repeated": true,
+    "packet_manifest_and_projections_rechecked": true
   }
 }
