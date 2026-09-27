@@ -738,6 +738,17 @@ fn explicit_tube_edge(
     Some((tube.exit, tube.path_len()))
 }
 
+///429E19..429E21 tests the actual Cell pointer before layer, zone or +1AC
+/// semantics, for compass and tube candidates alike. This lookup must not
+/// stamp shared Dummy. Native controls: astar_structural_height.json.
+fn search_cell_allocated(terrain: Option<&ResolvedTerrainGrid>, coord: (u16, u16)) -> bool {
+    terrain.is_none_or(|terrain| {
+        terrain
+            .native_fixed_cell_index(coord.0 as i16, coord.1 as i16)
+            .is_some()
+    })
+}
+
 /// Configuration for the unified A* search. All fields optional; defaults
 /// produce a bare ground-only search equivalent to the old `find_path`.
 #[derive(Default)]
@@ -1047,6 +1058,9 @@ pub fn astar_search(
                 }
                 let nx = nx_i as u16;
                 let ny = ny_i as u16;
+                if !search_cell_allocated(options.resolved_terrain, (nx, ny)) {
+                    continue;
+                }
                 let n_idx = ny as usize * w + nx as usize;
                 let neighbor_cell = grid.cell(nx, ny).unwrap_or(&DEFAULT_BLOCKED_CELL);
 
@@ -1436,7 +1450,10 @@ pub fn astar_search(
                 if let Some(((nx, ny), path_len)) =
                     explicit_tube_edge(options.resolved_terrain, (cx, cy))
                 {
-                    if nx < grid.width() && ny < grid.height() {
+                    if nx < grid.width()
+                        && ny < grid.height()
+                        && search_cell_allocated(options.resolved_terrain, (nx, ny))
+                    {
                         let n_idx = ny as usize * w + nx as usize;
                         if !ground_closed[n_idx] {
                             let neighbor_cell = grid.cell(nx, ny).unwrap_or(&DEFAULT_BLOCKED_CELL);

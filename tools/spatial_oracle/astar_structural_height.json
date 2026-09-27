@@ -1,4 +1,42 @@
 {
+  "allocation_guards": [
+    {
+      "allocated": false,
+      "direction": 2,
+      "dummy_unchanged": true,
+      "endpoint": "0x42a1a1",
+      "original_span_sha256": "8abfccda35ba0bb3caa25d4dca3b5e8ba427befb7107a11e64370282adf48ef3",
+      "selected_pointer_matches": true,
+      "skipped": true
+    },
+    {
+      "allocated": true,
+      "direction": 2,
+      "dummy_unchanged": true,
+      "endpoint": "0x429e27",
+      "original_span_sha256": "8abfccda35ba0bb3caa25d4dca3b5e8ba427befb7107a11e64370282adf48ef3",
+      "selected_pointer_matches": true,
+      "skipped": false
+    },
+    {
+      "allocated": false,
+      "direction": 8,
+      "dummy_unchanged": true,
+      "endpoint": "0x42a1a1",
+      "original_span_sha256": "8abfccda35ba0bb3caa25d4dca3b5e8ba427befb7107a11e64370282adf48ef3",
+      "selected_pointer_matches": true,
+      "skipped": true
+    },
+    {
+      "allocated": true,
+      "direction": 8,
+      "dummy_unchanged": true,
+      "endpoint": "0x429e27",
+      "original_span_sha256": "8abfccda35ba0bb3caa25d4dca3b5e8ba427befb7107a11e64370282adf48ef3",
+      "selected_pointer_matches": true,
+      "skipped": false
+    }
+  ],
   "cases": [
     {
       "allocation_guards_intact": true,
@@ -426,7 +464,7 @@
       "selected_list_native_local": 1
     }
   ],
-  "harness_sha256": "0cc948d2ed84fb27c6fb2160dea446e16b3845849745a44cc679b7b059be3a05",
+  "harness_sha256": "1ea127ad5edd41b3feaf490764a751ec965b4495a14d07adb3162e3f76fac4a4",
   "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
   "schema_version": 1,
   "scope": "Original AStar node-height prefix and selected-list fragment controls.\n\nExecute 42A460..42A523 and 429E54..429E7F on supplied scalar Cells, node\ndescriptors and current heights. No CanEnter, full route or loader reachability\nis claimed. Rust bridge_walkable is deliberately metadata only: native code\ntests Cell+140 structural0x100 and signed ground bytes.\n"

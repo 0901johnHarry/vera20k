@@ -181,3 +181,105 @@ fn unavailable_live_entry_is_not_an_ordinary_blocked_route() {
     ));
     assert_eq!(entry.queries.borrow().len(), 1);
 }
+
+#[test]
+fn native_null_candidates_never_reach_entry_or_create_routes() {
+    use crate::map::tube_facts::TubeFact;
+
+    struct LiveLookupEntry<'a> {
+        terrain: &'a ResolvedTerrainGrid,
+        queries: RefCell<Vec<SearchEntryQuery>>,
+    }
+    impl SearchFootEntry for LiveLookupEntry<'_> {
+        fn classify(&self, query: SearchEntryQuery) -> Result<u8, String> {
+            self.queries.borrow_mut().push(query);
+            // The production adapter performs these same canonical lookups.
+            // Class0 is supplied here: a NULL slot must never call it at all.
+            self.terrain
+                .native_cell_identity((query.from.0 as i16, query.from.1 as i16));
+            self.terrain
+                .native_cell_identity((query.candidate.0 as i16, query.candidate.1 as i16));
+            Ok(0)
+        }
+    }
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/astar_structural_height.json"
+    ))
+    .unwrap();
+    let controls = corpus["allocation_guards"].as_array().unwrap();
+    assert_eq!(controls.len(), 4);
+    for control in controls {
+        let tube = control["direction"] == 8;
+        let allocated = control["allocated"].as_bool().unwrap();
+        let width = if tube { 4 } else { 3 };
+        let candidate = if tube { (2, 0) } else { (1, 0) };
+        let goal = (width - 1, 0);
+        let cells = (0..width)
+            .map(|x| {
+                let mut c = crate::sim::world::common_raw_test_terrain_cell(x, 0, 10, false);
+                if tube && x == 0 {
+                    c.tube_index = Some(TubeId(0));
+                }
+                c
+            })
+            .collect();
+        let mut terrain = ResolvedTerrainGrid::from_cells_with_tubes(
+            width,
+            1,
+            cells,
+            if tube {
+                vec![TubeFact::explicit((0, 0), candidate, 2, vec![2, 2])]
+            } else {
+                Vec::new()
+            },
+        );
+        let mut real = vec![(0, 0), goal];
+        if allocated {
+            real.push(candidate);
+        }
+        terrain.test_set_native_allocated_cells(&real);
+        let dummy = terrain.shared_cell_dummy();
+        dummy.stamp_coord(71, 77);
+        let before = dummy.snapshot();
+        let grid = PathGrid::from_resolved_terrain(&terrain);
+        let entry = LiveLookupEntry {
+            terrain: &terrain,
+            queries: RefCell::new(Vec::new()),
+        };
+        let result = astar_search(
+            &grid,
+            (0, 0),
+            MovementLayer::Ground,
+            goal,
+            &AStarOptions {
+                resolved_terrain: Some(&terrain),
+                foot_entry: Some(&entry),
+                is_infantry: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            result.is_err(),
+            control["skipped"].as_bool().unwrap(),
+            "{control}"
+        );
+        assert_eq!(
+            dummy.snapshot(),
+            before,
+            "{control}: search must not stamp Dummy"
+        );
+        if allocated {
+            let route: Vec<_> = result
+                .unwrap()
+                .iter()
+                .map(|step| (step.rx, step.ry))
+                .collect();
+            assert_eq!(route, vec![(0, 0), candidate, goal], "{control}");
+        } else {
+            assert!(
+                entry.queries.borrow().is_empty(),
+                "{control}: NULL candidate reached +1AC"
+            );
+        }
+    }
+}

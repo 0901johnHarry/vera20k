@@ -73,7 +73,7 @@ A shared sound helper must not automatically consume the latch.
 | --- | --- |
 | Walk exhausted retry | guard `75B085`, clear `75B0A9` |
 | Walk class 4/5, retry disabled | clears `75BB84`, `75BB90` after override/Stop |
-| Walk accepted / refused subcell | clears `75BCB2` / `75BCD5` |
+| Walk accepted / refused subcell | accepted alive owner clears `75BCB2`; dead owner skips it at `75BC36`; refusal clears `75BCD5` |
 | Walk no head, positive applied speed | clear `75BD0F` after speed becomes zero |
 | Walk arrival Mark(1) | clear `75BF77` after callback |
 | Walk `+37C` true | motion false, then clear `75BF9B` |
@@ -83,7 +83,7 @@ A shared sound helper must not automatically consume the latch.
 | Drive first rejection / Ship first rejection | guards `4B3AA1` / `6A30F0`; later clears `4B3C6E` / `6A32BD` |
 | Drive fresh finalize / Ship fresh finalize | clears `4B4652` / `6A3C81` |
 
-`paid_tails` contains 30 controls (10 named cases × bytes 0/1/255). The
+`paid_tails` contains 33 controls (11 named cases × bytes 0/1/255). The
 zero/positive no-head speed paths, arrival, true predicate, same-cell commit
 and common return clear. False predicate and post-PerCell dead, limbo and
 falling exits retain the exact byte. Those lifecycle exits jump directly to
@@ -91,6 +91,12 @@ falling exits retain the exact byte. Those lifecycle exits jump directly to
 not a death or limbo exit. Mark/SetCoords/SetHeight callbacks observe the
 original nonzero byte before its clear. Their effects and the `+37C` result
 are supplied boundaries; the original Foot speed setter executes.
+
+The accepted fresh-head dead-owner controls execute `75BC2A`'s motion store,
+then `75BC36`'s direct exit. Motion changes from0 to1, while the exact scold
+byte and prior speed0.75 remain. This fixes a Rust clear previously outside
+the alive branch. These supplied lifecycle controls do not establish an ordinary
+gameplay producer of a nonzero latch or a dead-owner fresh head.
 
 ## Writer audit and limits
 

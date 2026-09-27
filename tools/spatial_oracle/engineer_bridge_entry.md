@@ -17,12 +17,21 @@ the zone test. The frozen external receipt is
 
 ## State and decision owners
 
-The existing live Foot entry body in `world/bridge_repair_admission.rs` owns
+The shared live cell-entry body in `world/object_entry.rs` owns
 the cell-entry decision. Its read context now accepts `&Simulation`; AStar and
 Walk use that same receiver rather than separately rejecting the hut's static
 building footprint. Canonical cell queries retain their shared Dummy effects.
 Missing required input propagates as an error, distinct from ordinary refusal.
 Foot restores Mark1 before returning a search error.
+The repair-specific adapter remains in `bridge_repair_admission.rs`; it projects
+the shared numeric class without coupling search or movement to a bridge
+publisher. Common synthetic world setup is shared by the entry and repair tests.
+
+AStar checks native cell allocation before candidate layer, hierarchy or entry
+queries, including explicit tube exits. Its nonmutating lookup preserves the
+shared Dummy when the native table slot is NULL. Four executed pointer controls
+are saved alongside the structural-height corpus; the Rust route regression
+checks both absent and real candidates and unchanged Dummy state.
 
 Foot navigation owns the queued direction words, NavCom and path timers. Walk
 owns its destination, head, moving and motion bytes. The movement pass suspends
@@ -51,11 +60,11 @@ Scalar bodies and caller fragments do not prove full native route equality.
 | --- | --- |
 | [Infantry SpeedType](../rules_oracle/infantry_speed_type.md) | Full original5236A0 constructor, selected7121D1 layered field read, 26 parser controls and six-pass retained-default history |
 | [AStar signed heights](astar_signed_height.py) | Eleven original initial-height/blocked-goal-tail controls, including signed raw bytes and later current-node heights |
-| [AStar structural heights](astar_structural_height.py) | Twenty-two original node-height/list controls distinguishing raw structural0x100 from derived walkability |
+| [AStar structural heights](astar_structural_height.py) | Twenty-two original node-height/list controls distinguishing raw structural0x100 from derived walkability, plus four compass/tube NULL-slot guards |
 | [AStar Infantry entry](astar_capture_neighbor.py) | Fifteen concrete51BF90→429830→429FEA controls on supplied interior search frames; fifth Infantry argument remains unread |
 | [Walk Infantry entry](walk_capture_entry.py) | Original75B59C coordinate/height/query producer through concrete51BF90, stopping at head/refusal boundary |
 | [Walk response](walk_prehead_response.md) | Supplied result classes0..7, timers, actual cloak and obstacle callbacks, and bounded recursive continuations |
-| [Foot failure-sound byte](foot_scold_latch.md) | Original construction and raw-load retention, three Walk guards, thirty paid/idle tails and twelve Drive/Ship guard controls; sound requests stop before audio playback |
+| [Foot failure-sound byte](foot_scold_latch.md) | Original construction and raw-load retention, three Walk guards, thirty-three paid/idle tails and twelve Drive/Ship guard controls; sound requests stop before audio playback |
 | [Walk boundary prerequisites](walk_cell_486920_audit.md) | Original 250-entry overlay enumeration, eleven Cell effect gates, ENGINEER immunity and six EMP predicate controls; successful vein/EMP mechanisms remain outside this common path |
 | [Engineer admission](engineer_repair_admission.py) | Twenty-two original PerCell prefix controls; runtime object-iteration-disabled is separately labelled |
 | [Bridge family](engineer_family_selector.py) | Fourteen original selector controls, including exclusive wood bound, Y-major scan and shared Dummy behavior |
@@ -104,53 +113,54 @@ and retire the Engineer without stale CellList links. Native load reseeds
 Scenario RNG, so these are two restored futures, not an assertion that loading
 preserves the uninterrupted future.
 
-The initial integrated run passes: Engineer entry and repair occur 76 frames
-after dispatch (zero-based trace frame75); both restored continuations also
-pass. This is Rust production evidence, not native timing or full route parity.
-The saved receipt is `engineer-entry-followup/hills-side-consumers.log`.
-Visible render validation remains pending.
-
-After integrating `main` at `c5451c8992964fe465b852de3e6c3ccae0498222`,
-the legal Hills approach and both restore continuations pass again
-(`engineer-entry-followup/hills-main-integrated.log`, retained test binary
-SHA256 `c6389fb550ec64ca301ad0d311ecc48c5aa79d7b7e937ff2539bf4665653808d`).
-The synthetic Capture detour needed its missing raw bridge-transition0x200
-flag: its PathGrid already marked those cells as transitions. Live Foot
+The final candidate integrates main2687b5bc and uses snapshot version223. Its
+retail-required library suite passes **9,574 tests, zero failures, 177 ignored**;
+`cargo clippy -p vera20k --lib` exits0 with939 warnings. Logs are
+`engineer-entry-followup/engineer-v223-readiness.log` and
+`engineer-v223-clippy.log`. The retained lib-test binary SHA256 is
+`f53d9e15cf21dbad5789722ee0bad0daa904b1da59086086ad0412e35245b34a`.
+The full suite includes the124 Walk response rows, native height/admission
+controls and constructor-side consumers. The two ignored physical Hills tests
+were explicitly run from that same retained binary: **2 passed, zero failures**,
+including the legal approach/dual restore and rejected cliff start. The log is
+`engineer-entry-followup/engineer-v223-explicit-hills.log`.
+The synthetic Capture detour needed its missing raw bridge-transition
+0x200 flag: its PathGrid already marked those cells as transitions. Live Foot
 admission exposed that inconsistent fixture; route expectations were retained.
 
-Focused validation before integrating current `main`: movement696 passed,
-world-orders4 passed, pathfinding core126 passed, lifecycle15 passed and one
-ignored, borrowed UnInit1 passed, SpeedType3 passed and all124 Walk response
-rows passed. The final fixture-correction binary passes16 radar tests and four
-constructor-side tests, including the six native admission answers through
-`constructor_side_admission_matches_original_foot_receiver`. Its SHA256 is
-`72a17ff359ebab7b88f9a2649f24beb0ff3846e8f47de48763803ad22dce3e03`;
-logs are `engineer-entry-followup/side-fixtures-{radar,constructor}.log`.
+The release-built `bridge_target_layer_scene` loads the task-owned loose map
+`bridge-debris-hills-20260926.yrm`, which is byte-identical to the physical
+Hills.mmx payload. Its map hash is `c045c269668aa87e`, rules hash
+`9bf711eab7834933`. The normal menu's friendly `Head for the Hills (2-4)` row
+instead loads XHills.MAP; snapshot identity checks correctly reject that
+different map. Select the exact loose filename under Battle for this witness.
 
-The pre-theater-refactor candidate integrated with `main` at
-`945d16234f5fa1536c679dae7eee63bbc06140c3` passes the full retail-required
-library suite: **9,572 passed, zero failures, 177 ignored**. The retained binary
-SHA256 is `c7cda151f8a6c28e51b222545af46cc2ad02a17c5400bfb5d2cdccf37e9fa219`;
-the log is `engineer-entry-followup/engineer-main945-readiness.log`.
-Snapshot version222 rejects earlier movement continuations.
-Retail-required `cargo clippy -p vera20k --lib` also exits successfully; its
-warnings are retained in `engineer-entry-followup/engineer-main945-clippy.log`.
-
-The release-built `bridge_target_layer_scene` loads physical Hills.mmx and
-passes the full firing/collapse/repair/traversal sequence. Its52 ordinary IFV
-projectiles collapse the span after1400 frames. After Stop and real projectile
-drain, ENGINEER1079 enters CABHUT917 and repairs in78 frames. The stopped
-attacker FV963 then takes21 frames to reach the repaired overlayless side deck
-at `(64,69)`, with OnBridge=true and Z=1040. These timings describe this Rust
-composition, not full native scene timing. The runner reuses the live attacker:
-ordinary placement correctly rejects a second FV on its occupied bank cell.
-
-The example binary SHA256 is
-`0b68a4bf0020b8f1d4632bae9d06569276b5651e2172f7eec92538ace425fa83`;
+The final scene passes firing, collapse, repair and traversal. Its52 ordinary
+IFV projectiles collapse the span after1400 frames. After Stop and real
+projectile drain, ENGINEER1079 enters CABHUT917 and repairs in78 frames. The
+stopped attacker FV963 then takes21 frames to reach the repaired overlayless
+side deck at `(64,69)`, with OnBridge=true and Z=1040. These timings describe
+this Rust composition, not full native scene timing. The runner reuses the live
+attacker: ordinary placement rejects a second FV on its occupied bank cell.
+The retained example SHA256 is
+`31bc7160b405f92476bad466cc5a613a6c2548b6bae0401f233cf4605e718061`;
 the release app is
-`8dadcfe87815e5d36b2d80f5cb4cb595b461cc13a51c8f49584d0b494c7963c3`.
-`engineer-entry-followup/engineer-v222-scene-final.log` records the map/rules
-hashes and all five saved phases, including approach, repair and deck occupancy.
+`e469a2e6b3f5e61aad5a544446dd2f8777dcd3d489fde607f12cb492f0a2d28b`.
+`engineer-entry-followup/engineer-v223-scene.log` records all five saved phases.
+
+The same release app was launched visibly without arguments, through ordinary
+Skirmish/Customize Battle/map selection. Normal Load restored the collapsed,
+Engineer-approach and repaired-deck saves. Resuming the approach consumes the
+Engineer and visibly rebuilds the central deck; directly loading the occupied
+repair save shows the IFV on the rebuilt deck. GPU PCX captures use normal fog:
+collapsed SHA256 `e1abbb95d68a7cc98ea5e2b31bb5f623f1eb2d985f8b6c185a4df5fdac1faddf`,
+resumed repair `f7927767eef7b785c646a18885e69c2424103f0bcfd20011d42ffb5747a609fb`,
+occupied repair `a5651e2e7fc82d35c7757b7c6dd2d49f09f5c967308e9931ead6429b1801ea7c`.
+The corrected receipt is `engineer-entry-followup/visible-v223-validation.json`.
+The earlier artifact filenames containing `gap` reflect a withdrawn visual
+misreading; the persisted images show a continuous repaired deck. No renderer
+change was made on that basis. This is production rendering/restore evidence,
+not a native pixel comparison or certification of other bridge families.
 
 Four structural-collapse tests previously mixed direct overlay0xDC with raw
 structural0x100. Original57D530 changes the overlay without the structural flag
@@ -177,8 +187,8 @@ The family scan, ordinary entry prefix and ordinary no-scatter suffix add no
 RNG draws. Head selection can draw Scenario RNG, and the Walk response corpus
 records the full state where it does. Timer writes and same-visit retries are
 listed in the response report. Repair has its existing native damage/rebuild
-effects and detachment owners; preserving these through production and restore
-is part of this chain's pending integration validation.
+effects and detachment owners; the production and restore checks above cover
+their composition on this ordinary Hills path.
 
 Foot's path owner now retains the exact failure-sound byte at native+68A.
 Ordinary construction clears it, while original raw Load and no-init Foot
@@ -222,5 +232,5 @@ as the existing TMP tube corpus. Retained binary SHA256:
 Logs are `engineer-entry-followup/theater-general-native.log` and
 `theater-general-retail-six.log`. General-block comments545535/545978/545B4D/
 545CEF were saved and read back, with their original instruction-span hashes
-matched to the executed corpus. Full readiness and visible validation follow
-this broader parser correction; earlier results are not its final validation.
+matched to the executed corpus. The full readiness and visible validation
+reported above include this broader parser correction.

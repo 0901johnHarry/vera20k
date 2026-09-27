@@ -129,8 +129,10 @@ pub(super) fn finish_fresh_head(
         entity.facing = (facing >> 8) as u8;
         entity.facing_target = None;
         entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+        //75BC36's dead-owner exit bypasses75BCB2 and retains the exact byte.
+        // Native controls: foot_scold_latch.json dead_fresh_head rows.
+        entity.navigation.path_runtime.clear_scold_latch();
     }
-    entity.navigation.path_runtime.clear_scold_latch(); //75BCB2.
     true
 }
 
@@ -170,6 +172,54 @@ impl crate::sim::world::Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dead_fresh_head_preserves_native_scold_byte() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/foot_scold_latch.json"
+        ))
+        .unwrap();
+        let mut checked = 0;
+        for row in corpus["paid_tails"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["case"] == "dead_fresh_head")
+        {
+            let mut actor =
+                crate::sim::game_entity::GameEntity::test_default(1, "E1", "Owner", 9, 10);
+            actor.lifecycle.object_alive = false;
+            actor.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
+                crate::rules::locomotor_type::LocomotorKind::Walk,
+            ));
+            actor
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .set_step_head(Some(DriveCoord::cell(10, 10, 0)));
+            actor.foot_speed.applied_fraction = SimFixed::from_num(0.75);
+            actor
+                .navigation
+                .path_runtime
+                .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+            assert!(finish_fresh_head(&mut actor, 100));
+            assert_eq!(
+                u64::from(actor.navigation.path_runtime.scold_latch_raw()),
+                row["final_byte"].as_u64().unwrap()
+            );
+            assert_eq!(
+                actor.locomotor.as_ref().unwrap().walk_animation_moving(),
+                Some(row["motion"] == 1)
+            );
+            assert_eq!(
+                actor.foot_speed.applied_fraction,
+                SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
+            );
+            assert!(actor.body_facing.is_none());
+            checked += 1;
+        }
+        assert_eq!(checked, 3);
+    }
 
     #[test]
     fn slave_priority_reserves_head_through_live_master_occupation_without_rng() {

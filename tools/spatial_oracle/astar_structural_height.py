@@ -46,6 +46,25 @@ def execute(row):
     return dict(input=row,node_height=height,selected_list='ground'if selected else 'deck',
                 selected_list_native_local=selected,pool_counters=counts,code_unchanged=True,allocation_guards_intact=True)
 
+def allocation_guard(direction, allocated):
+    u,sp=initialized_process_fixture();arena=Arena(u)
+    slot=arena.allocate(4,'supplied native candidate table slot')
+    cell=arena.allocate(0x200,'allocated candidate storage')
+    u.mem_write(slot,dwords(cell if allocated else 0))
+    u.mem_write(sp+0x18,dwords(direction))
+    u.mem_write(0xABDC50+0x24,packed(71,77))
+    dummy_before=bytes(u.mem_read(0xABDC50,0x200))
+    code=bytes(u.mem_read(0x429E19,0x429E27-0x429E19))
+    u.reg_write(UC_X86_REG_EAX,slot);u.reg_write(UC_X86_REG_ESP,sp)
+    end=run_checked(u,0x429E19,(0x429E27,0x42A1A1),count=100,
+                    required_addresses=(0x429E19,0x429E1F))
+    assert code==bytes(u.mem_read(0x429E19,len(code)))
+    arena.guard_check()
+    return dict(direction=direction,allocated=allocated,skipped=end==0x42A1A1,
+                endpoint=hex(end),dummy_unchanged=bytes(u.mem_read(0xABDC50,0x200))==dummy_before,
+                selected_pointer_matches=u.reg_read(UC_X86_REG_EBX)==(cell if allocated else 0),
+                original_span_sha256=hashlib.sha256(code).hexdigest())
+
 def rows():
     result=[]
     def add(name,pg,pflags,current,cg,cflags,**extra):
@@ -71,15 +90,17 @@ def rows():
 
 def generate():
     result=dict(schema_version=1,native_sha256=NATIVE_SHA256,scope=__doc__,cases=[execute(row)for row in rows()],
+                allocation_guards=[allocation_guard(direction,allocated) for direction in (2,8) for allocated in (False,True)],
                 harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     return result
 
 def metadata():
-    return provenance(scope=__doc__,entry_points={'node_height_prefix_begin':0x42A460,'node_height_prefix_stop':0x42A523,'selected_list_begin':0x429E54,'selected_list_stop':0x429E7F},
+    return provenance(scope=__doc__,entry_points={'node_height_prefix_begin':0x42A460,'node_height_prefix_stop':0x42A523,'selected_list_begin':0x429E54,'selected_list_stop':0x429E7F,'candidate_pointer_guard':0x429E19},
                     assumptions=['Supplied Cells and parent node/descriptor data. Arena provides distinct preallocated original-size node/descriptor pools; original first allocation counters and descriptor writes execute.',
                                  'Node prefix stops before g/heuristic computation and node completion; selected-list fragment stops before hierarchy lookup. No concrete entry, closed-list admission, route reconstruction or full-search comparison.',
                                  'Raw ground bytes cover native storage-domain sign extension and deck+4. These controls do not claim map-loader or legal gameplay reachability for all values.',
-                                 'Rust bridge_walkable hints are labels only and never appear in the native image. Structural Cell+140 bit0x100 alone changes the original branches.'],substitutions=[])
+                                 'Rust bridge_walkable hints are labels only and never appear in the native image. Structural Cell+140 bit0x100 alone changes the original branches.',
+                                 'Candidate allocation controls supply a null or real table slot for compass2/tube8 and execute429E19 through the skip or allocated continuation. They stop before any Cell layer/zone/entry semantics and compare retained Dummy bytes unchanged.'],substitutions=[])
 
 if __name__ == "__main__":
     finish_vectors(generate, Path(__file__).with_suffix(".json"), provenance=metadata)

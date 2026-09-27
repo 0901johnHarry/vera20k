@@ -19,6 +19,9 @@ mod bridge_hut_scatter;
 pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
 mod cell_content;
+mod object_entry;
+#[cfg(test)]
+mod entry_test_fixture;
 mod crash;
 pub mod edge_cell;
 mod gap_generator;

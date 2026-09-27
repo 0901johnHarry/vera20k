@@ -956,6 +956,36 @@
       "object_74": 0,
       "speed_fraction": 0.75,
       "supplied_byte": 255
+    },
+    {
+      "case": "dead_fresh_head",
+      "endpoint": "0x75c1f1",
+      "events": [],
+      "final_byte": 0,
+      "motion": 1,
+      "object_74": 0,
+      "speed_fraction": 0.75,
+      "supplied_byte": 0
+    },
+    {
+      "case": "dead_fresh_head",
+      "endpoint": "0x75c1f1",
+      "events": [],
+      "final_byte": 1,
+      "motion": 1,
+      "object_74": 0,
+      "speed_fraction": 0.75,
+      "supplied_byte": 1
+    },
+    {
+      "case": "dead_fresh_head",
+      "endpoint": "0x75c1f1",
+      "events": [],
+      "final_byte": 255,
+      "motion": 1,
+      "object_74": 0,
+      "speed_fraction": 0.75,
+      "supplied_byte": 255
     }
   ],
   "retention_controls": [

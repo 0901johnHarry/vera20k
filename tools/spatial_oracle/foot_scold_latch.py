@@ -177,7 +177,8 @@ def paid_tail(name, value):
                    arrival_mark=0x75BF64, predicate_true=0x75BF85,
                    predicate_false=0x75BF85, same_cell_commit=0x75C1FB,
                    common_return=0x75C1E7, dead_post_percell=0x75BE42,
-                   limbo_post_percell=0x75BE42, falling_post_percell=0x75BE42)
+                   limbo_post_percell=0x75BE42, falling_post_percell=0x75BE42,
+                   dead_fresh_head=0x75BC2A)
     endpoints = (0x75BD16, 0x75C1F1, 0x75BF7E, 0x75BFA2, 0x75BFA9, 0x75C236)
     callbacks = {SCRATCH + 0xF000: ('mark', 4),
                  SCRATCH + 0xF010: ('predicate_37c', 0),
@@ -190,13 +191,13 @@ def paid_tail(name, value):
     u.mem_write(foot, dwords(vtable))
     u.mem_write(foot + 0x68A, bytes([value]))
     u.mem_write(foot + 0x74, b'\x00')
-    u.mem_write(foot + 0x90, bytes([name != 'dead_post_percell']))
+    u.mem_write(foot + 0x90, bytes([name not in ('dead_post_percell', 'dead_fresh_head')]))
     u.mem_write(foot + 0x81, bytes([name == 'limbo_post_percell']))
     u.mem_write(foot + 0x8D, bytes([name == 'falling_post_percell']))
     speed = 0.0 if name == 'no_head_speed_zero' else 0.75
     u.mem_write(foot + 0x578, struct.pack('<d', speed))
     u.mem_write(loco + 0xC, dwords(foot))
-    u.mem_write(loco + 0x36, b'\x01')
+    u.mem_write(loco + 0x36, bytes([name != 'dead_fresh_head']))
     u.mem_write(SP + 0x30, dwords(2496, 2624, 104))
     u.reg_write(UC_X86_REG_EBP, loco)
     u.reg_write(UC_X86_REG_ECX, foot)
@@ -338,7 +339,7 @@ def generate():
                     'no_head_speed_zero', 'no_head_speed_positive', 'arrival_mark',
                     'predicate_true', 'predicate_false', 'same_cell_commit',
                     'common_return', 'dead_post_percell', 'limbo_post_percell',
-                    'falling_post_percell') for v in (0, 1, 255)],
+                    'falling_post_percell', 'dead_fresh_head') for v in (0, 1, 255)],
                 track_guards=[track_guard(f, b, v) for f in ('drive', 'ship')
                               for b in ('exhausted', 'first_rejection') for v in (0, 1, 255)],
                 sound=dict(file=SOUND.name, sha256=hashlib.sha256(m.raw).hexdigest(),
@@ -361,6 +362,7 @@ if __name__ == '__main__':
             'The raw-load controls supply a serialized token and 0x6F0-byte Infantry body through IStream::Read; original Abstract load, Here_I_Am and Infantry size leaf execute. Original no-init Foot constructor then executes. Intervening dynamic Foot/Infantry Load suffixes are instruction-audited, not emulated in these controls.',
             'The optional sound guard controls record entry to 750920 and return without audio playback. Guard, arguments and latch-clear execute unchanged. A nonzero imported/supplied byte is not proof of a normal-game arming producer.',
             'Paid-tail controls supply reached interior branch state, positive/zero applied speed and lifecycle flags; original Foot speed setter executes. Fresh fixture virtual slots Mark+124, predicate+37C, SetCoords+1B4 and SetHeight+1CC observe request arguments/latch then return. These controls establish tail ordering/clears, not the callbacks effects or preceding complete Walk movement.',
+            'Dead fresh-head controls enter75BC2A with Object+90 false and motion initially zero. Original motion write and75BC36 guard reach75C1F1 without clearing the supplied latch; no facing/speed callback executes and ordinary dead-owner reachability is not claimed.',
             'Drive/Ship controls enter after the exhausted-path alive gate or at the first-rejection sound fragment. They stop immediately after exhausted latch clear or before first-rejection retry continuation; the latter retains the byte and may recurse before a later clear. Full retry routing is not emulated here.',
             'No latch writer, native ScoldSound reader return or original executable instruction is replaced.'],
         entry_points={'foot_ctor_after_parent':0x4D31EF,'latch_init':0x4D33B4,
@@ -373,5 +375,6 @@ if __name__ == '__main__':
                       'walk_no_head_tail':0x75BCE3,'walk_arrival_mark':0x75BF64,
                       'walk_predicate_tail':0x75BF85,'walk_same_cell_tail':0x75C1FB,
                       'walk_common_tail':0x75C1E7,'walk_post_percell':0x75BE42,
+                      'walk_fresh_head_tail':0x75BC2A,
                       'drive_exhausted_guard':0x4B2E47,'drive_first_guard':0x4B3AA1,
                       'ship_exhausted_guard':0x6A2497,'ship_first_guard':0x6A30F0}))
