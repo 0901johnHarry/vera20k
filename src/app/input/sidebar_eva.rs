@@ -93,6 +93,13 @@ pub(crate) struct CameoClick {
 /// (`0x006AB0AC..0x006AB12B`); VERA has no pending cameo status, so that
 /// click does nothing. Trigger: a right click within the command delay of a
 /// build's first left click. Rare.
+///
+/// Residual (building path): a right click on a cameo with its own factory
+/// first drops a pending building placement (`0x006AADC9..0x006AADF8`). VERA
+/// drops it only when the placed building itself is abandoned
+/// (`sidebar_render::sync_targeting_mode`). Trigger: a right click on another
+/// producing cameo while a building is being placed. Effect: the placement
+/// cursor stays up.
 pub(crate) fn cameo_click(
     queue: &[QueueItemView],
     category: ProductionCategory,

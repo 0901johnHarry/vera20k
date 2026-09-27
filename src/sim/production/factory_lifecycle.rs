@@ -36,6 +36,14 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 /// well; VERA refuses it before StartProduction, silently. Trigger: a second
 /// click on a limited type whose first PRODUCE has not executed yet. Rare,
 /// sound only.
+///
+/// Residual (building path): a building never queues in gamemd.
+/// Begin_Production refuses a building PRODUCE while the building factory runs
+/// (`0x004FA52E..0x004FA550`), and StartProduction abandons a held or finished
+/// building before starting a different one (`0x004C9C87..0x004C9C98`); VERA
+/// appends it. Trigger: a second building PRODUCE before the first executes
+/// (the sidebar refuses a busy structure strip, and VERA's AI asks only while
+/// no building is queued). Effect: VERA builds both in turn. Rare.
 pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &str) -> bool {
     let Some(option) = build_option_for_owner(sim, rules, owner, type_id) else {
         return false;
