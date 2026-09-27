@@ -19,9 +19,9 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::rules::ini_value::{atoi_lenient, parse_leading_f64};
+use crate::rules::ini_value::{PERCENT_SCALE, atoi_lenient, parse_leading_f64};
 use crate::util::fixed_math::{SimFixed, sim_from_f32};
-use crate::util::native_x87::{NativeF64Bits, X87Chop53};
+use crate::util::native_x87::X87Chop53;
 
 /// A warhead definition parsed from a rules.ini section.
 ///
@@ -152,13 +152,20 @@ pub struct WarheadType {
     pub cl_disable_green: bool,
     pub cl_disable_blue: bool,
     /// Positive values override the damage-derived transient combat-light size.
-    /// Parsed through native `ReadDouble`, whose input is f32-first and whose
-    /// percent form therefore stores a fraction (`40%` -> widened f32 `0.4`).
-    /// `WarheadTypeClass+0x13C` (ReadDouble at `0x0075d496`, `FSTP float ptr`
-    /// at `0x0075d49b`, key string `0x00847e44`).
+    /// Parsed through native `ReadDouble`, so `40%` is the chopped double just
+    /// below 0.4. `WarheadTypeClass+0x13C` is a float (ReadDouble at
+    /// `0x0075d496`, `FSTP float ptr` at `0x0075d49b`, key string
+    /// `0x00847e44`) that native narrows again, to `0x3ECCCCCC` for `40%`;
+    /// VERA keeps the double. Retail `[IonWH]`'s light size is 25 either way;
+    /// a modded size whose product with 63 lands on an integer could differ by
+    /// one (presentation only).
     pub combat_light_size_f64: f64,
-    /// Native `double` damage multiplier read by InfantryClass before it enters
-    /// the shared Foot/Techno/Object receiver. `50%` is stored as `0.5`.
+    /// `ProneDamage=` (`WarheadTypeClass+0xF8`, ReadDouble at `0x0075D999`,
+    /// `FSTP qword` at `0x0075D9A4`; the constructor stores 1.0 at
+    /// `0x0075CEE4..0x0075CEEB`): the double InfantryClass::ReceiveDamage
+    /// scales a prone infantryman's raw damage by before the shared
+    /// Foot/Techno/Object receiver. `50%` is 0.5; `70%` is the chopped double
+    /// one ulp below 0.7.
     pub prone_damage_f64: f64,
     /// Instantly destroys any wall. `WarheadTypeClass+0x145`, written by
     /// `WarheadTypeClass::ReadINI` @ `0x0075d522` from the key string at
@@ -464,9 +471,8 @@ fn parse_verses(raw: &str) -> Vec<u8> {
 /// unconditionally performs eleven strchr calls and faults on a null strtok
 /// result; this recovery is deliberately not described as native equivalence.
 fn parse_verses_f64(raw: &str) -> [f64; 11] {
-    // Original literal at7E3808. Nearest-rounded host multiplication changes
-    // retail HE's integer damage by one for several armor classes.
-    const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
+    // Nearest-rounded host multiplication by the original 0.01 changes retail
+    // HE's integer damage by one for several armor classes.
     let scale = X87Chop53::load_f64(PERCENT_SCALE).expect("finite original constant");
     let mut out = [1.0_f64; 11];
     for (i, token) in raw

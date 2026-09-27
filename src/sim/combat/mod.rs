@@ -85,6 +85,10 @@ mod combat_cloak_damage_tests;
 mod delayed_building_fire_tests;
 
 #[cfg(test)]
+#[path = "prone_damage_tests.rs"]
+mod prone_damage_tests;
+
+#[cfg(test)]
 mod bridge_cluster_tests;
 #[cfg(test)]
 mod bridge_launch_tests;
@@ -563,6 +567,12 @@ fn warhead_damages_wall(
     warhead.wall || warhead.wall_absolute_destroyer || (warhead.wood && wall_flags.armor_is_wood)
 }
 
+/// InfantryClass::ReceiveDamage's prone head (`0x00517FC1..0x00517FEF`): a
+/// prone infantryman's positive raw damage, unless defenses are ignored,
+/// becomes `ftol(fild damage * fmul qword [warhead+0xF8])`, at least 1.
+/// Math__ftol (`0x007C5F00`) stores a qword and the head keeps EAX, so a
+/// product beyond 32 bits wraps before the clamp. Native rows:
+/// tools/rules_oracle/read_double_percent (group B).
 fn infantry_prone_area_raw_damage(
     target: &GameEntity,
     warhead: &WarheadType,
@@ -580,18 +590,12 @@ fn infantry_prone_area_raw_damage(
     let Ok(multiplier) =
         X87Chop53::load_f64(NativeF64Bits::from_bits(warhead.prone_damage_f64.to_bits()))
     else {
-        // FISTP's native indefinite result is negative and the wrapper's
-        // immediate minimum-one clamp therefore converts it to one.
+        // An infinite or NaN product converts to the indefinite qword, whose
+        // low dword 0 the minimum-one clamp replaces with 1.
         return 1;
     };
     let product = X87Chop53::mul(X87Chop53::load_i32(damage), multiplier);
-    let scaled = X87Chop53::ftol_i64(product)
-        .ok()
-        .and_then(|value| i32::try_from(value).ok())
-        // A native out-of-range FISTP yields the signed indefinite value,
-        // which the immediately following minimum-one clamp replaces with 1.
-        .unwrap_or(i32::MIN);
-    scaled.max(1)
+    X87Chop53::ftol_i32_low_masked(product).max(1)
 }
 
 /// What an `AttackTarget` is pointing at — an entity or a ground cell.

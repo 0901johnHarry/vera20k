@@ -17,6 +17,7 @@
 
 use crate::rules::ini_parser::IniSection;
 use crate::rules::locomotor_type::SpeedType;
+use crate::util::native_x87::NativeF64Bits;
 
 /// 0x20 = ASCII space; gamemd `strtrim` strips bytes <= 0x20 (space + all ASCII
 /// control) at BOTH ends — NOT Unicode whitespace.
@@ -393,10 +394,12 @@ fn parse_read_bool(default: bool, raw: &str) -> bool {
     }
 }
 
+/// The binary64 0.01 at `0x007E3808`: the percent scale of ReadDouble
+/// (`0x0052857E`) and of the Verses reader.
+pub(crate) const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
+
 pub(crate) fn parse_read_double(raw: &str) -> f64 {
-    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
-    // ReadDouble's percent scale `[0x007E3808]`, binary64 0.01.
-    const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
+    use crate::util::native_x87::MaskedX87Chop53 as X87;
     let value = strtrim_ascii(raw);
     let widened = f64::from(parse_leading_f32(value));
     if !value.as_bytes().contains(&b'%') {
