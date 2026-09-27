@@ -11,8 +11,9 @@ PRODUCERS = tuple('tools.projectile_oracle.' + name for name in (
     'fireat_launch', 'directed_launch', 'building_pitch', 'voxel_launch',
     'arc_second_probe', 'fireat_runtime', 'load_timers', 'ordinary_collision',
     'shared_collision', 'homing_impact', 'arc_domain',
-)) + ('tools.anim_oracle.boundary',)
-HELPERS = ('tools.native_slope', 'tools.projectile_oracle.collision_fixture')
+)) + ('tools.anim_oracle.boundary', 'tools.palette_oracle.oracle')
+HELPERS = ('tools.native_slope', 'tools.projectile_oracle.collision_fixture',
+           'tools.palette_oracle.check')
 
 
 def absent_retail_environment():
