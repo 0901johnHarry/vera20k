@@ -1248,6 +1248,17 @@ impl<'a> NativeCellQuery<'a> {
         }
     }
 
+    /// CellClass+EC through an already retained allocation identity. Reading
+    /// Land must not perform another lookup or replace the shared Dummy.
+    pub(crate) fn land_type(&self, cell: NativeCellIdentity) -> i32 {
+        match cell {
+            NativeCellIdentity::Real(index) => {
+                i32::from(self.terrain.cells[index].yr_cell_land_type)
+            }
+            NativeCellIdentity::Dummy => self.dummy.land_type(),
+        }
+    }
+
     pub(crate) fn projection_view(&self, x: i32, y: i32) -> CellClassProjectionView {
         let cell = self.lookup((x as i16, y as i16));
         CellClassProjectionView {

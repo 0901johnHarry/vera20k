@@ -90,18 +90,21 @@ use std::collections::BTreeMap;
 use super::combat_targeting::AttackerSnapshot;
 use super::combat_weapon::{
     attacker_facts, attacker_facts_from_snapshot, is_ally_by_object, is_armed, passive_scan_has_aa,
-    select_weapon_for_target, techno_target_facts,
+    resolve_selected_weapon, techno_target_facts,
 };
 use super::threat_range::{ScanRange, max_weapon_range, scan_range};
 use super::{armor_index, is_within_range_leptons, lepton_distance_sq_raw};
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::object_type::{ObjectType, VhpScan};
 use crate::rules::ruleset::RuleSet;
+use crate::sim::components::DriveCoord;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
+use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneId};
@@ -352,12 +355,14 @@ pub(crate) fn calculate_threat_score(
         scorer_type,
         terrain,
         is_ally_by_object(alliances, interner, candidate.owner(), scorer.owner()),
+        rules,
+        interner,
     );
-    if let Some(selected) = select_weapon_for_target(
+    if let Some(selected) = resolve_selected_weapon(
         rules,
         candidate_type,
         &attacker_facts(candidate, candidate_type),
-        &scorer_as_target,
+        Some(&scorer_as_target),
     ) {
         let verses =
             load_threat_double(selected.warhead.verses_f64[armor_index(&scorer_type.armor)]);
@@ -388,12 +393,14 @@ pub(crate) fn calculate_threat_score(
         candidate_type,
         terrain,
         is_ally_by_object(alliances, interner, scorer.owner(), candidate.owner()),
+        rules,
+        interner,
     );
-    let selected_scorer_weapon = select_weapon_for_target(
+    let selected_scorer_weapon = resolve_selected_weapon(
         rules,
         scorer_type,
         &attacker_facts(scorer, scorer_type),
-        &candidate_as_target,
+        Some(&candidate_as_target),
     );
     if let Some(selected) = selected_scorer_weapon.as_ref() {
         let verses =
@@ -939,6 +946,11 @@ pub(crate) fn greatest_threat(
     // ground walk uses. It selects the same aircraft except when two tie on
     // score, where the winner can differ. Frequency: two identical aircraft at
     // the same range and health, on the same tick.
+    if scan_air && let Some(terrain) = terrain {
+        // GreatestThreat6F91C8 resolves the scanner's Cell before asking the
+        // AirTracker, even when its airborne buckets contain no candidates.
+        terrain.native_cell_identity((cx as i16, cy as i16));
+    }
     for ring in 0..if scan_air { radius } else { 0 } {
         for (x, y) in ring_cells(cx, cy, ring) {
             let (Ok(rx), Ok(ry)) = (u16::try_from(x), u16::try_from(y)) else {
@@ -974,11 +986,16 @@ pub(crate) fn greatest_threat(
 
     for ring in 0..radius {
         for (x, y) in ring_cells(cx, cy, ring) {
-            let (Ok(rx), Ok(ry)) = (u16::try_from(x), u16::try_from(y)) else {
-                // `Cell_in_bounds_check @ 0x00568300`.
+            // Native ring coordinates cross the packed CellStruct seam before
+            // Map568300 tests Size's diamond. Loaded-world callers own Size;
+            // mapless walk fixtures retain their rectangular coordinate domain.
+            let coord = (x as i16, y as i16);
+            if let Some((width, height)) = fire_world.and_then(|world| world.map_size_diamond())
+                && !crate::map::playfield::size_diamond_contains(width, height, coord)
+            {
                 continue;
-            };
-            let Some(candidate_id) = scan_cell_for_target(&ctx, &index, rx, ry) else {
+            }
+            let Some(candidate_id) = scan_cell_for_target(&ctx, &index, coord) else {
                 continue;
             };
             let Some(candidate) = entities.get(candidate_id) else {
@@ -1115,9 +1132,24 @@ fn global_list_scan(ctx: &ScanContext<'_>) -> Option<u64> {
 fn scan_cell_for_target(
     ctx: &ScanContext<'_>,
     index: &ScanIndex<'_>,
-    rx: u16,
-    ry: u16,
+    coord: (i16, i16),
 ) -> Option<u64> {
+    // ScanCell6F8984 calls Map5657A0 even for an empty list. Its retained
+    // Cell pointer selects E8 then E4; do not index occupancy by the requested
+    // coordinate when fixed-stride lookup resolves an alias instead.
+    let (rx, ry) = if let Some(terrain) = ctx.terrain {
+        let cell = terrain.native_cell_identity(coord);
+        let NativeCellIdentity::Real(index) = cell else {
+            // Ordinary loaded-map admission has no object on the constructor-
+            // empty Dummy lists. A missing-cell object admission/lifetime owner
+            // is not represented by OccupancyGrid; never borrow a real list
+            // merely because a later lookup stamped that coordinate on Dummy.
+            return None;
+        };
+        (terrain.cells()[index].rx, terrain.cells()[index].ry)
+    } else {
+        (u16::try_from(coord.0).ok()?, u16::try_from(coord.1).ok()?)
+    };
     let (occupancy, layer) = index.cell_list(rx, ry)?;
     for occupant in occupancy.iter_layer(layer) {
         if occupant.entity_id == ctx.attacker.stable_id {
@@ -1144,9 +1176,9 @@ fn scan_cell_for_target(
 fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i32> {
     // G1/G2/G4 — select the weapon this attacker would use against this
     // candidate, then refuse the candidate when that weapon's Verses against
-    // its armor is at or below the `0.02f` floor. `select_weapon_for_target`
-    // is the `SelectWeaponAgainst @ 0x006F3330` ladder and already carries the
-    // 0% fallback, so a `None` here is native's `FIRE_ILLEGAL`.
+    // its armor is at or below the `0.02f` floor. Resolve the native selection
+    // without the legacy partial fire-error filter; G2b below owns the full
+    // native probe, including early REARM before later target-legality gates.
     let candidate_obj = ctx
         .rules
         .object(ctx.interner.resolve(candidate.type_ref()))?;
@@ -1165,18 +1197,29 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
             ctx.attacker.owner,
             candidate.owner(),
         ),
+        ctx.rules,
+        ctx.interner,
     );
-    let selected = select_weapon_for_target(
+    let selected = resolve_selected_weapon(
         ctx.rules,
         ctx.attacker_obj,
         &scanner_facts,
-        &candidate_facts,
+        Some(&candidate_facts),
     )?;
-    // G2b, the GetFireError probe, runs after the last gate below.
-    // G3 sits between selection and the verses gate. The rest of the
-    // conditional native +3BC FIRE_ILLEGAL probe and the null-weapon
-    // continuation remain separate gaps in the existing early ladder; this
-    // check adds neither callback nor RNG.
+    // G2b — GetFireError without range, immediately after SelectWeapon
+    // (6F7CDB..6F7CF1). Its native cell getters can move the shared dummy even
+    // when a later eligibility gate rejects this candidate. It is not a pure
+    // predicate that can be deferred until after those gates or G27.
+    // The mask0x18200 bypass (capture/occupiable/tech buildings) has no caller
+    // represented by this scan. Native's null-weapon continuation remains a
+    // separate gap in the early selection ladder.
+    if let Some(world) = ctx.fire_world
+        && probe_is_illegal(ctx, world, candidate, selected.index)
+    {
+        return None;
+    }
+
+    // G3 sits between the fire-error probe and the verses gate.
     if rejects_vhp_candidate(ctx.attacker_obj.vhp_scan, candidate.estimated_health.get()) {
         return None;
     }
@@ -1308,6 +1351,7 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
                     selected.weapon,
                     ctx.entities,
                     terrain,
+                    (ctx.rules, ctx.interner),
                 )?;
                 super::in_range::compute_in_range(
                     attacker_entity,
@@ -1418,11 +1462,10 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
     // `0x0070E1A0` is not overridden: `get_xrefs_to` shows it in all six Techno
     // vtable `+0x3F4` slots.
     //
-    // Every VERA house is human-controlled, and `IsControlledByHuman @
-    // 0x0050B730` is true for any human in a multiplayer game, so this arm is
-    // always taken. The AI-team bypass (`TechnoClass+0x14 & 4` and a non-null
-    // `FootClass+0x5D4` Team) has no VERA counterpart and is unreachable until
-    // AI teams ship.
+    // This predicate represents the human-controlled arm. The AI-team bypass
+    // (`TechnoClass+0x14 & 4` and a non-null `FootClass+0x5D4` Team) and the
+    // distinct computer-owner continuation remain unrepresented here. Their
+    // reachability cannot be inferred from this human-player implementation.
     //
     // RESIDUAL — the reject is unconditional here, where native falls through to
     // `0x006F860C` when the attacker's `vtable+0x330` byte (stored at
@@ -1446,32 +1489,17 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         return None;
     }
 
-    // RESIDUAL — G27, the bridge-layer gate at `0x006F8672`: when the ATTACKER's
-    // cell and the CANDIDATE's cell both carry a bridge (`CellClass+0x140 &
-    // 0x100`) and the two objects are on opposite sides of the deck, the
-    // candidate is refused. VERA has `GameEntity::on_bridge` but no per-cell
-    // "this cell carries a bridge" read at this site, so applying the deck test
-    // alone would also reject the ordinary ground-vs-elevated pair the native
-    // gate lets through.
-    // - Trigger: an armed object on or under a bridge with an enemy on the
-    //   other layer, inside its scan radius.
-    // - Player effect: a unit under a bridge auto-acquires one crossing it (and
-    //   vice versa) where retail would not, so it holds a target it usually
-    //   cannot hit.
-    // - Frequency: bridge maps only, and only while something is crossing.
-    // - Downstream risk: closing it needs the bridge bit threaded from
-    //   `ResolvedTerrainGrid` into the scan, which is terrain plumbing rather
-    //   than targeting.
-
-    // G2b — the GetFireError probe (`0x006F7CDB..0x006F7CF1`): vt+0x3BC, the
-    // function with check_range 0, against this candidate with the slot
-    // SelectWeapon chose (`0x006F7CBE`). ILLEGAL rejects; every other code
-    // scores on. Native asks it right after SelectWeapon; every gate of this
-    // ladder is a pure predicate, so asking it after the cheaper ones rejects
-    // the same candidates. The scan methods that skip it (`0x18200`: capture,
-    // occupiable and tech buildings) have no represented caller.
-    if let Some(world) = ctx.fire_world
-        && probe_is_illegal(ctx, world, candidate, selected.index)
+    // G27 uses current raw structural flags and the live objects' OnBridge.
+    // Mapped production supplies both owners; terrain-less/snapshot-only
+    // synthetic scans have no native cell domain and omit this gate.
+    if let (Some(terrain), Some(attacker)) = (ctx.terrain, ctx.entities.get(ctx.attacker.stable_id))
+        && bridge_layer_rejects_candidate(
+            terrain,
+            position_world_coord(&attacker.position),
+            attacker.on_bridge,
+            position_world_coord(&candidate.position),
+            candidate.on_bridge,
+        )
     {
         return None;
     }
@@ -1498,6 +1526,25 @@ fn evaluate_candidate(ctx: &ScanContext<'_>, candidate: &GameEntity) -> Option<i
         score,
     );
     finish_score(score)
+}
+
+/// EvaluateCandidate6F8682..6F86FE: both complete Map565730 lookups precede
+/// either raw0x100 test, even for equal layers or a nonstructural first cell.
+/// Retain their identities, because two misses alias the same mutable dummy.
+/// Native execution and boundary coverage: tools/spatial_oracle/bridge_target_layer.
+fn bridge_layer_rejects_candidate(
+    terrain: &ResolvedTerrainGrid,
+    attacker: DriveCoord,
+    attacker_on_bridge: bool,
+    candidate: DriveCoord,
+    candidate_on_bridge: bool,
+) -> bool {
+    let cells = NativeCellQuery::canonical(terrain);
+    let attacker_cell = cells.lookup_world(attacker.x, attacker.y);
+    let candidate_cell = cells.lookup_world(candidate.x, candidate.y);
+    cells.flags(attacker_cell) & 0x100 != 0
+        && cells.flags(candidate_cell) & 0x100 != 0
+        && attacker_on_bridge != candidate_on_bridge
 }
 
 /// Evaluate_Candidate's GetFireError probe: the scanner's own code against
@@ -2927,3 +2974,7 @@ mod tests {
 #[cfg(test)]
 #[path = "greatest_threat_health_tests.rs"]
 mod health_tests;
+
+#[cfg(test)]
+#[path = "greatest_threat_bridge_tests.rs"]
+mod bridge_tests;

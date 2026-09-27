@@ -1,7 +1,7 @@
 //! `TechnoClass::GetFireError` (vt+0x3C0, `0x006FC0B0`) and its class
 //! overrides: the one answer to "may this object fire this weapon at this
 //! target now, and if not, why". Callers act on the code; the function itself
-//! writes nothing and draws nothing.
+//! draws no RNG. Its lazy map queries can stamp the retained shared Dummy.
 //!
 //! Native order: the class prefix (Unit `0x00740FD0`, Infantry `0x0051C8B0`,
 //! Building `0x00447F10`), then the base's tests, then the class suffix
@@ -504,6 +504,9 @@ pub(crate) struct FireFacts {
 /// The questions GetFireError asks other owners. Each is asked only where,
 /// and as often as, the original asks it.
 pub(crate) trait FireQuery {
+    /// Target virtual+48 -> Map565730 at 0x006FC18E..0x006FC19C, after T10 and
+    /// before T11. Retain the returned Cell identity for T17's sensor query.
+    fn retain_target_center_cell(&mut self);
     /// GetWeapon (vt+0x3F8) of this index: its WeaponType, `None` for an
     /// empty slot.
     fn weapon(&mut self, index: i32) -> Option<WeaponFacts>;
@@ -832,6 +835,7 @@ fn techno(facts: &FireFacts, query: &mut impl FireQuery, check_range: bool) -> F
     if firer.temporal == Some(Link::Target) {
         return Rearm;
     }
+    query.retain_target_center_cell();
     if class.is_foot() && firer.magnetron_lifted {
         return Illegal;
     }

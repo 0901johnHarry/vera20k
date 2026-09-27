@@ -237,7 +237,11 @@ impl Simulation {
                 .is_some_and(|sequence| sequence.start_frame > 0),
         };
         if requested == DO_READY
-            && crate::sim::combat::in_range::is_high_flying(actor)
+            && crate::sim::movement::air_movement::is_high_flying(
+                actor,
+                self.resolved_terrain.as_ref(),
+                Some((rules, &self.interner)),
+            )
             && !on_bridge
             && hover_frames
         {

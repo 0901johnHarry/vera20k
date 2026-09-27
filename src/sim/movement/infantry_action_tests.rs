@@ -70,6 +70,9 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
     let height = input["height"].as_i64().unwrap_or(500) as i32;
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.lifecycle.in_limbo = false;
+    // jumpjet_infantry_actions.Actions supplies OWNER+74=1; Do_Action's
+    // Object5F6B90 height predicate requires this independently of XYZ.
+    entity.lifecycle.cell_marked = true;
     entity.health.current = input["health"].as_i64().unwrap_or(125) as _;
     entity.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
     entity.position.exact_z_leptons = Some(height);

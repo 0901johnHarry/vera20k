@@ -358,6 +358,10 @@ impl RowQuery<'_> {
 }
 
 impl FireQuery for RowQuery<'_> {
+    fn retain_target_center_cell(&mut self) {
+        // This older scalar corpus supplies Map565730 and does not log it.
+        // The production cell-query comparisons cover the retained identity.
+    }
     fn weapon(&mut self, index: i32) -> Option<WeaponFacts> {
         usize::try_from(index)
             .ok()

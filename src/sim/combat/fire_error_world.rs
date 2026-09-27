@@ -17,13 +17,17 @@ use super::fire_error::{
     Transporter, WarheadFacts, WeaponFacts,
 };
 use super::{TargetKind, combat_weapon, in_range, line_of_fire};
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::object_type::ObjectType;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::movement::ground_pose::{
+    object_center_coord, position_world_coord, query_object_cell,
+};
 use crate::sim::vision::FogState;
 use crate::sim::world::Simulation;
 
@@ -46,18 +50,18 @@ impl FireSubject<'_> {
     /// GetFireError for this subject.
     pub(crate) fn fire_error(&self, check_range: bool) -> FireError {
         let facts = self.facts();
-        super::fire_error::get_fire_error(&facts, &mut WorldQuery { subject: self }, check_range)
+        super::fire_error::get_fire_error(&facts, &mut WorldQuery::new(self), check_range)
     }
 
     /// `CanFireAt @ 0x006F77B0`: InRange (vt+0x3A8) with the subject's weapon.
     pub(crate) fn in_range(&self) -> bool {
-        WorldQuery { subject: self }.in_range()
+        WorldQuery::new(self).in_range()
     }
 
     /// `GetWeaponDamageValue(-1) @ 0x006F3970` through this subject's
     /// GetWeapon, so a garrison reads its occupant's weapon.
     pub(crate) fn weapon_damage_value(&self) -> i32 {
-        super::fire_error::weapon_value(&self.facts(), &mut WorldQuery { subject: self })
+        super::fire_error::weapon_value(&self.facts(), &mut WorldQuery::new(self))
     }
 
     fn target_entity(&self) -> Option<&GameEntity> {
@@ -308,13 +312,15 @@ impl FireSubject<'_> {
         };
         let (target, target_type) = match self.target {
             None => (TargetFacts::default(), TargetTypeFacts::default()),
-            Some(TargetKind::Cell(rx, ry)) => (
+            Some(TargetKind::Cell(..)) => (
                 TargetFacts {
                     kind: FireTargetKind::Cell,
                     land_type: self
                         .terrain()
-                        .and_then(|terrain| terrain.cell(rx, ry))
-                        .map_or(0, |cell| i32::from(cell.yr_cell_land_type)),
+                        .zip(self.cell_target_identity())
+                        .map_or(0, |(terrain, cell)| {
+                            NativeCellQuery::canonical(terrain).land_type(cell)
+                        }),
                     ..TargetFacts::default()
                 },
                 TargetTypeFacts::default(),
@@ -395,13 +401,18 @@ impl FireSubject<'_> {
         }
     }
 
-    fn cell_facts(&self, rx: u16, ry: u16) -> Option<CellFacts> {
-        self.terrain()
-            .and_then(|terrain| terrain.cell(rx, ry))
-            .map(|cell| CellFacts {
-                land_type: i32::from(cell.yr_cell_land_type),
-                flags: cell.bridge_facts.raw_flags,
-            })
+    /// Native receives an already resolved Cell pointer. TargetKind stores the
+    /// coordinate used to resolve it; recover allocation identity without an
+    /// extra lookup before GetFireError's first native map query at 0x006FC197.
+    fn cell_target_identity(&self) -> Option<NativeCellIdentity> {
+        let TargetKind::Cell(rx, ry) = self.target? else {
+            return None;
+        };
+        let terrain = self.terrain()?;
+        let cell = terrain
+            .native_fixed_cell_index(rx as i16, ry as i16)
+            .map_or(NativeCellIdentity::Dummy, NativeCellIdentity::Real);
+        Some(cell)
     }
 }
 
@@ -459,9 +470,51 @@ pub(crate) fn garrison_weapon<'r>(
 /// The owners' answers, asked by [`super::fire_error::get_fire_error`].
 struct WorldQuery<'s, 'a> {
     subject: &'s FireSubject<'a>,
+    cells: Option<NativeCellQuery<'s>>,
+    /// EDI at 0x006FC19C, retained until the sensor call at 0x006FC26F. A later
+    /// lookup may stamp this same Dummy; never resolve the target again.
+    target_center_cell: Option<NativeCellIdentity>,
+}
+
+impl<'s, 'a> WorldQuery<'s, 'a> {
+    fn new(subject: &'s FireSubject<'a>) -> Self {
+        Self {
+            subject,
+            cells: subject.terrain().map(NativeCellQuery::canonical),
+            target_center_cell: None,
+        }
+    }
 }
 
 impl FireQuery for WorldQuery<'_, '_> {
+    fn retain_target_center_cell(&mut self) {
+        let Some(cells) = self.cells.as_ref() else {
+            return;
+        };
+        let xy = match self.subject.target {
+            Some(TargetKind::Entity(_)) => {
+                let Some((target, object)) =
+                    self.subject.target_entity().zip(self.subject.target_obj())
+                else {
+                    return;
+                };
+                let point = object_center_coord(target, object);
+                (point.x, point.y)
+            }
+            Some(TargetKind::Cell(..)) => {
+                let Some(cell) = self.subject.cell_target_identity() else {
+                    return;
+                };
+                // Cell 0x00486840 reads the receiver's *current* packed coordinate;
+                // a retained Dummy is not the originally requested coordinate.
+                let (x, y) = cells.coord(cell);
+                (i32::from(x) * 256 + 128, i32::from(y) * 256 + 128)
+            }
+            None => return,
+        };
+        self.target_center_cell = Some(cells.lookup_world(xy.0, xy.1));
+    }
+
     fn weapon(&mut self, index: i32) -> Option<WeaponFacts> {
         let subject = self.subject;
         subject
@@ -509,6 +562,7 @@ impl FireQuery for WorldQuery<'_, '_> {
                 weapon,
                 &subject.world.substrate.entities,
                 terrain,
+                (subject.rules, &subject.world.interner),
             )
             .is_some_and(|source| {
                 in_range::compute_in_range(
@@ -542,6 +596,8 @@ impl FireQuery for WorldQuery<'_, '_> {
                     obj,
                     subject.terrain(),
                     self.house_allied(subject.firer.owner(), entity.owner()),
+                    subject.rules,
+                    &subject.world.interner,
                 )
             });
         combat_weapon::select_naval_targeting_weapon(subject.obj, facts.as_ref())
@@ -583,19 +639,31 @@ impl FireQuery for WorldQuery<'_, '_> {
 
     fn high_flying(&mut self) -> bool {
         // CellClass vt+0x54 (`0x00410530`) is constant false.
-        self.subject
-            .target_entity()
-            .is_some_and(combat_weapon::target_is_high_flying)
+        self.subject.target_entity().is_some_and(|target| {
+            crate::sim::movement::air_movement::is_high_flying(
+                target,
+                self.subject.terrain(),
+                Some((self.subject.rules, &self.subject.world.interner)),
+            )
+        })
     }
 
     fn low_flying(&mut self) -> bool {
-        self.subject
-            .target_entity()
-            .is_some_and(|target| !combat_weapon::target_is_high_flying(target))
+        self.subject.target_entity().is_some_and(|target| {
+            crate::sim::movement::air_movement::is_low_flying(
+                target,
+                self.subject.terrain(),
+                Some((self.subject.rules, &self.subject.world.interner)),
+            )
+        })
     }
 
     fn firer_high_flying(&mut self) -> bool {
-        combat_weapon::target_is_high_flying(self.subject.firer)
+        crate::sim::movement::air_movement::is_high_flying(
+            self.subject.firer,
+            self.subject.terrain(),
+            Some((self.subject.rules, &self.subject.world.interner)),
+        )
     }
 
     fn target_layer(&mut self) -> i32 {
@@ -604,25 +672,52 @@ impl FireQuery for WorldQuery<'_, '_> {
 
     fn target_cell(&mut self) -> Option<CellFacts> {
         let target = self.subject.target_entity()?;
-        self.subject
-            .cell_facts(target.position.rx, target.position.ry)
+        let cells = self.cells.as_ref()?;
+        let cell = query_object_cell(cells, position_world_coord(&target.position));
+        Some(CellFacts {
+            land_type: cells.land_type(cell),
+            flags: cells.flags(cell),
+        })
     }
 
     fn firer_cell(&mut self) -> FirerCell {
-        let firer = self.subject.firer;
-        let own = (firer.position.rx, firer.position.ry);
-        if self.subject.target == Some(TargetKind::Cell(own.0, own.1)) {
+        let Some(cells) = self.cells.as_ref() else {
+            return FirerCell::None;
+        };
+        let own = query_object_cell(cells, position_world_coord(&self.subject.firer.position));
+        if self
+            .subject
+            .cell_target_identity()
+            .is_some_and(|target| own == target)
+        {
             return FirerCell::Target;
         }
-        self.subject
-            .cell_facts(own.0, own.1)
-            .map_or(FirerCell::None, FirerCell::Cell)
+        FirerCell::Cell(CellFacts {
+            land_type: cells.land_type(own),
+            flags: cells.flags(own),
+        })
     }
 
     fn sensor(&mut self) -> bool {
         let subject = self.subject;
-        let (Some(fog), Some((rx, ry, _, _))) = (subject.fog, subject.target_point()) else {
+        let Some(fog) = subject.fog else {
             return false;
+        };
+        let (rx, ry) = match (subject.terrain(), self.target_center_cell) {
+            (Some(terrain), Some(cell @ NativeCellIdentity::Real(_))) => {
+                let (x, y) = terrain.native_cell_coord(cell);
+                (x as u16, y as u16)
+            }
+            // Dummy sensor counters have no represented producer. Do not ask
+            // a real cell merely because a later lookup stamped its coordinate.
+            (Some(_), _) => return false,
+            // Legacy headless fixtures have no native map allocation domain.
+            (None, _) => {
+                let Some((rx, ry, _, _)) = subject.target_point() else {
+                    return false;
+                };
+                (rx, ry)
+            }
         };
         fog.has_sensor_for_house(subject.firer.owner(), rx, ry)
     }
@@ -666,6 +761,13 @@ impl FireQuery for WorldQuery<'_, '_> {
     }
 
     fn deploy_cell_ok(&mut self) -> bool {
+        // Unit suffix 0x00741078 resolves physical XYZ on every admitted base
+        // result, before testing DeployToFire. Preserve its Dummy stamp even
+        // though Cell 0x00487C10's deployment verdict remains a dormant residual.
+        if let Some(cells) = self.cells.as_ref() {
+            let point = position_world_coord(&self.subject.firer.position);
+            cells.lookup_world(point.x, point.y);
+        }
         true
     }
 

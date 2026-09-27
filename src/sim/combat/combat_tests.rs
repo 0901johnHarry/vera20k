@@ -6795,6 +6795,22 @@ fn fire_admission_preserves_flat_projectile_layer_through_save_and_retirement() 
 #[test]
 fn gsi_04_11_persistent_projectile_keeps_exact_lepton_z() {
     let rules = persistent_projectile_rules();
+    // These are ground objects on levels 7 and 11, not aircraft above a
+    // missing map's zero floor. The live flight queries need that terrain;
+    // neither the legacy position level nor the altitude cache owns it.
+    let mut terrain = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+        12,
+        12,
+        (0..12)
+            .flat_map(|y| {
+                (0..12).map(move |x| {
+                    let mut cell = crate::map::resolved_terrain::test_flat_cell(x, y);
+                    cell.level = if x >= 8 { 11 } else { 7 };
+                    cell
+                })
+            })
+            .collect(),
+    );
     let mut entities = EntityStore::new();
     let mut shooter = make_entity(1, "SHOOTER", 5, 5, 300);
     shooter.position.z = 7;
@@ -6808,14 +6824,22 @@ fn gsi_04_11_persistent_projectile_keeps_exact_lepton_z() {
     issue_attack_command(&mut entities, 1, 2, None, &interner);
 
     align_attackers_to_targets(&mut entities, &rules, &interner);
-    let result = tick_combat(
+    let result = tick_combat_with_fog(
         &mut entities,
         &mut OccupancyGrid::new(),
         &rules,
         &mut interner,
+        None,
+        &BTreeMap::new(),
+        None,
+        None,
+        None,
+        Some(&mut terrain),
         0,
         100,
         0,
+        &[],
+        None,
         &mut SimRng::new(1),
     );
 
@@ -7508,7 +7532,7 @@ fn rad_combat_tick(
         None,
         None,
         None,
-        None,
+        sim.resolved_terrain.as_mut(),
         0,
         100,
         binary_frame,
@@ -7906,6 +7930,19 @@ fn buildings_take_no_rad_damage() {
 fn deployed_desolator_self_irradiates_and_refires_below_third() {
     let rules = radiation_rules();
     let mut sim = crate::sim::world::Simulation::new();
+    // Infantry AreaFire compares actual Cell identities. Supply the map that
+    // owns both the firer's ObjectGetCell result and its self-target Cell.
+    sim.install_resolved_terrain_for_new_map(
+        crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
+            16,
+            16,
+            (0..16)
+                .flat_map(|y| {
+                    (0..16).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                })
+                .collect(),
+        ),
+    );
     let heights = BTreeMap::new();
     let deso = sim
         .spawn_object("DESO", "Americans", 10, 10, 0, &rules, &heights)
@@ -8453,7 +8490,12 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
     assert_eq!(child.initial_target_position, center);
     assert_eq!(
         child.velocity,
-        crate::sim::projectile::launch::shrapnel_launch_velocity(impact, center, rules.weapon("CHILD").unwrap().speed, false)
+        crate::sim::projectile::launch::shrapnel_launch_velocity(
+            impact,
+            center,
+            rules.weapon("CHILD").unwrap().speed,
+            false
+        )
     );
 }
 
@@ -9492,7 +9534,10 @@ fn gsi_08_06_homing_launch_uses_one_lepton_and_stores_speed_as_the_ceiling() {
     let guidance = spawn.guidance.expect("a ROT > 0 shot carries guidance");
     // Original ReadSpeed528A90 converts authored30 to76; the saved
     // weapon_speed.json control establishes the native retained DWORD.
-    assert_eq!(guidance.max_speed, 76, "effective weapon Speed is the ceiling");
+    assert_eq!(
+        guidance.max_speed, 76,
+        "effective weapon Speed is the ceiling"
+    );
     assert_eq!(guidance.acceleration, 3, "BulletTypeClass ctor default");
     assert_eq!(
         guidance.fuse_reference, spawn.initial_target_position,
