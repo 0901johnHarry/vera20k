@@ -1925,7 +1925,6 @@ mod tests {
             let base = zone_grid.base_topology_mut();
             base.movement_classes = vec![0; 4];
             base.zone_ids = vec![2, 3, 4, 5];
-            base.zone_count = 5;
             let row = MovementZone::Normal.matrix_row().unwrap();
             base.raw_zone_ids_by_row[row].resize(6, 0);
             base.raw_zone_ids_by_row[row][0] = 10;
@@ -1956,7 +1955,6 @@ mod tests {
             let base = zone_grid.base_topology_mut();
             base.movement_classes = vec![0; 4];
             base.zone_ids = vec![2, 3, 4, 5];
-            base.zone_count = 5;
             let row = MovementZone::Normal.matrix_row().unwrap();
             base.raw_zone_ids_by_row[row].resize(6, 0);
             base.raw_zone_ids_by_row[row][3] = 77;

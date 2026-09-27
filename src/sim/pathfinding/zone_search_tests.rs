@@ -1721,7 +1721,6 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
     {
         let base = zones.base_topology_mut();
         base.zone_ids = vec![2, 3, 2, 3];
-        base.zone_count = 3;
         base.raw_zone_ids_by_row[row] = vec![0, 0, 1, u16::MAX];
     }
     {

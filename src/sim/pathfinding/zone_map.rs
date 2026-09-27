@@ -145,34 +145,6 @@ impl ZoneMap {
     }
 }
 
-/// Base-cluster adjacency graph — which base clusters border each other.
-/// Native `RebuildZoneConnectivity` floods it to derive each movement row.
-#[derive(Debug, Clone)]
-pub struct ZoneAdjacency {
-    /// For each zone ID (1-indexed), adjacent zone IDs in discovery order.
-    pub neighbors: Vec<Vec<ZoneId>>,
-}
-
-impl ZoneAdjacency {
-    /// Construct from a pre-built neighbor list.
-    pub(crate) fn new(neighbors: Vec<Vec<ZoneId>>) -> Self {
-        Self { neighbors }
-    }
-
-    /// Check if two zones are directly adjacent.
-    #[cfg(test)]
-    pub fn are_adjacent(&self, a: ZoneId, b: ZoneId) -> bool {
-        if a == ZONE_INVALID || b == ZONE_INVALID {
-            return false;
-        }
-        let idx = a as usize;
-        if idx >= self.neighbors.len() {
-            return false;
-        }
-        self.neighbors[idx].contains(&b)
-    }
-}
-
 /// Complete zone system: zone maps for all movement zones, their shared base
 /// topology and the route-selection hierarchy.
 #[derive(Debug, Clone)]

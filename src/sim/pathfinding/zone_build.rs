@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use super::PathGrid;
 use super::passability;
 use super::zone_hierarchy::{ZoneEdgeRecord, ZoneHierarchy, ZoneLevelGraph, ZoneRecord};
-use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneId, ZoneMap};
+use super::zone_map::{ZONE_INVALID, ZoneId, ZoneMap};
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::terrain_rules::LandType;
@@ -42,10 +42,6 @@ pub(crate) struct BaseZoneTopology {
     /// 56CB90 and hierarchy flood consume these, not current PathGrid heights.
     pub(crate) levels: Vec<u8>,
     pub(crate) zone_ids: Vec<ZoneId>,
-    // Retained as exact base-topology state for incremental-repair parity
-    // fixtures; current production projections consume the derived rows.
-    pub(crate) zone_count: ZoneId,
-    pub(crate) adjacency: ZoneAdjacency,
     /// Raw `MapClass+0x18[row][base_cluster]` values. Label 1 and `0xffff`
     /// remain represented here even though the flattened compatibility maps
     /// expose both as an invalid cell zone.
@@ -136,14 +132,15 @@ impl BaseEdgeBuckets {
         }
     }
 
-    fn into_adjacency(self, zone_count: ZoneId) -> ZoneAdjacency {
+    /// Each base cluster's bordering clusters (1-indexed), in discovery order.
+    fn into_adjacency(self, zone_count: ZoneId) -> Vec<Vec<ZoneId>> {
         let mut adjacency = vec![Vec::new(); zone_count as usize + 1];
         for bucket in self.buckets {
             for (neighbor, current) in bucket {
                 add_adjacency(&mut adjacency, neighbor, current);
             }
         }
-        ZoneAdjacency::new(adjacency)
+        adjacency
     }
 }
 
@@ -203,7 +200,7 @@ pub(crate) fn rebuild_base_zone_topology(
             &movement_classes,
             &zone_ids,
             zone_count,
-            &adjacency.neighbors,
+            &adjacency,
             MovementZone::all_ground()[row],
         )
     });
@@ -213,8 +210,6 @@ pub(crate) fn rebuild_base_zone_topology(
         movement_classes,
         levels,
         zone_ids,
-        zone_count,
-        adjacency,
         raw_zone_ids_by_row,
     }
 }
@@ -957,13 +952,13 @@ mod tests {
     fn hierarchy_base(movement_classes: Vec<u8>, zone_ids: Vec<ZoneId>) -> BaseZoneTopology {
         assert_eq!(movement_classes.len(), zone_ids.len());
         let zone_count = zone_ids.iter().copied().max().unwrap_or(ZONE_INVALID);
-        let adjacency = ZoneAdjacency::new(vec![Vec::new(); zone_count as usize + 1]);
+        let adjacency = vec![Vec::new(); zone_count as usize + 1];
         let raw_zone_ids_by_row = std::array::from_fn(|row| {
             rebuild_zone_ids_for_movement_zone(
                 &movement_classes,
                 &zone_ids,
                 zone_count,
-                &adjacency.neighbors,
+                &adjacency,
                 MovementZone::all_ground()[row],
             )
         });
@@ -972,8 +967,6 @@ mod tests {
             levels: vec![0; movement_classes.len()],
             movement_classes,
             zone_ids,
-            zone_count,
-            adjacency,
             raw_zone_ids_by_row,
         }
     }
@@ -1769,19 +1762,11 @@ mod tests {
             2,
             2,
         );
-        let base = BaseZoneTopology {
-            native_bridge_source_size: None,
-            adjacency: edge_buckets.into_adjacency(zone_count),
-            levels: retained_levels_from_path(&grid, 2, 2),
-            movement_classes,
-            zone_ids,
-            zone_count,
-            raw_zone_ids_by_row: std::array::from_fn(|_| Vec::new()),
-        };
+        let adjacency = edge_buckets.into_adjacency(zone_count);
 
-        assert_eq!(base.zone_ids, vec![1, 1, 2, 2]);
-        assert_eq!(base.zone_count, 2);
-        assert!(base.adjacency.are_adjacent(1, 2));
+        assert_eq!(zone_ids, vec![1, 1, 2, 2]);
+        assert_eq!(zone_count, 2);
+        assert!(adjacency[1].contains(&2));
     }
 
     #[test]
@@ -1797,7 +1782,7 @@ mod tests {
 
         assert_eq!(zone_ids, vec![1, 1, 2, 2]);
         assert_eq!(zone_count, 2);
-        assert!(!adjacency.are_adjacent(1, 2));
+        assert!(!adjacency[1].contains(&2));
     }
 
     #[test]

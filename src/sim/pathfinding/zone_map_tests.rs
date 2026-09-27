@@ -319,7 +319,6 @@ fn gsi_04_01_nonbridge_getzoneid_uses_padded_square_clamps_and_raw_rows() {
         let base = zones.base_topology_mut();
         base.movement_classes = vec![0; 4];
         base.zone_ids = vec![2, 3, 4, 5];
-        base.zone_count = 5;
         for row in &mut base.raw_zone_ids_by_row {
             row.resize(6, 0);
         }
@@ -415,7 +414,6 @@ fn base_defense_reachability_fixture() -> ZoneGrid {
     let base = zones.base_topology_mut();
     base.movement_classes = vec![0; 16];
     base.zone_ids = (2..18).collect();
-    base.zone_count = 17;
     let row = MovementZone::Normal.matrix_row().unwrap();
     base.raw_zone_ids_by_row[row] = (0..18).map(|cluster| 100 + cluster).collect();
     zones
@@ -743,14 +741,11 @@ fn base_repair_fixture(
     let base = zones.base_topology_mut();
     base.movement_classes = classes.to_vec();
     base.zone_ids = clusters.to_vec();
-    base.zone_count = clusters.iter().copied().max().unwrap_or(0);
-    base.adjacency
-        .neighbors
-        .resize(base.zone_count as usize + 1, Vec::new());
+    let zone_count = clusters.iter().copied().max().unwrap_or(0);
     for row in &mut base.raw_zone_ids_by_row {
-        row.resize(base.zone_count as usize + 1, 1);
+        row.resize(zone_count as usize + 1, 1);
         row[0] = u16::MAX;
-        for cluster in 1..=base.zone_count {
+        for cluster in 1..=zone_count {
             row[cluster as usize] = cluster + 1;
         }
     }
@@ -779,14 +774,9 @@ fn gsi_04_06_base_repair_uses_transition_count_first_candidate_and_preserves_tab
         let map = zones.map_for(movement_zone).unwrap();
         assert_eq!(map.zone_at(1, 1, MovementLayer::Ground), 4);
     }
-    let (before_count, before_adj, before_raw, before_clusters) = {
+    let (before_raw, before_clusters) = {
         let base = zones.base_topology_mut();
-        (
-            base.zone_count,
-            base.adjacency.neighbors.clone(),
-            base.raw_zone_ids_by_row.clone(),
-            base.zone_ids.clone(),
-        )
+        (base.raw_zone_ids_by_row.clone(), base.zone_ids.clone())
     };
     let before_maps: Vec<Vec<ZoneId>> = MovementZone::all_ground()
         .iter()
@@ -806,8 +796,6 @@ fn gsi_04_06_base_repair_uses_transition_count_first_candidate_and_preserves_tab
 
     {
         let base = zones.base_topology_mut();
-        assert_eq!(base.zone_count, before_count);
-        assert_eq!(base.adjacency.neighbors, before_adj);
         assert_eq!(base.raw_zone_ids_by_row, before_raw);
         assert_eq!(base.zone_ids[4], 1);
         for (index, (&before, &after)) in before_clusters.iter().zip(&base.zone_ids).enumerate() {
@@ -1097,11 +1085,6 @@ fn gsi_04_06_fallback_rebuilds_base_without_resetting_hierarchy_high_water() {
         let actual = zones.base_topology_mut();
         assert_eq!(actual.movement_classes, expected_base.movement_classes);
         assert_eq!(actual.zone_ids, expected_base.zone_ids);
-        assert_eq!(actual.zone_count, expected_base.zone_count);
-        assert_eq!(
-            actual.adjacency.neighbors,
-            expected_base.adjacency.neighbors
-        );
         assert_eq!(
             actual.raw_zone_ids_by_row,
             expected_base.raw_zone_ids_by_row

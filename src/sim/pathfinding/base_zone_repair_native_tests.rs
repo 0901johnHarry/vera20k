@@ -60,7 +60,6 @@ fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publi
         );
         let base = zones.base_topology_mut();
         base.zone_ids = ids.clone();
-        base.zone_count = ids.iter().copied().max().unwrap();
         let row0: Vec<_> = input["row0"]
             .as_array()
             .unwrap()

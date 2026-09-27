@@ -280,8 +280,9 @@ fn connectivity_consumes_retained_classes_and_matches_original_thirteen_rows() {
             "{}",
             input["name"]
         );
+        // Native's cluster count is the highest base label it assigned.
         assert_eq!(
-            json!(base.zone_count),
+            json!(base.zone_ids.iter().copied().max().unwrap_or(0)),
             original["zone_count"],
             "{}",
             input["name"]
