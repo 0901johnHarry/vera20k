@@ -420,7 +420,6 @@ fn gsi_04_12_random_map_ui_to_sed_launch_lifecycle_converges() {
             source: crate::match_bootstrap::MatchSeedSource::Controlled,
             seed_authority_certifying: false,
         },
-        crate::ui::main_menu::SkirmishSettings::default(),
     )
     .with_accepted_random_map(Some(accepted_poison));
     let ui_launch = ui_request
@@ -450,7 +449,6 @@ fn gsi_04_12_random_map_ui_to_sed_launch_lifecycle_converges() {
             source: crate::match_bootstrap::MatchSeedSource::Controlled,
             seed_authority_certifying: false,
         },
-        crate::ui::main_menu::SkirmishSettings::default(),
     )
     .with_accepted_random_map(Some(direct_accepted));
     let direct_launch = direct_request

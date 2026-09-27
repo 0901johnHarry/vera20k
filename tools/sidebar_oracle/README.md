@@ -50,10 +50,9 @@ map-install path now discards the outgoing match presentation and selects the
 new source only after the simulation, roster and pinned owner are installed.
 `project_sidebar_source` is shared by chrome and radar and is exercised from
 the real explicit-launch regression for all three sides and missing-source
-fallback. SpawnPick refreshes after pinning its owner. Changing an unpinned
-sandbox owner forces a current-frame source redraw while retaining timer and
-zero-skipped pixels; that development interaction has no native lifecycle
-claim. Non-stock dimension replacement initializes a new backing and also
+fallback. Changing an unpinned sandbox owner forces a current-frame source
+redraw while retaining timer and zero-skipped pixels; that development
+interaction has no native lifecycle claim. Non-stock dimension replacement initializes a new backing and also
 has no cross-size parity claim.
 
 An unchanged frame at the Opening-to-Online endpoint is not an unconditional

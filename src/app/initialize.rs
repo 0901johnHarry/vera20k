@@ -430,19 +430,6 @@ impl App {
             &mut skirmish_shell_state,
             scenario_catalog.shell_maps(),
         );
-        let selected_shell_map = scenario_catalog
-            .shell_maps()
-            .get(skirmish_shell_state.selected_map_idx)
-            .map(|map| map.file_name.as_str());
-        let mut skirmish_settings =
-            crate::ui::skirmish_shell::launch_settings(&skirmish_shell_state);
-        skirmish_settings.selected_map_idx = selected_shell_map
-            .and_then(|file_name| {
-                available_maps
-                    .iter()
-                    .position(|map| map.file_name.eq_ignore_ascii_case(file_name))
-            })
-            .unwrap_or(0);
 
         // Build the software cursor at startup so the main menu draws the SHP
         // arrow and hides the OS cursor, matching the original which hides the
@@ -512,7 +499,6 @@ impl App {
                     control_groups: vec![Vec::new(); 10],
                     last_control_group_press: None,
                     follow_target: None,
-                    spawn_pick_pending: false,
                     targeting_mode: None,
                     building_placement_preview: None,
                     camera_x: 0.0,
@@ -627,10 +613,8 @@ impl App {
             },
             frontend: crate::app::frontend::state::FrontendState {
                 screen: GameScreen::default(),
-                available_maps,
                 scenario_catalog,
                 skirmish_modes,
-                skirmish_settings,
                 loading_session: None,
                 frontend_main_rng: crate::sim::rng::SimRng::new(u64::from(frontend_seed.value)),
                 legacy_crt_rng: crate::util::legacy_crt_rng::LegacyCrtRng::default(),
@@ -740,7 +724,6 @@ impl App {
         apply_startup_audio_profile(&state.persistence.options_profile, &mut state.audio);
 
         if let Ok(quickplay) = std::env::var("RA2_QUICKPLAY") {
-            let skirmish_settings = state.frontend.skirmish_settings.clone();
             // The developer shortcut carries an authored-map sandbox through
             // the unverified legacy Battle loader. It has no artificial AI
             // opponent or starting forces; this is not campaign admission.
@@ -748,9 +731,7 @@ impl App {
             let mut clock = crate::match_bootstrap::OrdinaryMatchSeedClock;
             let seed = crate::match_bootstrap::read_match_seed(&mut clock);
             let request = crate::app::loading::pump::LoadingRequest::unverified_legacy_skirmish(
-                session,
-                seed,
-                skirmish_settings,
+                session, seed,
             );
             crate::app::loading::pump::begin_loading(&mut state, request);
         }

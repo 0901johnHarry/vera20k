@@ -64,8 +64,6 @@ pub(crate) struct MatchInputState {
     /// The object the camera is following, i.e. `DisplayClass +0x11A0` behind
     /// its valid byte `+0x119C`. `None` is the cleared pair.
     pub(crate) follow_target: Option<u64>,
-    /// True when in SpawnPick phase — MCV seeding is deferred until the player picks a waypoint.
-    pub(crate) spawn_pick_pending: bool,
     /// Mutually-exclusive cursor-on-tactical-map targeting mode (building
     /// placement OR superweapon). Right-click and Esc clear; arming one
     /// kind clears the other.

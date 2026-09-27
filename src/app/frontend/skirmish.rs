@@ -12,7 +12,6 @@ use crate::map::overlay::OverlayEntry;
 use crate::map::overlay_types::{
     OverlayTypeRegistry, is_bridge_overlay_index, is_high_bridge_index,
 };
-use crate::map::waypoints;
 use crate::render::batch::BatchRenderer;
 use crate::render::bridge_atlas::{self, BridgeAtlas};
 use crate::render::bridge_railing_atlas::{self, BridgeRailingAtlas, BridgeRailingTileBases};
@@ -25,109 +24,8 @@ use crate::rules::house_colors::HouseColorIndex;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
-use crate::sim::house_state::determine_waypoint_edge;
 use crate::sim::scenario_bootstrap::normalized_launch_slots;
-use crate::sim::world::Simulation;
 use crate::skirmish_launch::SkirmishLaunchSession;
-use crate::ui::main_menu::{SkirmishSettings, StartPosition};
-
-pub(crate) fn seed_skirmish_opening_if_needed(
-    sim: &mut Simulation,
-    map_data: &MapFile,
-    house_roster: &HouseRoster,
-    rules: &RuleSet,
-    height_map: &BTreeMap<(u16, u16), u8>,
-    overlay_registry: &OverlayTypeRegistry,
-    settings: &SkirmishSettings,
-) -> Option<String> {
-    // Seed MCVs whenever multiplayer start waypoints exist, even if the map
-    // has pre-placed entities (e.g., oil derricks on Dustbowl). The waypoint
-    // check is sufficient to distinguish multiplayer maps from campaign missions.
-    let mut starts = waypoints::multiplayer_start_waypoints(&map_data.waypoints);
-    if starts.len() < 2 {
-        return None;
-    }
-    let houses = skirmish_house_candidates(house_roster);
-    if houses.is_empty() {
-        return None;
-    }
-
-    // If the player chose a specific start position, swap that waypoint to index 0
-    // so the local player spawns there.
-    if let StartPosition::Position(pos) = settings.start_position {
-        let idx: usize = pos as usize;
-        if idx < starts.len() && idx != 0 {
-            starts.swap(0, idx);
-        }
-    }
-
-    // Reorder houses so the player's chosen side is first (becomes local owner).
-    let selected_side = settings.player_country.side();
-    let houses = reorder_houses_for_side(houses, selected_side);
-
-    let credits: i32 = settings.starting_credits;
-    let pairings = starts.into_iter().zip(houses.into_iter());
-    let mut spawned_mcvs: u32 = 0;
-    let mut local_owner: Option<String> = None;
-    for (start, house) in pairings.take(2) {
-        if let Some(h) = crate::sim::house_state::house_state_for_owner_mut(
-            &mut sim.houses,
-            &house.name,
-            &sim.interner,
-        ) {
-            h.economy.credits = credits;
-        }
-        let mcv_type: &str = skirmish_mcv_type_for_house(house, rules);
-        if sim
-            .spawn_object_with_overlay_registry(
-                mcv_type,
-                &house.name,
-                start.rx,
-                start.ry,
-                64,
-                rules,
-                height_map,
-                overlay_registry,
-            )
-            .is_some()
-        {
-            spawned_mcvs += 1;
-            if local_owner.is_none() {
-                local_owner = Some(house.name.clone());
-            }
-            let waypoint_edge = sim
-                .playfield_bounds
-                .map(|bounds| determine_waypoint_edge((start.rx, start.ry), bounds));
-            if let Some(h) = crate::sim::house_state::house_state_for_owner_mut(
-                &mut sim.houses,
-                &house.name,
-                &sim.interner,
-            ) {
-                h.base_center = Some((start.rx, start.ry));
-                if let Some(waypoint_edge) = waypoint_edge {
-                    h.waypoint_edge = waypoint_edge;
-                }
-            }
-        } else {
-            log::warn!(
-                "Failed to seed opening MCV '{}' for {} at waypoint {} ({},{})",
-                mcv_type,
-                house.name,
-                start.index,
-                start.rx,
-                start.ry
-            );
-        }
-    }
-    if spawned_mcvs > 0 {
-        log::info!(
-            "Seeded {} skirmish opening MCV(s) with {} credits each",
-            spawned_mcvs,
-            credits
-        );
-    }
-    local_owner
-}
 
 pub(crate) fn house_color_map_for_launch_session(
     session: &SkirmishLaunchSession,
@@ -162,6 +60,7 @@ mod tests {
     use crate::sim::mission::MissionType;
     use crate::sim::rng::SimRng;
     use crate::sim::scenario_bootstrap::*;
+    use crate::sim::world::Simulation;
     use crate::skirmish_launch::{
         AiDifficulty, LaunchCountry, LaunchStartPosition, LaunchTeam, SkirmishAiSlot,
         SkirmishLaunchMode, SkirmishLaunchOptions, SkirmishLocalSlot,
@@ -2718,64 +2617,6 @@ mod tests {
     }
 }
 
-pub(crate) fn skirmish_house_candidates(
-    house_roster: &HouseRoster,
-) -> Vec<&crate::map::houses::HouseDefinition> {
-    // First pass: prefer houses without explicit PlayerControl=no.
-    let preferred: Vec<&crate::map::houses::HouseDefinition> = house_roster
-        .houses
-        .iter()
-        .filter(|house| {
-            is_playable_faction_name(&house.name) && house.player_control != Some(false)
-        })
-        .collect();
-    if preferred.len() >= 2 {
-        return preferred;
-    }
-    // Second pass: include all playable factions (even PlayerControl=no)
-    // so skirmish maps can seed at least 2 MCVs for AI opponents.
-    house_roster
-        .houses
-        .iter()
-        .filter(|house| is_playable_faction_name(&house.name))
-        .collect()
-}
-
-/// Reorder house candidates so the player's chosen side appears first.
-///
-/// Matches houses by their Side= field (Allies/Soviet). If no exact match,
-/// falls back to original order.
-fn reorder_houses_for_side<'a>(
-    houses: Vec<&'a crate::map::houses::HouseDefinition>,
-    side: crate::ui::main_menu::SkirmishSide,
-) -> Vec<&'a crate::map::houses::HouseDefinition> {
-    use crate::ui::main_menu::SkirmishSide;
-
-    let target_side: &str = match side {
-        SkirmishSide::Allied => "ALLIES",
-        SkirmishSide::Soviet => "SOVIET",
-    };
-
-    // Find index of a house matching the player's chosen side.
-    let matching_idx = houses.iter().position(|h| {
-        h.side
-            .as_deref()
-            .is_some_and(|s| s.to_ascii_uppercase().contains(target_side))
-    });
-
-    let Some(idx) = matching_idx else {
-        return houses;
-    };
-    if idx == 0 {
-        return houses;
-    }
-
-    // Swap the matching house to position 0 (local player slot).
-    let mut reordered = houses;
-    reordered.swap(0, idx);
-    reordered
-}
-
 /// Returns true for faction names that represent real players (not neutral/civilian).
 fn is_playable_faction_name(name: &str) -> bool {
     let up = name.to_ascii_uppercase();
@@ -2783,43 +2624,6 @@ fn is_playable_faction_name(name: &str) -> bool {
         up.as_str(),
         "NEUTRAL" | "SPECIAL" | "CIVILIAN" | "GOODGUY" | "BADGUY" | "JP"
     )
-}
-
-pub(crate) fn skirmish_mcv_type_for_house(
-    house: &crate::map::houses::HouseDefinition,
-    rules: &RuleSet,
-) -> &'static str {
-    let mut candidates = Vec::new();
-    if let Some(country) = house.country.as_deref() {
-        let upper = country.to_ascii_uppercase();
-        if upper.contains("YURI") {
-            candidates.push("PCV");
-        } else if upper.contains("RUSS")
-            || upper.contains("CONFED")
-            || upper.contains("IRAQ")
-            || upper.contains("CUBA")
-            || upper.contains("LIBYA")
-        {
-            candidates.push("SMCV");
-        } else {
-            candidates.push("AMCV");
-        }
-    }
-    if let Some(side) = house.side.as_deref() {
-        let upper = side.to_ascii_uppercase();
-        if upper.contains("YURI") {
-            candidates.push("PCV");
-        } else if upper.contains("SOV") {
-            candidates.push("SMCV");
-        } else if upper.contains("ALL") {
-            candidates.push("AMCV");
-        }
-    }
-    candidates.extend(["AMCV", "SMCV", "PCV"]);
-    candidates
-        .into_iter()
-        .find(|id| rules.object(id).is_some())
-        .unwrap_or("AMCV")
 }
 
 /// Collect building type IDs that can be spawned at runtime and need atlas pre-loading.

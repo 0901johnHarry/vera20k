@@ -12,9 +12,7 @@
 ///
 /// Transitions:
 /// - MainMenu → Loading (user clicks "Start Game")
-/// - Loading → SpawnPick (skirmish maps with 2+ start waypoints)
-/// - Loading → InGame (campaign/sandbox maps without spawn pick)
-/// - SpawnPick → InGame (player clicks a waypoint to place MCV)
+/// - Loading → InGame (the loaded scenario starts)
 /// - InGame → MainMenu (user presses Escape)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameScreen {
@@ -25,11 +23,6 @@ pub enum GameScreen {
     ///
     /// The active `LoadingSession` owns the selected map and launch data.
     Loading,
-
-    /// Spawn-pick phase: entire map is loaded and rendered without fog.
-    /// Player sees waypoint markers and clicks one to choose their start.
-    /// Simulation is NOT ticking — pure map preview with camera controls.
-    SpawnPick,
 
     /// In-game: terrain, units, sprites are rendered.
     /// egui is NOT rendered in this state (future: pause menu overlay).

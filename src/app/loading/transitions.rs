@@ -80,7 +80,6 @@ pub(crate) fn fallback_map_load_result() -> init::MapLoadResult {
             theater_ext: "tem".to_string(),
             initial_local_owner: None,
             sandbox_full_visibility: false,
-            spawn_pick_pending: false,
             camera_anchor_x: 0.0,
             camera_anchor_y: 0.0,
         },
@@ -122,8 +121,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state.match_state.match_presentation.local_player_handle = startup
         .launch_session()
         .map(|launch| launch.player_name.clone());
-    // A loaded world is not timed until the launch handoff actually reaches
-    // InGame (SpawnPick remains outside the scenario elapsed span).
+    // A loaded world is not timed until the launch handoff reaches InGame.
     state.match_state.scenario_elapsed_clock.reset();
     state.match_state.match_presentation.tile_atlas = result.presentation.tile_atlas;
     state.match_state.match_presentation.building_zshape = result.presentation.building_zshape;
@@ -413,7 +411,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     // sound-event queue kept the previous match's undrained events.
     state.match_state.match_audio.reset_for_new_match();
     state.match_state.sandbox_full_visibility = result.scenario.sandbox_full_visibility;
-    state.match_state.input.spawn_pick_pending = result.scenario.spawn_pick_pending;
 
     // Load sound.ini / soundmd.ini for SFX sound ID resolution.
     if let Some(assets) = state.process_assets.manager() {
@@ -434,16 +431,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     // once the fade lands. The shuffle stream is a presentation-side copy of
     // `g_MainRng` seeded from the match seed (never the sim's own cursor), and
     // `Is_Allowed`'s `Side=` gate compares the local player's side.
-    //
-    // VERA-internal residual (gamemd has no equivalent screen): when the map
-    // routes through `GameScreen::SpawnPick` below, `Main_Tick`'s head rule
-    // (`main_tick_theme` inside `advance_in_game_runtime`, gated on
-    // `GameScreen::InGame` in `frame.rs`) does not run until the player picks
-    // a start. After the `Stop(1)` fade of the LOADING stream lands, Theme sits
-    // with retained == -1 and no `Queue_Song(-2)`, so the spawn-pick screen is
-    // silent; the first score track starts on the first in-game frame. Maps
-    // with a resolvable `[Basic] Theme=` are unaffected (the queued index is
-    // consumed by the audio pump's AI as soon as the fade completes).
     let music_now_ms = sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
     let (match_seed, local_side) = state
         .match_state
@@ -508,66 +495,53 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         );
     }
 
-    if state.match_state.input.spawn_pick_pending {
-        state.match_state.startup.clear();
-        state.frontend.screen = GameScreen::SpawnPick;
-        if returns_scenario_rng_to_offline_shell {
-            state
-                .frontend
-                .offline_skirmish_runtime
-                .mark_gameplay_rng_return_pending();
-        }
-        log::info!("Transitioned to SpawnPick — player must choose a start location");
-    } else {
-        match startup {
-            crate::match_bootstrap::LoadingStartup::Accepted(prepared) => {
-                let receipt = state.match_state.startup.acknowledge(
-                    prepared,
-                    state
-                        .match_state
-                        .sim_runtime
-                        .as_ref()
-                        .map(|rt| &rt.simulation),
-                    matches!(state.frontend.screen, GameScreen::Loading),
-                    state.match_state.input.spawn_pick_pending,
-                );
+    match startup {
+        crate::match_bootstrap::LoadingStartup::Accepted(prepared) => {
+            let receipt = state.match_state.startup.acknowledge(
+                prepared,
+                state
+                    .match_state
+                    .sim_runtime
+                    .as_ref()
+                    .map(|rt| &rt.simulation),
+                matches!(state.frontend.screen, GameScreen::Loading),
+            );
 
-                match receipt {
-                    Ok(()) => {
-                        let now_ms =
-                            sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
-                        state.match_state.scenario_elapsed_clock.start(now_ms);
-                        state.frontend.screen = GameScreen::InGame;
-                        state
-                            .frontend
-                            .offline_skirmish_runtime
-                            .mark_gameplay_rng_return_pending();
-                        log::info!("Transitioned to InGame after Rust L0 acknowledgement");
-                    }
-                    Err(err) => {
-                        state.match_state.startup.clear();
-                        state.frontend.screen = GameScreen::MissionResult {
-                            title: "Startup Rejected".to_string(),
-                            detail: err.clone(),
-                        };
-                        log::error!("Accepted startup failed closed at Rust L0: {err}");
-                    }
-                }
-            }
-            crate::match_bootstrap::LoadingStartup::UnverifiedLegacy { .. }
-            | crate::match_bootstrap::LoadingStartup::Generic { .. } => {
-                state.match_state.startup.clear();
-                let now_ms = sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
-                state.match_state.scenario_elapsed_clock.start(now_ms);
-                state.frontend.screen = GameScreen::InGame;
-                if returns_scenario_rng_to_offline_shell {
+            match receipt {
+                Ok(()) => {
+                    let now_ms =
+                        sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
+                    state.match_state.scenario_elapsed_clock.start(now_ms);
+                    state.frontend.screen = GameScreen::InGame;
                     state
                         .frontend
                         .offline_skirmish_runtime
                         .mark_gameplay_rng_return_pending();
+                    log::info!("Transitioned to InGame after Rust L0 acknowledgement");
                 }
-                log::info!("Transitioned to InGame on noncertifying startup path");
+                Err(err) => {
+                    state.match_state.startup.clear();
+                    state.frontend.screen = GameScreen::MissionResult {
+                        title: "Startup Rejected".to_string(),
+                        detail: err.clone(),
+                    };
+                    log::error!("Accepted startup failed closed at Rust L0: {err}");
+                }
             }
+        }
+        crate::match_bootstrap::LoadingStartup::UnverifiedLegacy { .. }
+        | crate::match_bootstrap::LoadingStartup::Generic { .. } => {
+            state.match_state.startup.clear();
+            let now_ms = sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
+            state.match_state.scenario_elapsed_clock.start(now_ms);
+            state.frontend.screen = GameScreen::InGame;
+            if returns_scenario_rng_to_offline_shell {
+                state
+                    .frontend
+                    .offline_skirmish_runtime
+                    .mark_gameplay_rng_return_pending();
+            }
+            log::info!("Transitioned to InGame on noncertifying startup path");
         }
     }
     crate::app::presentation::sidebar_render::refresh_sidebar_projection(state);

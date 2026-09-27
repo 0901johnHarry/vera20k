@@ -1,7 +1,6 @@
 //! Presentation owner (F12): the in-game render pipeline, per-entity instance
 //! builders, sidebar rendering, building/fire/light/chute animation runtimes,
-//! UI overlays, selection brackets, target lines, spawn pick, and the overlay
-//! render index.
+//! UI overlays, selection brackets, target lines, and the overlay render index.
 
 pub(crate) mod building_anim;
 pub(crate) mod combat_lights;
@@ -17,7 +16,6 @@ pub(crate) mod sidebar_build;
 pub(crate) mod sidebar_gadgets;
 pub(crate) mod sidebar_render;
 pub(crate) mod sidebar_text;
-pub(crate) mod spawn_pick;
 pub(crate) mod target_lines;
 pub(crate) mod ui_overlays;
 

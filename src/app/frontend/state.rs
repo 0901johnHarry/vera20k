@@ -8,11 +8,9 @@
 use std::time::Instant;
 
 use super::startup_splash;
-use crate::app::loading::init::MapMenuEntry;
 use crate::app::shell_random_map::{RandomMapGenerationJob, RandomMapGenerationRetention};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::ui::game_screen::GameScreen;
-use crate::ui::main_menu::SkirmishSettings;
 
 pub(crate) struct FrontendState {
     /// Opt-in research shell path. Defaults off so the egui Skirmish setup is visible.
@@ -125,15 +123,11 @@ pub(crate) struct FrontendState {
     pub(crate) shell_route: crate::app::shell_route::ShellRoute,
     /// Which screen is currently active (MainMenu, Loading, InGame).
     pub(crate) screen: GameScreen,
-    /// Available maps from the RA2 directory for menu selection.
-    pub(crate) available_maps: Vec<MapMenuEntry>,
     /// Scenario records + their projected shell map entries (F11): one owner,
     /// projection re-derived on every mutation so indices cannot drift.
     pub(crate) scenario_catalog: crate::app::scenario_catalog::ScenarioCatalog,
     /// MPModes rows used by the native Choose Map modal.
     pub(crate) skirmish_modes: Vec<crate::skirmish_modes::SkirmishGameMode>,
-    /// Player-configured skirmish settings (map, country, credits, etc.).
-    pub(crate) skirmish_settings: SkirmishSettings,
     pub(crate) loading_session: Option<crate::app::loading::pump::LoadingSession>,
     /// Process-owned front-end Main stream. RMG Randomize/derived-option work
     /// and the first preview selector reach share this cursor; the setup-entry

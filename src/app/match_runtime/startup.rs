@@ -43,7 +43,6 @@ impl MatchStartup {
         startup: PreparedMatchStartup,
         simulation: Option<&Simulation>,
         screen_is_loading: bool,
-        spawn_pick_active: bool,
     ) -> Result<(), String> {
         let simulation =
             simulation.ok_or_else(|| "accepted map load produced no Simulation".to_string())?;
@@ -56,7 +55,6 @@ impl MatchStartup {
             active_correlation,
             prior_receipt: None,
             screen_is_loading,
-            spawn_pick_active,
         }
         .acknowledge()
         .map_err(|error| error.to_string())?;

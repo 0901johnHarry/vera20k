@@ -827,8 +827,7 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 // When upscaling, remap window coordinates to render-target coordinates.
                 let use_render_source_coords = state.renderer.upscale_pass.is_some()
-                    && (state.frontend.screen == GameScreen::InGame
-                        || state.frontend.screen == GameScreen::SpawnPick);
+                    && state.frontend.screen == GameScreen::InGame;
                 let (sx, sy) = if use_render_source_coords {
                     (
                         state.render_width() as f32 / state.renderer.gpu.config.width as f32,
@@ -857,9 +856,7 @@ impl ApplicationHandler for App {
                     Self::handle_launcher_options_mouse(state, None);
                     return;
                 }
-                if !egui_consumed
-                    && (state.frontend.screen == GameScreen::InGame || state.frontend.screen == GameScreen::SpawnPick)
-                {
+                if !egui_consumed && state.frontend.screen == GameScreen::InGame {
                     dispatch::handle_cursor_moved_in_game(state);
                 }
                 if !egui_consumed && Self::native_skirmish_shell_active(state) {
@@ -1031,10 +1028,6 @@ impl ApplicationHandler for App {
                             Self::handle_main_menu_shell_mouse_up(state, event_loop);
                         }
                     }
-                } else if !egui_consumed && state.frontend.screen == GameScreen::SpawnPick {
-                    if button == MouseButton::Left && btn_state.is_pressed() {
-                        crate::app::presentation::spawn_pick::handle_spawn_pick_click(state);
-                    }
                 } else if !egui_consumed && state.frontend.screen == GameScreen::InGame {
                     dispatch::handle_mouse_input(state, button, btn_state);
                 }
@@ -1061,8 +1054,8 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if !egui_consumed
-                    && (state.frontend.screen == GameScreen::SpawnPick
-                        || (state.frontend.screen == GameScreen::InGame && !state.match_state.paused()))
+                    && state.frontend.screen == GameScreen::InGame
+                    && !state.match_state.paused()
                 {
                     // Every wheel notch scrolls the active build strip by one
                     // row, wherever the cursor is. gamemd routes the wheel
