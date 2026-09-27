@@ -374,8 +374,10 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     );
 }
 
+/// The promoted build starts at the revalidation frame (StartNextQueued runs
+/// Begin_Production, whose build start arms the timer), so it first steps one rate later.
 #[test]
-fn prerequisite_revalidation_disposes_manager_and_delays_promoted_first_charge() {
+fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_later() {
     let (mut sim, rules, owner) = world(0xfac7_0012);
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "SMIN"));
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
@@ -397,6 +399,7 @@ fn prerequisite_revalidation_disposes_manager_and_delays_promoted_first_charge()
     let mut expected = sim.scenario_rng.clone();
     // The producing factory remains; only the active type loses its prerequisite.
     sim.substrate.entities.remove(4);
+    let promotion_frame = sim.session.binary_frame;
     sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
     assert_gone(&sim, parent, &child_ids);
     assert_eq!(sim.houses[&owner].economy.credits, before + spent);
@@ -415,15 +418,30 @@ fn prerequisite_revalidation_disposes_manager_and_delays_promoted_first_charge()
             .progress,
         0
     );
-    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
-    assert_eq!(
+    let (rate, timer) = {
+        let factory = sim
+            .production
+            .factory_shadow
+            .test_factory_mut(owner, ProductionCategory::Vehicle)
+            .unwrap();
+        (factory.step_rate_frames, factory.step_timer)
+    };
+    assert_eq!(timer.start_frame(), promotion_frame as i32);
+    assert!(rate > 1);
+    let progress = |sim: &Simulation| {
         sim.production
             .factory_shadow
             .view(owner, ProductionCategory::Vehicle)
             .unwrap()
-            .progress,
-        1
-    );
+            .progress
+    };
+    for _ in 1..rate {
+        sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+        assert_eq!(progress(&sim), 0);
+    }
+    assert_eq!(sim.houses[&owner].economy.credits, before + spent);
+    sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), None, None, 67);
+    assert_eq!(progress(&sim), 1);
     assert!(sim.houses[&owner].economy.credits < before + spent);
 }
 

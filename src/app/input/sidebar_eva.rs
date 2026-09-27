@@ -262,8 +262,7 @@ mod tests {
             display_name: String::new(),
             queue_category: category,
             state,
-            remaining_ms: 0,
-            total_ms: 1,
+            progress: 0,
         }
     }
 

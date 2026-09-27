@@ -1,25 +1,22 @@
-//! Per-(house, category) factory + deterministic registry — AUTHORITATIVE.
+//! Per-(house, category) factories and their deterministic registry: the
+//! authoritative production state.
 //!
 //! This module owns production charging and the queue-of-record: enqueue
-//! only checks affordability, `step_all` charges `balance/steps_left` per step
-//! at the tick's production phase, a shortfall rewinds the step onto on-hold,
-//! and cancel refunds the already-paid portion. State here is serialized
-//! and folded into the lockstep hash.
+//! only checks affordability, `step_all` steps each build once per rate and
+//! charges `balance/steps_left` per step, a shortfall rewinds the step onto
+//! on-hold, and cancel refunds the already-paid portion. State here is
+//! serialized and folded into the lockstep hash.
 //!
 //! Determinism: `BTreeMap<(InternedId, ProductionCategory), Factory>` (both key
 //! components derive `Ord`) gives sorted iteration for replay/lockstep; no
 //! `HashMap`, no fixed-size player array, no `1<<idx` bitmask — satisfies the
-//! 30-player scale target. Integer math only; no float, no RNG.
+//! 30-player scale target. No RNG. Charges are integer math; `time_to_build`
+//! reproduces gamemd's x87 arithmetic through `util::native_x87`.
 //!
 //! Depends on: `sim/intern`, `sim/production/production_types` (ProductionCategory,
-//! BuildQueueState), `sim/economy` (the house wallet), `rules` (type cost), and
-//! `sim/world::Simulation` (read-only) for the derive. NEVER on
-//! render/ui/sidebar/audio/net (sim invariant #1).
-//!
-//! P2/P3 shadow scaffold: several types/methods (`BuildEligibility`, the step-rate
-//! clamps, some `Factory` fields) are forward-declared seams consumed by later
-//! slices (P4 cancel, P6 prereq revalidation) and are intentionally unused here, so
-//! dead-code is allowed module-wide.
+//! BuildQueueState), `sim/economy` (the house wallet), `rules` (type cost and
+//! build-time factors), and `sim/world::Simulation` (read-only) for the inputs.
+//! NEVER on render/ui/sidebar/audio/net (sim invariant #1).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -28,7 +25,9 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
 use crate::sim::production::production_tech::production_category_for_object;
-use crate::sim::production::production_types::{PRODUCTION_RATE_SCALE, ProductionCategory};
+use crate::sim::production::production_types::ProductionCategory;
+use crate::sim::timer::CdTimer;
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 /// Build completes at exactly this many progress steps (the engine's step count).
 pub const PRODUCTION_STEPS: u16 = 54;
@@ -78,21 +77,15 @@ pub struct PendingObject {
 }
 
 /// One queued (not-yet-active) build waiting behind the active object — the
-/// queue-of-record element (P5d, the `BuildQueueItem` mirror retirement). Carries only
-/// the data with a live reader after `BuildQueueItem` is retired: the type, the temporal
-/// stamp (the cancel-latest key + the active-build identity once promoted), and the
-/// sidebar ETA basis. State/progress/balance are NEVER per-queued-item — only the active
-/// build (the `Factory` head fields) carries those; a queued item's state is `Queued`
-/// and its remaining-time is its full `total_base_frames` (not yet started).
+/// queue-of-record element: the type and the temporal stamp (the cancel-latest key and
+/// the active-build identity once promoted). State/progress/balance are NEVER
+/// per-queued-item — only the active build (the `Factory` head fields) carries those.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QueueEntry {
     pub type_id: InternedId,
     /// The monotonic temporal stamp minted at enqueue (`next_enqueue_order`). Becomes
     /// the active build's `insertion_seq` when this entry is promoted (D1).
     pub enqueue_order: u64,
-    /// Base build time in production frames — the sidebar ETA basis (no live mirror once
-    /// `BuildQueueItem` is gone).
-    pub total_base_frames: u32,
 }
 
 /// Engine special/superweapon discriminator. The study proves the writer of the
@@ -120,19 +113,16 @@ pub struct Factory {
     pub category: ProductionCategory,
     /// `0..=54`; completion at `PRODUCTION_STEPS`.
     pub progress: u16,
-    /// Per-step frame rate = `clamp(GetBuildStepTime()/54, 1, 255)`; `0` when no object.
+    /// Frames per step, `clamp(Time_To_Build / 54, 1, 255)` (Factory `+0x38`);
+    /// `0` before the build starts and once it completes.
     pub step_rate_frames: u16,
-    /// Frames remaining in the current step (engine CDTimer). Shadow best-effort.
-    pub step_timer: u16,
+    /// The step timer (Factory `+0x2C`), anchored to the native frame: a step
+    /// comes once `step_rate_frames` frames have passed since the last one.
+    pub step_timer: CdTimer,
     /// Remaining cost still owed (charged down per step). Cost-based (credits) in P3.
     pub balance: i32,
     /// Full-cost snapshot at start, for exact-cost conservation + cancel refund.
     pub original_balance: i32,
-    /// The ACTIVE build's base build time in production frames — the sidebar ETA basis
-    /// (P5d: the value that lived on the front `BuildQueueItem.total_base_frames`). The
-    /// sidebar derives "time remaining" from this + `progress`; no `BuildQueueItem` mirror
-    /// survives to hold it.
-    pub active_total_base_frames: u32,
     pub object: Option<PendingObject>,
     /// Set when a step could not be afforded (UI "On Hold"); does not advance.
     pub on_hold: bool,
@@ -151,27 +141,25 @@ pub struct Factory {
 }
 
 impl Factory {
-    /// Resume + (re)compute the per-step frame rate from a GIVEN build-step total (C5).
-    ///   no object  -> step_rate_frames = 0  (sentinel; the clamp does NOT apply)
-    ///   else        -> step_rate_frames = clamp(build_step_time / 54, 1, 255)
-    /// `build_step_time` is the already-resolved total (no hidden 0.9 scaling — the
-    /// legacy base-frame total bakes a verified-REFUTED x0.9, so it is NOT used here);
-    /// the `/54` is signed integer division (truncates toward zero). The full
-    /// low-power / multiple-factory pipeline that PRODUCES `build_step_time` is a
-    /// later slice. SetRate resumes a system-suspend; a manual (user) pause is left.
-    pub fn set_rate(&mut self, build_step_time: i32) {
-        if !self.manual {
-            self.suspended = false;
-        }
-        // Rate-0-no-object sentinel: (Object ? total : 0) / 54. With no object the
-        // rate is the literal 0 (NOT clamped up to 1).
-        if self.object.is_none() {
-            self.step_rate_frames = 0;
-            return;
-        }
-        let per_step = build_step_time / (PRODUCTION_STEPS as i32); // i32/54, truncate toward zero
-        let clamped = per_step.clamp(STEP_RATE_MIN as i32, STEP_RATE_MAX as i32); // [1, 255]
-        self.step_rate_frames = clamped as u16;
+    /// The step rate for a build of `time_to_build` frames: `clamp(total / 54,
+    /// 1, 255)`, the division truncating. The build start `0x004C9EA0` (Ghidra
+    /// label `FactoryClass__SetRate`; it also resumes a suspended build)
+    /// computes it at `0x004C9EEF..0x004C9F28`; the house power pass
+    /// (`0x004CA6E0`, from `0x00508D88`) rewrites only this rate.
+    pub fn set_rate(&mut self, time_to_build: i32) {
+        let per_step = time_to_build / i32::from(PRODUCTION_STEPS);
+        self.step_rate_frames =
+            per_step.clamp(i32::from(STEP_RATE_MIN), i32::from(STEP_RATE_MAX)) as u16;
+    }
+
+    /// The build start `0x004C9EA0` for a build starting at `frame`: take the
+    /// rate and restart the step timer with it (`0x004C9F20..0x004C9F34`), so
+    /// the first step comes one full rate later. Its tail (`0x004C9F37..`) is
+    /// not ported: the `+0x71` latch it sets when the house can afford the next
+    /// charge, and the re-suspend when its argument is set.
+    pub fn start_rate(&mut self, time_to_build: i32, frame: u32) {
+        self.set_rate(time_to_build);
+        self.step_timer = CdTimer::started(frame as i32, i32::from(self.step_rate_frames));
     }
 
     /// Advance one step against the supplied economy (C2/C3/C4/C12/C15).
@@ -235,7 +223,6 @@ impl Factory {
             );
             self.balance = 0; // idempotent; the contract value
             self.suspended = true; // complete-but-not-delivered
-            self.step_timer = 0; // the engine zeroes the per-step timer on completion
             // `object` STAYS Some(..); delivery (a later slice) clears it + advances the queue.
             return StepOutcome::Completed;
         }
@@ -298,8 +285,8 @@ impl Factory {
         self.progress = 0;
         self.balance = 0;
         self.original_balance = 0;
-        self.step_rate_frames = 0; // no-object => rate-0 sentinel (matches set_rate)
-        self.step_timer = 0;
+        self.step_rate_frames = 0;
+        self.step_timer = CdTimer::default();
         self.on_hold = false;
         self.suspended = false;
         self.manual = false;
@@ -320,14 +307,9 @@ impl Factory {
     /// Pop the FRONT queue entry into a fresh active object (FIFO StartNextQueued, C7) and
     /// SEED it from `cost` (the popped type's cost, resolved by the caller while it holds
     /// `&rules`). Returns the popped `type_id`, or `None` when an object is still held or
-    /// the queue is empty.
-    ///
-    /// `step_delay` is the initial cadence countdown: `0` when the caller runs
-    /// after this tick's `step_all` (delivery or EventClass-tail cancellation),
-    /// so the new build's first charge lands next tick; `1` when the caller
-    /// runs before `step_all` (prerequisite revalidation), so the promoted build
-    /// is not charged in that same sweep.
-    pub(crate) fn start_next_queued(&mut self, cost: i32, step_delay: u16) -> Option<InternedId> {
+    /// the queue is empty. Like `FactoryClass::StartProduction @ 0x004C9C70`, the new
+    /// build has no rate yet; the caller's [`Factory::start_rate`] arms it.
+    pub(crate) fn start_next_queued(&mut self, cost: i32) -> Option<InternedId> {
         // "Object null required": an in-flight OR completed-held object is never displaced.
         if self.object.is_some() {
             return None;
@@ -345,10 +327,9 @@ impl Factory {
         let seeded = cost.max(0);
         self.balance = seeded;
         self.original_balance = seeded;
-        self.active_total_base_frames = next.total_base_frames;
         self.insertion_seq = next.enqueue_order;
-        self.step_rate_frames = 0; // recomputed by set_rate on the first stepping sweep
-        self.step_timer = step_delay;
+        self.step_rate_frames = 0;
+        self.step_timer = CdTimer::default();
         self.suspended = false;
         self.on_hold = false;
         self.manual = false;
@@ -356,96 +337,167 @@ impl Factory {
     }
 }
 
-/// Resolved inputs for the build-step TOTAL producer. A transient param struct (NO
-/// serde, NO storage, only `Debug`/`Clone`) so the producer is a pure function of
-/// explicit inputs — testable in isolation, no `Simulation` handle. The caller (the
-/// authority-flip begin path / the inversion-readiness assert) gathers these from rules
-/// + the owner's power + the per-category factory count. PPM scale =
-/// `PRODUCTION_RATE_SCALE` (1_000_000 = 1.0), so the parsed `*_ppm` rules fields feed it
-/// directly.
-#[derive(Debug, Clone)]
-pub struct BuildStepTimeInputs {
-    /// GetCost of the object under construction.
+/// The inputs `TechnoClass::Time_To_Build @ 0x006F47A0` reads, as the native
+/// fields hold them. The caller resolves them for the object under
+/// construction; the port is a pure function of these values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimeToBuildInputs {
+    /// The type's `Cost=` (TechnoType `+0x610`).
     pub cost: i32,
-    /// Per-CATEGORY build-time bonus (side multiplier), default 1.0 =
-    /// `PRODUCTION_RATE_SCALE`. NOT a generic build-speed and NOT a single house scalar.
-    /// Stock YR (no per-side bonus) passes 1.0 — no rules field backs it yet.
-    pub build_time_bonus_ppm: u64,
-    /// Per-TYPE BuildTimeMultiplier, pre-scaled to PPM by the caller.
-    pub build_time_multiplier_ppm: u64,
-    /// Owner power ratio, clamped to `[0, SCALE]`; `SCALE` (1.0) when not under-powered.
-    pub power_ratio_ppm: u64,
-    /// LowPowerPenaltyModifier (already PPM-parsed).
-    pub low_power_penalty_modifier_ppm: u64,
-    /// MinLowPowerProductionSpeed (Min divisor clamp, applied ALWAYS).
-    pub min_clamp_ppm: u64,
-    /// MaxLowPowerProductionSpeed (Max divisor clamp, applied ONLY when ratio < 1.0).
-    pub max_clamp_ppm: u64,
-    /// MultipleFactory (loop gate, strict `> 0`).
-    pub multiple_factory_ppm: u64,
-    /// Per-category matching factory count (the `(n - 1)` loop count).
-    pub factory_count: u32,
-    /// True only for a wall building (building category AND the wall flag).
-    pub is_wall: bool,
-    /// BuildSpeed wall coefficient, pre-converted to PPM by the caller (used only when
-    /// `is_wall`).
-    pub wall_build_speed_ppm: u64,
+    /// `[General] BuildSpeed=` (Rules `+0x1748`).
+    pub build_speed: NativeF64Bits,
+    /// The owner's country `BuildTime*Mult=` for the type's class
+    /// (`HouseClass @ 0x0050C0A0`).
+    pub country_multiplier: NativeF32Bits,
+    /// The type's `BuildTimeMultiplier=` (TechnoType `+0x608`).
+    pub build_time_multiplier: NativeF32Bits,
+    /// The owner's power output and drain (House `+0x53A4`, `+0x53A8`).
+    pub power_output: i32,
+    pub power_drain: i32,
+    /// `[General] LowPowerPenaltyModifier=`, `MinLowPowerProductionSpeed=` and
+    /// `MaxLowPowerProductionSpeed=` (Rules `+0x578`, `+0x570`, `+0x574`).
+    pub low_power_penalty: NativeF32Bits,
+    pub min_low_power_speed: NativeF32Bits,
+    pub max_low_power_speed: NativeF32Bits,
+    /// The owner's factory count for the object's class (`0x00500910`).
+    pub factory_count: i32,
+    /// `[General] MultipleFactory=` (Rules `+0x57C`).
+    pub multiple_factory: NativeF32Bits,
+    /// A wall building (BuildingType `+0x1571`), and
+    /// `[General] WallBuildSpeedCoefficient=` (Rules `+0x758`).
+    pub wall: bool,
+    pub wall_coefficient: NativeF64Bits,
 }
 
-/// Produce the build-step TOTAL — the per-step build-time pipeline's return BEFORE the
-/// caller's `/54 + clamp[1,255]` (`set_rate` owns that). PURE: integer/i128 throughout,
-/// no `&mut`, no RNG, no hashed-state read, no float in the committed math. The legacy
-/// `production_tech` build-time family is a verified DRIFT (it bakes a REFUTED ×0.9 via
-/// `* 9 / 10000`, models build time as a rate-domain single-truncate division, and uses
-/// a generic build-speed instead of the per-category bonus) and is NOT reused.
-///
-/// Pipeline (every multiply/divide truncates toward zero = floor for non-negatives):
-///   T1  base = trunc(BuildTimeBonus × Cost)                 (NO ×0.9)
-///   T2  × per-type BuildTimeMultiplier, trunc
-///   T3  ÷ divisor d = 1 − (1 − ratio) × LPPM, clamped:
-///         Min clamp ALWAYS; Max clamp ONLY when ratio < 1.0; d ≤ 0 floors to 0.01
-///   T4  MultipleFactory loop: (count − 1) iters, trunc EACH iter, gated MF > 0
-///   T5  wall branch: trunc(acc × BuildSpeed) only for a wall building
-pub fn build_step_time(inp: &BuildStepTimeInputs) -> i32 {
-    const SCALE: i128 = PRODUCTION_RATE_SCALE as i128; // 1_000_000 = 1.0
-    let cost = inp.cost.max(0) as i128;
-    if cost == 0 {
-        return 0; // no work -> the rate-0 path in set_rate
+/// `0.9` at `0x007F4E80`: 900 frames per minute at 15 fps over 1000 credits,
+/// so `BuildSpeed=` is the minutes a 1000-credit object takes.
+const BUILD_TIME_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3FEC_CCCC_CCCC_CCCD);
+/// `0.01f` at `0x007F4E34`: the low-power speed when it would be zero.
+const LOW_POWER_SPEED_FLOOR: NativeF32Bits = NativeF32Bits::from_bits(0x3C23_D70A);
+
+/// `TechnoClass::Time_To_Build @ 0x006F47A0`: the frames an object takes to
+/// build, before the build start (`0x004C9EA0`) divides it into 54 steps. Each stage
+/// truncates (`_ftol`) under the process's 53-bit chop control word.
+pub fn time_to_build(inputs: &TimeToBuildInputs) -> i32 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering as Order};
+
+    // TechnoType vt+0x88 (`0x00711EE0`): Cost x BuildSpeed x 0.9.
+    let base = X87::ftol_i32_low_masked(X87::mul(
+        X87::mul(
+            X87::load_i32(inputs.cost),
+            X87::load_f64(inputs.build_speed),
+        ),
+        X87::load_f64(BUILD_TIME_SCALE),
+    ));
+    // `0x006F47CE..0x006F47D7`: the country multiplier times that (FIMUL).
+    let mut time = X87::ftol_i32_low_masked(X87::mul(
+        X87::load_f32(inputs.country_multiplier),
+        X87::load_i32(base),
+    ));
+    // `0x006F47E4..0x006F47F4`: the type's BuildTimeMultiplier.
+    time = X87::ftol_i32_low_masked(X87::mul(
+        X87::load_i32(time),
+        X87::load_f32(inputs.build_time_multiplier),
+    ));
+    // `0x006F4803..0x006F4886`: divide by the low-power speed. The power ratio
+    // is spilled as a float (`0x006F4808`).
+    let ratio = X87::load_f32(X87::store_f32_masked_chop(
+        crate::sim::power_system::native_power_ratio(inputs.power_output, inputs.power_drain),
+    ));
+    let one = X87::load_f32(NativeF32Bits::ONE);
+    let mut speed = X87::sub(
+        one,
+        X87::mul(
+            X87::sub(one, ratio),
+            X87::load_f32(inputs.low_power_penalty),
+        ),
+    );
+    let min_speed = X87::load_f32(inputs.min_low_power_speed);
+    if X87::compare(speed, min_speed) != Order::Greater {
+        speed = min_speed;
     }
-
-    // T1: base = trunc(BuildTimeBonus × Cost). NO ×0.9 (the legacy *9/10000 is REFUTED).
-    let s1 = cost * inp.build_time_bonus_ppm as i128 / SCALE; // floor
-
-    // T2: × per-type BuildTimeMultiplier, trunc.
-    let s2 = s1 * inp.build_time_multiplier_ppm as i128 / SCALE; // floor
-
-    // T3: low-power divide. divisor d = 1 − (1 − ratio) × LPPM, clamped.
-    let ratio = (inp.power_ratio_ppm as i128).min(SCALE); // clamp ratio to [.., 1.0]
-    let deficit = SCALE - ratio; // (1 − ratio), >= 0
-    let penalty = deficit * inp.low_power_penalty_modifier_ppm as i128 / SCALE;
-    let mut d = SCALE - penalty; // (1 − (1 − ratio) × LPPM) in PPM
-    d = d.max(inp.min_clamp_ppm as i128); // Min clamp ALWAYS
-    if ratio < SCALE {
-        d = d.min(inp.max_clamp_ppm as i128); // Max clamp ONLY when under-powered
-    }
-    if d <= 0 {
-        d = SCALE / 100; // 0.01 divisor floor
-    }
-    let mut acc = s2 * SCALE / d; // trunc(s2 / d): s2 over a PPM fraction
-
-    // T4: MultipleFactory loop — (count − 1) iters, PER-ITERATION trunc, gated MF > 0.
-    if inp.multiple_factory_ppm > 0 && inp.factory_count > 1 {
-        for _ in 0..(inp.factory_count - 1) {
-            acc = acc * inp.multiple_factory_ppm as i128 / SCALE; // trunc EACH iter
+    // The upper clamp applies only below full power (`0x006F4841..0x006F4869`).
+    if matches!(X87::compare(ratio, one), Order::Less | Order::Unordered) {
+        let max_speed = X87::load_f32(inputs.max_low_power_speed);
+        if !matches!(
+            X87::compare(speed, max_speed),
+            Order::Less | Order::Unordered
+        ) {
+            speed = max_speed;
         }
     }
-
-    // T5: wall branch — wall building only, trunc(acc × BuildSpeed).
-    if inp.is_wall {
-        acc = acc * inp.wall_build_speed_ppm as i128 / SCALE; // trunc
+    if matches!(
+        X87::compare(speed, X87::load_f32(NativeF32Bits::POSITIVE_ZERO)),
+        Order::Equal | Order::Unordered
+    ) {
+        speed = X87::load_f32(LOW_POWER_SPEED_FLOOR);
     }
+    time = X87::ftol_i32_low_masked(X87::div(X87::load_i32(time), speed));
+    // `0x006F48E1..0x006F4916`: once more per extra factory, when the
+    // multiplier is positive.
+    let multiple_factory = X87::load_f32(inputs.multiple_factory);
+    if X87::compare(
+        multiple_factory,
+        X87::load_f32(NativeF32Bits::POSITIVE_ZERO),
+    ) == Order::Greater
+    {
+        for _ in 0..inputs.factory_count.wrapping_sub(1).max(0) {
+            time = X87::ftol_i32_low_masked(X87::mul(X87::load_i32(time), multiple_factory));
+        }
+    }
+    // `0x006F4917..0x006F4943`: a wall building's coefficient comes last.
+    if inputs.wall {
+        time = X87::ftol_i32_low_masked(X87::mul(
+            X87::load_i32(time),
+            X87::load_f64(inputs.wall_coefficient),
+        ));
+    }
+    time
+}
 
-    acc.clamp(0, i32::MAX as i128) as i32 // the TOTAL; set_rate does /54 + clamp[1,255]
+/// Resolve [`time_to_build`]'s inputs for `owner` building `obj` in `category`:
+/// the rules and type fields, the owner's country multiplier (`0x0050C0A0`),
+/// power (House `+0x53A4`/`+0x53A8`) and factory count (`0x00500910`).
+pub(super) fn time_to_build_inputs(
+    sim: &crate::sim::world::Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    category: ProductionCategory,
+    obj: &ObjectType,
+) -> TimeToBuildInputs {
+    let country_multiplier = sim
+        .houses
+        .get(&owner)
+        .and_then(|house| house.country)
+        .map_or(NativeF32Bits::ONE, |country| {
+            rules.country_build_time_mult_for_type(sim.interner.resolve(country), obj)
+        });
+    let (power_output, power_drain) = sim
+        .power_states
+        .get(&owner)
+        .map_or((0, 0), |power| (power.total_output, power.total_drain));
+    let factory_count = crate::sim::production::production_tech::matching_factory_count_for_owner(
+        &sim.substrate.entities,
+        rules,
+        sim.interner.resolve(owner),
+        category,
+        &sim.interner,
+    );
+    TimeToBuildInputs {
+        cost: obj.cost,
+        build_speed: rules.production.build_speed,
+        country_multiplier,
+        build_time_multiplier: obj.build_time_multiplier,
+        power_output,
+        power_drain,
+        low_power_penalty: rules.production.low_power_penalty_modifier,
+        min_low_power_speed: rules.production.min_low_power_production_speed,
+        max_low_power_speed: rules.production.max_low_power_production_speed,
+        factory_count: i32::try_from(factory_count).unwrap_or(i32::MAX),
+        multiple_factory: rules.production.multiple_factory,
+        wall: obj.category == crate::rules::object_type::ObjectCategory::Building && obj.wall,
+        wall_coefficient: rules.production.wall_build_speed_coefficient,
+    }
 }
 
 /// Map an object type to the `ProductionCategory` whose factory produces it — the Rust
@@ -518,8 +570,8 @@ pub struct FactoryView<'a> {
     pub ready: bool,
 }
 
-/// Deterministic registry of all factories — the derived shadow analog of the
-/// engine's global factory array, keyed (no fixed-size player array) for scale.
+/// Deterministic registry of all factories, keyed by (house, category) rather
+/// than gamemd's global factory array, so it needs no fixed-size player array.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FactoryRegistry {
     factories: BTreeMap<(InternedId, ProductionCategory), Factory>,
@@ -559,17 +611,9 @@ impl FactoryRegistry {
         category: ProductionCategory,
         type_id: InternedId,
         enqueue_order: u64,
-        total_base_frames: u32,
         cost: i32,
     ) -> bool {
-        self.enqueue(
-            owner,
-            category,
-            type_id,
-            enqueue_order,
-            total_base_frames,
-            cost,
-        )
+        self.enqueue(owner, category, type_id, enqueue_order, cost)
     }
 
     /// Standalone registry oracle access; live cancellation must also settle
@@ -683,9 +727,8 @@ impl FactoryRegistry {
     /// held, progress 0, balance seeded from `cost`). With an active object held, push a
     /// `QueueEntry` to the FIFO tail.
     ///
-    /// `step_timer = 0` on a freshly-armed active build: EventClass dispatch
-    /// runs after this tick's `step_all`, so the first charge lands on the next
-    /// gameplay frame.
+    /// A freshly-armed build has no rate yet (`FactoryClass::StartProduction`);
+    /// the caller's [`Factory::start_rate`] arms it.
     /// `cost` is resolved by the caller (which holds `&rules`) so this stays `&sim`-free.
     /// Returns `true` only when this call starts an active object; queued-tail
     /// appends return `false` because their Techno constructor has not run yet.
@@ -695,7 +738,6 @@ impl FactoryRegistry {
         category: ProductionCategory,
         type_id: InternedId,
         enqueue_order: u64,
-        total_base_frames: u32,
         cost: i32,
     ) -> bool {
         if let Some(f) = self.factories.get_mut(&(owner, category)) {
@@ -704,7 +746,6 @@ impl FactoryRegistry {
                 f.queue.push_back(QueueEntry {
                     type_id,
                     enqueue_order,
-                    total_base_frames,
                 });
                 return false;
             }
@@ -712,10 +753,9 @@ impl FactoryRegistry {
             let seeded = cost.max(0);
             f.progress = 0;
             f.step_rate_frames = 0;
-            f.step_timer = 0;
+            f.step_timer = CdTimer::default();
             f.balance = seeded;
             f.original_balance = seeded;
-            f.active_total_base_frames = total_base_frames;
             f.object = Some(PendingObject {
                 type_id,
                 entity_id: None,
@@ -737,10 +777,9 @@ impl FactoryRegistry {
                 category,
                 progress: 0,
                 step_rate_frames: 0,
-                step_timer: 0,
+                step_timer: CdTimer::default(),
                 balance: seeded,
                 original_balance: seeded,
-                active_total_base_frames: total_base_frames,
                 object: Some(PendingObject {
                     type_id,
                     entity_id: None,
@@ -761,8 +800,8 @@ impl FactoryRegistry {
     /// command). Flips `manual` (Building <-> Paused) while the build is in flight; a
     /// complete-held build (`progress >= PRODUCTION_STEPS`) is left as-is (a finished build
     /// is not paused). Returns `false` when there is no active object to pause. A `manual`
-    /// factory is skipped by `step_all` without losing progress, and `set_rate` resumes a
-    /// system-suspend but leaves a manual pause, so unpausing auto-resumes.
+    /// factory is skipped by `step_all` without losing progress; its step timer keeps
+    /// running, so it steps as soon as it is unpaused.
     pub(crate) fn toggle_pause(&mut self, owner: InternedId, category: ProductionCategory) -> bool {
         let Some(f) = self.factories.get_mut(&(owner, category)) else {
             return false;
@@ -791,19 +830,30 @@ impl FactoryRegistry {
 
     /// Clear a delivered/abandoned active object and promote the next queued entry into the
     /// active slot (C7 StartNextQueued), seeding it from `next_cost`.
-    /// EventClass-tail cancellation and delivery both pass `0`; the pre-step
-    /// revalidation sweep passes `1`.
     /// Returns the popped type, or `None` if the queue was empty (the factory is left idle).
     pub(super) fn clear_active_and_advance(
         &mut self,
         owner: InternedId,
         category: ProductionCategory,
         next_cost: i32,
-        step_delay: u16,
     ) -> Option<InternedId> {
         let f = self.factories.get_mut(&(owner, category))?;
         f.object = None;
-        f.start_next_queued(next_cost, step_delay)
+        f.start_next_queued(next_cost)
+    }
+
+    /// Arm the active build's rate and step timer at `frame`
+    /// ([`Factory::start_rate`]).
+    pub(super) fn start_rate(
+        &mut self,
+        owner: InternedId,
+        category: ProductionCategory,
+        time_to_build: i32,
+        frame: u32,
+    ) {
+        if let Some(f) = self.factories.get_mut(&(owner, category)) {
+            f.start_rate(time_to_build, frame);
+        }
     }
 
     /// Link the EntityStore identity created at StartProduction to the active
@@ -935,9 +985,8 @@ impl FactoryRegistry {
     /// queued entries (no refund — never charged), abandons a permanently-blocked active
     /// build with the C8 PARTIAL refund (`original_balance - balance`) into the ONE wallet
     /// (`house.economy.credits`), then promotes the first surviving
-    /// queued entry (C7 StartNextQueued, cost-seeded, `step_delay = 1` because this sweep runs
-    /// BEFORE `step_all` so the promoted build is not charged the same tick). Idle factories
-    /// are pruned.
+    /// queued entry (C7 StartNextQueued, cost-seeded; the caller arms its rate). Idle
+    /// factories are pruned.
     pub(super) fn apply_revalidation(
         &mut self,
         plan: &[RevalAction],
@@ -977,7 +1026,7 @@ impl FactoryRegistry {
                     lifecycle.discarded_entity_ids.push(entity_id);
                 }
                 if let Some(cost) = action.promote_cost {
-                    if let Some(type_id) = f.start_next_queued(cost, 1) {
+                    if let Some(type_id) = f.start_next_queued(cost) {
                         lifecycle
                             .promoted
                             .push((action.owner, action.category, type_id));
@@ -1040,59 +1089,30 @@ impl FactoryRegistry {
         }
     }
 
-    /// Gather the per-factory `BuildStepTimeInputs` for the next `step_all`, READ-ONLY
-    /// over `Simulation` (power ratio, per-category factory count, type cost). Returned
-    /// as an OWNED map so `step_all` can then run against `&mut houses` without holding a
-    /// `&Simulation` borrow (the split-borrow the authority flip needs). Only armed,
-    /// steppable factories (object held, not complete/suspended/paused) get inputs.
+    /// Resolve `Time_To_Build`'s inputs for every armed, steppable factory, READ-ONLY
+    /// over `Simulation`. Returned as an OWNED map so `step_all` can then run against
+    /// `&mut houses` without holding a `&Simulation` borrow.
     pub(super) fn prepare_step_inputs(
         &self,
         sim: &crate::sim::world::Simulation,
         rules: &RuleSet,
-    ) -> BTreeMap<(InternedId, ProductionCategory), BuildStepTimeInputs> {
-        use crate::sim::production::production_tech::{
-            matching_factory_count_for_owner, owner_power_percentage_ppm,
-        };
+    ) -> BTreeMap<(InternedId, ProductionCategory), TimeToBuildInputs> {
         let mut out = BTreeMap::new();
         for (&key, f) in &self.factories {
             if f.suspended || f.manual || f.progress >= PRODUCTION_STEPS {
                 continue;
             }
-            let Some(obj_id) = f.object.as_ref().map(|o| o.type_id) else {
+            let Some(obj) = f
+                .object
+                .as_ref()
+                .and_then(|object| sim.object_type(object.type_id, rules))
+            else {
                 continue;
             };
-            let Some(obj) = sim.object_type(obj_id, rules) else {
-                continue;
-            };
-            let owner_name = sim.interner.resolve(f.owner).to_string();
-            // factory_count = the per-category BUILDING count (the MultipleFactory
-            // `(n-1)` loop input). The registry collapses to ONE key per (owner,
-            // category), so its key count is NOT this — keep the building rescan (its
-            // retirement is a later slice). The factory's exact production category
-            // preserves the independent native Vehicle and Ship physical counts.
-            let inputs = BuildStepTimeInputs {
-                cost: obj.cost.max(0),
-                build_time_bonus_ppm: PRODUCTION_RATE_SCALE, // stock YR 1.0 (per-side bonus unwired)
-                build_time_multiplier_ppm: obj.build_time_multiplier_x1000.max(1) * 1_000,
-                power_ratio_ppm: owner_power_percentage_ppm(sim, &owner_name),
-                low_power_penalty_modifier_ppm: rules.production.low_power_penalty_modifier_ppm,
-                min_clamp_ppm: rules.production.min_low_power_production_speed_ppm,
-                max_clamp_ppm: rules.production.max_low_power_production_speed_ppm,
-                multiple_factory_ppm: rules.production.multiple_factory_ppm,
-                factory_count: matching_factory_count_for_owner(
-                    &sim.substrate.entities,
-                    rules,
-                    &owner_name,
-                    f.category,
-                    &sim.interner,
-                ),
-                is_wall: obj.category == crate::rules::object_type::ObjectCategory::Building
-                    && obj.wall,
-                wall_build_speed_ppm: (rules.production.wall_build_speed_coefficient.max(0.0)
-                    as f64
-                    * PRODUCTION_RATE_SCALE as f64) as u64,
-            };
-            out.insert(key, inputs);
+            out.insert(
+                key,
+                time_to_build_inputs(sim, rules, f.owner, f.category, obj),
+            );
         }
         out
     }
@@ -1100,7 +1120,7 @@ impl FactoryRegistry {
     /// The authoritative per-tick factory sweep (the charge flip). Walks the registry in
     /// `iter_insertion_ordered` (temporal `insertion_seq`) order — the SAME order the
     /// hash folds in — and, for each armed factory whose per-step cadence timer has
-    /// expired, (re)computes the rate from the `build_step_time` producer and charges ONE
+    /// expired, (re)computes the rate from `time_to_build` and charges ONE
     /// step against the owner's REAL wallet (`house.economy.credits`). Reproduces the engine's
     /// per-tick factory loop (C1), walked before the house tail.
     ///
@@ -1110,7 +1130,8 @@ impl FactoryRegistry {
     pub(super) fn step_all(
         &mut self,
         houses: &mut BTreeMap<InternedId, crate::sim::house_state::HouseState>,
-        prepared: &BTreeMap<(InternedId, ProductionCategory), BuildStepTimeInputs>,
+        prepared: &BTreeMap<(InternedId, ProductionCategory), TimeToBuildInputs>,
+        frame: u32,
     ) {
         // Sweep order = temporal insertion_seq (strictly monotonic enqueue_order -> no
         // ties -> total order -> deterministic).
@@ -1134,16 +1155,24 @@ impl FactoryRegistry {
                 continue; // a vanished house is skipped (NEVER auto-create)
             };
 
-            // (Rate) recompute from the producer each cadence the factory could step.
-            if let Some(inp) = prepared.get(&(owner, category)) {
-                f.set_rate(build_step_time(inp));
+            // (Rate) gamemd rewrites the rate at the build start and when
+            // HouseClass::AI recalculates the house's power, which it does only
+            // while House `+0x5778` is set (`0x004F84D9..0x004F84E5` -> `0x00508C30`,
+            // which calls `0x004CA6E0` at `0x00508D88`). VERA recomputes it from the
+            // live power, factory count and rules each sweep, so a change reaches
+            // the rate sooner (recorded residual).
+            if let Some(inputs) = prepared.get(&(owner, category)) {
+                f.set_rate(time_to_build(inputs));
             }
 
-            // (Cadence) one step per `step_rate_frames` frames (the engine CDTimer).
-            if f.step_timer > 0 {
-                f.step_timer -= 1;
+            // (Cadence) `FactoryClass::AI @ 0x004C9B20` steps once the timer has run
+            // out and a rate is set (`0x004C9B63..0x004C9B76`), restarting the timer
+            // with the rate before it charges (`0x004C9B78..0x004C9B97`).
+            if f.step_rate_frames == 0 || !f.step_timer.expired(frame as i32) {
                 continue;
             }
+            f.step_timer
+                .start(frame as i32, i32::from(f.step_rate_frames));
 
             // (Charge) one authoritative step against the house's economy.
             // Clear the latched on-hold first so an under-funded build RE-ATTEMPTS this
@@ -1152,10 +1181,11 @@ impl FactoryRegistry {
             f.on_hold = false;
             let outcome = f.advance_one_step(&mut house.economy);
 
-            // Completion zeroed step_timer (the object is held for delivery); otherwise
-            // re-arm the cadence to the freshly-computed rate.
-            if !matches!(outcome, StepOutcome::Completed) {
-                f.step_timer = f.step_rate_frames.saturating_sub(1);
+            // Completion clears the rate and restarts the timer empty
+            // (`0x004C9C0C..0x004C9C25`); the object is held for delivery.
+            if matches!(outcome, StepOutcome::Completed) {
+                f.step_rate_frames = 0;
+                f.step_timer.start(frame as i32, 0);
             }
         }
     }
@@ -1201,6 +1231,58 @@ impl FactoryRegistry {
         // (R3) no queued copy, active is a different type (or none) -> no-op.
         CancelOutcome::NoMatch
     }
+}
+
+/// A native oracle row's `Time_To_Build` inputs (the keys
+/// `tools/spatial_oracle/time_to_build.py` writes; the cadence oracle reuses them).
+#[cfg(test)]
+pub(super) fn native_time_to_build_inputs(row: &serde_json::Value) -> TimeToBuildInputs {
+    let bits32 = |key: &str| NativeF32Bits::from_bits(row[key].as_u64().unwrap() as u32);
+    let bits64 = |key: &str| NativeF64Bits::from_bits(row[key].as_u64().unwrap());
+    let int = |key: &str| row[key].as_i64().unwrap() as i32;
+    TimeToBuildInputs {
+        cost: int("cost"),
+        build_speed: bits64("build_speed_bits"),
+        country_multiplier: bits32("country_bits"),
+        build_time_multiplier: bits32("btm_bits"),
+        power_output: int("power_output"),
+        power_drain: int("power_drain"),
+        low_power_penalty: bits32("penalty_bits"),
+        min_low_power_speed: bits32("min_speed_bits"),
+        max_low_power_speed: bits32("max_speed_bits"),
+        factory_count: int("factory_count"),
+        multiple_factory: bits32("multiple_factory_bits"),
+        // The native wall test also requires a Building (`0x006F491E`).
+        wall: row["kind"] == "building" && row["wall"].as_bool().unwrap(),
+        wall_coefficient: bits64("wall_coefficient_bits"),
+    }
+}
+
+/// The native `Time_To_Build` oracle rows: each row's inputs, the original's
+/// result, and the row itself.
+#[cfg(test)]
+fn native_time_to_build_rows() -> Vec<(TimeToBuildInputs, i32, serde_json::Value)> {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/time_to_build.json"
+    ))
+    .expect("oracle rows");
+    rows.into_iter()
+        .map(|row| {
+            let native = row["time_to_build"].as_i64().unwrap() as i32;
+            (native_time_to_build_inputs(&row), native, row)
+        })
+        .collect()
+}
+
+/// The native build-start and step-cadence oracle
+/// (`tools/spatial_oracle/factory_cadence.py`): `starts` rows run the build
+/// start alone, `builds` rows then run `FactoryClass::AI` once per frame.
+#[cfg(test)]
+pub(super) fn native_factory_cadence() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/factory_cadence.json"
+    ))
+    .expect("cadence oracle")
 }
 
 #[cfg(test)]
@@ -1272,40 +1354,137 @@ mod tests {
         }
     }
 
+    /// The build start (`0x004C9EA0`, run by the cadence oracle): the rate is
+    /// `Time_To_Build / 54`, truncated and clamped to 1..=255
+    /// (`0x004C9EF6..0x004C9F1B`), and the step timer starts with it at the
+    /// start frame (`0x004C9F20..0x004C9F34`). The rows cover the division edges
+    /// and both clamps.
     #[test]
-    fn set_rate_total_over_54_truncates_clamps() {
-        // With an object, rate = clamp(total/54, 1, 255):
-        //   0/54=0->clamp 1, 53/54=0->1, 54/54=1, 661/54=12 (MTNK example), 14000/54=259->255
-        let cases = [(0, 1u16), (53, 1), (54, 1), (661, 12), (14000, 255)];
-        for (total, expected) in cases {
-            let mut f = Factory {
-                object: Some(PendingObject::default()),
-                ..Factory::default()
-            };
-            f.set_rate(total);
+    fn start_rate_matches_the_native_start() {
+        let oracle = native_factory_cadence();
+        let start_frame = oracle["start_frame"].as_u64().unwrap() as u32;
+        let starts = oracle["starts"].as_array().unwrap();
+        for row in starts.iter().chain(oracle["builds"].as_array().unwrap()) {
+            let native = row["time_to_build"].as_i64().unwrap() as i32;
             assert_eq!(
-                f.step_rate_frames, expected,
-                "set_rate({total}) with object must be {expected}"
+                time_to_build(&native_time_to_build_inputs(row)),
+                native,
+                "{row}"
+            );
+            let mut f = Factory::default();
+            f.start_rate(native, start_frame);
+            let after = &row["after_start"];
+            let int = |key: &str| after[key].as_i64().unwrap() as i32;
+            assert_eq!(
+                (i32::from(f.step_rate_frames), f.step_timer),
+                (
+                    int("rate"),
+                    CdTimer::started(int("timer_start"), int("timer_duration"))
+                ),
+                "Time_To_Build {native}"
             );
         }
     }
 
     #[test]
-    fn set_rate_zero_when_no_object() {
-        // No object -> rate 0 (the sentinel, NOT clamped up to 1), even for a large total.
-        let mut f = Factory::default();
-        assert!(f.object.is_none());
-        f.set_rate(14000);
-        assert_eq!(
-            f.step_rate_frames, 0,
-            "no-object factory yields the rate-0 sentinel"
-        );
-        // A suspended/queued-only (no-object) factory does not step.
-        f.suspended = true;
+    fn no_object_factory_does_not_step() {
+        let mut f = Factory {
+            suspended: true,
+            ..Factory::default()
+        };
         assert!(matches!(
             f.advance_one_step(&mut Economy::default()),
             StepOutcome::Idle
         ));
+    }
+
+    /// Whole builds against the originals' per-frame `FactoryClass::AI`
+    /// (`0x004C9B20`, the cadence oracle): every step attempt with the progress,
+    /// hold flag and credits after it, and the state at the end. The rows cover
+    /// the retail MTNK, FV and E1, a rate-1, a free and a low-power build, and
+    /// MTNK with no money, with too little, with exactly one charge and with a
+    /// deposit arriving while it waits.
+    #[test]
+    fn step_all_matches_the_native_cadence() {
+        let oracle = native_factory_cadence();
+        let start_frame = oracle["start_frame"].as_u64().unwrap() as u32;
+        let owner = InternedId::from_index(1);
+        for row in oracle["builds"].as_array().unwrap() {
+            let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+            let inputs = native_time_to_build_inputs(row);
+            let category = if row["kind"] == "infantry" {
+                ProductionCategory::Infantry
+            } else {
+                ProductionCategory::Vehicle
+            };
+            let mut reg = reg_with(owner, category, armed_factory(inputs.cost));
+            reg.start_rate(owner, category, time_to_build(&inputs), start_frame);
+            let mut houses = BTreeMap::from([(
+                owner,
+                crate::sim::house_state::HouseState::new(
+                    owner,
+                    0,
+                    None,
+                    true,
+                    int(&row["credits"]),
+                    10,
+                ),
+            )]);
+            let prepared = BTreeMap::from([((owner, category), inputs)]);
+            let deposits: BTreeMap<u32, i32> = row["deposits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|deposit| (int(&deposit[0]) as u32, int(&deposit[1])))
+                .collect();
+            let mut attempts = Vec::new();
+            for frame in start_frame..=row["last_frame"].as_u64().unwrap() as u32 {
+                let economy = &mut houses.get_mut(&owner).unwrap().economy;
+                economy.credits += deposits.get(&frame).copied().unwrap_or(0);
+                let before = reg.factories[&(owner, category)].step_timer.start_frame();
+                reg.step_all(&mut houses, &prepared, frame);
+                let f = &reg.factories[&(owner, category)];
+                if f.step_timer.start_frame() != before {
+                    let credits = houses[&owner].economy.credits;
+                    attempts.push(serde_json::json!([frame, f.progress, f.on_hold, credits]));
+                }
+            }
+            let label = format!(
+                "{} cost {} credits {}",
+                row["kind"], row["cost"], row["credits"]
+            );
+            assert_eq!(
+                serde_json::Value::from(attempts),
+                row["attempts"],
+                "{label}"
+            );
+            let f = &reg.factories[&(owner, category)];
+            let economy = &houses[&owner].economy;
+            let end = &row["final"];
+            assert_eq!(
+                (
+                    i32::from(f.progress),
+                    i32::from(f.step_rate_frames),
+                    f.step_timer,
+                    f.balance,
+                    f.on_hold,
+                    f.suspended,
+                    economy.credits,
+                    economy.spent_credits,
+                ),
+                (
+                    int(&end["stage"]),
+                    int(&end["rate"]),
+                    CdTimer::started(int(&end["timer_start"]), int(&end["timer_duration"])),
+                    int(&end["balance"]),
+                    end["on_hold"].as_bool().unwrap(),
+                    end["suspended"].as_bool().unwrap(),
+                    int(&end["credits"]),
+                    int(&end["spent"]),
+                ),
+                "{label}: the state at the end"
+            );
+        }
     }
 
     #[test]
@@ -1568,7 +1747,6 @@ mod tests {
         QueueEntry {
             type_id: ty,
             enqueue_order: 0,
-            total_base_frames: 0,
         }
     }
 
@@ -1896,7 +2074,7 @@ mod tests {
             queue: std::collections::VecDeque::from(vec![qe(x), qe(y), qe(z)]),
             ..Factory::default()
         };
-        assert_eq!(f.start_next_queued(0, 0), Some(x), "the FRONT is popped");
+        assert_eq!(f.start_next_queued(0), Some(x), "the FRONT is popped");
         assert_eq!(f.object.as_ref().map(|o| o.type_id), Some(x), "active = X");
         assert_eq!(f.progress, 0, "fresh active object starts at progress 0");
         let q: Vec<InternedId> = f.queue.iter().map(|e| e.type_id).collect();
@@ -1914,7 +2092,7 @@ mod tests {
             ..Factory::default()
         };
         assert_eq!(
-            f.start_next_queued(0, 0),
+            f.start_next_queued(0),
             None,
             "a held object blocks the advance"
         );
@@ -1926,28 +2104,27 @@ mod tests {
     #[test]
     fn start_next_queued_empty_queue_is_noop() {
         let mut f = Factory::default();
-        assert_eq!(f.start_next_queued(0, 0), None);
+        assert_eq!(f.start_next_queued(0), None);
         assert!(f.object.is_none(), "no object created from an empty queue");
     }
 
     /// P5d C7 seed: a promoted queue entry takes its stamp as `insertion_seq` (D1), seeds
-    /// `balance == original_balance == cost` and `active_total_base_frames` from the entry,
-    /// resets progress, and arms the cadence per `step_delay` (0 = delivery -> first charge
-    /// next sweep). The dormant pre-P5d body seeded NONE of these.
+    /// `balance == original_balance == cost` and resets progress. Like StartProduction it
+    /// leaves the rate to the build start.
     #[test]
-    fn start_next_queued_seeds_insertion_seq_balance_and_total() {
+    fn start_next_queued_seeds_insertion_seq_and_balance() {
         let x = InternedId::from_index(1);
         let mut f = Factory {
             object: None,
             queue: std::collections::VecDeque::from(vec![QueueEntry {
                 type_id: x,
                 enqueue_order: 42,
-                total_base_frames: 99,
             }]),
             insertion_seq: 7, // stale: the prior active build's stamp
+            step_rate_frames: 9,
             ..Factory::default()
         };
-        let popped = f.start_next_queued(500, 0);
+        let popped = f.start_next_queued(500);
         assert_eq!(popped, Some(x));
         assert_eq!(
             f.insertion_seq, 42,
@@ -1955,12 +2132,8 @@ mod tests {
         );
         assert_eq!(f.balance, 500);
         assert_eq!(f.original_balance, 500);
-        assert_eq!(f.active_total_base_frames, 99);
         assert_eq!(f.progress, 0);
-        assert_eq!(
-            f.step_timer, 0,
-            "delivery step_delay 0 -> charged next sweep, not this one"
-        );
+        assert_eq!(f.step_rate_frames, 0, "the build start arms the new build");
         assert!(f.queue.is_empty());
     }
 
@@ -2029,174 +2202,17 @@ mod tests {
         assert_eq!(inf.progress, 10);
     }
 
-    // ---- P5a build_step_time producer (C5/C10/C11, x0.9-free) ----
-
-    /// Full-power, no-bonus, no-multiplier, single-factory inputs at `cost`.
-    fn bst(cost: i32) -> BuildStepTimeInputs {
-        BuildStepTimeInputs {
-            cost,
-            build_time_bonus_ppm: PRODUCTION_RATE_SCALE, // 1.0
-            build_time_multiplier_ppm: PRODUCTION_RATE_SCALE, // 1.0
-            power_ratio_ppm: PRODUCTION_RATE_SCALE,      // 1.0 (full power)
-            low_power_penalty_modifier_ppm: PRODUCTION_RATE_SCALE,
-            min_clamp_ppm: PRODUCTION_RATE_SCALE / 2, // 0.5
-            max_clamp_ppm: (PRODUCTION_RATE_SCALE * 9) / 10, // 0.9
-            multiple_factory_ppm: (PRODUCTION_RATE_SCALE * 8) / 10, // 0.8
-            factory_count: 1,
-            is_wall: false,
-            wall_build_speed_ppm: PRODUCTION_RATE_SCALE,
+    /// Original `TechnoClass::Time_To_Build @ 0x006F47A0` totals from
+    /// `tools/spatial_oracle/time_to_build.py` (Unicorn on the retail
+    /// executable): stock costs and multipliers per class, other BuildSpeed and
+    /// country values, power ratios and clamps, factory counts and walls.
+    #[test]
+    fn time_to_build_matches_the_native_oracle() {
+        let rows = native_time_to_build_rows();
+        assert_eq!(rows.len(), 332);
+        for (inputs, native, row) in &rows {
+            assert_eq!(time_to_build(inputs), *native, "{row}");
         }
-    }
-
-    #[test]
-    fn build_step_time_no_x09_base() {
-        // cost 700, all-1.0, count 1, no wall -> TOTAL 700, NOT 630 (the REFUTED ×0.9).
-        // Then set_rate(700) -> 700/54 = 12.
-        let total = build_step_time(&bst(700));
-        assert_eq!(
-            total, 700,
-            "x0.9-free base: trunc(1.0 * 700) = 700, not 630"
-        );
-        assert_ne!(total, 630, "the legacy x0.9 (630) must NOT appear");
-        let mut f = Factory {
-            object: Some(PendingObject::default()),
-            ..Factory::default()
-        };
-        f.set_rate(total);
-        assert_eq!(f.step_rate_frames, 12, "set_rate(700) -> 12");
-    }
-
-    #[test]
-    fn build_step_time_mtnk_rate_12() {
-        // Two totals that both divide to rate 12 (the C5 reference band): 700 and 661.
-        for total in [700, 661] {
-            let mut f = Factory {
-                object: Some(PendingObject::default()),
-                ..Factory::default()
-            };
-            f.set_rate(total);
-            assert_eq!(f.step_rate_frames, 12, "total {total} -> rate 12");
-        }
-    }
-
-    #[test]
-    fn build_step_time_build_time_multiplier_truncates_at_t2() {
-        // base 67 x mult 1.15 -> trunc(67 * 1.15) = trunc(77.05) = 77.
-        let mut inp = bst(67);
-        inp.build_time_multiplier_ppm = (PRODUCTION_RATE_SCALE * 115) / 100; // 1.15
-        assert_eq!(
-            build_step_time(&inp),
-            77,
-            "T2 truncates: trunc(67 * 1.15) = 77"
-        );
-    }
-
-    #[test]
-    fn build_step_time_low_power_max_clamp_gated() {
-        // ratio 0.5, LPPM 1.0 -> d = 1 - 0.5 = 0.5; Max clamp 0.9 does NOT lower it; Min
-        // 0.5 keeps it. cost 100 -> trunc(100 / 0.5) = 200.
-        let mut inp = bst(100);
-        inp.power_ratio_ppm = PRODUCTION_RATE_SCALE / 2; // 0.5
-        assert_eq!(
-            build_step_time(&inp),
-            200,
-            "under-power doubles the step total"
-        );
-
-        // ratio 1.0 (full power): the Max clamp is NOT applied; d = 1.0 -> total = cost.
-        let mut full = bst(100);
-        full.max_clamp_ppm = PRODUCTION_RATE_SCALE / 2; // a Max that WOULD bite if applied
-        assert_eq!(
-            build_step_time(&full),
-            100,
-            "ratio==1.0 skips the Max clamp"
-        );
-
-        // ratio 0.0, LPPM 1.0 -> d = 0.0 -> floored to 0.01 -> trunc(100 / 0.01) = 10000.
-        let mut zero = bst(100);
-        zero.power_ratio_ppm = 0;
-        zero.min_clamp_ppm = 0; // let d hit 0 so the 0.01 floor is exercised
-        zero.max_clamp_ppm = PRODUCTION_RATE_SCALE; // Max does not bite
-        assert_eq!(build_step_time(&zero), 10_000, "d<=0 floors to 0.01");
-    }
-
-    #[test]
-    fn build_step_time_multiple_factory_per_iteration_trunc() {
-        // count 3, MF 0.8: per-iteration trunc DIFFERS from acc * MF^2 single-truncate.
-        // base acc 11; iter1 trunc(11*0.8)=8; iter2 trunc(8*0.8)=6. Single MF^2=0.64 ->
-        // trunc(11*0.64)=7. So 6 != 7 proves per-iteration truncation.
-        let mut inp = bst(11);
-        inp.factory_count = 3;
-        inp.multiple_factory_ppm = (PRODUCTION_RATE_SCALE * 8) / 10; // 0.8
-        let per_iter = build_step_time(&inp);
-        assert_eq!(per_iter, 6, "per-iteration trunc: 11 -> 8 -> 6");
-        let single = (11i128 * (((PRODUCTION_RATE_SCALE * 8) / 10) as i128).pow(2)
-            / (PRODUCTION_RATE_SCALE as i128).pow(2)) as i32;
-        assert_eq!(single, 7, "single-truncate MF^2 would be 7");
-        assert_ne!(
-            per_iter, single,
-            "per-iteration trunc must DIFFER from MF^2 single"
-        );
-    }
-
-    #[test]
-    fn build_step_time_multiple_factory_gate_skips_on_zero_and_count_one() {
-        // MF == 0 -> loop skipped regardless of count.
-        let mut mf0 = bst(500);
-        mf0.factory_count = 4;
-        mf0.multiple_factory_ppm = 0;
-        assert_eq!(build_step_time(&mf0), 500, "MF=0 skips the loop");
-        // count == 1 -> loop skipped (n-1 == 0).
-        let mut c1 = bst(500);
-        c1.factory_count = 1;
-        assert_eq!(build_step_time(&c1), 500, "count 1 skips the loop");
-    }
-
-    #[test]
-    fn build_step_time_wall_branch_only_for_walls() {
-        // is_wall=true applies BuildSpeed 0.5 -> trunc(400 * 0.5) = 200.
-        let mut wall = bst(400);
-        wall.is_wall = true;
-        wall.wall_build_speed_ppm = PRODUCTION_RATE_SCALE / 2; // 0.5
-        assert_eq!(build_step_time(&wall), 200, "wall applies BuildSpeed");
-        // is_wall=false leaves the total unchanged.
-        let mut not_wall = bst(400);
-        not_wall.wall_build_speed_ppm = PRODUCTION_RATE_SCALE / 2;
-        assert_eq!(
-            build_step_time(&not_wall),
-            400,
-            "non-wall ignores BuildSpeed"
-        );
-    }
-
-    #[test]
-    fn build_step_time_zero_cost_is_zero() {
-        assert_eq!(build_step_time(&bst(0)), 0, "cost 0 -> total 0");
-        assert_eq!(
-            build_step_time(&bst(-5)),
-            0,
-            "negative cost clamps to 0 -> total 0"
-        );
-    }
-
-    #[test]
-    fn build_step_time_overflow_safe() {
-        // Large inputs do not overflow (i128 intermediates) and clamp to i32::MAX.
-        let mut big = bst(50_000);
-        big.power_ratio_ppm = 0; // forces a big divide (d floors to 0.01 when min=0)
-        big.min_clamp_ppm = 0;
-        big.max_clamp_ppm = PRODUCTION_RATE_SCALE;
-        assert_eq!(
-            build_step_time(&big),
-            5_000_000,
-            "no overflow, exact (50000 / 0.01)"
-        );
-        // Push past i32 to prove the clamp.
-        let mut huge = bst(2_000_000_000);
-        huge.power_ratio_ppm = 0;
-        huge.min_clamp_ppm = 0;
-        huge.max_clamp_ppm = PRODUCTION_RATE_SCALE;
-        assert_eq!(build_step_time(&huge), i32::MAX, "clamps to i32::MAX");
     }
 
     // ---- P5a category_for_object routing delegate ----

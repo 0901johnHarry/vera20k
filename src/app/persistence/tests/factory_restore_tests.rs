@@ -41,7 +41,7 @@ fn factory_fixture(
         saved
             .production
             .factory_shadow
-            .test_enqueue_kernel(owner, category, type_id, 1, 100, cost,)
+            .test_enqueue_kernel(owner, category, type_id, 1, cost,)
     );
     saved
         .production
@@ -259,7 +259,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     !saved
                         .production
                         .factory_shadow
-                        .test_enqueue_kernel(owner, category, type_id, 2, 100, 1000)
+                        .test_enqueue_kernel(owner, category, type_id, 2, 1000)
                 );
                 saved.production.next_enqueue_order = 3;
             }
@@ -472,7 +472,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     category,
                     parent_type,
                     3,
-                    100,
                     1000,
                 );
                 saved
@@ -500,7 +499,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     category,
                     queued_type,
                     2,
-                    100,
                     200
                 ));
             }
@@ -521,7 +519,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     category,
                     parent_type,
                     3,
-                    100,
                     1000,
                 );
                 saved
@@ -633,7 +630,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     category,
                     parent_type,
                     2,
-                    100,
                     1000,
                 );
                 saved
