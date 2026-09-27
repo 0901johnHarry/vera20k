@@ -397,6 +397,23 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
     );
     assert_eq!(soviet_infantry.factory_count, 1);
     assert!(!soviet_infantry.wall);
+
+    // A factory counts from its Unlimbo (`0x00440D13`), so one still playing
+    // its build-up animation counts.
+    sim.substrate.entities.get_mut(2).unwrap().building_up = Some(
+        crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
+    );
+    assert_eq!(
+        super::factory::time_to_build_inputs(
+            &sim,
+            &rules,
+            americans,
+            ProductionCategory::Infantry,
+            e1
+        )
+        .factory_count,
+        2
+    );
 }
 
 /// A `Wall=yes` building takes `WallBuildSpeedCoefficient=` (Time_To_Build's
@@ -1006,7 +1023,7 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
         1
     );
     assert!(view.queue.is_empty(), "the FIFO tail is now empty");
-    // StartNextQueued runs Begin_Production (0x004CA60A), whose SetRate arms the promoted
+    // StartNextQueued runs Begin_Production (0x004CA60A), whose build start arms the promoted
     // build's rate and timer at this frame; it has not stepped yet.
     assert_eq!(view.progress, 0);
     let promoted = sim

@@ -237,7 +237,7 @@ fn record(
     (hashes, log)
 }
 
-/// A build started by a command is armed at that frame (SetRate `0x004C9EA0`) and
+/// A build started by a command is armed at that frame (the build start `0x004C9EA0`) and
 /// first steps, charging the wallet, one rate later (`FactoryClass::AI 0x004C9B20`).
 #[test]
 fn event_tail_enqueue_first_charges_one_rate_later() {
@@ -670,19 +670,20 @@ fn runtime_backed_replay_hashes_match_each_tick() {
 }
 
 /// Retail MTNK, FV and E1 through the production path. The queue command starts
-/// the build, and SetRate (`0x004C9EA0`) takes its rate from the original
-/// `Time_To_Build` for the inputs the factory resolved (the oracle row with those
-/// inputs). `FactoryClass::AI` (`0x004C9B20`) then steps it once per rate from
-/// the start frame, so it completes 54 rates after it starts.
+/// the build, and its rate and steps match the originals' (`0x004C9EA0`, then
+/// `FactoryClass::AI` `0x004C9B20` each frame) for the inputs the factory
+/// resolved: the cadence oracle's funded row with those inputs, offset to the
+/// build's start frame.
 #[test]
-fn retail_builds_step_once_per_native_rate_from_their_start() {
+fn retail_builds_step_at_the_native_frames() {
     let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
     else {
         return;
     };
     let mut rules = RuleSet::from_ini(&rules_ini).expect("retail rules");
     rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
-    let oracle = super::factory::native_time_to_build_rows();
+    let cadence = super::factory::native_factory_cadence();
+    let oracle_start = cadence["start_frame"].as_u64().unwrap() as u32;
     for (unit, factory, category) in [
         ("MTNK", "GAWEAP", ProductionCategory::Vehicle),
         ("FV", "GAWEAP", ProductionCategory::Vehicle),
@@ -756,7 +757,7 @@ fn retail_builds_step_once_per_native_rate_from_their_start() {
                 assert_eq!(
                     timer.start_frame(),
                     frame as i32,
-                    "{unit}: SetRate at start"
+                    "{unit}: the build start arms the timer"
                 );
                 start = Some((frame, rate));
                 held = object;
@@ -768,18 +769,26 @@ fn retail_builds_step_once_per_native_rate_from_their_start() {
         let (start_frame, rate) = start.expect("the build started");
         let obj = sim.object_type(type_id, &rules).expect("retail type");
         let inputs = super::factory::time_to_build_inputs(&sim, &rules, owner, category, obj);
-        let (_, native, _) = oracle
+        let row = cadence["builds"]
+            .as_array()
+            .unwrap()
             .iter()
-            .find(|(row_inputs, ..)| *row_inputs == inputs)
-            .unwrap_or_else(|| panic!("{unit}: no oracle row for {inputs:?}"));
+            .find(|row| {
+                super::factory::native_time_to_build_inputs(row) == inputs
+                    && row["final"]["stage"] == 54
+            })
+            .unwrap_or_else(|| panic!("{unit}: no funded cadence row for {inputs:?}"));
         assert_eq!(
-            i32::from(rate),
-            (native / 54).clamp(1, 255),
-            "{unit}: Time_To_Build {native}"
+            u64::from(rate),
+            row["after_start"]["rate"].as_u64().unwrap(),
+            "{unit}: the start's rate"
         );
-        let expected: Vec<u32> = (1..=54)
-            .map(|step| start_frame + step * u32::from(rate))
+        let expected: Vec<u32> = row["attempts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|attempt| start_frame + (attempt[0].as_u64().unwrap() as u32 - oracle_start))
             .collect();
-        assert_eq!(step_frames, expected, "{unit}: one step per rate");
+        assert_eq!(step_frames, expected, "{unit}: the native step frames");
     }
 }

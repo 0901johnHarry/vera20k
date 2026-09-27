@@ -41,7 +41,8 @@ def case(kind, cost, *, build_speed=widened(0.7), btm=1.0, country=1.0, power=(1
         wall_coefficient_bits=f64(wall_coefficient))
 
 
-def run(row):
+def fixture_writes(row):
+    """The object, type, house, country and Rules bytes for one row."""
     object_vtable, type_offset, type_vtable = KINDS[row['kind']]
     # The five house factory counters (+0x5378 aircraft, +0x537C infantry,
     # +0x5380 vehicles, +0x5384 buildings, +0x5388 ships) all hold a marker
@@ -57,7 +58,7 @@ def run(row):
         row['kind'], 4 if row['defense'] else 3)
     country_values = [struct.pack('<f', v) for v in country]
     country_values[country_slot] = struct.pack('<I', row['country_bits'])
-    writes = {
+    return {
         OBJECT: struct.pack('<I', object_vtable),
         OBJECT + 0x21C: struct.pack('<I', HOUSE),
         OBJECT + type_offset: struct.pack('<I', TYPE),
@@ -77,7 +78,10 @@ def run(row):
         RULES + 0x1748: struct.pack('<Q', row['build_speed_bits']),
         RULES_GLOBAL: struct.pack('<I', RULES),
     }
-    result = call(0x6F47A0, ecx=OBJECT, writes=writes,
+
+
+def run(row):
+    result = call(0x6F47A0, ecx=OBJECT, writes=fixture_writes(row),
                   required_addresses=[0x711EE0, 0x50C0A0, 0x4FCE30, 0x500910],
                   timeout_instr=200_000)
     return dict(row, time_to_build=struct.unpack('<i', struct.pack('<I', result['eax']))[0])

@@ -5539,6 +5539,43 @@ CellSpread=0
         assert!(rules.bridge_rules.destroyable_by_default);
     }
 
+    /// `HouseClass @ 0x0050C0A0` takes the country's build-time multiplier by
+    /// WhatAmI: infantry `+0x134`, units `+0x138`, aircraft `+0x13C`, and a
+    /// building's `+0x140`, or `+0x144` when its BuildCat is 5, Combat
+    /// (`0x0050C0F0`). An absent key or an unknown country gives 1.0.
+    #[test]
+    fn country_build_time_mults_follow_the_native_slots() {
+        let ini = IniFile::from_str(
+            "[Countries]\n0=T\n1=U\n\
+             [T]\nBuildTimeInfantryMult=0.5\nBuildTimeUnitsMult=0.75\n\
+             BuildTimeAircraftMult=1.25\nBuildTimeBuildingsMult=1.5\n\
+             BuildTimeDefensesMult=2.0\n\
+             [U]\nBuildTimeUnitsMult=0.8\n\
+             [InfantryTypes]\n0=I\n[VehicleTypes]\n0=V\n[AircraftTypes]\n0=A\n\
+             [BuildingTypes]\n0=B\n1=D\n2=P\n\
+             [I]\nStrength=1\n[V]\nStrength=1\n[A]\nStrength=1\n[B]\nStrength=1\n\
+             [D]\nStrength=1\nBuildCat=Combat\n[P]\nStrength=1\nBuildCat=Power\n",
+        );
+        let rules = RuleSet::from_ini(&ini).expect("country fixture parses");
+        let float = |value: f32| NativeF32Bits::from_bits(value.to_bits());
+        let mult = |country: &str, object: &str| {
+            rules.country_build_time_mult_for_type(country, rules.object(object).unwrap())
+        };
+        for (object, expected) in [
+            ("I", 0.5),
+            ("V", 0.75),
+            ("A", 1.25),
+            ("B", 1.5),
+            ("D", 2.0),
+            ("P", 1.5),
+        ] {
+            assert_eq!(mult("T", object), float(expected), "{object}");
+        }
+        assert_eq!(mult("U", "V"), float(0.8));
+        assert_eq!(mult("U", "I"), NativeF32Bits::ONE);
+        assert_eq!(mult("Nowhere", "V"), NativeF32Bits::ONE);
+    }
+
     #[test]
     fn gsi_13_10_extra_object_lights_default_zero_and_parse_signed_truncated_milliunits() {
         let defaults = GeneralRules::from_ini(&IniFile::from_str(

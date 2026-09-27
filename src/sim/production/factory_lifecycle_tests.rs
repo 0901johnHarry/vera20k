@@ -375,7 +375,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
 }
 
 /// The promoted build starts at the revalidation frame (StartNextQueued runs
-/// Begin_Production, whose SetRate arms the timer), so it first steps one rate later.
+/// Begin_Production, whose build start arms the timer), so it first steps one rate later.
 #[test]
 fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_later() {
     let (mut sim, rules, owner) = world(0xfac7_0012);

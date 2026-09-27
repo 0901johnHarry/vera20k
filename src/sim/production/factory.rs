@@ -145,7 +145,8 @@ pub struct Factory {
 
 impl Factory {
     /// The step rate for a build of `time_to_build` frames: `clamp(total / 54,
-    /// 1, 255)`, the division truncating. `FactoryClass::SetRate @ 0x004C9EA0`
+    /// 1, 255)`, the division truncating. The build start `0x004C9EA0` (Ghidra
+    /// label `FactoryClass__SetRate`; it also resumes a suspended build)
     /// computes it at `0x004C9EEF..0x004C9F28`; the house power pass
     /// (`0x004CA6E0`, from `0x00508D88`) rewrites only this rate.
     pub fn set_rate(&mut self, time_to_build: i32) {
@@ -154,9 +155,11 @@ impl Factory {
             per_step.clamp(i32::from(STEP_RATE_MIN), i32::from(STEP_RATE_MAX)) as u16;
     }
 
-    /// `FactoryClass::SetRate` for a build starting at `frame`: take the rate
-    /// and restart the step timer with it (`0x004C9F20..0x004C9F34`), so the
-    /// first step comes one full rate later.
+    /// The build start `0x004C9EA0` for a build starting at `frame`: take the
+    /// rate and restart the step timer with it (`0x004C9F20..0x004C9F34`), so
+    /// the first step comes one full rate later. Its tail (`0x004C9F37..`) is
+    /// not ported: the `+0x71` latch it sets when the house can afford the next
+    /// charge, and the re-suspend when its argument is set.
     pub fn start_rate(&mut self, time_to_build: i32, frame: u32) {
         self.set_rate(time_to_build);
         self.step_timer = CdTimer::started(frame as i32, i32::from(self.step_rate_frames));
@@ -376,7 +379,7 @@ const BUILD_TIME_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3FEC_CCCC_CCC
 const LOW_POWER_SPEED_FLOOR: NativeF32Bits = NativeF32Bits::from_bits(0x3C23_D70A);
 
 /// `TechnoClass::Time_To_Build @ 0x006F47A0`: the frames an object takes to
-/// build, before `FactoryClass::SetRate` divides it into 54 steps. Each stage
+/// build, before the build start (`0x004C9EA0`) divides it into 54 steps. Each stage
 /// truncates (`_ftol`) under the process's 53-bit chop control word.
 pub fn time_to_build(inputs: &TimeToBuildInputs) -> i32 {
     use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering as Order};
@@ -1155,9 +1158,12 @@ impl FactoryRegistry {
                 continue; // a vanished house is skipped (NEVER auto-create)
             };
 
-            // (Rate) gamemd rewrites the rate whenever the house's power is
-            // recalculated (`0x00508D88` -> `0x004CA6E0`); VERA recomputes it from the
-            // live power, factory count and rules each sweep.
+            // (Rate) gamemd rewrites the rate at the build start and when
+            // HouseClass::AI recalculates the house's power, which it does only
+            // while House `+0x5778` is set (`0x004F84D9..0x004F84E5` -> `0x00508C30`,
+            // which calls `0x004CA6E0` at `0x00508D88`). VERA recomputes it from the
+            // live power, factory count and rules each sweep, so a change reaches
+            // the rate sooner (recorded residual).
             if let Some(inputs) = prepared.get(&(owner, category)) {
                 f.set_rate(time_to_build(inputs));
             }
@@ -1230,39 +1236,56 @@ impl FactoryRegistry {
     }
 }
 
-/// The native `Time_To_Build` oracle rows: each row's inputs as
-/// [`TimeToBuildInputs`], the original's result, and the row itself.
+/// A native oracle row's `Time_To_Build` inputs (the keys
+/// `tools/spatial_oracle/time_to_build.py` writes; the cadence oracle reuses them).
 #[cfg(test)]
-pub(super) fn native_time_to_build_rows() -> Vec<(TimeToBuildInputs, i32, serde_json::Value)> {
+pub(super) fn native_time_to_build_inputs(row: &serde_json::Value) -> TimeToBuildInputs {
+    let bits32 = |key: &str| NativeF32Bits::from_bits(row[key].as_u64().unwrap() as u32);
+    let bits64 = |key: &str| NativeF64Bits::from_bits(row[key].as_u64().unwrap());
+    let int = |key: &str| row[key].as_i64().unwrap() as i32;
+    TimeToBuildInputs {
+        cost: int("cost"),
+        build_speed: bits64("build_speed_bits"),
+        country_multiplier: bits32("country_bits"),
+        build_time_multiplier: bits32("btm_bits"),
+        power_output: int("power_output"),
+        power_drain: int("power_drain"),
+        low_power_penalty: bits32("penalty_bits"),
+        min_low_power_speed: bits32("min_speed_bits"),
+        max_low_power_speed: bits32("max_speed_bits"),
+        factory_count: int("factory_count"),
+        multiple_factory: bits32("multiple_factory_bits"),
+        // The native wall test also requires a Building (`0x006F491E`).
+        wall: row["kind"] == "building" && row["wall"].as_bool().unwrap(),
+        wall_coefficient: bits64("wall_coefficient_bits"),
+    }
+}
+
+/// The native `Time_To_Build` oracle rows: each row's inputs, the original's
+/// result, and the row itself.
+#[cfg(test)]
+fn native_time_to_build_rows() -> Vec<(TimeToBuildInputs, i32, serde_json::Value)> {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../tools/spatial_oracle/time_to_build.json"
     ))
     .expect("oracle rows");
     rows.into_iter()
         .map(|row| {
-            let bits32 = |key: &str| NativeF32Bits::from_bits(row[key].as_u64().unwrap() as u32);
-            let bits64 = |key: &str| NativeF64Bits::from_bits(row[key].as_u64().unwrap());
-            let int = |key: &str| row[key].as_i64().unwrap() as i32;
-            let inputs = TimeToBuildInputs {
-                cost: int("cost"),
-                build_speed: bits64("build_speed_bits"),
-                country_multiplier: bits32("country_bits"),
-                build_time_multiplier: bits32("btm_bits"),
-                power_output: int("power_output"),
-                power_drain: int("power_drain"),
-                low_power_penalty: bits32("penalty_bits"),
-                min_low_power_speed: bits32("min_speed_bits"),
-                max_low_power_speed: bits32("max_speed_bits"),
-                factory_count: int("factory_count"),
-                multiple_factory: bits32("multiple_factory_bits"),
-                // The native wall test also requires a Building (`0x006F491E`).
-                wall: row["kind"] == "building" && row["wall"].as_bool().unwrap(),
-                wall_coefficient: bits64("wall_coefficient_bits"),
-            };
-            let native = int("time_to_build");
-            (inputs, native, row)
+            let native = row["time_to_build"].as_i64().unwrap() as i32;
+            (native_time_to_build_inputs(&row), native, row)
         })
         .collect()
+}
+
+/// The native build-start and step-cadence oracle
+/// (`tools/spatial_oracle/factory_cadence.py`): `starts` rows run the build
+/// start alone, `builds` rows then run `FactoryClass::AI` once per frame.
+#[cfg(test)]
+pub(super) fn native_factory_cadence() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/factory_cadence.json"
+    ))
+    .expect("cadence oracle")
 }
 
 #[cfg(test)]
@@ -1334,22 +1357,35 @@ mod tests {
         }
     }
 
+    /// The build start (`0x004C9EA0`, run by the cadence oracle): the rate is
+    /// `Time_To_Build / 54`, truncated and clamped to 1..=255
+    /// (`0x004C9EF6..0x004C9F1B`), and the step timer starts with it at the
+    /// start frame (`0x004C9F20..0x004C9F34`). The rows cover the division edges
+    /// and both clamps.
     #[test]
-    fn set_rate_divides_by_54_truncating_and_clamps() {
-        // SetRate 0x004C9EF6..0x004C9F1B: signed /54, then clamp [1, 255].
-        // 660 is Time_To_Build for MTNK at full power (the native oracle's row).
-        let cases = [
-            (-100, 1u16),
-            (0, 1),
-            (53, 1),
-            (54, 1),
-            (660, 12),
-            (14000, 255),
-        ];
-        for (total, expected) in cases {
+    fn start_rate_matches_the_native_start() {
+        let oracle = native_factory_cadence();
+        let start_frame = oracle["start_frame"].as_u64().unwrap() as u32;
+        let starts = oracle["starts"].as_array().unwrap();
+        for row in starts.iter().chain(oracle["builds"].as_array().unwrap()) {
+            let native = row["time_to_build"].as_i64().unwrap() as i32;
+            assert_eq!(
+                time_to_build(&native_time_to_build_inputs(row)),
+                native,
+                "{row}"
+            );
             let mut f = Factory::default();
-            f.set_rate(total);
-            assert_eq!(f.step_rate_frames, expected, "set_rate({total})");
+            f.start_rate(native, start_frame);
+            let after = &row["after_start"];
+            let int = |key: &str| after[key].as_i64().unwrap() as i32;
+            assert_eq!(
+                (i32::from(f.step_rate_frames), f.step_timer),
+                (
+                    int("rate"),
+                    CdTimer::started(int("timer_start"), int("timer_duration"))
+                ),
+                "Time_To_Build {native}"
+            );
         }
     }
 
@@ -1365,36 +1401,93 @@ mod tests {
         ));
     }
 
-    /// `FactoryClass::SetRate` arms the timer at the start frame, and
-    /// `FactoryClass::AI` steps each time it runs out (0x004C9B63..0x004C9B97),
-    /// so a build of rate 12 started at frame 100 steps at 112, 124, ... and
-    /// completes at 100 + 54 * 12, clearing its rate (0x004C9C0C..0x004C9C25).
+    /// Whole builds against the originals' per-frame `FactoryClass::AI`
+    /// (`0x004C9B20`, the cadence oracle): every step attempt with the progress,
+    /// hold flag and credits after it, and the state at the end. The rows cover
+    /// the retail MTNK, FV and E1, a rate-1, a free and a low-power build, and
+    /// MTNK with no money, with too little, with exactly one charge and with a
+    /// deposit arriving while it waits.
     #[test]
-    fn step_all_steps_once_per_rate_from_the_start_frame() {
+    fn step_all_matches_the_native_cadence() {
+        let oracle = native_factory_cadence();
+        let start_frame = oracle["start_frame"].as_u64().unwrap() as u32;
         let owner = InternedId::from_index(1);
-        let category = ProductionCategory::Vehicle;
-        let mut reg = reg_with(owner, category, armed_factory(0));
-        reg.start_rate(owner, category, 660, 100);
-        let mut houses = BTreeMap::new();
-        houses.insert(
-            owner,
-            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
-        );
-        let no_inputs = BTreeMap::new();
-        let mut step_frames = Vec::new();
-        for frame in 100..=100 + 54 * 12 + 30 {
-            let before = reg.factories[&(owner, category)].progress;
-            reg.step_all(&mut houses, &no_inputs, frame);
-            if reg.factories[&(owner, category)].progress != before {
-                step_frames.push(frame);
+        for row in oracle["builds"].as_array().unwrap() {
+            let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+            let inputs = native_time_to_build_inputs(row);
+            let category = if row["kind"] == "infantry" {
+                ProductionCategory::Infantry
+            } else {
+                ProductionCategory::Vehicle
+            };
+            let mut reg = reg_with(owner, category, armed_factory(inputs.cost));
+            reg.start_rate(owner, category, time_to_build(&inputs), start_frame);
+            let mut houses = BTreeMap::from([(
+                owner,
+                crate::sim::house_state::HouseState::new(
+                    owner,
+                    0,
+                    None,
+                    true,
+                    int(&row["credits"]),
+                    10,
+                ),
+            )]);
+            let prepared = BTreeMap::from([((owner, category), inputs)]);
+            let deposits: BTreeMap<u32, i32> = row["deposits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|deposit| (int(&deposit[0]) as u32, int(&deposit[1])))
+                .collect();
+            let mut attempts = Vec::new();
+            for frame in start_frame..=row["last_frame"].as_u64().unwrap() as u32 {
+                let economy = &mut houses.get_mut(&owner).unwrap().economy;
+                economy.credits += deposits.get(&frame).copied().unwrap_or(0);
+                let before = reg.factories[&(owner, category)].step_timer.start_frame();
+                reg.step_all(&mut houses, &prepared, frame);
+                let f = &reg.factories[&(owner, category)];
+                if f.step_timer.start_frame() != before {
+                    let credits = houses[&owner].economy.credits;
+                    attempts.push(serde_json::json!([frame, f.progress, f.on_hold, credits]));
+                }
             }
+            let label = format!(
+                "{} cost {} credits {}",
+                row["kind"], row["cost"], row["credits"]
+            );
+            assert_eq!(
+                serde_json::Value::from(attempts),
+                row["attempts"],
+                "{label}"
+            );
+            let f = &reg.factories[&(owner, category)];
+            let economy = &houses[&owner].economy;
+            let end = &row["final"];
+            assert_eq!(
+                (
+                    i32::from(f.progress),
+                    i32::from(f.step_rate_frames),
+                    f.step_timer,
+                    f.balance,
+                    f.on_hold,
+                    f.suspended,
+                    economy.credits,
+                    economy.spent_credits,
+                ),
+                (
+                    int(&end["stage"]),
+                    int(&end["rate"]),
+                    CdTimer::started(int(&end["timer_start"]), int(&end["timer_duration"])),
+                    int(&end["balance"]),
+                    end["on_hold"].as_bool().unwrap(),
+                    end["suspended"].as_bool().unwrap(),
+                    int(&end["credits"]),
+                    int(&end["spent"]),
+                ),
+                "{label}: the state at the end"
+            );
         }
-        let expected: Vec<u32> = (1..=54).map(|step| 100 + step * 12).collect();
-        assert_eq!(step_frames, expected);
-        let f = &reg.factories[&(owner, category)];
-        assert_eq!(f.progress, PRODUCTION_STEPS);
-        assert_eq!(f.step_rate_frames, 0);
-        assert_eq!(f.step_timer, CdTimer::started(100 + 54 * 12, 0));
     }
 
     #[test]
@@ -2020,7 +2113,7 @@ mod tests {
 
     /// P5d C7 seed: a promoted queue entry takes its stamp as `insertion_seq` (D1), seeds
     /// `balance == original_balance == cost` and resets progress. Like StartProduction it
-    /// leaves the rate to SetRate.
+    /// leaves the rate to the build start.
     #[test]
     fn start_next_queued_seeds_insertion_seq_and_balance() {
         let x = InternedId::from_index(1);
@@ -2043,7 +2136,7 @@ mod tests {
         assert_eq!(f.balance, 500);
         assert_eq!(f.original_balance, 500);
         assert_eq!(f.progress, 0);
-        assert_eq!(f.step_rate_frames, 0, "SetRate arms the new build");
+        assert_eq!(f.step_rate_frames, 0, "the build start arms the new build");
         assert!(f.queue.is_empty());
     }
 

@@ -79,10 +79,18 @@ fn next_enqueue_order(sim: &mut Simulation) -> u64 {
 /// Start the build an active factory head holds. `HouseClass::Begin_Production
 /// @ 0x004FA350` runs `FactoryClass::StartProduction @ 0x004C9C70`, which calls
 /// `type->CreateInstance(owner)` and stores the result at `Factory+0x58`, then
-/// `FactoryClass::SetRate @ 0x004C9EA0` (`0x004FA628`), which arms the step rate
-/// and timer from that object's `Time_To_Build`. Queued tail entries start only
-/// when `FactoryClass::StartNextQueued @ 0x004CA5A0` promotes them, which runs
-/// the same Begin_Production (`0x004CA60A`).
+/// the build start `0x004C9EA0` (Ghidra label `FactoryClass__SetRate`) at
+/// `0x004FA628`, which arms the step rate and timer from that object's
+/// `Time_To_Build`. Queued tail entries start only when
+/// `FactoryClass::StartNextQueued @ 0x004CA5A0` promotes them, which runs the
+/// same Begin_Production (`0x004CA60A`).
+///
+/// Begin_Production's network headstart (`0x004FA631..0x004FA68F`) never runs:
+/// it needs the factory unsuspended just before the start (read at
+/// `0x004FA622`), and every path there has just suspended it (StartProduction's
+/// create path, `0x004C9D72`) or resumed a suspended one (`0x004FA5A8..0x004FA5C6`).
+/// A queue append (`0x004C9D22..0x004C9D2E`) returns at `0x004FA612` first, and
+/// a promotion's StartProduction never appends (`0x004C9CC9..0x004C9CCF`).
 fn start_active_production(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -279,6 +287,14 @@ fn cancel_ready_by_type_for_owner(
 /// C7 StartNextQueued after a successful delivery (or a completed-but-undeliverable refund):
 /// clear the delivered active object and promote the next queued entry into the active slot,
 /// cost-seeded from `rules` and started at this frame.
+///
+/// Residual: gamemd delivers a human player's finished unit through a PLACE event
+/// that `StripClass::AI` queues (`0x006A8EB8..0x006A8F18`). Its execution
+/// (`0x004C710B` -> `HouseClass::Place_Production @ 0x004FB0E0`) unlimbos the unit
+/// and promotes the next build (Abandon_Production at `0x004FB663` ->
+/// StartNextQueued at `0x004FAC96`). VERA delivers and promotes in the completion
+/// frame, so for every unit a human builds, the unit appears and the next queued
+/// build starts earlier by the event's scheduling delay (untraced).
 fn advance_after_delivery(
     sim: &mut Simulation,
     rules: &RuleSet,
