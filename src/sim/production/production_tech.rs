@@ -13,10 +13,6 @@ use crate::sim::world::Simulation;
 use super::production_queue::credits_for_owner;
 use super::production_types::*;
 
-/// Maximum tech level available in standard skirmish/multiplayer.
-/// Units with TechLevel > this are not buildable.
-const MATCH_TECH_LEVEL: i32 = 10;
-
 pub(super) fn build_option_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
@@ -27,8 +23,13 @@ pub(super) fn build_option_for_owner(
     let obj = rules.object(type_id)?;
     let queue_category = production_category_for_object(obj);
 
+    // `HouseClass::CanBuild @ 0x004F7870` compares the type's TechLevel
+    // (`TechnoTypeClass+0x634`) with the house's (`HouseClass+0x1D4`).
+    let house_tech_level =
+        crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
+            .map(|house| house.tech_level);
     let mut reason: Option<BuildDisabledReason> = None;
-    if obj.tech_level < 0 || obj.tech_level > MATCH_TECH_LEVEL {
+    if obj.tech_level < 0 || house_tech_level.is_none_or(|level| obj.tech_level > level) {
         reason = Some(BuildDisabledReason::UnbuildableTechLevel);
     } else if mode == BuildMode::Strict
         && !obj.owner.is_empty()
@@ -383,11 +384,15 @@ pub(super) fn is_production_factory(
         ProductionCategory::Infantry => factory_type == FactoryType::InfantryType,
         ProductionCategory::Vehicle => {
             factory_type == FactoryType::UnitType
-                && rules.object(structure_id).is_some_and(|object| !object.naval)
+                && rules
+                    .object(structure_id)
+                    .is_some_and(|object| !object.naval)
         }
         ProductionCategory::Ship => {
             factory_type == FactoryType::UnitType
-                && rules.object(structure_id).is_some_and(|object| object.naval)
+                && rules
+                    .object(structure_id)
+                    .is_some_and(|object| object.naval)
         }
         ProductionCategory::Aircraft => factory_type == FactoryType::AircraftType,
         ProductionCategory::Building | ProductionCategory::Defense => {
@@ -438,12 +443,7 @@ pub(in crate::sim) fn effective_progress_rate_ppm_for_type(
     let Some(obj) = rules.object(type_id) else {
         return PRODUCTION_RATE_SCALE;
     };
-    effective_progress_rate_ppm_for_category(
-        sim,
-        rules,
-        owner,
-        production_category_for_object(obj),
-    )
+    effective_progress_rate_ppm_for_category(sim, rules, owner, production_category_for_object(obj))
 }
 
 #[cfg(test)]
