@@ -640,12 +640,14 @@ use crate::sim::world::Simulation;
 // `+0x6DD` set, and combat serves a building's Mission_Attack request instead
 // of deciding its shot. Layout is unchanged, but a 220 save's buildings hold
 // no mission and would idle on a MissionClass stub, so reject it.
-// 221 -> 222: Infantry uses its native Foot SpeedType default, live AStar/Walk
+// 221 -> 222: pending production commands carry no house of their own; they
+// act on their envelope's house. Dropping the fields changes the bincode schema.
+// 222 -> 223: Infantry uses its native Foot SpeedType default, live AStar/Walk
 // cell admission and ordered Walk responses. Engineer hut entry and repaired
 // structural side-cell consumers consequently change saved continuations.
 // Foot+68A now retains its exact path-failure sound byte through a snapshot.
 // Existing valid SpeedType variant tags and zero-latch hash streams are preserved.
-const SNAPSHOT_VERSION: u32 = 222;
+const SNAPSHOT_VERSION: u32 = 223;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3591,8 +3593,9 @@ mod tests {
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
         // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
         // 220 -> 221: buildings' Guard and Attack missions.
-        // 221 -> 222: live Infantry movement/repair and structural side consumers.
-        assert_eq!(super::SNAPSHOT_VERSION, 222);
+        // 221 -> 222: production commands take their envelope's house.
+        // 222 -> 223: live Infantry movement/repair and structural side consumers.
+        assert_eq!(super::SNAPSHOT_VERSION, 223);
     }
 
     #[test]

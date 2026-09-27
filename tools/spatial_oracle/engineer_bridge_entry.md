@@ -185,7 +185,7 @@ Ordinary construction clears it, while original raw Load and no-init Foot
 construction preserve supplied1 and255. The existing sound consumer receives
 the rules-named centred request; Walk's clear points follow the reached native
 branches. Drive/Ship's first rejection can retry before clearing and therefore
-does not consume the byte when merely requesting the sound. Hash feature222
+does not consume the byte when merely requesting the sound. Hash feature223
 adds only a nonzero tagged suffix; previous zero-state hashes stay unchanged.
 No ordinary gameplay arming writer has been established. The direct/alias
 scan is bounded and does not prove global unreachability; this remains an

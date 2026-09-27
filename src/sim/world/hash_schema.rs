@@ -176,7 +176,7 @@ pub(super) enum HashFeature {
     /// Foot+68A is a retained byte, even though its sound guard only tests
     /// nonzero. A tagged suffix for nonzero values preserves the former
     /// zero-byte streams; earlier projections omit this byte entirely.
-    FootScoldLatch = 222,
+    FootScoldLatch = 223,
 }
 
 impl HashSchema {

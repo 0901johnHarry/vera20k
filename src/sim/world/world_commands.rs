@@ -1314,39 +1314,32 @@ impl Simulation {
                 ry,
                 producer_ids,
             } => self.set_rally_point_for_producers(command_owner, producer_ids, *rx, *ry, rules),
-            Command::QueueProduction { owner, type_id, .. } => {
+            // Production events act on the event's own house (the
+            // EventClass header's house id); the payload names no owner.
+            Command::QueueProduction { type_id, .. } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::enqueue_by_type(self, rules, &owner_s, &type_s)
+                production::enqueue_by_type(self, rules, command_owner, &type_s)
             }
-            Command::TogglePauseProduction { owner, category } => {
-                let owner_s = self.interner.resolve(*owner).to_string();
-                production::toggle_pause_for_owner_category(self, &owner_s, *category)
+            Command::TogglePauseProduction { category } => {
+                production::toggle_pause_for_owner_category(self, command_owner, *category)
             }
-            Command::CycleProducerFocus { owner, category } => {
+            Command::CycleProducerFocus { category } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 production::cycle_active_producer_for_owner_category(
-                    self, rules, &owner_s, *category,
+                    self,
+                    rules,
+                    command_owner,
+                    *category,
                 )
             }
-            Command::PlaceReadyBuilding {
-                owner,
-                type_id,
-                rx,
-                ry,
-            } => {
+            Command::PlaceReadyBuilding { type_id, rx, ry } => {
                 let Some(rules) = rules else { return false };
-                if self.interner.get(command_owner) != Some(*owner) {
-                    return false;
-                }
-                let owner_s = self.interner.resolve(*owner).to_string();
                 let type_s = self.interner.resolve(*type_id).to_string();
                 let placed = production::place_ready_building_with_overlays(
                     self,
                     rules,
-                    &owner_s,
+                    command_owner,
                     &type_s,
                     *rx,
                     *ry,
@@ -1359,21 +1352,21 @@ impl Simulation {
                     // a placement event whose Unlimbo fails speaks
                     // `EVA_CannotDeployHere` when `this == PlayerPtr`; the
                     // app applies the local-owner half.
-                    self.sound_events
-                        .push(SimSoundEvent::CannotDeployHere { owner: *owner });
+                    if let Some(owner) = self.interner.get(command_owner) {
+                        self.sound_events
+                            .push(SimSoundEvent::CannotDeployHere { owner });
+                    }
                 }
                 placed
             }
-            Command::CancelLastProduction { owner } => {
+            Command::CancelLastProduction => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
-                production::cancel_last_for_owner(self, rules, &owner_s)
+                production::cancel_last_for_owner(self, rules, command_owner)
             }
-            Command::CancelProductionByType { owner, type_id } => {
+            Command::CancelProductionByType { type_id } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::cancel_by_type_for_owner(self, rules, &owner_s, &type_s)
+                production::cancel_by_type_for_owner(self, rules, command_owner, &type_s)
             }
             // The SELL event (`EventClass::Execute 0x004C6F20`): the target's
             // owner must be the event's house (`0x004C6F45`); a building
@@ -2432,18 +2425,7 @@ impl Simulation {
         ids.sort_unstable();
         ids.dedup();
         for stable_id in ids {
-            let eligible = self
-                .substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(|entity| {
-                    entity.category == crate::map::entities::EntityCategory::Structure
-                        && command_owner.eq_ignore_ascii_case(self.interner.resolve(entity.owner()))
-                        && self
-                            .object_type(entity.type_ref(), rules)
-                            .is_some_and(|obj| obj.has_rally_line())
-                });
-            if eligible {
+            if self.takes_rally_point(stable_id, command_owner, rules) {
                 if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
                     entity.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(rx, ry)));
                 }
@@ -2453,6 +2435,26 @@ impl Simulation {
         // SetRallyPoint 0x00443A69` speaks inside the click handler, after the
         // rally EventClass is pushed and before it executes — the app owns it.
         true
+    }
+
+    /// Whether a rally order from `owner` reaches this building: `owner`'s
+    /// structure whose type has a rally point. gamemd's cell click
+    /// (`BuildingClass::Active_Click_With 0x004436F0`) calls `SetRallyPoint`
+    /// only for a building with `HasRallyPoint` (vt+0x284, `0x00443792`) or
+    /// an `UndeploysInto=` type (`0x0044377E`); the undeploy arm's
+    /// repack-and-move order is not ported. The click and the event share
+    /// this rule so no building the event ignores is announced.
+    pub(crate) fn takes_rally_point(&self, stable_id: u64, owner: &str, rules: &RuleSet) -> bool {
+        self.substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| {
+                entity.category == crate::map::entities::EntityCategory::Structure
+                    && owner.eq_ignore_ascii_case(self.interner.resolve(entity.owner()))
+                    && self
+                        .object_type(entity.type_ref(), rules)
+                        .is_some_and(|obj| obj.has_rally_line())
+            })
     }
 
     /// Drop the entity's depot contact slot before a new order retasks it.
