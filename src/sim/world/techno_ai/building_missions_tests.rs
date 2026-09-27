@@ -1038,3 +1038,71 @@ fn retail_dustbowl_pillbox_guards_attacks_and_returns_to_guard() {
 fn retail_dustbowl_sentry_gun_guards_attacks_and_returns_to_guard() {
     retail_defence_guards_attacks_and_returns("NALASR", "Russians", "Americans", "AMCV", "E1");
 }
+
+/// A retail Tesla Coil (`[TESLA]`, art `[NATSLA]`: `IsAnimDelayedFire=yes`,
+/// `DelayedFireDelay=28`)
+/// through the production frame. Each OK of its Mission_Attack arms the
+/// delayed shot and swaps the anims (`0x0044B630..0x0044B6C2`): the Active
+/// anim's slot 3 empties and `SpecialAnim=NATSLA_B` plays in slot 10.
+/// ProcessDelayedFire (`0x004503F0`) counts the 28 down from that same Update
+/// and fires 27 frames after the arming.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_tesla_coil_charges_before_each_shot() {
+    let (mut scenario, coil, truck, _) =
+        retail_dustbowl_defence("TESLA", "Russians", "Americans", "AMCV");
+    let slots = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let sim = scenario.sim();
+        let entity = sim.substrate.entities.get(coil).unwrap();
+        let name = |slot: usize| {
+            entity.building_anim_slots[slot].map(|anim| {
+                sim.interner
+                    .resolve(sim.anim(anim).unwrap().type_id)
+                    .to_string()
+            })
+        };
+        (name(3), name(10))
+    };
+    let armed = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let entity = scenario.sim().substrate.entities.get(coil).unwrap();
+        entity.pending_building_fire.is_some()
+    };
+    retail_frame(&mut scenario, Vec::new());
+    assert_eq!(
+        slots(&scenario),
+        (Some("NATSLA_A".to_string()), None),
+        "the idle anim plays before the first shot"
+    );
+
+    let (mut arms, mut shots) = (Vec::new(), Vec::new());
+    for frame in 0..400_u32 {
+        let was_armed = armed(&scenario);
+        let output = retail_frame(&mut scenario, Vec::new());
+        if !was_armed && armed(&scenario) {
+            assert_eq!(
+                slots(&scenario),
+                (None, Some("NATSLA_B".to_string())),
+                "the charge replaces the idle anim"
+            );
+            arms.push(frame);
+        }
+        for event in output
+            .fire_events
+            .iter()
+            .filter(|event| event.attacker_id == coil)
+        {
+            assert_eq!(event.target, TargetKind::Entity(truck));
+            shots.push(frame);
+        }
+        if shots.len() == 3 {
+            break;
+        }
+    }
+    println!("TESLA: armed at {arms:?}, shots at {shots:?}");
+    assert_eq!(shots.len(), 3, "the coil acquires the MCV and fires");
+    assert_eq!(arms.len(), 3);
+    assert!(
+        arms.iter().zip(&shots).all(|(arm, shot)| shot - arm == 27),
+        "each shot 27 frames after its arming"
+    );
+}

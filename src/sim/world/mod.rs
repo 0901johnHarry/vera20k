@@ -6396,8 +6396,8 @@ impl Simulation {
             // combat Phase-2 window (pre-death state — a unit whose target died
             // this tick keeps aiming at it this tick; idle-return starts next
             // tick). This is the unchanged write point; tick_turret_rotation
-            // above still skips Units (it owns Aircraft/Building barrels until
-            // their slices land).
+            // above skips Units (it owns only the legacy Infantry barrels; a
+            // building's turns through its Mission_Attack).
             crate::sim::world::unit_post::apply_unit_facing(
                 &mut self.substrate.entities,
                 &combat_result.unit_facing,

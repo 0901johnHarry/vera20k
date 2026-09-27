@@ -15,14 +15,15 @@
 //!   (`0x005B32F2..0x005B3302`). Guard and Sticky run Mission_Guard
 //!   (`0x004496B0`, dispatch table `0x005B34E8`), Area Guard too (`0x00449A40`
 //!   jumps to it), Attack runs Mission_Attack (`0x0044ACF0`), Selling runs
-//!   Sell ([`Simulation::visit_building_down`]) and a building with no
-//!   mission Mission_Default (`0x005B2E10`, 450 frames).
+//!   Sell ([`Simulation::visit_building_down`]), and a mission the building
+//!   has no handler for, or none, a MissionClass stub (450 frames).
 //! - the range drop at the end of the Update (`0x00440378..0x004403C6`).
 //!
 //! Mission_Attack's FireAt (`0x0044B6D0`) is VERA's combat emission: the OK
 //! arm asks the combat phase for the shot
 //! ([`crate::sim::combat::FireRequests::buildings`]), which emits it without
-//! asking GetFireError again.
+//! asking GetFireError again. A building fires no ordinary shot without that
+//! request.
 //!
 //! Evidence: `tools/spatial_oracle/building_guard_attack.json`, replayed in
 //! the tests below: Mission_Guard's returns and Scenario draws per arm,
@@ -33,6 +34,19 @@
 //! for an odd one).
 //!
 //! RESIDUALS, each with its later owner:
+//! - The frame position of a building's shot. Native fires FireAt inside the
+//!   building's own Logic visit and runs ProcessDelayedFire later in the same
+//!   Update (`0x004400F4`); VERA emits both in the combat phase after the
+//!   Logic pass, like every class's FireAt (the draw-order residual
+//!   `docs/plans/2026-09-21-combat-parity.md` records for all of them).
+//!   Trigger: every building shot. Effect: the shot's Scenario draws
+//!   (GetROF's `RandomRanged(0, 2)` at `0x006FD09E`, the bullet's own) and
+//!   its rearm and ammo writes follow the Logic visits of the objects after
+//!   the building, not precede them; the bullet still takes its first AI at
+//!   the tail of the same pass ([`Simulation::visit_combat_tail`]).
+//!   Frequency: every frame a building fires while a later object draws.
+//!   Downstream: the Scenario stream's order in that frame. Later owner:
+//!   FireAt moving into each object's Logic visit.
 //! - Gattling (D11): Mission_Guard's stage update (`0x004496C1..0x004496DF`),
 //!   Mission_Attack's charge and decay calls (`0x70DE70`, `0x70E000`) and
 //!   their `+0xC4` resets. Trigger: every `[YAGGUN]` visit. Effect: its
@@ -42,13 +56,25 @@
 //!   charged tower or arming its own delayed shot) and `+0x664 = 0` on the
 //!   null-target and drop tails. VERA fires a Prism tower at once. Trigger:
 //!   every `[ATESLA]` shot. Effect: no forwarding and no charge delay.
-//! - Unarmed status 1 (`0x00449817..0x00449940`): a depot's, airfield's or
-//!   bunker's radio sweep that queues Repair for a docking contact, and a
-//!   WeaponsFactory's ClearBibArea (`0x00449540`); and the UnitReload
-//!   contact block (`0x00449970..0x004499B5`). Trigger: a Guard dispatch of
-//!   GADEPT, NADEPT, YADEPT, GAAIRC or AMRADR, whose dock owners already run
-//!   their repair and reload; no retail WeaponsFactory type clears
-//!   HasStupidGuardMode, so ClearBibArea is dormant.
+//! - The docking radio of an unarmed building's Guard (the depot/airfield
+//!   docking chain). Status 1 of a `UnitRepair=` (`+0x16A9`), `UnitReload=`
+//!   (`+0x16AA`) or `Bunker=` (`+0x16AB`) type walks its radio contacts
+//!   (`0x00449817..0x00449918`): one on Enter under 64 leptons away that answers
+//!   ROGER to message `0x13` gets the building a queued Repair and the
+//!   handler returns 1 without its `RandomRanged(0, 2)`
+//!   (`0x00449942..0x0044995C`). A `UnitReload=` type also sends its contact
+//!   `0x1D`, then `0x13`, and queues Repair on ROGER before its usual draw
+//!   (`0x00449970..0x004499B5`). VERA's handler stays on Guard and draws.
+//!   Trigger: a Service Depot's repair, an airfield's reload, a Tank Bunker
+//!   entry (GADEPT, NADEPT, YADEPT, GAAIRC, AMRADR, NATBNK). Effect: the
+//!   building's queued mission and the Scenario draw count differ while the
+//!   contact docks, so every later Scenario draw differs from native.
+//!   Frequency: common in ordinary play. The contacts' answers to `0x13` and
+//!   `0x1D`, and whether that Repair commences (the unarmed arm sets no
+//!   `+0x6DD`), belong to that chain with BuildingClass::Mission_Repair
+//!   (`0x0044B780`); the dock owners run the repair and reload meanwhile.
+//!   The WeaponsFactory's ClearBibArea (`0x00449540`) after the walk is
+//!   dormant: no retail WeaponsFactory type clears HasStupidGuardMode.
 //! - The `+0x148` count of the OK and REARM arms (`0x0044B713`,
 //!   `0x0044B23C`), a turret-animation counter only presentation reads.
 //! - Status 0's `Begin_Mode(1)` (`0x0044995D`): the idle body, presentation.
@@ -78,6 +104,7 @@ use super::target_scan::{
 use super::{ObjectAiCtx, mission_handlers_run};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::building_art::requested_damage_state;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::combat_weapon::{self, WeaponSlot};
 use crate::sim::combat::fire_error::FireError;
@@ -86,10 +113,17 @@ use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;
 
-/// Mission_Default (`0x005B2E10`): 450 frames.
+/// The MissionClass stubs a building's table holds for every mission it has
+/// no handler of its own for (`0x005B2E10..0x005B2FC0`; its Capture,
+/// Sabotage and Harvest slots jump to them, `0x0044B760`, `0x0044B770`):
+/// 450 frames.
 const DEFAULT_MISSION_DELAY: i32 = 450;
 /// An unarmed HasStupidGuardMode building's Guard return (`0x004497F4`).
 const STUPID_GUARD_DELAY: i32 = 100;
+/// The building anim slots of `ActiveAnim=` and `SpecialAnim=` (Building
+/// `+0x55C` + 4 x slot; their names at BuildingType `+0x1018` and `+0x11F4`).
+const ACTIVE_ANIM_SLOT: u8 = 3;
+const SPECIAL_ANIM_SLOT: u8 = 10;
 
 /// One of Update's two ready checks (module doc).
 pub(super) fn ready_commence(sim: &mut Simulation, id: u64) {
@@ -138,11 +172,19 @@ pub(super) fn dispatch(
             mission_guard(sim, id, rules)
         }
         Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx),
-        // Out of the dispatch table (`0x005B30B8`): Mission_Default.
-        None => DEFAULT_MISSION_DELAY,
-        // The other missions a building takes (Unload, Repair, Missile, Open)
-        // keep their existing owners.
-        Some(_) => return,
+        // BuildingClass's own Unload (`0x0044D880`), Construction
+        // (`0x00449A50`), Repair (`0x0044B780`), Missile (`0x0044C980`) and
+        // Open (`0x0044E440`) keep their existing owners.
+        Some(
+            MissionType::Unload
+            | MissionType::Construction
+            | MissionType::Repair
+            | MissionType::Missile
+            | MissionType::Open,
+        ) => return,
+        // Every other slot of the building's table, and no mission (above
+        // `0x1F`, `0x005B30BB`), is a MissionClass stub.
+        _ => DEFAULT_MISSION_DELAY,
     };
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.write_dispatch_epilogue(now as i32, delay);
@@ -313,8 +355,17 @@ fn clear_ai_counter(sim: &mut Simulation, id: u64) {
 /// The OK arm (`0x0044B2BC`): a Prism tower (D7, module doc) and an ordinary
 /// building shoot, an `IsAnimDelayedFire=` one arms its delayed shot
 /// (`0x0044B630..0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the
-/// weapon, `+0x704` = 1) for ProcessDelayedFire (`0x004503F0`), which this
-/// same Update runs in the combat phase.
+/// weapon, `+0x704` = 1) for ProcessDelayedFire (`0x004503F0`), which native
+/// runs later in this same Update (`0x004400F4`) and VERA in the combat phase
+/// (module doc).
+///
+/// Arming also swaps the building's anims (`0x0044B66E..0x0044B6C2`): the
+/// Active anim's slot 3 is emptied (`0x00451E40`) and the SpecialAnim plays
+/// in slot 10, its Damaged variant at or below ConditionYellow (`0x00451890`,
+/// the Tesla Coil's charge and its `Report=`). Nothing in play gives the
+/// Active anim back when the SpecialAnim ends: BuildingClass's vt+0x28
+/// (`0x0044E9AA`) replays it only for a `Grinding=` type, so it returns with
+/// a power restore.
 fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
     let Some(obj) = sim
         .substrate
@@ -336,16 +387,21 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
         .map(|art| art.delayed_fire_delay);
     match delayed_fire_delay {
         Some(delay) if !prism => {
-            if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                entity.pending_building_fire = Some(PendingBuildingFire {
-                    remaining_ticks: delay,
-                    weapon_slot: if weapon == 1 {
-                        WeaponSlot::Secondary
-                    } else {
-                        WeaponSlot::Primary
-                    },
-                });
-            }
+            let Some(entity) = sim.substrate.entities.get_mut(id) else {
+                return;
+            };
+            entity.pending_building_fire = Some(PendingBuildingFire {
+                remaining_ticks: delay,
+                weapon_slot: if weapon == 1 {
+                    WeaponSlot::Secondary
+                } else {
+                    WeaponSlot::Primary
+                },
+            });
+            let damaged =
+                requested_damage_state(entity.health, obj.strength, rules.general.condition_yellow);
+            sim.clear_building_anim_slot(id, ACTIVE_ANIM_SLOT);
+            let _ = sim.set_building_anim_slot(id, SPECIAL_ANIM_SLOT, damaged, false, 0, rules);
         }
         _ => {
             sim.fire_requests.buildings.insert(id);
@@ -471,9 +527,25 @@ impl Simulation {
     /// not operational (vt+0x350, `0x004555D0`) takes none; any other keeps a
     /// target its slot-0 weapon cannot aim (none, or an `AA=` projectile,
     /// BulletType `+0x2A4`) or one in range of SelectWeapon's weapon
-    /// (vt+0x3AC). Other objects admit every target here. InRange's line of
-    /// fire reads no OverlayTypeClass table here (a wall between them is not
-    /// seen); Mission_Attack's GetFireError asks with it and drops the target.
+    /// (vt+0x3AC). Other objects admit every target here.
+    ///
+    /// RESIDUALS:
+    /// - InRange's line of fire reads no OverlayTypeClass table here, because
+    ///   `Simulation` holds none, so a wall between them is not seen. Trigger:
+    ///   retaliation against, or an order onto, a target behind a wall.
+    ///   Effect: the building takes a target native refuses; its next
+    ///   Mission_Attack asks GetFireError with the table and drops it, and
+    ///   the Guard visit that took it queued Attack without its
+    ///   `RandomRanged(0, 2)`. Frequency: rare. Later owner: the overlay table
+    ///   moving into `Simulation`.
+    /// - The restore after a cell target expires
+    ///   (`combat::combat_aoe::expire_cell_target_references`) holds only the
+    ///   entity store and puts the suspended target back without this
+    ///   admission. Trigger: a building whose retaliation suspended its
+    ///   mission and whose later cell target expires. Effect: a Selling,
+    ///   unpowered or out-of-range building keeps that target until its next
+    ///   Mission_Attack or range drop. Frequency: rare. Later owner: that
+    ///   restore moving onto `Simulation`.
     pub(crate) fn building_admits_target(
         &self,
         id: u64,

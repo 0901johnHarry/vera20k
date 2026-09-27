@@ -2675,6 +2675,9 @@ fn admit_attacker_fire<'r>(
         }
     };
     let code = if snap.category == EntityCategory::Structure && delayed_building_slot.is_none() {
+        if !snap.mission_fire_request {
+            return None;
+        }
         fire_error::FireError::Ok
     } else {
         let mut code = None;
@@ -3934,10 +3937,12 @@ pub(super) fn emit_admitted_fire(
     // not `IsGattling=` (`0x006FF349..0x006FF38F`, every class); a gattling's
     // report is its stage loop (`combat::gattling`).
     // RESIDUAL: a building keeps its per-shot report. The Gattling Cannon's
-    // loop starts in BuildingClass::Mission_Attack (`0x0044ACF0`), which VERA
-    // does not have yet; without the gate it would fire silently. Trigger:
-    // every `[YAGGUN]` shot. Effect: the loop's first sample on each shot in
-    // place of the stage loop. Goes with the building attack mission.
+    // loop starts in BuildingClass::Mission_Attack's charge and decay calls
+    // (`0x70DE70`, `0x70E000`), which VERA's Mission_Attack does not make yet
+    // (residual D11 in `world::techno_ai::building_missions`); without the
+    // gate it would fire silently. Trigger: every `[YAGGUN]` shot. Effect:
+    // the loop's first sample on each shot in place of the stage loop. Goes
+    // with D11.
     let report_sound_id = weapon
         .report
         .as_ref()
@@ -4417,8 +4422,13 @@ pub(crate) fn tick_combat(
     // building through the passive Greatest_Threat scan, whose ring bound
     // (`0x006F917F..0x006F91A3`) and In_Range gate (`0x006F727E..0x006F729F`)
     // each have an IsOccupied arm VERA's scan does not model yet. The target
-    // this writes reaches fire through the building's Guard -> Attack mission
-    // flip (`techno_ai::building_missions`), like a passive pick.
+    // this picks reaches fire through the building's Guard -> Attack mission
+    // flip (`techno_ai::building_missions`), like a passive pick, so it takes
+    // the best-ranked candidate the building's own GetFireError does not
+    // refuse for good (AMMO, ILLEGAL, CANT, RANGE: Mission_Attack's drop tail,
+    // `0x0044B0DE`) and commits it through BuildingClass::SetTarget. A refused
+    // pick would otherwise churn Guard -> Attack -> Guard every frame, the
+    // Guard dispatch's draw skipped each time.
     for &id in &keys {
         let (is_candidate, owner, pos_rx, pos_ry, sub_x, sub_y, type_id, _barrel_facing) = {
             let entity = match world.substrate.entities.get(id) {
@@ -4489,7 +4499,7 @@ pub(crate) fn tick_combat(
         // Scan for best hostile target using garrison weapon for Verses/projectile checks.
         // gamemd's Greatest_Threat calls GetWeapon on the building, which returns
         // the occupant's OccupyWeapon — not the occupant's primary weapon.
-        let mut best_target: Option<(i64, u8, u64)> = None;
+        let mut ranked: Vec<(i64, u8, u64)> = Vec::new();
         let owner_str = world.interner.resolve(owner);
         for candidate in world.substrate.entities.values() {
             if candidate.stable_id() == id
@@ -4557,17 +4567,46 @@ pub(crate) fn tick_combat(
                 Some(o) if combat_weapon::is_armed(candidate, o) => 0u8,
                 _ => 1,
             };
-            let rank = (dist_sq, class, candidate.stable_id());
-            match best_target {
-                Some(current) if rank >= current => {}
-                _ => best_target = Some(rank),
-            }
+            ranked.push((dist_sq, class, candidate.stable_id()));
         }
+        ranked.sort_unstable();
 
-        if let Some((_, _, target_id)) = best_target {
-            if let Some(building) = world.substrate.entities.get_mut(id) {
-                building.attack_target = Some(AttackTarget::new(target_id));
-            }
+        let world_view: &Simulation = world;
+        let pick = world_view.substrate.entities.get(id).and_then(|building| {
+            ranked
+                .iter()
+                .map(|&(_, _, target_id)| target_id)
+                .find(|&target_id| {
+                    let target = TargetKind::Entity(target_id);
+                    let code = fire_error_world::FireSubject {
+                        world: world_view,
+                        rules,
+                        overlay_registry,
+                        fog,
+                        firer: building,
+                        obj,
+                        target: Some(target),
+                        weapon_index: 0,
+                        garrison: fire_error_world::garrison_weapon(
+                            world_view, rules, building, obj, target,
+                        ),
+                    }
+                    .fire_error(true);
+                    !matches!(
+                        code,
+                        fire_error::FireError::Ammo
+                            | fire_error::FireError::Illegal
+                            | fire_error::FireError::Cant
+                            | fire_error::FireError::Range
+                    )
+                })
+        });
+        if let Some(target_id) = pick {
+            let _ = world.assign_target_represented(
+                id,
+                Some(TargetKind::Entity(target_id)),
+                Some(rules),
+            );
         }
     }
 
@@ -4704,13 +4743,16 @@ pub(crate) fn tick_combat(
             })
         });
 
-        snapshots.push(build_attacker_snapshot(
-            entity,
-            attack_target,
-            pending_infantry_fire,
-            pending_building_fire,
-            garrison,
-        ));
+        snapshots.push(AttackerSnapshot {
+            mission_fire_request: fire_requests.buildings.contains(&id),
+            ..build_attacker_snapshot(
+                entity,
+                attack_target,
+                pending_infantry_fire,
+                pending_building_fire,
+                garrison,
+            )
+        });
     }
     // Native combat resolves each object inline during the single live-object
     // (reveal/insertion-order) AI walk, so firing/damage/kill-credit order is

@@ -110,10 +110,13 @@ fn a_drained_defence_drops_its_target_and_holds_fire() {
     );
 }
 
-/// The base asks the ROF timer (T45, REARM) before range (T61, RANGE), and a
-/// building keeps a target on REARM but drops it on RANGE (`0x0044B728`).
+/// The base asks the ROF timer (T45, REARM) before range (T61, RANGE), and
+/// Mission_Attack's table (`0x0044B728`) keeps a target on REARM but drops it
+/// on RANGE. This fixture runs no Update tail: in production the range drop
+/// at the end of BuildingClass::Update (`0x00440378`) still drops the
+/// reloading building's out-of-range target that frame.
 #[test]
-fn a_building_drops_a_target_out_of_range_but_keeps_it_while_reloading() {
+fn mission_attack_drops_a_target_out_of_range_but_not_while_reloading() {
     assert_eq!(coil_shot((20, 10), |_| {}), (300, false));
     assert_eq!(
         coil_shot((20, 10), |coil| coil.rearm_timer =

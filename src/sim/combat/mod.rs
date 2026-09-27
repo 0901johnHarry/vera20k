@@ -2877,6 +2877,7 @@ pub(crate) fn build_attacker_snapshot(
         in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
+        mission_fire_request: false,
     }
 }
 
