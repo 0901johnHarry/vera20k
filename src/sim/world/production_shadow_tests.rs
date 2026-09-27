@@ -928,8 +928,13 @@ fn cancel_one_partial_refund_to_house_credits() {
         "mid-build: some but not all of the cost is spent"
     );
     let credits_before = sim.houses[&owner].economy.credits;
-    let ok =
-        crate::sim::production::cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GRIZZLY");
+    let ok = crate::sim::production::cancel_by_type_for_owner(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GRIZZLY",
+        false,
+    );
     assert!(ok, "the active build is cancellable");
     let refunded = sim.houses[&owner].economy.credits - credits_before;
     assert_eq!(
@@ -981,6 +986,7 @@ fn factory_flip_determinism_over_scripted_commands() {
                         &rules,
                         "Americans",
                         "BEAG",
+                        false,
                     );
                 }
                 sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);

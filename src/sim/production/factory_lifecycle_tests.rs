@@ -2,10 +2,7 @@
 //! object graph, accounting and successor work before returning to the caller.
 
 use super::tests::spawn_structure;
-use super::{
-    ProductionCategory, cancel_by_type_for_owner, cancel_last_for_owner, enqueue_by_type,
-    tick_production,
-};
+use super::{ProductionCategory, cancel_by_type_for_owner, enqueue_by_type, tick_production};
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::{intern::InternedId, rng::SimRng, world::Simulation};
 use std::collections::BTreeMap;
@@ -146,13 +143,26 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
         let allocated = sim.substrate.next_stable_object_id;
         assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
         assert_eq!(sim.substrate.next_stable_object_id, allocated);
-        assert!(cancel_last_for_owner(&mut sim, &rules, "Americans"));
+        // ABANDON removes the queued copy first (`0x004FAAEE`), then the active build.
+        assert!(cancel_by_type_for_owner(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            false
+        ));
         assert_eq!(held_id(&sim, owner, ProductionCategory::Vehicle), parent);
         assert_eq!(children(&sim, parent), child_ids);
         assert_eq!(sim.houses[&owner].economy.credits, 50_000);
         assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
-        assert!(cancel_last_for_owner(&mut sim, &rules, "Americans"));
+        assert!(cancel_by_type_for_owner(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            false
+        ));
         assert_gone(&sim, parent, &child_ids);
         assert_eq!(counts(&sim, owner), before);
         assert_eq!(sim.substrate.next_stable_object_id, allocated);
@@ -183,7 +193,8 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
             &mut sim,
             &rules,
             "Americans",
-            parent_type
+            parent_type,
+            false
         ));
         assert_gone(&sim, parent, &child_ids);
         let successor = held_id(&sim, owner, ProductionCategory::Vehicle);
@@ -327,17 +338,21 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     );
     assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "YAREFN"));
     let mut expected = sim.scenario_rng.clone();
     let credits = sim.houses[&owner].economy.credits;
-    assert!(cancel_by_type_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        "YAREFN"
-    ));
-    // Queue-first cancellation consumes the uncharged tail before ready fallback.
+    // A PRODUCE of the type waiting finished takes Begin_Production's resume
+    // branch (0x004FA5A8..0x004FA5C4), which the build start refuses at stage 54
+    // (0x004C9ECD): nothing is queued or charged.
+    assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "YAREFN"));
     assert_eq!(held_id(&sim, owner, ProductionCategory::Building), parent);
+    assert!(
+        sim.production
+            .factory_shadow
+            .view(owner, ProductionCategory::Building)
+            .unwrap()
+            .queue
+            .is_empty()
+    );
     assert_eq!(sim.houses[&owner].economy.credits, credits);
     // A different queued type does not intercept cancellation of the ready head.
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "GAPOWR"));
@@ -345,7 +360,8 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
         &mut sim,
         &rules,
         "Americans",
-        "YAREFN"
+        "YAREFN",
+        false
     ));
     assert_gone(&sim, parent, &child_ids);
     assert_eq!(sim.houses[&owner].economy.credits, credits + 1000);
@@ -486,56 +502,19 @@ fn terminal_infantry_delivery_failure_refunds_and_promotes() {
 
 #[test]
 fn active_cancel_without_house_does_not_create_refund_account() {
-    for cancel_last in [true, false] {
+    for all in [false, true] {
         let (mut sim, rules, owner) = world(0xfac7_0014);
         assert!(enqueue_by_type(&mut sim, &rules, "Americans", "SMIN"));
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         sim.houses.remove(&owner);
         let rng = sim.scenario_rng.logical_state();
-        let cancelled = if cancel_last {
-            cancel_last_for_owner(&mut sim, &rules, "Americans")
-        } else {
-            cancel_by_type_for_owner(&mut sim, &rules, "Americans", "SMIN")
-        };
+        let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "SMIN", all);
         assert!(cancelled);
         assert_gone(&sim, parent, &child_ids);
         assert!(!sim.houses.contains_key(&owner));
         assert_eq!(sim.scenario_rng.logical_state(), rng);
     }
-}
-
-#[test]
-fn missing_type_ready_without_held_object_is_removed_without_refund() {
-    let (mut sim, rules, owner) = world(0xfac7_0015);
-    let missing = sim.interner.intern("REMOVED_TYPE");
-    sim.production
-        .ready_by_owner
-        .entry(owner)
-        .or_default()
-        .push_back(missing);
-    let before = sim.houses[&owner].economy.credits;
-    let rng = sim.scenario_rng.logical_state();
-    assert!(cancel_by_type_for_owner(
-        &mut sim,
-        &rules,
-        "Americans",
-        "REMOVED_TYPE"
-    ));
-    assert_eq!(sim.houses[&owner].economy.credits, before);
-    assert_eq!(sim.scenario_rng.logical_state(), rng);
-    assert!(
-        sim.production
-            .ready_by_owner
-            .get(&owner)
-            .is_none_or(|ready| ready.is_empty())
-    );
-    assert!(
-        sim.production
-            .factory_shadow
-            .view(owner, ProductionCategory::Building)
-            .is_none()
-    );
 }
 
 #[test]

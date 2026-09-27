@@ -72,8 +72,6 @@ pub enum BuildDisabledReason {
     MissingPrerequisite(String),
     NoFactory,
     AtBuildLimit,
-    InsufficientCredits,
-    PlacementModeUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +118,6 @@ pub enum ProductionCategory {
 pub enum BuildQueueState {
     Queued,
     Building,
-    NoFunds,
     Paused,
     Done,
 }
@@ -130,7 +127,6 @@ impl BuildQueueState {
         match self {
             Self::Queued => "Queued",
             Self::Building => "Building",
-            Self::NoFunds => "On Hold",
             Self::Paused => "Paused",
             Self::Done => "Done",
         }
@@ -166,23 +162,12 @@ impl BuildOption {
     /// Whether the sidebar should show a cameo for this option.
     ///
     /// Tech-tree, faction, and factory failures hide the item entirely — the
-    /// player never sees a cameo they cannot act on. A credit shortfall or a
-    /// reached build limit keeps the cameo visible (greyed): the item is still
-    /// part of the player's tech tree, it just can't start right now.
+    /// player never sees a cameo they cannot act on. A reached build limit
+    /// keeps the cameo visible: the item is still part of the player's tech
+    /// tree, it just can't start right now.
     pub fn visible_in_sidebar(&self) -> bool {
-        self.enabled
-            || matches!(
-                self.reason,
-                Some(BuildDisabledReason::InsufficientCredits)
-                    | Some(BuildDisabledReason::AtBuildLimit)
-            )
+        self.enabled || self.reason == Some(BuildDisabledReason::AtBuildLimit)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum BuildMode {
-    Strict,
-    PrototypeRelaxed,
 }
 
 /// Player production state.

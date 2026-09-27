@@ -12,10 +12,9 @@ use winit::keyboard::KeyCode;
 
 use crate::app::AppState;
 use crate::app::input::commands::{
-    cancel_build_by_type, cancel_last_build, cycle_active_producer, cycle_local_owner,
-    place_ready_building_at_cursor, place_starter_base_for_local_owner, preferred_local_owner,
-    preferred_local_owner_name, queue_build_by_type, schedule_command,
-    spawn_test_units_for_local_owner, toggle_pause_build_queue,
+    cancel_build_by_type, cycle_active_producer, cycle_local_owner, place_ready_building_at_cursor,
+    place_starter_base_for_local_owner, preferred_local_owner, preferred_local_owner_name,
+    queue_build_by_type, schedule_command, spawn_test_units_for_local_owner, suspend_build,
 };
 use crate::app::input::context_order::try_queue_context_order_at_screen_point;
 use crate::app::input::entity_pick::{
@@ -998,40 +997,58 @@ pub(crate) fn push_local_eva(state: &mut AppState, event: &str) {
         });
 }
 
-/// A left click on a build cameo — `SelectClass::Action @ 0x006AAD00`, the
-/// `(param_2 & 1)` branch. The cameo is only clickable when the option is
-/// enabled, which is the `HouseClass::CheckBuildLimit` pass the native line
-/// requires (`sidebar_eva::build_click_outcome`'s `buildable`).
-fn sidebar_build_click(state: &mut AppState, type_id: &str) {
-    let category = state
+/// A press on a build cameo: `SelectClass::Action @ 0x006AAD00`'s decision
+/// (`sidebar_eva::cameo_click`) against the local player's queue, then its
+/// `GUIBuildSound`, EVA line and event.
+fn sidebar_cameo_press(
+    state: &mut AppState,
+    type_id: &str,
+    press: sidebar_eva::CameoPress,
+    at_build_limit: bool,
+) {
+    let Some(category) = state
         .rules()
         .and_then(|rules| rules.object(type_id))
-        .map(crate::sim::production::category_for_object);
-    let Some(category) = category else {
-        queue_build_by_type(state, type_id);
+        .map(crate::sim::production::category_for_object)
+    else {
         return;
     };
     let queue = local_queue_view(state);
     let type_iid = local_interned(state, type_id);
-    match sidebar_eva::held_click(&queue, category, type_iid) {
-        sidebar_eva::HeldClick::Resume => {
-            push_local_eva(state, sidebar_eva::start_line_for(category));
-            toggle_pause_build_queue(state, category);
+    let click = sidebar_eva::cameo_click(&queue, category, type_iid, press, at_build_limit);
+    if click.sound {
+        let sound = state
+            .rules()
+            .and_then(|rules| rules.general.gui_build_sound.clone());
+        crate::app::App::play_shell_ui_sound_by_id(state, sound.as_deref());
+    }
+    if let Some(line) = click.eva {
+        push_local_eva(state, line);
+    }
+    match click.order {
+        None => {}
+        Some(sidebar_eva::CameoOrder::Produce) => queue_build_by_type(state, type_id),
+        Some(sidebar_eva::CameoOrder::Suspend) => suspend_build(state, category),
+        Some(sidebar_eva::CameoOrder::Abandon { all }) => {
+            cancel_build_by_type(state, type_id, all);
         }
-        sidebar_eva::HeldClick::NoFundsSameType => {
-            push_local_eva(state, sidebar_eva::start_line_for(category));
-        }
-        sidebar_eva::HeldClick::Fresh => {
-            let outcome = sidebar_eva::build_click_outcome(
-                category,
-                sidebar_eva::factory_busy(&queue, category),
-                true,
-            );
-            if let Some(line) = outcome.eva {
-                push_local_eva(state, line);
-            }
-            if outcome.queue {
-                queue_build_by_type(state, type_id);
+        // Residual (building path): `HouseClass::Manual_Place @ 0x004FB840`
+        // ignores the click while a placement is pending (`0x004FB852..
+        // 0x004FB859`); VERA's second click leaves placement mode instead.
+        Some(sidebar_eva::CameoOrder::Place) => {
+            let armed = state
+                .armed_building_type()
+                .is_some_and(|armed| armed.eq_ignore_ascii_case(type_id));
+            if armed {
+                state.match_state.input.targeting_mode = None;
+                state.match_state.input.building_placement_preview = None;
+            } else {
+                state.match_state.input.targeting_mode = Some(
+                    crate::app::types::TargetingMode::BuildingPlacement(type_id.to_string()),
+                );
+                let gadgets = &mut state.match_state.match_presentation.sidebar_gadget_state;
+                gadgets.repair_mode_on = false;
+                gadgets.sell_mode_on = false;
             }
         }
     }
@@ -1060,26 +1077,18 @@ pub(crate) fn apply_sidebar_action(state: &mut AppState, action: SidebarAction) 
                     .sidebar_scroll_rows_parked[tab_scroll_slot(tab)];
             }
         }
-        SidebarAction::BuildType(type_id) => {
-            sidebar_build_click(state, &type_id);
-        }
-        SidebarAction::ArmPlacement(type_id) => {
-            state.match_state.input.targeting_mode =
-                Some(crate::app::types::TargetingMode::BuildingPlacement(type_id));
-            state
-                .match_state
-                .match_presentation
-                .sidebar_gadget_state
-                .repair_mode_on = false;
-            state
-                .match_state
-                .match_presentation
-                .sidebar_gadget_state
-                .sell_mode_on = false;
-        }
-        SidebarAction::ClearPlacementMode => {
-            state.match_state.input.targeting_mode = None;
-            state.match_state.input.building_placement_preview = None;
+        SidebarAction::CameoPress {
+            type_id,
+            right,
+            shift,
+            at_build_limit,
+        } => {
+            let press = if right {
+                sidebar_eva::CameoPress::Right { shift }
+            } else {
+                sidebar_eva::CameoPress::Left
+            };
+            sidebar_cameo_press(state, &type_id, press, at_build_limit);
         }
         SidebarAction::ArmSuperWeapon(section) => {
             // `SelectClass::Action 0x006AAFA7`: a ready, targeted superweapon
@@ -1112,37 +1121,8 @@ pub(crate) fn apply_sidebar_action(state: &mut AppState, action: SidebarAction) 
             state.match_state.input.targeting_mode = None;
             log::info!("SuperWeapon targeting cleared");
         }
-        SidebarAction::TogglePauseQueue(category) => {
-            // `SelectClass::Action 0x006AB007/0x006AB108` (right click on the
-            // running build → `EVA_OnHold`) and `0x006AB498` (left click on
-            // the held build → `EVA_Building`/`EVA_Training`): VERA's pause
-            // button is that pair. Native needs a factory to hold.
-            let queue = local_queue_view(state);
-            if sidebar_eva::factory_busy(&queue, category) {
-                let paused = sidebar_eva::factory_paused(&queue, category);
-                push_local_eva(state, sidebar_eva::pause_toggle_line(category, paused));
-            }
-            toggle_pause_build_queue(state, category);
-        }
         SidebarAction::CycleProducer(category) => {
             cycle_active_producer(state, category);
-        }
-        SidebarAction::CancelBuild(type_id) => {
-            // `SelectClass::Action 0x006AAE39`: `EVA_Canceled`, see
-            // `sidebar_eva::cancel_line`.
-            let queue = local_queue_view(state);
-            let type_iid = local_interned(state, &type_id);
-            if let Some(line) = sidebar_eva::cancel_line(&queue, type_iid) {
-                push_local_eva(state, line);
-            }
-            cancel_build_by_type(state, &type_id);
-        }
-        SidebarAction::CancelLastBuild => {
-            let queue = local_queue_view(state);
-            if let Some(line) = sidebar_eva::cancel_line(&queue, None) {
-                push_local_eva(state, line);
-            }
-            cancel_last_build(state);
         }
         SidebarAction::CycleOwner => {
             cycle_local_owner(state);

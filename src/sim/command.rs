@@ -510,13 +510,12 @@ pub enum Command {
     // The production commands act on the envelope's house, as a native
     // production event acts on its header's house id (`EventClass::Execute
     // 0x004C6CB0` reads it at `0x004C6CC4`); none names another.
-    /// Enqueue a production item.
-    QueueProduction {
-        type_id: InternedId,
-        mode: QueueMode,
-    },
-    /// Pause/resume the active production item of one category queue.
-    TogglePauseProduction { category: ProductionCategory },
+    /// PRODUCE (`EventClass::Execute` type 14 → `HouseClass::Begin_Production
+    /// @ 0x004FA350`): start, queue or resume a build of this type.
+    QueueProduction { type_id: InternedId },
+    /// SUSPEND (type 15 → `HouseClass::Suspend_Production @ 0x004FA910`):
+    /// put the category's running build on hold.
+    SuspendProduction { category: ProductionCategory },
     /// Cycle the active producer facility of one category.
     CycleProducerFocus { category: ProductionCategory },
     /// Place one completed building that is waiting for placement.
@@ -525,10 +524,10 @@ pub enum Command {
         rx: u16,
         ry: u16,
     },
-    /// Cancel the last queued production item.
-    CancelLastProduction,
-    /// Cancel one queued item of a specific type (right-click cameo).
-    CancelProductionByType { type_id: InternedId },
+    /// ABANDON (type 16) or, with `all`, ABANDON_ALL (type 46) →
+    /// `HouseClass::Abandon_Production @ 0x004FAA10`: cancel a queued copy, or
+    /// every copy, of this type and then the active build of it.
+    CancelProductionByType { type_id: InternedId, all: bool },
     /// Sell a building, refunding a percentage of its cost and despawning it.
     SellBuilding { entity_id: u64 },
     /// Toggle repair mode on a building (spend credits to heal over time).

@@ -3,79 +3,111 @@
 //! The registry owns queue/charge kernels. This world-facing owner completes
 //! their constructor, disposal, ready projection and successor work before an
 //! operation returns. Native StartProduction/AbandonProduction/StartNextQueued:
-//! 0x004C9C70 / 0x004CA0E0 / 0x004CA5A0; see FACTORY_CREDIT_SYSTEM_GHIDRA_REPORT.md.
+//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0; see FACTORY_CREDIT_SYSTEM_GHIDRA_REPORT.md.
 //! Delivery selection and placement keep their existing phase positions and
 //! call settlement only after their successful world effects have committed.
 
 use super::CancelOutcome;
-use super::factory::{time_to_build, time_to_build_inputs};
-use super::production_queue::{credits_entry_for_owner, credits_for_owner};
+use super::factory::{EnqueueOutcome, time_to_build, time_to_build_inputs};
+use super::production_queue::credits_entry_for_owner;
 use super::production_tech::{
-    build_option_for_owner, production_category_for_object, should_use_relaxed_build_mode,
-    supports_live_production,
+    build_option_for_owner, production_category_for_object, supports_live_production,
 };
-use super::production_types::{BuildMode, ProductionCategory};
+use super::production_types::{BuildDisabledReason, ProductionCategory};
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
-/// Enqueue a specific unit type.
+/// The PRODUCE event for `type_id`: `HouseClass::Begin_Production @ 0x004FA350`.
+///
+/// The build needs a factory that may build it: VERA's build option, for
+/// gamemd's `FindFactory(0,1,1)` (`0x004FA438`), whose `CanBuild(type, 1, 1)`
+/// lets a type at its build limit through while one of the house's factories
+/// holds it (`0x004F8348`). A stopped active object of the same type takes the
+/// same-type branch (`0x004FA5A8..0x004FA5C4`): a held build resumes, and a
+/// finished one stays (the build start refuses stage 54, `0x004C9ECD`).
+/// Otherwise `FactoryClass::StartProduction @ 0x004C9C70` starts or queues
+/// the build. Nothing on this path checks money: a short wallet stalls the
+/// steps instead. A queue already holding `[General] MaximumQueuedObjects=`
+/// builds refuses the append (`0x004C9CDE`) and scolds the local player.
+///
+/// Residual: an append refused at the build limit (`0x004C9CEA`) scolds as
+/// well; VERA refuses it before StartProduction, silently. Trigger: a second
+/// click on a limited type whose first PRODUCE has not executed yet. Rare,
+/// sound only.
 pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &str) -> bool {
-    let relaxed: bool = should_use_relaxed_build_mode(sim, rules, owner);
-    let mode = if relaxed {
-        BuildMode::PrototypeRelaxed
-    } else {
-        BuildMode::Strict
-    };
-    if let Some(opt) = build_option_for_owner(sim, rules, owner, type_id, mode) {
-        if !opt.enabled {
-            return false;
-        }
-    } else {
+    let Some(option) = build_option_for_owner(sim, rules, owner, type_id) else {
         return false;
-    }
+    };
     let Some(obj) = rules.object(type_id) else {
         return false;
     };
     if !supports_live_production(obj) {
         return false;
     }
-    let queue_category = production_category_for_object(obj);
-    let owner_credits = credits_for_owner(sim, owner);
-    if obj.cost <= 0 || owner_credits < obj.cost {
-        return false;
-    }
-    // The upfront debit is RETIRED at the authority flip: the per-step `advance_one_step`
-    // (driven by `step_all` at the Phase-7 head) charges the cost down over the build
-    // against the one wallet (`house.economy.credits`). Enqueue only checks affordability (the
-    // can-afford-to-START gate above) and appends the queue item.
+    let category = production_category_for_object(obj);
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
-    let enqueue_order = next_enqueue_order(sim);
-    let cost = obj.cost.max(0);
-    // P5d: append directly to the registry queue-of-record (create-or-append). With no
-    // active build the registry arms it inline (the retired reconcile SEED); otherwise it
-    // joins the FIFO tail. No upfront debit (the per-step charge owns the cost).
-    let started = sim.production.factory_shadow.enqueue(
+    if let Some((active, held, finished)) = sim
+        .production
+        .factory_shadow
+        .active_object(owner_id, category)
+        && active == type_interned
+        && (held || finished)
+    {
+        let may_resume = matches!(
+            option.reason,
+            None | Some(BuildDisabledReason::AtBuildLimit)
+        );
+        if !held || !may_resume {
+            return false;
+        }
+        let time_to_build =
+            time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+        let frame = sim.session.binary_frame;
+        sim.production
+            .factory_shadow
+            .resume(owner_id, category, time_to_build, frame);
+        return true;
+    }
+    if !option.enabled {
+        return false;
+    }
+    let enqueue_order = sim.production.next_enqueue_order;
+    let outcome = sim.production.factory_shadow.enqueue(
         owner_id,
-        queue_category,
+        category,
         type_interned,
         enqueue_order,
-        cost,
+        obj.cost.max(0),
+        rules.general.maximum_queued_objects,
     );
-    if started {
-        start_active_production(sim, rules, owner_id, queue_category, type_interned)
+    if outcome == EnqueueOutcome::QueueFull {
+        sim.sound_events
+            .push(SimSoundEvent::ProductionRefused { owner: owner_id });
+        return false;
+    }
+    sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
+    if outcome == EnqueueOutcome::Started {
+        start_active_production(sim, rules, owner_id, category, type_interned)
             .expect("validated StartProduction type must construct one Techno");
     }
     true
 }
 
-fn next_enqueue_order(sim: &mut Simulation) -> u64 {
-    let order = sim.production.next_enqueue_order;
-    sim.production.next_enqueue_order = sim.production.next_enqueue_order.saturating_add(1);
-    order
+/// The SUSPEND event: `HouseClass::Suspend_Production @ 0x004FA910` puts the
+/// category's running build on hold.
+pub fn suspend_production(sim: &mut Simulation, owner: &str, category: ProductionCategory) -> bool {
+    let Some(owner_id) = sim.interner.get(owner) else {
+        return false;
+    };
+    let frame = sim.session.binary_frame;
+    sim.production
+        .factory_shadow
+        .suspend(owner_id, category, frame)
 }
+
 /// Start the build an active factory head holds. `HouseClass::Begin_Production
 /// @ 0x004FA350` runs `FactoryClass::StartProduction @ 0x004C9C70`, which calls
 /// `type->CreateInstance(owner)` and stores the result at `Factory+0x58`, then
@@ -120,98 +152,46 @@ fn start_active_production(
         .start_rate(owner_id, category, time_to_build, frame);
     Some(stable_id)
 }
-/// Cancel the most recently queued item for this owner.
-///
-/// Post-flip refund rule: a queued (tail) item was never charged, so removing it
-/// refunds NOTHING; only the active build (a single-item queue, where the most-recent
-/// item IS the front) is abandoned with the C8 PARTIAL refund (`original_balance -
-/// balance`) routed through the registry against the one wallet (`house.economy.credits`).
-pub fn cancel_last_for_owner(sim: &mut Simulation, _rules: &RuleSet, owner: &str) -> bool {
-    let owner_id = sim.interner.intern(owner);
-    // P5d: the registry owns the queue-of-record. `cancel_last` finds the global-max stamp
-    // across the owner's factories (tail-back, else the active build) and removes it — a
-    // tail item uncharged (QueuedRemoved), the active build with the C8 PARTIAL refund. The
-    // abandon arm only fires for an empty tail, so no StartNextQueued advance is needed.
-    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
-    let outcome = if let Some(house) = sim.houses.get_mut(&owner_id) {
-        registry.cancel_last(owner_id, &mut house.economy)
-    } else {
-        let mut throwaway = crate::sim::economy::Economy::default();
-        registry.cancel_last(owner_id, &mut throwaway)
-    };
-    registry.prune_all_idle();
-    sim.production.factory_shadow = registry;
-    if let CancelOutcome::AbandonedActive {
-        entity_id: Some(entity_id),
-        ..
-    } = outcome
-    {
-        let discarded = sim.discard_constructed_limbo(entity_id);
-        debug_assert!(
-            discarded,
-            "AbandonProduction destroys the held limbo object"
-        );
-    }
-    matches!(
-        outcome,
-        CancelOutcome::QueuedRemoved | CancelOutcome::AbandonedActive { .. }
-    )
-}
-
-/// Route a cancel of `type_id` for (owner, category) through the registry `cancel_one`
-/// (the single precedence source: queued-tail FIRST, else active-abandon), charging the
-/// C8 partial refund (or none, for a queued copy) against the ONE wallet
-/// (`house.economy.credits`). The private caller completes held-object disposal and promotion before returning.
-fn registry_cancel_active(
-    sim: &mut Simulation,
-    owner_id: InternedId,
-    category: ProductionCategory,
-    type_id: InternedId,
-) -> CancelOutcome {
-    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
-    let outcome = if let Some(house) = sim.houses.get_mut(&owner_id) {
-        registry.cancel_one(owner_id, category, type_id, &mut house.economy)
-    } else {
-        // No house to refund into; the cancel still resolves the registry deterministically.
-        let mut throwaway = crate::sim::economy::Economy::default();
-        registry.cancel_one(owner_id, category, type_id, &mut throwaway)
-    };
-    sim.production.factory_shadow = registry;
-    outcome
-}
-
-/// Cancel one queued/active production of `type_id` for this owner (right-click cameo).
-///
-/// Routed through the registry `cancel_one` (the single precedence source): a QUEUED
-/// tail copy is removed FIRST (FIRST front-to-back match, NO refund — a queued item was
-/// never charged), else the ACTIVE build is abandoned with the C8 PARTIAL refund
-/// (`original_balance - balance`) into the one wallet (`house.economy.credits`). This replaces
-/// the legacy `.rev()` last-match + full-cost refund (a DRIFT under the per-step charge).
-/// When neither matches (or the build is complete-but-held), falls back to the
-/// completed-building ready queue.
+/// The ABANDON / ABANDON_ALL events for `type_id` (a right click, with Shift
+/// for all): `HouseClass::Abandon_Production @ 0x004FAA10` through the
+/// registry's `cancel_one`, paying the refund into the house's wallet. An
+/// abandoned active object is destroyed, a finished building stops waiting
+/// for placement, and the next queued build starts (`0x004FAC96`).
 pub fn cancel_by_type_for_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
     type_id: &str,
+    all: bool,
 ) -> bool {
+    let Some(obj) = rules.object(type_id) else {
+        return false;
+    };
+    let category = production_category_for_object(obj);
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
-    // The registry is keyed by ProductionCategory; resolve it from the type (the same
-    // routing `enqueue_by_type` used, so the item is in this category's queue).
-    let category = match rules.object(type_id) {
-        Some(obj) => production_category_for_object(obj),
-        None => return cancel_ready_by_type_for_owner(sim, rules, owner, type_id),
-    };
-
-    match registry_cancel_active(sim, owner_id, category, type_interned) {
-        CancelOutcome::QueuedRemoved => {
-            // A queued (tail) copy was removed in the registry; the active build keeps
-            // running. Sweep any now-idle factory (none here, but keep it uniform).
-            sim.production.factory_shadow.prune_all_idle();
-            true
+    let registry = &mut sim.production.factory_shadow;
+    let outcome = match sim.houses.get_mut(&owner_id) {
+        Some(house) => {
+            registry.cancel_one(owner_id, category, type_interned, all, &mut house.economy)
         }
-        CancelOutcome::AbandonedActive { entity_id, .. } => {
+        // No house to refund into; the abandon still resolves deterministically.
+        None => registry.cancel_one(
+            owner_id,
+            category,
+            type_interned,
+            all,
+            &mut crate::sim::economy::Economy::default(),
+        ),
+    };
+    match outcome {
+        CancelOutcome::NoMatch => return false,
+        CancelOutcome::QueuedRemoved => {}
+        CancelOutcome::AbandonedActive {
+            entity_id,
+            finished,
+            ..
+        } => {
             if let Some(entity_id) = entity_id {
                 let discarded = sim.discard_constructed_limbo(entity_id);
                 debug_assert!(
@@ -219,71 +199,32 @@ pub fn cancel_by_type_for_owner(
                     "AbandonProduction destroys the held limbo object"
                 );
             }
-            // C7: the active build was abandoned (object cleared, tail intact). Promote the
-            // next queued entry into the active slot, cost-seeded and started.
+            if finished {
+                remove_ready_entry(sim, owner_id, type_interned);
+            }
             advance_after_delivery(sim, rules, owner_id, category);
-            sim.production.factory_shadow.prune_all_idle();
-            true
-        }
-        CancelOutcome::NoMatch => {
-            // Not an active/queued build (or a complete-but-held one) -> the ready queue.
-            cancel_ready_by_type_for_owner(sim, rules, owner, type_id)
         }
     }
-}
-
-/// Cancel a completed building from the ready_by_owner queue (awaiting placement).
-/// Used as fallback when `cancel_by_type_for_owner` finds nothing in the build queue.
-fn cancel_ready_by_type_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    type_id: &str,
-) -> bool {
-    let owner_id = sim.interner.intern(owner);
-    let type_interned = sim.interner.intern(type_id);
-    let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner_id) else {
-        return false;
-    };
-    // Remove last instance of this type (consistent with queue cancel using .rev()).
-    let ready_idx = ready_queue
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, tid)| **tid == type_interned)
-        .map(|(i, _)| i);
-    let Some(idx) = ready_idx else {
-        return false;
-    };
-    ready_queue.remove(idx);
-    if ready_queue.is_empty() {
-        sim.production.ready_by_owner.remove(&owner_id);
-    }
-    let category = rules
-        .object(type_id)
-        .map(production_category_for_object)
-        .unwrap_or(ProductionCategory::Building);
-    let held_entity_id = sim
-        .production
-        .factory_shadow
-        .view(owner_id, category)
-        .and_then(|view| view.object)
-        .filter(|object| object.type_id == type_interned)
-        .and_then(|object| object.entity_id);
-    // Refund full cost.
-    if let Some(obj) = rules.object(type_id) {
-        *credits_entry_for_owner(sim, owner) += obj.cost.max(0);
-    }
-    if let Some(entity_id) = held_entity_id {
-        let discarded = sim.discard_constructed_limbo(entity_id);
-        debug_assert!(
-            discarded,
-            "ready-building cancel destroys Factory+0x58 object"
-        );
-    }
-    advance_after_delivery(sim, rules, owner_id, category);
+    sim.production.factory_shadow.prune_all_idle();
     true
 }
+
+/// Drop one `ready_by_owner` entry of `type_id`: its finished building left
+/// the factory.
+fn remove_ready_entry(sim: &mut Simulation, owner: InternedId, type_id: InternedId) -> bool {
+    let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner) else {
+        return false;
+    };
+    let Some(index) = ready_queue.iter().position(|&ready| ready == type_id) else {
+        return false;
+    };
+    ready_queue.remove(index);
+    if ready_queue.is_empty() {
+        sim.production.ready_by_owner.remove(&owner);
+    }
+    true
+}
+
 /// C7 StartNextQueued after a successful delivery (or a completed-but-undeliverable refund):
 /// clear the delivered active object and promote the next queued entry into the active slot,
 /// cost-seeded from `rules` and started at this frame.
@@ -343,19 +284,12 @@ fn discard_active_factory_entity(
 fn consume_ready_building(
     sim: &mut Simulation,
     rules: &RuleSet,
-    owner_id: crate::sim::intern::InternedId,
-    type_id: crate::sim::intern::InternedId,
+    owner_id: InternedId,
+    type_id: InternedId,
     category: ProductionCategory,
 ) -> bool {
-    let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner_id) else {
+    if !remove_ready_entry(sim, owner_id, type_id) {
         return false;
-    };
-    let Some(index) = ready_queue.iter().position(|&queued| queued == type_id) else {
-        return false;
-    };
-    ready_queue.remove(index);
-    if ready_queue.is_empty() {
-        sim.production.ready_by_owner.remove(&owner_id);
     }
     advance_after_delivery(sim, rules, owner_id, category);
     true
@@ -515,14 +449,7 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
     }
     // An abandoned finished building no longer waits for placement.
     for (owner, type_id) in lifecycle.abandoned_finished {
-        if let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner)
-            && let Some(index) = ready_queue.iter().position(|&ready| ready == type_id)
-        {
-            ready_queue.remove(index);
-            if ready_queue.is_empty() {
-                sim.production.ready_by_owner.remove(&owner);
-            }
-        }
+        remove_ready_entry(sim, owner, type_id);
     }
     sim.production.factory_shadow = registry;
     for (owner, category, type_id) in lifecycle.promoted {

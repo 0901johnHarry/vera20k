@@ -10,15 +10,17 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::world::Simulation;
 
-use super::production_queue::credits_for_owner;
 use super::production_types::*;
 
+/// Whether `owner` may build `type_id` now, and why not. No money check: a
+/// build starts without the funds and stalls its steps instead
+/// (`SelectClass::Action @ 0x006AAD00` and `HouseClass::Begin_Production
+/// @ 0x004FA350` test none).
 pub(super) fn build_option_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: &str,
     type_id: &str,
-    mode: BuildMode,
 ) -> Option<BuildOption> {
     let obj = rules.object(type_id)?;
     let queue_category = production_category_for_object(obj);
@@ -31,29 +33,23 @@ pub(super) fn build_option_for_owner(
     let mut reason: Option<BuildDisabledReason> = None;
     if obj.tech_level < 0 || house_tech_level.is_none_or(|level| obj.tech_level > level) {
         reason = Some(BuildDisabledReason::UnbuildableTechLevel);
-    } else if mode == BuildMode::Strict
-        && !obj.owner.is_empty()
-        && !owner_matches_any_build_identity(sim, owner, &obj.owner)
-    {
+    } else if !obj.owner.is_empty() && !owner_matches_any_build_identity(sim, owner, &obj.owner) {
         reason = Some(BuildDisabledReason::WrongOwner);
-    } else if mode == BuildMode::Strict
-        && !obj.required_houses.is_empty()
+    } else if !obj.required_houses.is_empty()
         && !owner_matches_any_build_identity(sim, owner, &obj.required_houses)
     {
         reason = Some(BuildDisabledReason::WrongHouse);
-    } else if mode == BuildMode::Strict
-        && !obj.forbidden_houses.is_empty()
+    } else if !obj.forbidden_houses.is_empty()
         && owner_matches_any_build_identity(sim, owner, &obj.forbidden_houses)
     {
         reason = Some(BuildDisabledReason::ForbiddenHouse);
-    } else if mode == BuildMode::Strict
-        && (obj.requires_stolen_allied_tech
-            || obj.requires_stolen_soviet_tech
-            || obj.requires_stolen_third_tech)
+    } else if obj.requires_stolen_allied_tech
+        || obj.requires_stolen_soviet_tech
+        || obj.requires_stolen_third_tech
     {
         // Spy infiltration not yet implemented — always block stolen-tech units.
         reason = Some(BuildDisabledReason::RequiresStolenTech);
-    } else if mode == BuildMode::Strict {
+    } else {
         // PrerequisiteOverride: if owner has ANY override building, skip normal prereqs.
         let override_satisfied = !obj.prerequisite_override.is_empty()
             && has_any_override_building(sim, owner, &obj.prerequisite_override);
@@ -64,7 +60,6 @@ pub(super) fn build_option_for_owner(
         }
     }
     if reason.is_none()
-        && mode == BuildMode::Strict
         && !has_factory_for_owner(
             &sim.substrate.entities,
             rules,
@@ -76,15 +71,11 @@ pub(super) fn build_option_for_owner(
         reason = Some(BuildDisabledReason::NoFactory);
     }
     // BuildLimit check: count owned entities + queued + ready-for-placement.
-    if reason.is_none() && mode == BuildMode::Strict {
-        if let Some(limit) = effective_build_limit(obj.build_limit) {
-            if count_owned_and_queued(sim, owner, &obj.id) >= limit {
-                reason = Some(BuildDisabledReason::AtBuildLimit);
-            }
-        }
-    }
-    if reason.is_none() && (obj.cost <= 0 || credits_for_owner(sim, owner) < obj.cost) {
-        reason = Some(BuildDisabledReason::InsufficientCredits);
+    if reason.is_none()
+        && let Some(limit) = effective_build_limit(obj.build_limit)
+        && count_owned_and_queued(sim, owner, &obj.id) >= limit
+    {
+        reason = Some(BuildDisabledReason::AtBuildLimit);
     }
     let type_interned = sim.interner.get(type_id).unwrap_or_default();
     Some(BuildOption {
@@ -100,17 +91,22 @@ pub(super) fn build_option_for_owner(
 
 /// P6 revalidation classifier: re-check an active/queued build's eligibility AFTER enqueue,
 /// so a build whose prerequisites / producing factory were lost is disposed of. Reproduces
-/// gamemd's `FindFactoryBuilding(1,0,1)` gate (the embedded `HouseClass::CanBuild` scan across
-/// the owner's candidate factory buildings): a tech-tree / owner / factory-presence failure ->
-/// `PermanentlyBlocked` (abandon); a pure credit stall (`on_hold`, handled per-step) or a
-/// build-limit "busy" is NOT a mid-build abandon -> `Buildable` (keep charging).
+/// gamemd's `FindFactory(1,0,1)` gate (the embedded `HouseClass::CanBuild` scan across the
+/// owner's candidate factory buildings): a tech-tree / owner / factory-presence failure ->
+/// `PermanentlyBlocked` (abandon); a build-limit "busy" is NOT a mid-build abandon ->
+/// `Buildable` (keep charging).
 ///
-/// `TemporarilyBlocked` (gamemd's `(1,0,1)` passes but `(1,1,1)` fails = a factory building
-/// exists but is UNPOWERED via an EMP/spy/trigger GoOffline event) is intentionally
-/// UNREACHABLE here: the Rust power model is per-house low-power, which gamemd applies as a
-/// RATE penalty (already modeled in `prepare_step_inputs`), NOT a suspend — gamemd SLOWS,
-/// it does not halt, production on a grid deficit. Per-building powered-down (EMP) is not yet
-/// modeled, so this arm is a forward seam for the EMP slice.
+/// gamemd makes this check in `HouseClass::Update_Factory_Queue @ 0x00509140`, which drops
+/// each queued build that fails it (`0x005091B0..0x005091EF`) and abandons a failing active
+/// one (`0x0050921C`). That pass runs when a building goes offline, online, into or out of
+/// limbo, or is read from a map; VERA revalidates every tick instead.
+///
+/// Residual: the pass also holds an active build that only offline factories could build
+/// (`FindFactory(1,1,1)` fails: `Suspend(0)` at `0x0050924D`, lifted at `0x00509283`).
+/// VERA has no such hold. Its only offline factory is one in a temporal warp
+/// (`GameEntity::building_online`), and a warp's start runs no update (`0x004521C0`), so the
+/// trigger is a later building event while every factory of the kind is warped. Effect: VERA
+/// keeps building. Frequency: rare.
 pub(in crate::sim) fn revalidate_eligibility(
     sim: &Simulation,
     rules: &RuleSet,
@@ -118,69 +114,46 @@ pub(in crate::sim) fn revalidate_eligibility(
     type_id: &str,
 ) -> super::factory::BuildEligibility {
     use super::factory::BuildEligibility;
-    match build_option_for_owner(sim, rules, owner, type_id, BuildMode::Strict) {
+    match build_option_for_owner(sim, rules, owner, type_id) {
         None => BuildEligibility::PermanentlyBlocked,
-        Some(opt) if opt.enabled => BuildEligibility::Buildable,
-        Some(opt) => match opt.reason {
-            // Credit stall + build-limit "busy" are not abandons in gamemd — keep building.
-            Some(BuildDisabledReason::InsufficientCredits)
-            | Some(BuildDisabledReason::AtBuildLimit)
-            | None => BuildEligibility::Buildable,
-            // Tech-tree / owner / factory loss -> CanBuild fails -> abandon.
-            Some(_) => BuildEligibility::PermanentlyBlocked,
-        },
+        // A build-limit "busy" is not an abandon in gamemd — keep building.
+        Some(opt) if matches!(opt.reason, None | Some(BuildDisabledReason::AtBuildLimit)) => {
+            BuildEligibility::Buildable
+        }
+        // Tech-tree / owner / factory loss -> CanBuild fails -> abandon.
+        Some(_) => BuildEligibility::PermanentlyBlocked,
     }
 }
 
-pub(super) fn build_options_for_owner_mode(
+/// Every rules type's build option for `owner`, by category.
+pub(super) fn all_build_options_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: &str,
-    mode: BuildMode,
 ) -> Vec<BuildOption> {
     let mut out: Vec<BuildOption> = Vec::new();
     for id in &rules.building_ids {
-        if let Some(opt) = build_option_for_owner(sim, rules, owner, id, mode) {
+        if let Some(opt) = build_option_for_owner(sim, rules, owner, id) {
             out.push(opt);
         }
     }
     for id in &rules.infantry_ids {
-        if let Some(opt) = build_option_for_owner(sim, rules, owner, id, mode) {
+        if let Some(opt) = build_option_for_owner(sim, rules, owner, id) {
             out.push(opt);
         }
     }
     for id in &rules.vehicle_ids {
-        if let Some(opt) = build_option_for_owner(sim, rules, owner, id, mode) {
+        if let Some(opt) = build_option_for_owner(sim, rules, owner, id) {
             out.push(opt);
         }
     }
     for id in &rules.aircraft_ids {
-        if let Some(opt) = build_option_for_owner(sim, rules, owner, id, mode) {
+        if let Some(opt) = build_option_for_owner(sim, rules, owner, id) {
             out.push(opt);
         }
     }
     out.sort_by_key(|opt| opt.queue_category);
     out
-}
-
-pub(super) fn should_use_relaxed_build_mode(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> bool {
-    if !prototype_fallback_enabled() {
-        return false;
-    }
-    let strict = build_options_for_owner_mode(sim, rules, owner, BuildMode::Strict);
-    !strict.iter().any(|o| o.enabled)
-}
-
-/// Prototype build fallback — disabled by default.
-/// If needed in the future, move to GameOptions (synced across multiplayer peers).
-const PROTOTYPE_BUILD_FALLBACK: bool = false;
-
-pub(super) fn prototype_fallback_enabled() -> bool {
-    PROTOTYPE_BUILD_FALLBACK
 }
 
 pub(super) fn owner_matches_any_build_identity(

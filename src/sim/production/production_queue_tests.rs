@@ -5,16 +5,17 @@ use std::collections::BTreeMap;
 
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
-    credits_for_owner, enqueue_by_type, queue_view_for_owner, tick_production,
-    toggle_pause_for_owner_category,
+    credits_for_owner, enqueue_by_type, queue_view_for_owner, suspend_production, tick_production,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
-use crate::sim::world::Simulation;
+use crate::sim::timer::CdTimer;
+use crate::sim::world::{SimSoundEvent, Simulation};
 
 // Re-use test helpers from the main production_tests module.
 // P5d: build state is now constructed by ARMING the registry (`arm_build_via`), not by
@@ -99,7 +100,8 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
         &mut sim,
         &rules,
         "Americans",
-        "E1"
+        "E1",
+        false
     ));
     assert!(sim.substrate.entities.get(e1_id).is_none());
     let promoted = sim
@@ -1106,8 +1108,7 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
         1,
     );
 
-    let paused =
-        toggle_pause_for_owner_category(&mut sim, "Americans", ProductionCategory::Infantry);
+    let paused = suspend_production(&mut sim, "Americans", ProductionCategory::Infantry);
     assert!(paused);
 
     // Run the actual frame owner, which now performs revalidation and charging.
@@ -1148,6 +1149,9 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
     assert!(vehicle.progress > 0);
 }
 
+/// Canceling a finished building abandons the factory's object, refunding the cost
+/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6), and
+/// drops the ready entry with it.
 #[test]
 fn cancel_by_type_removes_ready_building_and_refunds() {
     use super::cancel_by_type_for_owner;
@@ -1156,19 +1160,29 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     let rules = build_catalog_rules();
 
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 5000;
 
-    // Place a building in the ready queue (simulating completion).
     let americans_id = sim.interner.intern("Americans");
-    let garefn_id = sim.interner.intern("GAREFN");
-    sim.production
-        .ready_by_owner
-        .entry(americans_id)
-        .or_default()
-        .push_back(garefn_id);
+    arm_build_via(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GAREFN",
+        ProductionCategory::Building,
+        0,
+    );
+    // The fixture finishes the build with its balance paid off.
+    assert!(
+        sim.production
+            .factory_shadow
+            .test_arm_ready(americans_id, ProductionCategory::Building)
+    );
+    assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
+    assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
 
     let before_credits = credits_for_owner(&sim, "Americans");
 
-    let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN");
+    let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN", false);
     assert!(cancelled, "should cancel ready building");
 
     // Ready queue should be empty now.
@@ -1179,6 +1193,12 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
         .map(|q| q.len())
         .unwrap_or(0);
     assert_eq!(ready_count, 0, "ready queue should be empty after cancel");
+    assert!(
+        sim.production
+            .factory_shadow
+            .view(americans_id, ProductionCategory::Building)
+            .is_none()
+    );
 
     // Cost should be refunded.
     let after_credits = credits_for_owner(&sim, "Americans");
@@ -1187,81 +1207,136 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     assert_eq!(after_credits, before_credits + refund);
 }
 
+/// A build starts without money: nothing on the PRODUCE path checks the wallet
+/// (`HouseClass::Begin_Production @ 0x004FA350`), and the per-step charge in
+/// `step_all` pays for the build as it goes. An empty wallet still starts the
+/// build and is debited nothing.
 #[test]
-fn cancel_by_type_prefers_build_queue_over_ready_queue() {
-    use super::cancel_by_type_for_owner;
-
-    let mut sim = Simulation::new();
-    let rules = build_catalog_rules();
-
-    spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
-
-    // Put GAREFN in both the build queue AND ready queue.
-    let americans_id = sim.interner.intern("Americans");
-    let garefn_id = sim.interner.intern("GAREFN");
-    sim.production
-        .ready_by_owner
-        .entry(americans_id)
-        .or_default()
-        .push_back(garefn_id);
-    // P5d: arm the active GAREFN build directly in the registry (the cancel authority). The
-    // cancel then abandons this active build-queue copy first, before touching the ready queue.
-    arm_build_via(
-        &mut sim,
-        &rules,
-        "Americans",
-        "GAREFN",
-        ProductionCategory::Building,
-        0,
-    );
-
-    // First cancel should remove from build queue (not ready queue).
-    let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN");
-    assert!(cancelled);
-
-    // Ready queue should still have the item.
-    let ready_count = sim
-        .production
-        .ready_by_owner
-        .get(&americans_id)
-        .map(|q| q.len())
-        .unwrap_or(0);
-    assert_eq!(ready_count, 1, "ready queue should still have the item");
-
-    // Second cancel should remove from ready queue.
-    let cancelled2 = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN");
-    assert!(cancelled2);
-
-    let ready_count2 = sim
-        .production
-        .ready_by_owner
-        .get(&americans_id)
-        .map(|q| q.len())
-        .unwrap_or(0);
-    assert_eq!(
-        ready_count2, 0,
-        "ready queue should be empty after second cancel"
-    );
-}
-
-/// C3 (the charge flip): enqueuing an affordable item does NOT debit the wallet upfront
-/// — the per-step `step_all` charge debits it over the build. The can-afford-to-START
-/// affordability gate still permits the enqueue.
-#[test]
-fn no_upfront_charge_at_enqueue() {
+fn enqueue_starts_a_build_without_money_and_debits_nothing() {
     let mut sim = Simulation::new();
     let rules = basic_multi_queue_rules();
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10); // a UnitType war factory
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 5000;
-    let before = credits_for_owner(&sim, "Americans");
-    let ok = super::enqueue_by_type(&mut sim, &rules, "Americans", "MTNK");
-    assert!(
-        ok,
-        "an affordable MTNK is enqueuable (the affordability gate still permits START)"
-    );
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 0;
+    assert!(super::enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "MTNK"
+    ));
+    assert_eq!(credits_for_owner(&sim, "Americans"), 0);
+    let americans_id = sim.interner.intern("Americans");
+    let mtnk_id = sim.interner.intern("MTNK");
+    let factory = sim
+        .production
+        .factory_shadow
+        .view(americans_id, ProductionCategory::Vehicle)
+        .expect("the build starts a factory");
+    assert_eq!(factory.object.map(|o| o.type_id), Some(mtnk_id));
+    assert_eq!(factory.progress, 0);
+}
+
+fn hold_rules() -> RuleSet {
+    RuleSet::from_ini(&IniFile::from_str(
+        "[General]\nMaximumQueuedObjects=2\n\
+         [InfantryTypes]\n\
+         [VehicleTypes]\n0=MTNK\n1=AMCV\n\
+         [AircraftTypes]\n\
+         [BuildingTypes]\n0=GAWEAP\n\
+         [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
+         [AMCV]\nCost=3000\nStrength=1000\nSpeed=4\nTechLevel=1\nOwner=Americans\nBuildLimit=1\n\
+         [GAWEAP]\nFactory=UnitType\n",
+    ))
+    .expect("hold rules")
+}
+
+/// A funded American house with a war factory, for the hold and queue-cap tests.
+fn hold_world() -> (Simulation, RuleSet, InternedId) {
+    let rules = hold_rules();
+    let mut sim = Simulation::new();
+    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    let owner = sim.interner.intern("Americans");
+    (sim, rules, owner)
+}
+
+/// A PRODUCE resumes a held build even at its type's build limit: the held build
+/// counts toward the limit, and `CanBuild(type, 1, 1)` passes a type one of the
+/// house's factories holds (`0x004F8348`). The build start (`0x004C9EA0`)
+/// restarts the rate from the resume frame and queues nothing.
+#[test]
+fn a_held_build_at_its_build_limit_resumes_on_produce() {
+    let (mut sim, rules, owner) = hold_world();
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "AMCV"));
+    assert!(suspend_production(
+        &mut sim,
+        "Americans",
+        ProductionCategory::Vehicle
+    ));
+    // The factory is already stopped, so a second hold is refused (0x004C9E60).
+    assert!(!suspend_production(
+        &mut sim,
+        "Americans",
+        ProductionCategory::Vehicle
+    ));
     assert_eq!(
-        credits_for_owner(&sim, "Americans"),
-        before,
-        "enqueue does NOT debit upfront — the per-step charge does"
+        queue_view_for_owner(&sim, &rules, "Americans")[0].state,
+        BuildQueueState::Paused
     );
+    let option = super::production_tech::build_option_for_owner(&sim, &rules, "Americans", "AMCV")
+        .expect("the type stays listed");
+    assert_eq!(
+        option.reason,
+        Some(super::BuildDisabledReason::AtBuildLimit)
+    );
+
+    sim.session.binary_frame = 300;
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "AMCV"));
+    let factory = sim
+        .production
+        .factory_shadow
+        .test_factory_mut(owner, ProductionCategory::Vehicle)
+        .unwrap();
+    assert!(!factory.manual);
+    assert!(factory.step_rate_frames > 0);
+    assert_eq!(
+        factory.step_timer,
+        CdTimer::started(300, i32::from(factory.step_rate_frames))
+    );
+    assert!(factory.queue.is_empty(), "a resume queues nothing");
+    assert_eq!(
+        queue_view_for_owner(&sim, &rules, "Americans")[0].state,
+        BuildQueueState::Building
+    );
+    // Running, the build no longer passes the limit: gamemd's StartProduction
+    // refuses the append (0x004C9CEA), and VERA refuses it before that.
+    assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "AMCV"));
+}
+
+/// `[General] MaximumQueuedObjects=` caps the builds waiting behind the active
+/// one: StartProduction refuses the append past it (`0x004C9CDE`) and scolds the
+/// house's player (`0x004C9D3B..0x004C9D5F`).
+#[test]
+fn a_produce_past_the_queue_cap_is_refused_with_a_scold() {
+    let (mut sim, rules, owner) = hold_world();
+    assert_eq!(rules.general.maximum_queued_objects, 2);
+    let refusals = |sim: &Simulation| {
+        sim.sound_events
+            .iter()
+            .filter(|event| {
+                matches!(event, SimSoundEvent::ProductionRefused { owner: refused } if *refused == owner)
+            })
+            .count()
+    };
+    for _ in 0..3 {
+        assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+    }
+    assert_eq!(refusals(&sim), 0);
+    assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+    assert_eq!(refusals(&sim), 1);
+    let factory = sim
+        .production
+        .factory_shadow
+        .view(owner, ProductionCategory::Vehicle)
+        .unwrap();
+    assert_eq!(factory.queue.len(), 2);
 }

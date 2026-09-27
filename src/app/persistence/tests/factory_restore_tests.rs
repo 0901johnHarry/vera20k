@@ -191,7 +191,8 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         &mut runtime.simulation,
         &runtime.resources.rules,
         "Americans",
-        "PARENT"
+        "PARENT",
+        false
     ));
     assert_eq!(
         crate::sim::production::credits_for_owner(&runtime.simulation, "Americans"),

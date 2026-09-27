@@ -1313,13 +1313,13 @@ impl Simulation {
             } => self.set_rally_point_for_producers(command_owner, producer_ids, *rx, *ry, rules),
             // Production events act on the event's own house (the
             // EventClass header's house id); the payload names no owner.
-            Command::QueueProduction { type_id, .. } => {
+            Command::QueueProduction { type_id } => {
                 let Some(rules) = rules else { return false };
                 let type_s = self.interner.resolve(*type_id).to_string();
                 production::enqueue_by_type(self, rules, command_owner, &type_s)
             }
-            Command::TogglePauseProduction { category } => {
-                production::toggle_pause_for_owner_category(self, command_owner, *category)
+            Command::SuspendProduction { category } => {
+                production::suspend_production(self, command_owner, *category)
             }
             Command::CycleProducerFocus { category } => {
                 let Some(rules) = rules else { return false };
@@ -1356,14 +1356,10 @@ impl Simulation {
                 }
                 placed
             }
-            Command::CancelLastProduction => {
-                let Some(rules) = rules else { return false };
-                production::cancel_last_for_owner(self, rules, command_owner)
-            }
-            Command::CancelProductionByType { type_id } => {
+            Command::CancelProductionByType { type_id, all } => {
                 let Some(rules) = rules else { return false };
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::cancel_by_type_for_owner(self, rules, command_owner, &type_s)
+                production::cancel_by_type_for_owner(self, rules, command_owner, &type_s, *all)
             }
             // The SELL event (`EventClass::Execute 0x004C6F20`): the target's
             // owner must be the event's house (`0x004C6F45`); a building

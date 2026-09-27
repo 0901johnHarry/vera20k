@@ -403,6 +403,10 @@ pub enum SimSoundEvent {
     /// App layer gates this to the local human player and plays
     /// `EVA_CannotDeployHere`.
     CannotDeployHere { owner: InternedId },
+    /// `FactoryClass::StartProduction` refused to queue a build
+    /// (`0x004C9D3B..0x004C9D5F`): `[AudioVisual] ScoldSound=` when the house
+    /// is the local player's.
+    ProductionRefused { owner: InternedId },
     /// A chrono teleport happened — play the resolved warp sound at this position.
     /// Sim emits two of these per warp: one at the source cell with the unit's
     /// `ChronoOutSound=`, one at the destination cell with the unit's

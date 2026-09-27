@@ -656,7 +656,12 @@ use crate::sim::world::Simulation;
 // 225 -> 226: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
 // armed when a build starts (`0x004C9EA0`), and the stored sidebar build-time
 // estimates go. The factory and queue-entry schemas change.
-const SNAPSHOT_VERSION: u32 = 226;
+// 226 -> 227: the production commands are the native events: QueueProduction
+// loses its unused mode, SuspendProduction replaces the pause toggle,
+// CancelProductionByType gains ABANDON_ALL and CancelLastProduction goes. A
+// factory keeps its construction order when it promotes a queued build, and a
+// user hold now clears its rate and restarts its timer.
+const SNAPSHOT_VERSION: u32 = 227;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
