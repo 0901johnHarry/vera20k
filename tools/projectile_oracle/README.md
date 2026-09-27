@@ -142,3 +142,38 @@ regressions run in `python -m tools.run_tests`; they supply synthetic HLT instru
 not a second implementation of native collision behavior.
 
 The [collision ownership validation record](collision_ownership.validation.json) records checked replays, immutable golden hashes, Rust consumers and review fixes. The dependent [Anytown packet](../spatial_oracle/anytown_damage/README.md) has a checked source-provenance refresh command; historical production comparisons remain historical.
+
+## Arc solver domain observations
+
+`python -m tools.projectile_oracle.arc_domain --check` executes 288 input cases
+through original angle solver `48A9D0` and word solver `48A8D0`: 576 checked native
+calls. Each solver returns success in 196 cases and native failure in 92. Both
+success bytes and raw scratch outputs remain byte-identical in `arc_domain.json`.
+A native rejection is a valid observation; an execution exception now aborts the
+entire run instead of becoming an `*_error` golden field. The current corpus has
+no such error rows.
+
+The generator uses the shared `call`, executable identity and publisher directly;
+there is no eager RMG compatibility import, import-time emulation or automatic
+write. Default invocation and `--check` are read-only; `--write` and optional
+`--output <candidate.json>` are explicit. Repeat with `python -O -m` to check that
+safety gates remain active. The new sidecar records the supplied register/stack
+inputs, `0xCD` scratch sentinel, FPCW and bounded coverage.
+
+Negative and zero inputs characterize solver boundaries; they are not claims
+about values admitted by retail weapon rules. No upstream FireAt/type/INI loading,
+trajectory, timer, RNG or detach equivalence is established. The word results are
+retained native observations without a direct Rust consumer. The angle consumer
+checks native failure predicates and successful raw binary64 values; it is ignored
+by default because it requires the verified retail math tables. Run it explicitly:
+
+```sh
+python -m tools.cargo_run -- test -p vera20k --lib original_arc_solver_domain_and_failure_predicates -- --ignored
+```
+
+[The validation record](arc_domain.validation.json) records the native replay,
+unchanged golden hash and actual retail-backed Rust run. Shared import/help
+coverage for all migrated projectile and animation producers lives in
+`tools.tests.test_oracle_lifecycle`; each producer runs in a fresh interpreter,
+in normal and optimized Python. `tools.tests.test_arc_domain` separately verifies
+that a failed first or second solver cannot publish partial/error observations.

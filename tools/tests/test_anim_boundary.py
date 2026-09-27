@@ -1,5 +1,4 @@
 """Portable Anim oracle lifecycle checks; synthetic opcodes are not native goldens."""
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +9,7 @@ from unittest.mock import patch
 from tools import native_oracle
 from tools.anim_oracle import boundary
 from tools.tests.pe_fixture import pe_image
+from tools.tests.test_oracle_lifecycle import absent_retail_environment
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,13 +28,6 @@ def synthetic_image(opcodes):
     return pe_image([(ENTRY - native_oracle.IMAGE_BASE, 0x400, opcodes,
                       len(opcodes), 0x60000020)])
 
-
-def absent_retail_environment():
-    environment = dict(os.environ)
-    environment['VERA20K_GAMEMD_EXE'] = str(ROOT / 'deliberately-absent-anim-retail.exe')
-    environment.pop('RA2_DIR', None)
-    environment['PYTHONDONTWRITEBYTECODE'] = '1'
-    return environment
 
 
 class AnimBoundaryCompletionTests(unittest.TestCase):
@@ -74,41 +67,6 @@ class AnimBoundaryCompletionTests(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-
-class AnimBoundaryLifecycleTests(unittest.TestCase):
-    def test_import_and_help_are_inert_without_retail_in_normal_and_optimized_python(self):
-        script = r'''
-import importlib
-import runpy
-import sys
-from pathlib import Path
-from unittest.mock import patch
-from tools import native_oracle
-with patch.object(native_oracle, 'image_bytes', side_effect=RuntimeError('native bytes requested')), \
-     patch.object(native_oracle, 'run_checked', side_effect=RuntimeError('native execution requested')), \
-     patch.object(Path, 'write_text', side_effect=RuntimeError('unexpected text publication')), \
-     patch.object(Path, 'write_bytes', side_effect=RuntimeError('unexpected binary publication')):
-    if sys.argv[1] == 'import':
-        importlib.import_module('tools.anim_oracle.boundary')
-    else:
-        sys.argv = ['tools.anim_oracle.boundary', '--help']
-        runpy.run_module('tools.anim_oracle.boundary', run_name='__main__')
-'''
-        for optimized in (False, True):
-            for operation in ('import', 'help'):
-                with self.subTest(optimized=optimized, operation=operation):
-                    command = [sys.executable] + (['-O'] if optimized else [])
-                    result = subprocess.run(
-                        command + ['-c', script, operation], cwd=ROOT,
-                        env=absent_retail_environment(), capture_output=True, text=True,
-                        timeout=30,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    if operation == 'help':
-                        self.assertIn('--check', result.stdout)
-                        self.assertIn('--write', result.stdout)
-                        self.assertIn('--output', result.stdout)
 
 
 if __name__ == '__main__':
