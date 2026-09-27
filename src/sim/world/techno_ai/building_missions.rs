@@ -17,10 +17,24 @@
 //!   jumps to it), Attack runs Mission_Attack (`0x0044ACF0`), Selling runs
 //!   Sell ([`Simulation::visit_building_down`]), and a mission the building
 //!   has no handler for, or none, a MissionClass stub (450 frames).
+//! - the Gattling block after the Techno AI (`0x0043FE5B..0x0043FF8B`): the
+//!   idle decay of a Gattling type and its turret-animation steps
+//!   ([`gattling_idle`]).
 //! - `ProcessDelayedFire` (`0x004503F0`, called at `0x004400F4` while Health
 //!   is above zero): the countdown of a delayed fire Mission_Attack armed,
 //!   and what it does when the countdown ends ([`process_delayed_fire`]).
 //! - the range drop at the end of the Update (`0x00440378..0x004403C6`).
+//!
+//! A Gattling type (`IsGattling=`, the Gattling Cannon) charges and decays its
+//! stages inside both handlers (`combat::gattling`), each call taking the
+//! mission's `+0xC4` count, the frames since it was last zeroed, and zeroing
+//! it: Mission_Guard decays first thing on every dispatch (`0x004496C1..
+//! 0x004496DF`), Mission_Attack charges after its FireAt and on FACING and
+//! REARM, and decays on its drop tail, BUSY and CLOAKED. In Attack the count
+//! is the previous handler's return, so a cannon charges RateUp per frame it
+//! spends attacking; outside Attack, Update's idle decay takes RateDown per
+//! frame once `GuardAreaTargetingDelay + 5` frames have passed since its last
+//! shot.
 //!
 //! The Update's two FireAts, Mission_Attack's (`0x0044B6D0`) and
 //! ProcessDelayedFire's (`0x00450492`), are VERA's combat emission: the visit
@@ -42,7 +56,9 @@
 //! for an odd one). `tools/spatial_oracle/building_prism.json`: the Prism
 //! arm's recruitment and master arm, ProcessDelayedFire's two modes, the
 //! support bonus and its damage, the multi-tower cadence and the `[General]`
-//! Prism reader, run natively.
+//! Prism reader, run natively. `tools/spatial_oracle/building_gattling.json`
+//! (`building_gattling_tests`): every Gattling call of both handlers and of
+//! the idle decay, and whole engagements frame by frame.
 //!
 //! RESIDUALS, each with its later owner:
 //! - The frame position of a building's shot. Native fires both FireAts
@@ -58,13 +74,14 @@
 //!   Downstream: the Scenario stream's order in that frame. The pass's one
 //!   reader of another building's rearm, the Prism walk, counts a requested
 //!   shot as rearming ([`prism_supporter`]); the support count the shot
-//!   clears (`0x004504CD`) is read only in its own tower's visits. Later
-//!   owner: FireAt moving into each object's Logic visit.
-//! - Gattling (D11): Mission_Guard's stage update (`0x004496C1..0x004496DF`),
-//!   Mission_Attack's charge and decay calls (`0x70DE70`, `0x70E000`) and
-//!   their `+0xC4` resets. Trigger: every `[YAGGUN]` visit. Effect: its
-//!   stage stays at 0. Frequency: every Gattling Cannon engagement.
-//!   Downstream: its rate of fire and weapon stage.
+//!   clears (`0x004504CD`) is read only in its own tower's visits. The
+//!   request carries the visit's target and weapon ([`BuildingShot`]), so a
+//!   Gattling charge after the FireAt or a later retarget leaves the shot as
+//!   the visit made it. FireAt (`0x006FDD50`) draws `g_MainRng` only through
+//!   callees off the Gattling Cannon's path (SpawnRadEruption `0x006FD800`,
+//!   EBolt::Init `0x004C2A60`, audio; an instruction scan), so the charge's
+//!   loop draw keeps its native place in that stream. Later owner: FireAt
+//!   moving into each object's Logic visit.
 //! - The Prism beams are not drawn. A support beam (`0x0044ABD0`: a
 //!   LaserDrawClass from the supporter's weapon-0 FLH to the stored point in
 //!   the House's `LaserColor`, width 3, `PrismSupportDuration=` frames) and
@@ -93,8 +110,13 @@
 //!   (`0x0044B780`); the dock owners run the repair and reload meanwhile.
 //!   The WeaponsFactory's ClearBibArea (`0x00449540`) after the walk is
 //!   dormant: no retail WeaponsFactory type clears HasStupidGuardMode.
-//! - The `+0x148` count of the OK and REARM arms (`0x0044B713`,
-//!   `0x0044B23C`), a turret-animation counter only presentation reads.
+//! - A voxel building's HVA animation is not drawn: the building's voxel draw
+//!   (`0x0043DA80`, Building vt+0x4E4) takes its main and turret HVA frames
+//!   from `+0x148` modulo their frame counts, which a Gattling type advances
+//!   while its value is above 0 (the Gattling Cannon's barrels spin) and any
+//!   other type on its OK and REARM arms; VERA's building voxel presentation
+//!   (`emit_building_turret_vxl`) draws frame 0. Presentation only; its own
+//!   presentation chain (#757).
 //! - Status 0's `Begin_Mode(1)` (`0x0044995D`): the idle body, presentation.
 //! - Dormant with retail data: the SAM arm (`0x0044AD07`, `SAM=` unset), the
 //!   upgrade arm (`0x0044B2BC`, no `PowersUpBuilding=`), Mission_Guard's
@@ -126,6 +148,7 @@ use crate::sim::building_art::requested_damage_state;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::combat_weapon::{self, WeaponSlot};
 use crate::sim::combat::fire_error::FireError;
+use crate::sim::combat::gattling::{StageCall, is_elite};
 use crate::sim::combat::{BuildingShot, fire_coord};
 use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::mission::authority::LiveReadyInputProvider;
@@ -231,6 +254,9 @@ fn rate_delay(sim: &mut Simulation, frames: u32, multiplier: i32) -> i32 {
 
 /// `BuildingClass::Mission_Guard` (`0x004496B0`).
 fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+    // The head (`0x004496C1..0x004496DF`), armed or not, before anything else
+    // the handler reads or draws.
+    gattling_step(sim, id, rules, StageCall::Update);
     let Some(entity) = sim.substrate.entities.get(id) else {
         return 0;
     };
@@ -323,7 +349,11 @@ fn attack_arm(
 ) -> i32 {
     match code {
         FireError::Ok => {
-            fire_arm(sim, id, rules, weapon);
+            fire_arm(sim, id, rules, target, weapon);
+            // The tail every OK arm reaches (`0x0044B6D6..0x0044B724`).
+            if !gattling_step(sim, id, rules, StageCall::Increase) {
+                advance_turret_anim(sim, id);
+            }
             1
         }
         // `0x0044B0DE`: the drop tail (`+0x664 = 0` at `0x0044B0ED`).
@@ -333,24 +363,37 @@ fn attack_arm(
             if waits(sim, id) {
                 return 1;
             }
+            // `0x0044B113..0x0044B131`, before Commence zeroes the count.
+            gattling_step(sim, id, rules, StageCall::Update);
             queue_and_commence(sim, id, MissionType::Guard, rules);
             clear_ai_counter(sim, id);
             1
         }
-        // `0x0044B187` and `0x0044B1DE`.
+        // `0x0044B187` and `0x0044B1DE`: after Set_Desired, a Gattling type
+        // charges (`0x0044B1C6`, `0x0044B21D`); any other keeps the count, and
+        // on REARM advances `+0x148` (`0x0044B235..0x0044B23C`).
         FireError::Facing | FireError::Rearm => {
             aim_turret(sim, id, rules, target);
+            if !gattling_step(sim, id, rules, StageCall::Increase) && code == FireError::Rearm {
+                advance_turret_anim(sim, id);
+            }
             2
         }
-        // `0x0044B284`: uncloak, then the `0x0044B14E` tail.
+        // `0x0044B284`: uncloak, a Gattling type's decay (`0x0044B2AC`), then
+        // the `0x0044B14E` tail.
         FireError::Cloaked => {
             crate::sim::combat::world_receiver::start_uncloaking_to_fire(sim, rules, id);
+            gattling_step(sim, id, rules, StageCall::Update);
             aim_turret(sim, id, rules, target);
             clear_ai_counter(sim, id);
             1
         }
-        // `0x0044B24F`.
-        FireError::Busy => 1,
+        // `0x0044B24F`: a Gattling type decays (`0x0044B26C`); any other
+        // keeps the count.
+        FireError::Busy => {
+            gattling_step(sim, id, rules, StageCall::Update);
+            1
+        }
         // Codes 4, 7 and above 10 (`0x0044B14E`).
         FireError::Rotating | FireError::Moving | FireError::MustDeploy => {
             aim_turret(sim, id, rules, target);
@@ -375,10 +418,94 @@ fn clear_support_count(sim: &mut Simulation, id: u64) {
     }
 }
 
-/// `+0xC4 = 0` (`0x0044B174`).
+/// `+0xC4 = 0`: Mission_Attack's zeroes (`0x0044B131`, `0x0044B174`,
+/// `0x0044B1CB`, `0x0044B222`, `0x0044B271`, `0x0044B2B1`, `0x0044B6F4`) and
+/// Mission_Guard's (`0x004496DF`).
 fn clear_ai_counter(sim: &mut Simulation, id: u64) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.clear_ai_counter();
+    }
+}
+
+/// Whether the building's type is a Gattling one (TechnoType `+0xCD5`).
+fn is_gattling(sim: &Simulation, id: u64, rules: &RuleSet) -> bool {
+    sim.substrate.entities.get(id).is_some_and(|entity| {
+        sim.object_type(entity.type_ref(), rules)
+            .is_some_and(|obj| obj.is_gattling)
+    })
+}
+
+/// A Gattling type's stage call with the mission's `+0xC4` count, then
+/// `+0xC4 = 0`, as both handlers make it. Answers whether the type is a
+/// Gattling one; any other makes no call and keeps the count.
+fn gattling_step(sim: &mut Simulation, id: u64, rules: &RuleSet, call: StageCall) -> bool {
+    if !is_gattling(sim, id, rules) {
+        return false;
+    }
+    let Some(ticks) = sim
+        .substrate
+        .entities
+        .get(id)
+        .map(|entity| entity.mission.ai_counter() as i32)
+    else {
+        return false;
+    };
+    match call {
+        StageCall::Increase => sim.gattling_increase(id, rules, ticks),
+        StageCall::Update => sim.gattling_update(id, rules, ticks),
+    }
+    clear_ai_counter(sim, id);
+    true
+}
+
+/// `+0x148 += 1`, the voxel turret's animation counter.
+fn advance_turret_anim(sim: &mut Simulation, id: u64) {
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+    }
+}
+
+/// BuildingClass::Update's Gattling block once the Techno AI has returned
+/// with the building alive (`0x0043FE5B`; a dead one returns from the Update),
+/// for a Gattling type only:
+/// - a value above 0 advances `+0x148` (`0x0043FE69..0x0043FE88`);
+/// - unless the building's mission, else its queued one, is Attack
+///   (`0x0043FEBE..0x0043FECB`): the idle decay
+///   ([`crate::sim::combat::gattling::GattlingState::idle_decay`]) once more
+///   than `GuardAreaTargetingDelay + 5` frames have passed since the last
+///   shot (`0x0043FEE9..0x0043FF67`: `Frame - LastFireFrame`, signed, whatever
+///   the target), then `+0x148` again while the value is above 0
+///   (`0x0043FF6C..0x0043FF8B`).
+pub(super) fn gattling_idle(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    if !super::ai_alive(sim, id) {
+        return;
+    }
+    let Some(obj) = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+        .filter(|obj| obj.is_gattling)
+    else {
+        return;
+    };
+    let now = sim.session.binary_frame as i32;
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    if entity.gattling.value() > 0 {
+        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+    }
+    if entity.mission.effective() == MissionId::from_known(MissionType::Attack) {
+        return;
+    }
+    let since = now.wrapping_sub(entity.last_fire_frame as i32);
+    if since > rules.general.guard_area_targeting_delay.wrapping_add(5) {
+        let elite = is_elite(entity);
+        entity.gattling.idle_decay(&obj.gattling_stages, elite);
+    }
+    if entity.gattling.value() > 0 {
+        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
     }
 }
 
@@ -386,8 +513,11 @@ fn clear_ai_counter(sim: &mut Simulation, id: u64) {
 /// `IsAnimDelayedFire=` building arms its delayed shot (`0x0044B630..
 /// 0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the weapon, `+0x704`
 /// = 1) for [`process_delayed_fire`]; any other asks the combat phase for its
-/// FireAt (`0x0044B6D0`).
-fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
+/// FireAt (`0x0044B6D0`) at the visit's target with SelectWeapon's weapon,
+/// both of which the request carries: the tail's charge may step a Gattling
+/// type's stage, and a later object may retarget the building, before the
+/// combat phase fires.
+fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, weapon: i32) {
     let Some(obj) = sim
         .substrate
         .entities
@@ -423,7 +553,7 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
         None => {
             sim.fire_requests
                 .buildings
-                .insert(id, BuildingShot::Mission);
+                .insert(id, BuildingShot::Mission { weapon, target });
         }
     }
 }
@@ -608,10 +738,10 @@ fn prism_supporter(
 /// (`0x00450401..0x00450419`); every end clears the mode (`0x00450452`,
 /// `0x004504D7`).
 /// - A shot (mode 1, `0x0045045E..0x00450492`) needs a target and
-///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt is
-///   asked of the combat phase ([`BuildingShot::Delayed`]), whose bullet
-///   takes the support bonus ([`Simulation::take_support_bonus`]). Otherwise
-///   the shot is dropped and `+0x664` kept.
+///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt at
+///   that target is asked of the combat phase ([`BuildingShot::Delayed`]),
+///   whose bullet takes the support bonus ([`Simulation::take_support_bonus`]).
+///   Otherwise the shot is dropped and `+0x664` kept.
 /// - A support beam (mode 2, `0x0044ABD0`): the beam (not drawn, module
 ///   doc), `+0x664 = 0` (`0x0044ACCA`) and the downtime: the rearm timer
 ///   becomes {Frame, `PrismSupportDelay=`} (`0x0044ACD0..0x0044ACDC`). No
@@ -653,7 +783,7 @@ pub(super) fn process_delayed_fire(
             {
                 sim.fire_requests
                     .buildings
-                    .insert(id, BuildingShot::Delayed(slot));
+                    .insert(id, BuildingShot::Delayed { slot, target });
             }
         }
         DelayedFire::SupportBeam { .. } => {
@@ -900,3 +1030,7 @@ mod tests;
 #[cfg(test)]
 #[path = "prism_support_tests.rs"]
 mod prism_tests;
+
+#[cfg(test)]
+#[path = "building_gattling_tests.rs"]
+mod gattling_tests;

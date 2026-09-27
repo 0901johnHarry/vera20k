@@ -1106,7 +1106,7 @@ fn resolve_index<'a>(
     target: &TargetFacts,
     capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
 ) -> Option<SelectedWeapon<'a>> {
-    let selected = resolve_index_for_emission(rules, obj, veterancy, index, Some(target))?;
+    let selected = resolve_weapon_index(rules, obj, veterancy, index, Some(target))?;
     (!targeting_fire_error_blocks(
         rules,
         obj,
@@ -1128,10 +1128,12 @@ pub(crate) fn resolve_selected_weapon<'a>(
     target: Option<&TargetFacts>,
 ) -> Option<SelectedWeapon<'a>> {
     let index = what_weapon_should_i_use(rules, obj, attacker, target);
-    resolve_index_for_emission(rules, obj, attacker.veterancy, index, target)
+    resolve_weapon_index(rules, obj, attacker.veterancy, index, target)
 }
 
-fn resolve_index_for_emission<'a>(
+/// GetWeapon of an index SelectWeapon already answered, without a
+/// GetFireError filter.
+pub(crate) fn resolve_weapon_index<'a>(
     rules: &'a RuleSet,
     obj: &'a ObjectType,
     veterancy: u16,
