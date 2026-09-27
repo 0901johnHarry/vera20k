@@ -1,10 +1,13 @@
-"""Original factory start and step cadence for chosen builds.
+"""Original factory start, hold and step cadence for chosen builds.
 
 A build starts with FactoryClass 0x4C9EA0 (Ghidra label FactoryClass__SetRate;
 Begin_Production calls it at 0x4FA628 right after StartProduction), then
 FactoryClass::AI 0x4C9B20 runs once per frame. Each row runs the originals on the
 Time_To_Build oracle's fixture objects and records the rate, every step attempt
-and the state at the end.
+and the state at the end. A row's orders run before that frame's AI call: a
+SUSPEND is FactoryClass::Suspend(1) 0x4C9E60 (HouseClass::Suspend_Production at
+0x4FA9A5), a resume the build start 0x4C9EA0(0) that Begin_Production's
+same-type branch reaches at 0x4FA628.
 """
 from pathlib import Path
 import struct
@@ -47,6 +50,9 @@ def state(factory, credits, spent):
                 latch=bool(factory[0x71]), credits=credits, spent=spent)
 
 
+ORDERS = {'suspend': (0x4C9E60, 1), 'resume': (0x4C9EA0, 0)}
+
+
 def run(row):
     """Start the build at START_FRAME, then run FactoryClass::AI each frame
     through row['last_frame'], carrying the factory and the house's credits
@@ -55,6 +61,9 @@ def run(row):
     base[ttb.HOUSE + 0x24] = struct.pack('<I', HOUSE_MONEY_VTABLE)
     factory, credits, spent = new_factory(row['cost']), row['credits'], 0
     deposits = dict(row['deposits'])
+    orders = {}
+    for frame, kind in row.get('orders', []):
+        orders.setdefault(frame, []).append(kind)
 
     def step(entry, frame, **kwargs):
         nonlocal factory, credits, spent
@@ -75,9 +84,15 @@ def run(row):
     started = step(0x4C9EA0, START_FRAME, stack_args=[0],
                    required_addresses=[0x4C9EEF, 0x4F6990])
     after_start = dict(state(factory, credits, spent), started=bool(started['eax'] & 0xFF))
-    attempts = []
+    attempts, order_results = [], []
     for frame in range(START_FRAME, row['last_frame'] + 1):
         credits += deposits.get(frame, 0)
+        for kind in orders.get(frame, []):
+            entry, arg = ORDERS[kind]
+            accepted = bool(step(entry, frame, stack_args=[arg])['eax'] & 0xFF)
+            now = state(factory, credits, spent)
+            order_results.append([frame, kind, accepted, now['rate'], now['timer_start'],
+                                  now['timer_duration'], now['stage'], now['suspended']])
         timer_before, = struct.unpack_from('<i', factory, 0x2C)
         step(0x4C9B20, frame)
         timer_after, = struct.unpack_from('<i', factory, 0x2C)
@@ -85,7 +100,8 @@ def run(row):
             now = state(factory, credits, spent)
             attempts.append([frame, now['stage'], now['on_hold'], now['credits']])
     return dict(row, time_to_build=ttb.run(row)['time_to_build'], after_start=after_start,
-                attempts=attempts, final=state(factory, credits, spent))
+                attempts=attempts, order_results=order_results,
+                final=state(factory, credits, spent))
 
 
 def cadence(credits, last_steps, deposits=(), **inputs):
@@ -94,6 +110,13 @@ def cadence(credits, last_steps, deposits=(), **inputs):
     rate = ttb.run(row)['time_to_build'] // 54
     row['last_frame'] = START_FRAME + max(1, min(255, rate)) * last_steps + 3
     return row
+
+
+def held(credits, orders, last_frame, deposits=()):
+    """The retail-world MTNK (rate 12) with SUSPEND/resume orders."""
+    return dict(ttb.case('unit', 700, btm=1.5, power=(600, 25)), credits=credits,
+                deposits=[list(d) for d in deposits],
+                orders=[list(order) for order in orders], last_frame=last_frame)
 
 
 def generate():
@@ -123,7 +146,21 @@ def generate():
         cadence(100, 14, deposits=[(START_FRAME + 10 * 12 + 5, 1000)],
                 kind='unit', cost=700, btm=1.5, power=(600, 25)),
     ]
-    return dict(start_frame=START_FRAME, starts=starts, builds=[run(row) for row in builds])
+    # Holds on the retail MTNK (steps every 12 frames from frame 100): a hold
+    # between two steps and its resume; a hold and resume in one frame; a
+    # second hold and a resume of a running build, both refused; a hold after
+    # completion, refused; and a hold during a cash stall with a deposit
+    # before the resume.
+    holds = [
+        held(10_000, [(225, 'suspend'), (400, 'resume')], 940),
+        held(10_000, [(300, 'suspend'), (300, 'resume')], 760),
+        held(10_000, [(150, 'suspend'), (160, 'suspend'), (200, 'resume'),
+                      (210, 'resume')], 800),
+        held(10_000, [(760, 'suspend'), (770, 'resume')], 780),
+        held(100, [(250, 'suspend'), (350, 'resume')], 1000, deposits=[(300, 1000)]),
+    ]
+    return dict(start_frame=START_FRAME, starts=starts, builds=[run(row) for row in builds],
+                holds=[run(row) for row in holds])
 
 
 if __name__ == '__main__':
@@ -132,9 +169,11 @@ if __name__ == '__main__':
               '0x4FA628) and FactoryClass::AI 0x4C9B20 once per frame on a factory holding '
               'the Time_To_Build oracle fixture object: the rate, the step timer, each step '
               'attempt, the charges through the real Available_Money 0x4F6990 and '
-              'Spend_Money 0x4F9790, holds on a shortfall and completion. No claim about '
-              'what starts, suspends or resumes a factory, about when AI runs within a '
-              'frame, or about rate rewrites after the start (0x4CA6E0).',
+              'Spend_Money 0x4F9790, holds on a shortfall and completion; and in the hold '
+              'rows FactoryClass::Suspend(1) 0x4C9E60 and the build start 0x4C9EA0(0) run '
+              'before a frame\'s AI call, with their acceptance and the state after each. No '
+              'claim about what issues a hold or resume, about when AI runs within a frame, '
+              'or about rate rewrites after the start (0x4CA6E0).',
         assumptions=['The factory starts as StartProduction 0x4C9C70 leaves a new build '
                      '(0x4C9D6E..0x4C9DED over the constructor 0x4C98BE..0x4C9917): stage '
                      '0, suspended +0x70 and +0x71 set, rate 0, timer {start frame, 0}, '
@@ -150,4 +189,4 @@ if __name__ == '__main__':
                      'builds and the money branches; they are not a claim that every '
                      'combination occurs in retail play. Default native FPCW 0x0E7F.'],
         substitutions=[], entry_points={'start': 0x4C9EA0, 'factory_ai': 0x4C9B20,
-                                        'time_to_build': 0x6F47A0}))
+                                        'suspend': 0x4C9E60, 'time_to_build': 0x6F47A0}))

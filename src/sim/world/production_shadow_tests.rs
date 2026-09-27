@@ -13,7 +13,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
-use crate::sim::production::{CancelOutcome, PRODUCTION_STEPS, ProductionCategory, StepOutcome};
+use crate::sim::production::{PRODUCTION_STEPS, ProductionCategory, StepOutcome};
 use crate::sim::timer::CdTimer;
 use std::collections::BTreeMap;
 
@@ -285,14 +285,13 @@ fn production_authoritative_hash_includes_factory_fields() {
     let base = mid_build().state_hash();
 
     type FMut = fn(&mut crate::sim::production::Factory);
-    let factory_muts: [FMut; 10] = [
+    let factory_muts: [FMut; 9] = [
         |f| f.progress += 1,
         |f| f.balance += 1,
         |f| f.step_timer = CdTimer::started(123, f.step_timer.duration()),
         |f| f.step_timer = CdTimer::from_raw(f.step_timer.start_frame(), 5),
         |f| f.on_hold = !f.on_hold,
         |f| f.suspended = !f.suspended,
-        |f| f.original_balance += 1,
         |f| f.step_rate_frames += 1,
         |f| f.manual = !f.manual,
         |f| f.special = crate::sim::production::SpecialItem::NoneZero,
@@ -479,113 +478,7 @@ fn production_shadow_preserves_advance_tick_phase_order() {
     );
 }
 
-// ===== P3 — per-step charge oracle (hash-neutral) =====
-
-/// P3 no-hash guarantee: stepping a CLONE of a shadow factory against a CLONE of the
-/// wallet 54 times leaves `state_hash()` bit-identical (the oracle never touches the
-/// hashed wallet; `Factory`/`Economy` carry no serde derive). The acceptance test.
-#[test]
-fn factory_advance_step_does_not_change_state_hash() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let owner = sim.interner.intern("Americans");
-    sim.houses
-        .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1); // cost-based shadow built
-    let before = sim.state_hash();
-
-    // Step a CLONE of the shadow factory against a CLONE of the wallet, 54 times.
-    let mut f = sim.production.factory_shadow.iter_insertion_ordered()[0].clone();
-    // empty_rules -> cost 0; seed a real cost so the step machine actually charges.
-    f.progress = 0;
-    f.balance = 700;
-    f.original_balance = 700;
-    let mut oracle = sim.houses[&owner].economy.clone();
-    for _ in 0..PRODUCTION_STEPS {
-        let _ = f.advance_one_step(&mut oracle);
-    }
-
-    assert_eq!(
-        before,
-        sim.state_hash(),
-        "P3 oracle stepping must not perturb the state hash (serde-skip + clone)"
-    );
-    assert_eq!(
-        sim.houses[&owner].economy.credits, 1_000_000,
-        "the legacy wallet is untouched by oracle stepping"
-    );
-}
-
-/// P3 determinism: identical fixtures over N ticks (with the cost-based rebuild +
-/// the conservation assert active in debug) produce identical per-tick state_hash
-/// sequences. `rules` is the 2nd positional arg to `advance_tick`.
-#[test]
-fn production_shadow_with_oracle_is_deterministic() {
-    fn run() -> Vec<u64> {
-        let mut sim = Simulation::new();
-        let rules = empty_rules();
-        let owner = sim.interner.intern("Americans");
-        sim.houses
-            .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
-        let ty = sim.interner.intern("GRIZZLY");
-        arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-        (0..5)
-            .map(|_| {
-                sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
-                sim.state_hash()
-            })
-            .collect()
-    }
-    assert_eq!(
-        run(),
-        run(),
-        "advance_tick with the P3 oracle path stays deterministic"
-    );
-}
-
-// ===== P4 — FIFO queue + cancel + partial refund (hash-neutral oracle) =====
-
-/// P4 no-hash guarantee (mirrors `factory_advance_step_does_not_change_state_hash`):
-/// cancelling a mid-build active object on a CLONE of the registry against a CLONE of
-/// the wallet leaves `state_hash()` bit-identical. With `empty_rules` the cost is 0
-/// (refund 0); the contract here is the HASH + legacy-wallet invariants, which hold
-/// regardless of the refund value (the nonzero refund is proven in the pure
-/// `cancel_one_active_when_no_queued_copy` test).
-#[test]
-fn factory_cancel_one_does_not_change_state_hash() {
-    let mut sim = Simulation::new();
-    let rules = empty_rules();
-    let owner = sim.interner.intern("Americans");
-    sim.houses
-        .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
-    let ty = sim.interner.intern("GRIZZLY");
-    arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1); // cost-based shadow built
-    let before = sim.state_hash();
-    let legacy_credits = sim.houses[&owner].economy.credits;
-
-    // Cancel (active abandon, mid-build) against a CLONE of the registry + a CLONE of
-    // the wallet; the active GRIZZLY has no queued copy, so the active-abandon branch
-    // fires (AbandonedActive).
-    let mut reg = sim.production.factory_shadow.clone();
-    let mut oracle = sim.houses[&owner].economy.clone();
-    let outcome = reg.test_cancel_one_kernel(owner, ProductionCategory::Vehicle, ty, &mut oracle);
-    assert!(
-        matches!(outcome, CancelOutcome::AbandonedActive { .. }),
-        "the active build (no queued copy) is abandoned on the clone"
-    );
-
-    assert_eq!(
-        before,
-        sim.state_hash(),
-        "P4 cancel on a clone must not perturb the state hash (serde-skip + clone)"
-    );
-    assert_eq!(
-        sim.houses[&owner].economy.credits, legacy_credits,
-        "the legacy wallet is untouched by the oracle cancel"
-    );
-}
+// ===== P4 — FIFO queue =====
 
 /// P4 C7/C12: completion suspends with the object attached; `start_next_queued` does
 /// NOT advance while the object is held; only after the object is CLEARED (simulating
@@ -633,7 +526,6 @@ fn queue_advances_only_after_delivery() {
     // empty_rules -> cost 0; seed a real cost so completion takes the full ladder.
     f.progress = 0;
     f.balance = 700;
-    f.original_balance = 700;
     // The credits mirror is retired, so a cloned economy starts at 0 — fund the oracle
     // explicitly so the per-step charge can actually complete the build.
     let mut oracle = sim.houses[&owner].economy.clone();
@@ -678,43 +570,6 @@ fn queue_advances_only_after_delivery() {
         before,
         sim.state_hash(),
         "the clone drive must not perturb the hash"
-    );
-}
-
-/// P4 determinism: identical fixtures over N ticks with a per-tick cancel probe on
-/// CLONES produce identical per-tick state_hash sequences (mirrors
-/// `production_shadow_with_oracle_is_deterministic`).
-#[test]
-fn production_shadow_with_cancel_is_deterministic() {
-    fn run() -> Vec<u64> {
-        let mut sim = Simulation::new();
-        let rules = empty_rules();
-        let owner = sim.interner.intern("Americans");
-        sim.houses
-            .insert(owner, HouseState::new(owner, 0, None, true, 1_000_000, 10));
-        let ty = sim.interner.intern("GRIZZLY");
-        arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
-        let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-        (0..5)
-            .map(|_| {
-                sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);
-                // Per-tick clone cancel probe (NEVER written back).
-                let mut reg = sim.production.factory_shadow.clone();
-                let mut oracle = sim
-                    .houses
-                    .get(&owner)
-                    .map(|h| h.economy.clone())
-                    .unwrap_or_default();
-                let _ =
-                    reg.test_cancel_one_kernel(owner, ProductionCategory::Vehicle, ty, &mut oracle);
-                sim.state_hash()
-            })
-            .collect()
-    }
-    assert_eq!(
-        run(),
-        run(),
-        "advance_tick with the P4 clone cancel probe stays deterministic"
     );
 }
 
@@ -900,9 +755,9 @@ fn stall_on_no_funds_holds() {
     );
 }
 
-/// C8: cancelling a mid-build active object refunds EXACTLY the spent portion
-/// (`original_balance - balance`) into the one wallet (`house.economy.credits`), NOT the full
-/// cost (the legacy `.rev()` full refund is the retired DRIFT). Drives a real charge.
+/// C8: cancelling a mid-build active object refunds its Cost_Of less the Balance it still
+/// owed into the one wallet (`house.economy.credits`): with an unchanged Cost_Of, exactly
+/// the spent portion, NOT the full cost. Drives a real charge.
 #[test]
 fn cancel_one_partial_refund_to_house_credits() {
     let mut sim = Simulation::new();
@@ -928,13 +783,18 @@ fn cancel_one_partial_refund_to_house_credits() {
         "mid-build: some but not all of the cost is spent"
     );
     let credits_before = sim.houses[&owner].economy.credits;
-    let ok =
-        crate::sim::production::cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GRIZZLY");
+    let ok = crate::sim::production::cancel_by_type_for_owner(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GRIZZLY",
+        false,
+    );
     assert!(ok, "the active build is cancellable");
     let refunded = sim.houses[&owner].economy.credits - credits_before;
     assert_eq!(
         refunded, spent,
-        "C8: refund exactly the spent portion (original_balance - balance)"
+        "C8: Cost_Of - Balance refunds exactly the spent portion"
     );
     // The cancelled active build (no tail) leaves an idle factory that is pruned, so the
     // factory no longer exists in the registry (the queue-of-record).
@@ -981,6 +841,7 @@ fn factory_flip_determinism_over_scripted_commands() {
                         &rules,
                         "Americans",
                         "BEAG",
+                        false,
                     );
                 }
                 sim.advance_tick(&[], Some(&rules), &heights, None, None, 67);

@@ -8273,22 +8273,6 @@ fn object_with_body(body: &str) -> ObjectType {
 }
 
 #[test]
-fn score_award_is_the_victim_cost_scaled_by_veterancy() {
-    // gamemd's kill-record step values the victim at its `Cost=`, doubled at
-    // veteran and tripled at elite. Anchored on stock Rhino (HTNK) Cost=900.
-    let obj = object_with_body(
-        "Cost=900
-",
-    );
-    assert_eq!(obj.cost, 900, "Cost= parsed off the section");
-    assert_eq!(score_award_for_victim(Some(&obj), 0), 900);
-    assert_eq!(score_award_for_victim(Some(&obj), 99), 900);
-    assert_eq!(score_award_for_victim(Some(&obj), 100), 1_800);
-    assert_eq!(score_award_for_victim(Some(&obj), 199), 1_800);
-    assert_eq!(score_award_for_victim(Some(&obj), 200), 2_700);
-}
-
-#[test]
 fn score_award_ignores_the_dormant_points_key() {
     // `Points=` parses into a type field the binary never reads back — dormant
     // TS legacy in YR — so this engine does not parse it and a section carrying
@@ -8298,24 +8282,27 @@ fn score_award_ignores_the_dormant_points_key() {
         "Points=10
 ",
     );
-    assert_eq!(score_award_for_victim(Some(&points_only), 0), 0);
+    let award = |cost| veterancy::kill_award_points(cost, veterancy::VeterancyRank::Rookie, false);
+    assert_eq!(award(points_only.cost), 0);
 
     let gi = object_with_body(
         "Cost=200
 Points=10
 ",
     );
-    assert_eq!(score_award_for_victim(Some(&gi), 0), 200);
+    assert_eq!(award(gi.cost), 200);
 }
 
 #[test]
-fn score_award_is_zero_without_a_cost_or_a_resolvable_type() {
+fn score_award_is_zero_without_a_cost() {
     let obj = object_with_body(
         "Strength=100
 ",
     );
-    assert_eq!(score_award_for_victim(Some(&obj), 200), 0);
-    assert_eq!(score_award_for_victim(None, 200), 0);
+    assert_eq!(
+        veterancy::kill_award_points(obj.cost, veterancy::VeterancyRank::Elite, false),
+        0
+    );
 }
 
 #[test]

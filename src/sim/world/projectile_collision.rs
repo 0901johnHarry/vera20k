@@ -902,26 +902,33 @@ mod tests {
     #[test]
     #[ignore = "requires RA2_DIR with verified gamemd.exe math tables"]
     fn runtime_fireat_fractional_velocity_survives_live_gravity_and_snapshot() {
-        use crate::rules::art_data::ArtRegistry;
         use crate::rules::ini_parser::IniFile;
         use crate::sim::combat::AttackTarget;
         use crate::sim::runtime::SimRuntime;
         use crate::sim::snapshot::GameSnapshot;
         let tables = crate::map::retail_trig::required_math_tables();
         assert!(tables.0.matches_retail() && tables.1.matches_retail());
+        let native: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../tools/projectile_oracle/fireat_runtime.json"
+        ))
+        .unwrap();
         for voxel in [false, true] {
+            let native = native.iter().find(|row| row["voxel"] == voxel).unwrap();
+            let motion = &native["motion"];
             let ini = IniFile::from_str(&format!(
                 "[General]\nVeteranRatio=3.0\n[AudioVisual]\nGravity=6\n[VehicleTypes]\n0=TEST\n1=VICTIM\n[TEST]\nStrength=300\nArmor=heavy\nPrimary=GUN\n[VICTIM]\nStrength=300\nArmor=heavy\n[GUN]\nDamage=10\nROF=100\nRange=10\nSpeed=100\nProjectile=SHOT\nWarhead=WH\n[SHOT]\nImage=BULLET\nArcing={}\nVertical={}\nAA=yes\nDetonationAltitude=2000\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
                 if voxel { "no" } else { "yes" },
                 if voxel { "yes" } else { "no" },
             ));
             let make_rules = || {
-                let mut rules = RuleSet::from_ini(&ini).unwrap();
-                rules.merge_art_data(&ArtRegistry::from_ini(&IniFile::from_str(&format!(
-                    "[BULLET]\nVoxel={}\n",
-                    if voxel { "yes" } else { "no" }
-                ))));
-                rules
+                RuleSet::from_ini_with_fixed_art_for_test(
+                    &ini,
+                    &IniFile::from_str(&format!(
+                        "[BULLET]\nVoxel={}\n",
+                        if voxel { "yes" } else { "no" }
+                    )),
+                )
+                .unwrap()
             };
             let mut sim = Simulation::new();
             install_native_size_terrain(&mut sim, 16, 16);
@@ -976,6 +983,16 @@ mod tests {
             firer.attack_target = Some(AttackTarget::new(target));
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = make_rules();
+            let inputs = &native["inputs"];
+            let rules = &runtime.resources.rules;
+            assert_eq!(rules.weapon("GUN").unwrap().speed, inputs["stored_speed"]);
+            let projectile = rules.projectile("SHOT").unwrap();
+            assert_eq!(projectile.voxel, voxel);
+            assert_eq!(projectile.vertical, voxel);
+            assert_eq!(projectile.rot, inputs["rot"]);
+            assert_eq!(projectile.floater, inputs["floater"]);
+            assert_eq!(projectile.acceleration, inputs["acceleration"]);
+            assert_eq!(rules.general.gravity, inputs["gravity"]);
             let output = runtime
                 .advance_frame(&[], 16, TickLane::Ordinary)
                 .expect("fixture frame must complete");
@@ -993,26 +1010,12 @@ mod tests {
                 runtime.simulation.live_object_order_snapshot()
             );
             let (&id, shot) = runtime.simulation.projectiles.iter().next().unwrap();
-            let data = if voxel {
-                include_str!("../../../tools/projectile_oracle/voxel_launch.json")
-            } else {
-                include_str!("../../../tools/projectile_oracle/fireat_launch.json")
-            };
-            let rows: Vec<Value> = serde_json::from_str(data).unwrap();
-            let expected = rows
-                .iter()
-                .find(|row| {
-                    row["delta"] == serde_json::json!([500, 0, if voxel { -300 } else { 0 }])
-                        && row["speed"] == 100
-                        && if voxel {
-                            row["voxel"] == true && row["vertical"] == true
-                        } else {
-                            row["arcing"] == true
-                                && row["lobber"] == false
-                                && row["floater"] == false
-                        }
-                })
-                .unwrap();
+            // Native Logic 55B613 reloads the live count after each AI;
+            // Bullet Fire -> Unlimbo 5F5040 appends the new object. This first
+            // runtime frame therefore includes its first motion visit. The
+            // composed oracle executes Rules Process, GetSpeed, launch and
+            // motion separately; admission/collision are supplied boundaries.
+            let expected = &motion["frames"][0];
             let expected_bits: Vec<_> = expected["bits"]
                 .as_array()
                 .unwrap()
@@ -1027,9 +1030,11 @@ mod tests {
                 expected_bits.as_slice()
             );
             assert_eq!(
-                shot.position,
-                ProjectileCoord::new(3200, 3200, z),
-                "new projectile waits until the next Logic visit"
+                [shot.position.x, shot.position.y, shot.position.z],
+                std::array::from_fn::<_, 3, _>(
+                    |i| expected["candidate"][i].as_i64().unwrap() as i32
+                ),
+                "new projectile receives its first AI in the firing frame"
             );
             if voxel {
                 continue;
@@ -1041,9 +1046,6 @@ mod tests {
                 .get_mut(source)
                 .unwrap()
                 .attack_target = None;
-            let _ = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
-                .expect("fixture frame must complete");
             let snapshot = GameSnapshot::save(&runtime.simulation, 0, 0, "native motion", 0);
             let mut restored = GameSnapshot::load(&snapshot).unwrap().sim;
             let mut serialized_expected = runtime.simulation.projectiles.get(id).unwrap().clone();
@@ -1087,19 +1089,7 @@ mod tests {
                 .unwrap();
             let mut resumed = SimRuntime::from_simulation(restored);
             resumed.resources.rules = make_rules();
-            let rows: Vec<Value> = serde_json::from_str(include_str!(
-                "../../../tools/projectile_oracle/ordinary_motion.json"
-            ))
-            .unwrap();
-            let row = rows
-                .iter()
-                .find(|row| {
-                    row["origin"] == serde_json::json!([3200, 3200, 100])
-                        && row["input_bits"][0] == "4058b4d922000000"
-                        && row["floater"] == false
-                        && row["gravity_sequence"] == serde_json::json!([6, 3, 1, 0, -1, 2, 5, 6])
-                })
-                .unwrap();
+            let row = motion;
             for frame in 0..3 {
                 if frame != 0 {
                     for runtime in [&mut runtime, &mut resumed] {

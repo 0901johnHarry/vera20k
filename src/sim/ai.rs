@@ -23,7 +23,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectCategory};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{CellRect, CellRectOccupancyContext, check_occupancy_rect};
-use crate::sim::command::{Command, CommandEnvelope, QueueMode};
+use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
@@ -249,6 +249,21 @@ fn has_active_building_queue(sim: &Simulation, owner: &str, rules: &RuleSet) -> 
     })
 }
 
+/// The build options this AI chooses from. The native AI choosers admit a
+/// candidate only while its Cost_Of is within the house's Available_Money
+/// (`AI_Choose_Unit` `0x004FEDD3`, `AI_Check_Build_Need` `0x004FDACD`); a
+/// human's production has no such check.
+fn affordable_build_options(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: &str,
+) -> Vec<production::BuildOption> {
+    let credits = production::credits_for_owner(sim, owner);
+    let mut options = production::build_options_for_owner(sim, rules, owner);
+    options.retain(|option| option.cost <= credits);
+    options
+}
+
 /// Decide which building to queue next, following a priority order.
 fn decide_next_building(
     sim: &Simulation,
@@ -257,7 +272,7 @@ fn decide_next_building(
     execute_tick: u64,
 ) -> Option<CommandEnvelope> {
     let owner_id = sim.interner.get(owner)?;
-    let options = production::build_options_for_owner(sim, rules, owner);
+    let options = affordable_build_options(sim, rules, owner);
 
     // Priority 1: Power support if we have none or power balance is negative.
     let has_power = has_power_support_structure(sim, owner, rules);
@@ -329,7 +344,7 @@ fn queue_units(
         return;
     };
     let current_queue = production::queue_view_for_owner(sim, rules, owner);
-    let options = production::build_options_for_owner(sim, rules, owner);
+    let options = affordable_build_options(sim, rules, owner);
 
     queue_combat_lane_if_empty(
         &current_queue,
@@ -782,14 +797,7 @@ fn count_refineries(sim: &Simulation, owner: &str, rules: &RuleSet) -> usize {
 
 /// Create a QueueProduction command envelope.
 fn make_queue_cmd(owner: InternedId, type_id: InternedId, execute_tick: u64) -> CommandEnvelope {
-    CommandEnvelope::new(
-        owner,
-        execute_tick,
-        Command::QueueProduction {
-            type_id,
-            mode: QueueMode::Append,
-        },
-    )
+    CommandEnvelope::new(owner, execute_tick, Command::QueueProduction { type_id })
 }
 
 #[cfg(test)]

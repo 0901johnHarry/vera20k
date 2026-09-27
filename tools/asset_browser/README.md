@@ -14,12 +14,14 @@ extracted bytes under `target/asset`, which is gitignored.
 ## Prerequisite: build the binary
 
 ```powershell
-cargo build --release -p vera20k --bin asset
+python -m tools.cargo_run -- build --release -p vera20k --bin asset
 ```
 
-The server looks for `target/release/asset.exe` (Windows) or
-`target/release/asset`, and falls back to the `target/debug` build only if the
-release one is missing — in which case every result carries a note saying so.
+The server asks the [build owner](../README.md) for this checkout's most recent
+successful host release binary, falling back to debug with a note. The owner
+records the actual Cargo output and verifies its hash on discovery, even if the
+server and build shell have different `CARGO_TARGET_DIR` settings. Conventional
+`target/release` files are no longer guessed or used as a stale fallback.
 Use release: a debug build of this tool is many times slower over the ~8000-entry
 retail corpus, and `asset_scan` / `asset_parse_check` will likely hit the
 timeout.
@@ -120,7 +122,7 @@ result stays parseable.
 Nothing here is MCP-only; the binary does the same work directly.
 
 ```powershell
-cargo build --release -p vera20k --bin asset
+python -m tools.cargo_run -- build --release -p vera20k --bin asset
 
 ./target/release/asset --help
 

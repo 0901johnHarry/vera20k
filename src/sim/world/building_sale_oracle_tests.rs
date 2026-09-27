@@ -2,7 +2,7 @@
 //! `ai_sale` rows against the sale's Rust owners: Sell's stage 1
 //! (`production::sell_stage_one`: the survivor count, the absorbed
 //! passengers, the garrison and the crew in `sim::crew_survival`, then the
-//! sounds), the sale's credit (`production::building_type_refund`, `full`
+//! sounds), the sale's credit (`production::type_refund`, `full`
 //! clear) and the computer's low-credit sale
 //! (`production::update_repair_and_power`).
 //! The `route` rows are replayed by `sim::building_construction` against the
@@ -393,10 +393,14 @@ fn sale_refund_matches_the_original() {
         house.player_control = input["player_control"] == true;
         let game_mode_nonzero = input["game_mode"].as_u64().unwrap() != 0;
         assert_eq!(
-            i64::from(production::building_type_refund(
+            i64::from(production::type_refund(
                 &rules,
                 rules.object("YAREFN").unwrap(),
                 &house,
+                &crate::rules::ruleset::HouseCostFactors {
+                    country: [crate::util::native_x87::NativeF32Bits::ONE; 5],
+                    factory_plant: [crate::util::native_x87::NativeF32Bits::ONE; 5],
+                },
                 game_mode_nonzero,
                 false,
             )),

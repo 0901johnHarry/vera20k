@@ -112,7 +112,7 @@ use crate::map::houses::HouseAllianceMap;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::object_type::ObjectType;
-use crate::rules::ruleset::RuleSet;
+use crate::rules::ruleset::{HouseCostFactors, RuleSet};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::bridge_state::BridgeDamageEvent;
@@ -1230,11 +1230,7 @@ pub(crate) fn estimated_damage_on(
     };
     let target_obj = rules.object(sim.interner.resolve(target.type_ref()));
     let house_type_armor = sim.houses.get(&target.owner()).map_or(1.0, |house| {
-        let country = house
-            .country
-            .map(|country| sim.interner.resolve(country))
-            .unwrap_or_else(|| sim.interner.resolve(target.owner()));
-        rules.country_armor_mult_for_type(country, attacker_obj)
+        rules.country_armor_mult_for_type(sim.interner.resolve(house.house_type_id()), attacker_obj)
     });
     let rank_firepower = self::veterancy::has_weapon_ability(
         self::veterancy::rank_from_u16(attacker.veterancy),
@@ -2330,12 +2326,8 @@ fn resolve_receive_damage(
     // its HouseType's per-category float. The difficulty and country
     // `Armor=` product (`House+0x1A0`) is never read here.
     let house_type_armor = houses.get(&target.owner()).map_or(1.0, |house| {
-        let country_name = house
-            .country
-            .map(|country| interner.resolve(country))
-            .unwrap_or_else(|| interner.resolve(target.owner()));
         target_type.map_or(1.0, |object| {
-            rules.country_armor_mult_for_type(country_name, object)
+            rules.country_armor_mult_for_type(interner.resolve(house.house_type_id()), object)
         })
     });
     let rank_armor = target_type
@@ -2484,16 +2476,6 @@ fn postmortem_duration_for_event(
     let object = rules.object(interner.resolve(target.type_ref()))?;
     (warhead.causes_delay_kill && object.eligible_for_delay_kill)
         .then(|| postmortem_delay_duration(warhead, event.distance_leptons.unwrap_or(0)))
-}
-
-/// Type vtable `+0xAC` value used by receiver anger feedback. Unit, Infantry,
-/// and Aircraft types return `Cost=` directly; BuildingType applies its active
-/// bundled-pad and `FreeUnit=` deductions.
-fn receiver_type_value(target: &GameEntity, object: &ObjectType, rules: &RuleSet) -> i32 {
-    if target.category != EntityCategory::Structure {
-        return object.cost;
-    }
-    rules.building_actual_cost(object)
 }
 
 fn has_active_area_invulnerability(entity: &GameEntity, current_tick: u64) -> bool {
@@ -2907,51 +2889,8 @@ pub(crate) fn build_attacker_snapshot(
     }
 }
 
-/// Veterancy at or above this counts as veteran for the score award.
-const VETERAN_VETERANCY: u16 = 100;
-/// Veterancy at or above this counts as elite for the score award.
-const ELITE_VETERANCY: u16 = 200;
-
-/// Score value destroying `victim` is worth, before the allied-victim zeroing the
-/// caller applies.
-///
-/// gamemd's kill-record step asks the victim's type for its value and that
-/// accessor returns the type's **`Cost=`** — the same field production charges —
-/// doubled at veteran and tripled at elite.
-///
-/// It is emphatically NOT `Points=`. `Points=` parses into its own type field
-/// that nothing in the binary ever reads back: the only references are the
-/// constructor zeroing it, the INI store, and the type-checksum walk. It is
-/// dormant Tiberian Sun legacy in YR, so this engine does not parse it at all.
-/// The two are not even proportional — a Rhino is `Cost=900 / Points=25` while a
-/// GI is `200 / 10` — so using `Points=` both shrinks the column and reorders the
-/// table.
-///
-/// gamemd passes the victim's house so its cost bonuses apply on top. This engine
-/// models no per-house cost modifier anywhere — production charges the raw
-/// `Cost=` too — so the award is the raw cost, consistent with what the player
-/// was actually charged. UNCHECKED against the native bonus set.
-pub(crate) fn score_award_for_victim(victim: Option<&ObjectType>, veterancy: u16) -> i32 {
-    let cost = victim.map_or(0, |obj| obj.cost);
-    if cost <= 0 {
-        return 0;
-    }
-    let multiplier = if veterancy >= ELITE_VETERANCY {
-        3
-    } else if veterancy >= VETERAN_VETERANCY {
-        2
-    } else {
-        1
-    };
-    cost.saturating_mul(multiplier)
-}
-
-/// Resolve and pay one kill's veterancy award.
-///
-/// gamemd-derived: `TechnoClass::Record_The_Kill @ 0x00702D40`. The award is the
-/// victim's cost, zeroed when the two houses are allied and otherwise doubled
-/// for a veteran victim or tripled for an elite one; the recipient's own cost
-/// then divides it inside `VeterancyClass::Add @ 0x0074FF50`.
+/// Pay one kill's veterancy award ([`record_the_kill`]'s `points`); the
+/// recipient's own cost divides it inside `VeterancyClass::Add @ 0x0074FF50`.
 ///
 /// Who receives it is the native redirection chain at
 /// `0x00702E9D..0x00702FF0`, in this order (`EDI` is the killer):
@@ -2977,55 +2916,30 @@ pub(crate) fn score_award_for_victim(victim: Option<&ObjectType>, veterancy: u16
 ///    reverse entry order: see `passenger::PassengerCargo`.)
 /// 5. else nobody.
 ///
-/// RESIDUAL — the costs on both sides are `TechnoTypeClass::GetActualCost`
-/// (vtable `+0x84`) evaluated with the VICTIM's house (`0x00702ED1`,
-/// `0x00702F13`, `0x00702F77`, `0x00702FD4`), not the bare `Cost=`. Stock
-/// countries author no cost multipliers, so the two agree in every unmodded
-/// match; a mod with per-country cost mults diverges. Frequency: zero in
-/// stock.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn award_kill_experience(
+/// Every cost on both sides is the type's Cost_Of for the VICTIM's house
+/// (`victim_house`; `0x00702ED1`, `0x00702F13`, `0x00702F77`, `0x00702FD4`).
+fn award_kill_experience(
     entities: &mut EntityStore,
     rules: &RuleSet,
     interner: &StringInterner,
-    alliances: &HouseAllianceMap,
     killer_id: u64,
     victim_id: u64,
+    points: i32,
+    victim_house: Option<&HouseCostFactors>,
 ) {
     if killer_id == RAD_NO_ATTACKER || killer_id == victim_id {
         return;
     }
-    // `Record_The_Kill` reads the VICTIM type's `DontScore=` byte (`+0xC9F`) at
-    // 0x00702E4E and returns before the rank multiplier, before the accumulator
-    // and before the score add. Stock authors it on `SLAV`, `V3ROCKET`, `DMISL`
-    // and `CMISL` — the last three are the V3, Dreadnought and Boomer missiles,
-    // shot down by AA in most matches, so without this gate every intercepted
-    // missile promotes the interceptor.
-    let Some((victim_cost, victim_rank, victim_owner)) = entities
-        .get(victim_id)
-        .filter(|victim| !victim.dont_score)
-        .map(|victim| {
-            (
-                rules
-                    .object(interner.resolve(victim.type_ref()))
-                    .map_or(0, |obj| obj.cost),
-                self::veterancy::rank_of(victim.veterancy_raw),
-                victim.owner(),
-            )
-        })
-    else {
-        return;
-    };
+    let cost_of = |object: &ObjectType| rules.cost_of(object, victim_house);
     let Some(killer) = entities.get(killer_id) else {
         return;
     };
     let Some(killer_type) = rules.object(interner.resolve(killer.type_ref())) else {
         return;
     };
-    let killer_owner = killer.owner();
     let trainable_cost = |id: u64| -> Option<(u64, i32)> {
         let object = rules.object(interner.resolve(entities.get(id)?.type_ref()))?;
-        object.trainable.then_some((id, object.cost))
+        object.trainable.then_some((id, cost_of(object)))
     };
     // Branch 1: a passenger firing from an OpenTopped transport pays its
     // transporter (the `+0x82`/`+0x11C` pair).
@@ -3034,7 +2948,7 @@ pub(crate) fn award_kill_experience(
         Some(transporter)
     } else if killer_type.trainable {
         // Branch 2: the killer itself.
-        Some((killer_id, killer_type.cost))
+        Some((killer_id, cost_of(killer_type)))
     } else if killer_type.missile_spawn {
         // Branch 3: a spawned missile pays its launcher.
         killer.spawn_owner_id.and_then(trainable_cost)
@@ -3055,18 +2969,9 @@ pub(crate) fn award_kill_experience(
             .and_then(|occupant| {
                 let occupant_type =
                     rules.object(interner.resolve(entities.get(occupant)?.type_ref()))?;
-                Some((occupant, occupant_type.cost))
+                Some((occupant, cost_of(occupant_type)))
             })
     };
-    // `0x00702E64` loads the KILLER's house and calls `HouseClass::IsAlly @
-    // 0x004F9A90`, which reads only the asker's own ally bitfield — a one-way
-    // test, not the symmetric OR most "don't shoot me" call sites want.
-    let allied = crate::map::houses::is_allied_with(
-        alliances,
-        interner.resolve(killer_owner),
-        interner.resolve(victim_owner),
-    );
-    let points = self::veterancy::kill_award_points(victim_cost, victim_rank, allied);
     let Some((recipient_id, recipient_cost)) = recipient else {
         return;
     };
@@ -3082,72 +2987,129 @@ pub(crate) fn award_kill_experience(
     }
 }
 
-/// Record who destroyed `victim`, at the instant it happened.
+/// `TechnoClass::Record_The_Kill @ 0x00702D40` for `victim_id`, destroyed by
+/// `killer_id` (none for a death without an attacker) and credited to
+/// `killer_owner`: the kill and score record, then the experience award
+/// ([`award_kill_experience`]). Every cost it reads is Cost_Of for the victim's
+/// house, which it loads once (`0x00702D61`). One award feeds both the score
+/// (`0x0070300F`) and the experience: the victim's cost, zero when the
+/// killer's house is allied with the victim, else doubled for a veteran or
+/// tripled for an elite victim, from the rank it died at. It is not
+/// `Points=`, which gamemd parses but never reads back (TS legacy).
 ///
-/// Every lethal path funnels through here so there is one capture rather than a
-/// recording mechanism per death cause. Call it immediately after zeroing a
-/// victim's health, with the house that should be credited.
-///
-/// No-ops unless the victim is actually at zero health, and the first writer
-/// wins within one fatal transaction. A qualifying PostMortem callback consumes
-/// and clears this deferred-UnInit latch before restoring the object, so a later
-/// independent lethal transaction can attribute freshly. The award is resolved
-/// here because the rules are in hand and the veterancy is still the value the
-/// object died at.
-///
-/// Routed today: the projectile/damage-event loop, death-explosion area damage,
-/// and crushing. Spawner missiles arrive through the damage loop with the firer
-/// set to the launching object, so they credit the launcher's house; if the
-/// launcher itself dies during the missile's flight the firer no longer resolves
-/// and that kill goes uncredited.
+/// Every lethal path calls it at the instant of the kill, while the victim's
+/// veterancy is still the value it died at. The first credit wins within one
+/// fatal transaction; a qualifying PostMortem callback consumes and clears
+/// that deferred-UnInit latch before restoring the object, so a later
+/// independent lethal transaction can attribute freshly. Spawner missiles
+/// credit their launcher's house; if the launcher dies during the missile's
+/// flight, the kill goes uncredited.
 ///
 /// NOT routed yet, because each site would need a `&RuleSet` threaded into a
-/// function that does not take one: the Iron Curtain and Genetic Mutator infantry
-/// kills, aircraft self-destruct, passengers dying with their transport
-/// (`world::lifecycle`) or with a collapsing bridge, and passengers ejected by a
-/// sell. Those victims book a Loss with no matching Kill.
-pub(crate) fn capture_kill_credit(
-    victim: &mut crate::sim::game_entity::GameEntity,
+/// function that does not take one: the Iron Curtain and Genetic Mutator
+/// infantry kills, aircraft self-destruct, passengers dying with their
+/// transport (`world::lifecycle`) or with a collapsing bridge, and passengers
+/// ejected by a sell. Those victims book a Loss with no matching Kill.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_the_kill(
+    entities: &mut EntityStore,
+    houses: &BTreeMap<InternedId, HouseState>,
+    interner: &StringInterner,
+    alliances: &HouseAllianceMap,
+    victim_id: u64,
+    killer_id: Option<u64>,
     killer_owner: Option<InternedId>,
-    rules: &crate::rules::ruleset::RuleSet,
-    interner: &crate::sim::intern::StringInterner,
+    rules: &RuleSet,
 ) {
-    if victim.health.current != 0 {
+    let Some(victim) = entities.get(victim_id) else {
         return;
-    }
-    record_kill_credit(victim, killer_owner, rules, interner);
-}
-
-/// `Record_The_Kill`'s kill and score half for a victim that may still have
-/// health: a Chrono Legionnaire's erase calls vtable `+0xE0` on a target it
-/// removes at full health (`TemporalClass::Update @ 0x0071AAC4`, then UnInit).
-/// The destruction record (`record_destruction_once`) books the loss for a
-/// victim credited here, as for one at zero health. [`capture_kill_credit`]
-/// adds the zero-health gate the damage paths need.
-pub(crate) fn record_kill_credit(
-    victim: &mut crate::sim::game_entity::GameEntity,
-    killer_owner: Option<InternedId>,
-    rules: &crate::rules::ruleset::RuleSet,
-    interner: &crate::sim::intern::StringInterner,
-) {
-    // `DontScore=` victims are invisible to the score screen entirely. gamemd
-    // returns on this byte before any of its bookkeeping, so the kill and the
-    // points are both suppressed here and the loss is suppressed at the
-    // lifecycle recorder — the two halves of that one native early return.
+    };
+    // `DontScore=` (`+0xC9F`) returns before any bookkeeping; the lifecycle
+    // recorder suppresses the loss half of the same early return. Stock sets
+    // it on `SLAV`, `V3ROCKET`, `DMISL` and `CMISL`: without it every missile
+    // shot down would promote its interceptor.
     if victim.dont_score {
         return;
     }
+    let victim_owner = victim.owner();
+    let victim_house = houses
+        .get(&victim_owner)
+        .map(|house| house.cost_factors(rules, interner));
+    let victim_cost = rules
+        .object(interner.resolve(victim.type_ref()))
+        .map_or(0, |object| rules.cost_of(object, victim_house.as_ref()));
+    // `0x00702E64` asks the killer's house `HouseClass::IsAlly @ 0x004F9A90`,
+    // which reads only the asker's own ally bits: a one-way test.
+    let asker = killer_id
+        .and_then(|id| entities.get(id))
+        .map(|killer| killer.owner())
+        .or(killer_owner);
+    let allied = asker.is_some_and(|asker| {
+        crate::map::houses::is_allied_with(
+            alliances,
+            interner.resolve(asker),
+            interner.resolve(victim_owner),
+        )
+    });
+    let points = self::veterancy::kill_award_points(
+        victim_cost,
+        self::veterancy::rank_of(victim.veterancy_raw),
+        allied,
+    );
+    if let (Some(killer_owner), Some(victim)) = (killer_owner, entities.get_mut(victim_id)) {
+        record_kill_credit(victim, killer_owner, points);
+    }
+    if let Some(killer_id) = killer_id {
+        award_kill_experience(
+            entities,
+            rules,
+            interner,
+            killer_id,
+            victim_id,
+            points,
+            victim_house.as_ref(),
+        );
+    }
+}
+
+impl crate::sim::world::Simulation {
+    /// [`record_the_kill`] in this world.
+    pub(crate) fn record_the_kill(
+        &mut self,
+        victim_id: u64,
+        killer_id: Option<u64>,
+        killer_owner: Option<InternedId>,
+        rules: &RuleSet,
+    ) {
+        record_the_kill(
+            &mut self.substrate.entities,
+            &self.houses,
+            &self.interner,
+            &self.house_alliances,
+            victim_id,
+            killer_id,
+            killer_owner,
+            rules,
+        );
+    }
+}
+
+/// `Record_The_Kill`'s kill and score half: the first credit within one fatal
+/// transaction keeps its house and award for the destruction record
+/// (`record_destruction_once`), which books them. A Chrono Legionnaire's erase
+/// calls vtable `+0xE0` on a target it removes at full health
+/// (`TemporalClass::Update @ 0x0071AAC4`, then UnInit); the destruction record
+/// books the loss for a victim credited here, as for one at zero health.
+fn record_kill_credit(
+    victim: &mut crate::sim::game_entity::GameEntity,
+    killer_owner: InternedId,
+    points: i32,
+) {
     if victim.killed_by.is_some() {
         return;
     }
-    let Some(killer_owner) = killer_owner else {
-        return;
-    };
     victim.killed_by = Some(killer_owner);
-    victim.kill_award_points = score_award_for_victim(
-        rules.object(interner.resolve(victim.type_ref())),
-        victim.veterancy,
-    );
+    victim.kill_award_points = points;
 }
 
 /// Squared distance in leptons from raw coordinates.

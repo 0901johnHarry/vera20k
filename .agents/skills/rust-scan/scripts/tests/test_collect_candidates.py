@@ -16,6 +16,28 @@ SPEC.loader.exec_module(COLLECTOR)
 
 
 class CandidateCollectorTests(unittest.TestCase):
+    def test_relative_path_accepts_root_alias_but_rejects_outside_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve()
+            root = directory / "repository"
+            source = root / "src" / "sim" / "example.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("fn example() {}", encoding="utf-8")
+            alias = directory / "alias"
+            try:
+                alias.symlink_to(root, target_is_directory=True)
+            except OSError:
+                self.skipTest("this account cannot create symbolic links")
+            self.assertEqual(COLLECTOR.rel_posix(source, alias), "src/sim/example.rs")
+            self.assertEqual(
+                COLLECTOR.rel_posix(alias / "src" / "sim" / "example.rs", root),
+                "src/sim/example.rs",
+            )
+            outside = directory / "outside.rs"
+            outside.write_text("fn outside() {}", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                COLLECTOR.rel_posix(outside, alias)
+
     def test_sanitizer_ignores_comments_and_string_bodies(self) -> None:
         lines = [
             "// HashMap f64",

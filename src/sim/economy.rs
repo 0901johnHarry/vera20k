@@ -24,13 +24,6 @@ pub struct Economy {
 }
 
 impl Economy {
-    /// Add a factory refund using its existing saturating arithmetic.
-    /// Native direct income currently uses wrapping arithmetic in `credit_income`.
-    /// Unifying these operations requires a separate behavior correction.
-    pub fn add_credits(&mut self, amount: i32) {
-        self.credits = self.credits.saturating_add(amount);
-    }
-
     /// Accumulate the statistics x5.0 figure for `bales` deposited. Integer `*5`
     /// because bales are integral (the engine's deposit x5.0 truncates to integer).
     /// Statistics only — does NOT touch `credits`.
@@ -133,15 +126,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn economy_add_credits_accumulates() {
-        let mut e = Economy::default();
-        e.add_credits(500);
-        e.add_credits(250);
-        assert_eq!(e.credits, 750);
-        assert_eq!(e.available(), 750);
-    }
-
     /// The x5.0 statistics
     /// accumulator truncates to integer `*5` and never touches credits.
     #[test]
@@ -157,8 +141,10 @@ mod tests {
     /// fallback is not implemented by this bounded factory operation.
     #[test]
     fn economy_spend_caps_at_balance_and_tracks_spent() {
-        let mut e = Economy::default();
-        e.add_credits(100);
+        let mut e = Economy {
+            credits: 100,
+            ..Economy::default()
+        };
         assert_eq!(e.spend(30), 30);
         assert_eq!(e.credits, 70);
         assert_eq!(e.spent_credits, 30);

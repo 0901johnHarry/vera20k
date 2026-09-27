@@ -90,11 +90,13 @@
 //!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`) and the
 //!   depot probe (`0x0043C7FB`). Not wired:
 //!   - `TechnoTypeClass::FindFactory @ 0x005F7900` with its online argument
-//!     (`(1,1,1)`, `production_tech::revalidate_eligibility`): production of
-//!     a category whose every factory is warped suspends natively; VERA's
-//!     `BuildEligibility::TemporarilyBlocked` seam has no consumer. Trigger:
-//!     a warp on a house's only factory of a kind. Effect: VERA keeps
-//!     producing during the warp.
+//!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
+//!     build that only offline factories could build (`0x0050924D`), and a
+//!     build promoted then starts on hold (`0x004FA45B`). VERA has neither
+//!     (residual at `production_tech::revalidate_eligibility`). Trigger: a
+//!     building event or a promotion while every factory of the kind is
+//!     warped; a warp's start runs no update (`0x004521C0`). Effect: VERA
+//!     keeps producing during the warp.
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
 //!     online, unsold host; plain prerequisites use the house counters), the
@@ -740,17 +742,7 @@ impl Simulation {
             self.dispatch_unit_lost_events(&[event]);
         }
         // vtable +0xE0 Record_The_Kill(Owner): experience, kill and score.
-        if let Some(victim) = self.substrate.entities.get_mut(target) {
-            crate::sim::combat::record_kill_credit(victim, killer_owner, rules, &self.interner);
-        }
-        crate::sim::combat::award_kill_experience(
-            &mut self.substrate.entities,
-            rules,
-            &self.interner,
-            &self.house_alliances,
-            head,
-            target,
-        );
+        self.record_the_kill(target, Some(head), killer_owner, rules);
         // vtable +0xF8 UnInit: no death effects, no survivors.
         self.uninit_with_context(target, UninitContext::with_rules(rules));
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
@@ -761,11 +753,9 @@ impl Simulation {
     }
 
     /// `VeterancyStruct::Add(OwnerType cost, TargetType cost)` for a
-    /// `Trainable=` attacker (`0x0071A917..0x0071A978`).
-    ///
-    /// RESIDUAL: both costs are `TechnoTypeClass::vt+0x84` evaluated with the
-    /// owning house, as in Record_The_Kill; VERA reads the bare `Cost=`
-    /// (equal for stock countries).
+    /// `Trainable=` attacker (`0x0071A917..0x0071A978`). Each cost is the
+    /// type's Cost_Of for its own object's house: the target's
+    /// (`0x0071A952`) and the attacker's (`0x0071A968`).
     fn temporal_veterancy(&mut self, attacker: u64, target: u64, rules: &RuleSet) {
         let (Some(attacker_entity), Some(target_entity)) = (
             self.substrate.entities.get(attacker),
@@ -782,7 +772,10 @@ impl Simulation {
         if !owner_type.trainable {
             return;
         }
-        let (owner_cost, target_cost) = (owner_type.cost, target_type.cost);
+        let (owner_cost, target_cost) = (
+            self.cost_of(attacker_entity.owner(), owner_type, rules),
+            self.cost_of(target_entity.owner(), target_type, rules),
+        );
         if let Some(attacker_entity) = self.substrate.entities.get_mut(attacker) {
             crate::sim::combat::veterancy::award_kill(
                 attacker_entity,

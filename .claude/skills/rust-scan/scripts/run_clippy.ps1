@@ -5,19 +5,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$activeBuilds = @(
-    Get-Process cargo, rustc -ErrorAction SilentlyContinue |
-        Select-Object -Property Id, ProcessName, StartTime
-)
-
-if ($activeBuilds.Count -gt 0) {
-    Write-Error (
-        'Cargo or rustc is already active; rust-scan will not compete with another build. ' +
-        ($activeBuilds | Format-Table -AutoSize | Out-String).Trim()
-    )
-    exit 3
-}
-
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
     Write-Error 'run_clippy.ps1 must run from inside the VERA20k repository.'
@@ -37,7 +24,6 @@ $cargoArgs = @(
     '--lib'
     '--no-deps'
     '--locked'
-    '--message-format=short'
     '--'
     '-A'
     'clippy::all'
@@ -55,14 +41,14 @@ $cargoArgs = @(
     'unsafe_op_in_unsafe_fn'
 )
 
-Write-Output ('cargo ' + ($cargoArgs -join ' '))
+Write-Output ('python -m tools.cargo_run -- ' + ($cargoArgs -join ' '))
 if ($DryRun) {
     exit 0
 }
 
 Push-Location -LiteralPath $repoRoot
 try {
-    & cargo @cargoArgs 2>&1
+    & python -m tools.cargo_run -- @cargoArgs 2>&1
     $cargoExitCode = $LASTEXITCODE
 }
 finally {

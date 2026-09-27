@@ -69,6 +69,14 @@ pub struct CountryRules {
     pub armor_aircraft_mult: f32,
     pub armor_buildings_mult: f32,
     pub armor_defenses_mult: f32,
+    /// `CostInfantryMult=`, `CostUnitsMult=`, `CostAircraftMult=`,
+    /// `CostBuildingsMult=` and `CostDefensesMult=` (HouseType
+    /// `+0x114..+0x124`, in [`ObjectType::factor_slot`] order): ReadDouble
+    /// into floats (`0x00511B64..0x00511BF9`), the constructor's 1.0
+    /// (`0x005114A8..0x005114C0`) as default, no clamp.
+    /// `HouseClass::GetCostBonus @ 0x0050BDF0` returns the slot. No retail
+    /// country sets them.
+    pub cost_mults: [NativeF32Bits; 5],
     /// `BuildTimeInfantryMult=`, `BuildTimeUnitsMult=`, `BuildTimeAircraftMult=`,
     /// `BuildTimeBuildingsMult=` and `BuildTimeDefensesMult=` (HouseType
     /// `+0x134..+0x144`): ReadDouble into floats (`0x00511C70..0x00511CEC`),
@@ -91,6 +99,15 @@ pub struct CountryRules {
 /// PPM scale for `IncomeMult` (1_000_000 = 1.0×). Must equal `apply_income_mult`'s divisor.
 pub const INCOME_PPM_SCALE: i64 = 1_000_000;
 
+/// The House factors [`RuleSet::cost_of`] multiplies in, each indexed by
+/// [`ObjectType::factor_slot`]: the country's `Cost*Mult=` and the
+/// House's FactoryPlant product (House `+0x5390..+0x53A0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HouseCostFactors {
+    pub country: [NativeF32Bits; 5],
+    pub factory_plant: [NativeF32Bits; 5],
+}
+
 impl Default for CountryRules {
     fn default() -> Self {
         // Hand-written (NOT derived): a derived Default would zero `income_ppm`, which would
@@ -105,6 +122,7 @@ impl Default for CountryRules {
             armor_aircraft_mult: 1.0,
             armor_buildings_mult: 1.0,
             armor_defenses_mult: 1.0,
+            cost_mults: [NativeF32Bits::ONE; 5],
             build_time_mults: [NativeF32Bits::ONE; 5],
             rof: 1.0,
             ui_name: None,
@@ -129,6 +147,14 @@ impl CountryRules {
             armor_aircraft_mult: section.get_f32("ArmorAircraftMult").unwrap_or(1.0),
             armor_buildings_mult: section.get_f32("ArmorBuildingsMult").unwrap_or(1.0),
             armor_defenses_mult: section.get_f32("ArmorDefensesMult").unwrap_or(1.0),
+            cost_mults: [
+                "CostInfantryMult",
+                "CostUnitsMult",
+                "CostAircraftMult",
+                "CostBuildingsMult",
+                "CostDefensesMult",
+            ]
+            .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
             build_time_mults: [
                 "BuildTimeInfantryMult",
                 "BuildTimeUnitsMult",
@@ -769,6 +795,14 @@ pub struct GeneralRules {
     /// (`0x0083A1CC`) through `INIClass::ReadInt @ 0x005276D0` into
     /// `Rules+0x186C`; the constructor default is 0x32.
     pub ore_twinkle_chance: i32,
+    /// `[AudioVisual] GUIBuildSound=` (`Rules+0x18C`, read at `0x006693C1`
+    /// through `VocClass::FindByName`; retail `MenuClick`): the sidebar cameo
+    /// click sound, played by `SelectClass::Action @ 0x006AAD00` for every
+    /// click that acts (e.g. `0x006AAE2A`, `0x006AB713`). Residual: gamemd
+    /// resolves the name as it reads it and keeps the previous layer's sound
+    /// when the name does not resolve; VERA stores the name and resolves it at
+    /// play time. Retail's `MenuClick` resolves.
+    pub gui_build_sound: Option<String>,
     /// Sidebar tab click sound from [AudioVisual] GUITabSound (retail
     /// `MenuTab`). The key→tab-click mapping is name-inferred — flagged for a
     /// Ghidra spot-check of the tab-ID consumer before parity sign-off.
@@ -905,6 +939,13 @@ pub struct GeneralRules {
     /// slave miner waits before it looks for a field again. ReadInt at
     /// `0x0067035F`; constructor `0x7FFFFFFF` (`0x00667674`). Retail 150.
     pub slave_miner_kick_frame_delay: i32,
+    /// `Rules+0xF0`, `[General] MaximumQueuedObjects=`: how many builds a
+    /// factory's queue holds behind its active one; `FactoryClass::
+    /// StartProduction` refuses an append at this count (`0x004C9CDE`).
+    /// `RulesClass::ReadGeneral` reads it through `CCINIClass::ReadInt
+    /// 0x005276D0` at `0x00671DA7`; the constructor writes 5 (`0x006656EE` →
+    /// `0x006657CD`).
+    pub maximum_queued_objects: i32,
     /// `Rules+0xD78`, `[General] HarvesterTooFarDistance=` in cells: a
     /// refinery farther than this is approached before the dock is reserved.
     /// `RulesClass::ReadGeneral` reads it through `CCINIClass::ReadInt
@@ -1499,6 +1540,7 @@ impl Default for GeneralRules {
             gui_checkbox_sound: None,
             ore_twinkle: None,
             ore_twinkle_chance: 50,
+            gui_build_sound: None,
             gui_tab_sound: None,
             incoming_message_sound: None,
             message_delay_minutes: 0.6,
@@ -1530,6 +1572,7 @@ impl Default for GeneralRules {
             slave_miner_long_scan: 0x5000,
             slave_miner_scan_correction: 0x300,
             slave_miner_kick_frame_delay: 0x7FFF_FFFF,
+            maximum_queued_objects: 5,
             harvester_too_far_distance: 5,
             approach_target_reset_multiplier: 1,
             chrono_harv_too_far_distance: 50,
@@ -2433,6 +2476,11 @@ impl GeneralRules {
             ore_twinkle_chance: audio_visual
                 .and_then(|s| s.get_i32("OreTwinkleChance"))
                 .unwrap_or(defaults.ore_twinkle_chance),
+            gui_build_sound: audio_visual
+                .and_then(|s| s.get("GUIBuildSound"))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
             gui_tab_sound: audio_visual
                 .and_then(|s| s.get("GUITabSound"))
                 .map(str::trim)
@@ -2545,6 +2593,7 @@ impl GeneralRules {
             slave_miner_long_scan: general.read_range("SlaveMinerLongScan", 0x5000),
             slave_miner_scan_correction: general.read_range("SlaveMinerScanCorrection", 0x300),
             slave_miner_kick_frame_delay: general.read_int("SlaveMinerKickFrameDelay", 0x7FFF_FFFF),
+            maximum_queued_objects: general.read_int("MaximumQueuedObjects", 5),
             harvester_too_far_distance: general.read_int("HarvesterTooFarDistance", 5),
             approach_target_reset_multiplier: general.read_int("ApproachTargetResetMultiplier", 1),
             chrono_harv_too_far_distance: general.read_int("ChronoHarvTooFarDistance", 50),
@@ -4010,29 +4059,94 @@ impl RuleSet {
         })
     }
 
+    /// TechnoType virtual `+0x84`, the cost a House pays for `object`.
+    ///
+    /// `TechnoTypeClass::Cost_Of @ 0x00711F00` (Infantry, Unit and Aircraft
+    /// types) returns the raw `+0xAC` cost for a null House; otherwise it
+    /// stores the country factor (`0x0050BDF0`) and the FactoryPlant factor
+    /// (`0x0050BEB0`) as floats and returns `ftol(cost * plant * country)`
+    /// (`0x00711F35..0x00711F41`). The BuildingType override `0x0045EDD0`
+    /// adjusts its actual cost (`+0xAC` = `0x0045ED50`) the same way, adds the
+    /// halved sum of both PadAircraft costs when it bundles them, and adds its
+    /// FreeUnit's cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
+    /// Native comparison: `tools/spatial_oracle/cost_of`.
+    pub fn cost_of(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
+        let cost = self.adjusted_cost(object, house);
+        if object.category != ObjectCategory::Building {
+            return cost;
+        }
+        let mut cost = cost;
+        if let Some((first, second)) = self.bundled_pad_aircraft(object) {
+            let pads = self
+                .adjusted_cost(second, house)
+                .wrapping_add(self.adjusted_cost(first, house));
+            cost = cost.wrapping_add(pads / 2);
+        }
+        match object
+            .free_unit
+            .as_deref()
+            .and_then(|name| self.object(name))
+        {
+            Some(free) => cost.wrapping_add(self.adjusted_cost(free, house)).max(0),
+            None => cost,
+        }
+    }
+
+    /// `0x00711F00` over the type's `+0xAC` cost.
+    fn adjusted_cost(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
+        use crate::util::native_x87::MaskedX87Chop53 as X87;
+        let cost = self.type_cost(object);
+        let Some(house) = house else {
+            return cost;
+        };
+        let slot = object.factor_slot();
+        X87::ftol_i32_low_masked(X87::mul(
+            X87::mul(
+                X87::load_i32(cost),
+                X87::load_f32(house.factory_plant[slot]),
+            ),
+            X87::load_f32(house.country[slot]),
+        ))
+    }
+
+    /// The two PadAircraft a BuildingType bundles into its price: with
+    /// `SeparateAircraft=no`, when it is the first `Dock=` of the first
+    /// PadAircraft (`0x0045ED63..0x0045ED7D`).
+    fn bundled_pad_aircraft(&self, object: &ObjectType) -> Option<(&ObjectType, &ObjectType)> {
+        if self.general.separate_aircraft {
+            return None;
+        }
+        let [first_id, second_id, ..] = self.general.pad_aircraft_types.as_slice() else {
+            return None;
+        };
+        let (first, second) = (self.object(first_id)?, self.object(second_id)?);
+        first
+            .dock
+            .first()
+            .is_some_and(|dock| dock.eq_ignore_ascii_case(&object.id))
+            .then_some((first, second))
+    }
+
+    /// TechnoType virtual `+0xAC` (GetCost): `Cost=` (`0x00711EB0`), or a
+    /// BuildingType's [`Self::building_actual_cost`] (`0x0045ED50`).
+    pub fn type_cost(&self, object: &ObjectType) -> i32 {
+        if object.category == ObjectCategory::Building {
+            self.building_actual_cost(object)
+        } else {
+            object.cost
+        }
+    }
+
     /// BuildingType virtual `+0xAC` value. Wall sale invokes and discards it;
     /// receiver anger uses the same authority.
     pub(crate) fn building_actual_cost(&self, object: &ObjectType) -> i32 {
         let mut value = object.cost;
-        if !self.general.separate_aircraft
-            && let [first_id, second_id, ..] = self.general.pad_aircraft_types.as_slice()
-            && let (Some(first), Some(second)) = (
-                self.object_case_insensitive(first_id),
-                self.object_case_insensitive(second_id),
-            )
-            && first
-                .dock
-                .first()
-                .is_some_and(|dock| dock.eq_ignore_ascii_case(&object.id))
-        {
+        if let Some((first, second)) = self.bundled_pad_aircraft(object) {
             value = value.wrapping_sub(first.cost.wrapping_add(second.cost) / 2);
         }
         if let Some(free_unit) = object.free_unit.as_deref() {
             value = value
-                .wrapping_sub(
-                    self.object_case_insensitive(free_unit)
-                        .map_or(0, |free| free.cost),
-                )
+                .wrapping_sub(self.object(free_unit).map_or(0, |free| free.cost))
                 .max(0);
         }
         value
@@ -4328,6 +4442,13 @@ impl RuleSet {
             .map_or(INCOME_PPM_SCALE, |country| country.income_ppm)
     }
 
+    /// A country's `Cost*Mult=` floats (`HouseType+0x114..+0x124`), the
+    /// constructor's 1.0 for an unknown country.
+    pub(crate) fn country_cost_mults(&self, id: &str) -> [NativeF32Bits; 5] {
+        self.country_rules(id)
+            .map_or([NativeF32Bits::ONE; 5], |country| country.cost_mults)
+    }
+
     /// `HouseClass::GetArmorMultForType @ 0x0050BD30` for a house of country
     /// `id`: its per-category float for `object` (a `BuildCat=Combat`
     /// building takes `ArmorDefensesMult=`), 1.0 for an unknown country.
@@ -4357,13 +4478,7 @@ impl RuleSet {
         let Some(country) = self.country_rules(id) else {
             return NativeF32Bits::ONE;
         };
-        country.build_time_mults[match object.category {
-            ObjectCategory::Infantry => 0,
-            ObjectCategory::Vehicle => 1,
-            ObjectCategory::Aircraft => 2,
-            ObjectCategory::Building if object.build_cat == Some(BuildCategory::Combat) => 4,
-            ObjectCategory::Building => 3,
-        }]
+        country.build_time_mults[object.factor_slot()]
     }
 
     /// Resolve a country name to its stable `[Countries]` registration index.
@@ -5272,6 +5387,20 @@ SpawnCount=3
     }
 
     #[test]
+    fn retail_production_click_keys_come_from_rulesmd() {
+        // Rules+0xF0 MaximumQueuedObjects ([General], 0x00671DA7), +0x18C
+        // GUIBuildSound and +0x700 ScoldSound ([AudioVisual], 0x006693C1 and
+        // 0x0066ABE8).
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let general = GeneralRules::from_ini(&ini);
+        assert_eq!(general.maximum_queued_objects, 29);
+        assert_eq!(general.gui_build_sound.as_deref(), Some("MenuClick"));
+        assert_eq!(general.scold_sound.as_deref(), Some("MenuScold"));
+    }
+
+    #[test]
     fn cloak_global_defaults_and_native_minute_conversion_parse() {
         let defaults = GeneralRules::default();
         assert_eq!(defaults.cloaking_stages, 9);
@@ -5399,6 +5528,91 @@ CellSpread=0
 
     /// P7: per-country IncomeMult parses to PPM, defaults to the neutral 1.0×, and looks
     /// up case-insensitively. The hand-written Default must NOT be a derived zero.
+    #[test]
+    fn cost_of_matches_the_original_cost_virtuals() {
+        let rows: serde_json::Value =
+            serde_json::from_str(include_str!("../../tools/spatial_oracle/cost_of.json")).unwrap();
+        let bits = |value: &serde_json::Value| -> [NativeF32Bits; 5] {
+            let bits: Vec<u32> = value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|bits| bits.as_u64().unwrap() as u32)
+                .collect();
+            std::array::from_fn(|slot| NativeF32Bits::from_bits(bits[slot]))
+        };
+        let rows = rows.as_array().unwrap();
+        for row in rows {
+            let input = &row["input"];
+            let cost = input["cost"].as_i64().unwrap();
+            let techno = input["techno"].as_str();
+            let own_cost = |kind: &str, other: i64| if techno == Some(kind) { cost } else { other };
+            let free = input["free"].as_i64();
+            let pads = &input["pads"];
+            let key = |set: bool, line: &'static str| if set { line } else { "" };
+            let separate = if input["separate_aircraft"] == 1 {
+                "yes"
+            } else {
+                "no"
+            };
+            let ini = format!(
+                "[General]\nSeparateAircraft={}\nPadAircraft=PAD1,PAD2\n\
+                 [BuildingTypes]\n0=BUILDING\n[VehicleTypes]\n0=FREE\n\
+                 [InfantryTypes]\n0=INF\n[AircraftTypes]\n0=PAD1\n1=PAD2\n\
+                 [BUILDING]\nCost={cost}\n{}{}\n[FREE]\nCost={}\n[INF]\nCost={cost}\n\
+                 [PAD1]\nCost={}\n{}\n[PAD2]\nCost={}\n",
+                separate,
+                key(free.is_some(), "FreeUnit=FREE\n"),
+                key(input["build_cat"] == 5, "BuildCat=Combat"),
+                own_cost("unit", free.unwrap_or(0)),
+                own_cost("aircraft", pads[0].as_i64().unwrap()),
+                key(input["docks"] == true, "Dock=BUILDING"),
+                pads[1].as_i64().unwrap(),
+            );
+            let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
+            let object = match techno {
+                None => "BUILDING",
+                Some("unit") => "FREE",
+                Some("infantry") => "INF",
+                Some(_) => "PAD1",
+            };
+            let factors = HouseCostFactors {
+                country: bits(&input["country"]),
+                factory_plant: bits(&input["plant"]),
+            };
+            let house = (input["house"] == true).then_some(&factors);
+            assert_eq!(
+                rules.cost_of(rules.object(object).unwrap(), house),
+                row["cost"].as_i64().unwrap() as i32,
+                "native Cost_Of row {input}"
+            );
+        }
+        assert_eq!(rows.len(), 90);
+    }
+
+    #[test]
+    fn country_cost_mults_read_doubles_into_floats() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[Countries]\n0=Americans\n1=Russians\n\
+             [Americans]\nCostInfantryMult=.8\nCostUnitsMult=85%\n",
+        ))
+        .unwrap();
+        let one = NativeF32Bits::ONE;
+        assert_eq!(
+            rules.country_cost_mults("americans"),
+            [
+                NativeF32Bits::from_bits(0.8_f32.to_bits()),
+                // 0.85000000000000009 stored under the chop control word.
+                NativeF32Bits::from_bits(0x3F59_9999),
+                one,
+                one,
+                one,
+            ]
+        );
+        assert_eq!(rules.country_cost_mults("Russians"), [one; 5]);
+        assert_eq!(rules.country_cost_mults("Nowhere"), [one; 5]);
+    }
+
     #[test]
     fn country_income_mult_parses_and_defaults() {
         assert_eq!(
@@ -6019,6 +6233,7 @@ MutateWarhead=MyMutate\n\
              SlaveMinerScanCorrection=5\n\
              SlaveMinerKickFrameDelay=200\n\
              HarvesterTooFarDistance=8\n\
+             MaximumQueuedObjects=$1D\n\
              ChronoHarvTooFarDistance=40\n\
              ApproachTargetResetMultiplier=1.5\n\
              PurifierBonus=.30\n",
@@ -6036,6 +6251,10 @@ MutateWarhead=MyMutate\n\
         // ReadInt stops at the decimal point.
         assert_eq!(rules.general.approach_target_reset_multiplier, 1);
         assert_eq!(rules.general.harvester_too_far_distance, 8);
+        assert_eq!(
+            rules.general.maximum_queued_objects, 29,
+            "ReadInt takes `$` hex"
+        );
         assert_eq!(rules.general.chrono_harv_too_far_distance, 40);
         assert_eq!(rules.general.purifier_bonus_ppm, 300_000);
     }
@@ -6062,6 +6281,7 @@ MutateWarhead=MyMutate\n\
         assert_eq!(rules.general.slave_miner_kick_frame_delay, 0x7FFF_FFFF);
         assert_eq!(rules.general.approach_target_reset_multiplier, 1);
         assert_eq!(rules.general.harvester_too_far_distance, 5);
+        assert_eq!(rules.general.maximum_queued_objects, 5);
         assert_eq!(rules.general.chrono_harv_too_far_distance, 50);
         assert_eq!(rules.general.purifier_bonus_ppm, 250_000);
     }

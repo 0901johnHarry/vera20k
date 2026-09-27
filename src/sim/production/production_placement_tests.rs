@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use super::{
-    BuildingPlacementError, ProductionCategory, cancel_last_for_owner, credits_for_owner,
+    BuildingPlacementError, ProductionCategory, credits_for_owner,
     cycle_active_producer_for_owner_category, find_spawn_cell_for_owner, foundation_dimensions,
     place_ready_building_with_overlays, place_ready_building_without_overlays,
     placement_preview_for_owner_with_overlays, placement_preview_for_owner_without_overlays,
@@ -32,8 +32,7 @@ use crate::sim::world::Simulation;
 
 // Re-use test helpers from the main production_tests module.
 use super::tests::{
-    basic_multi_queue_rules, build_catalog_rules, factory_rules, placement_radius_rules,
-    sell_rules, spawn_structure,
+    build_catalog_rules, factory_rules, placement_radius_rules, sell_rules, spawn_structure,
 };
 
 fn stock_refinery_completion_rules() -> RuleSet {
@@ -49,6 +48,7 @@ fn stock_refinery_completion_rules() -> RuleSet {
          1=NACNST\n\
          2=GAREFN\n\
          3=NAREFN\n\
+         4=NAINDP\n\
          [GACNST]\n\
          Factory=BuildingType\n\
          [NACNST]\n\
@@ -73,7 +73,11 @@ fn stock_refinery_completion_rules() -> RuleSet {
          Storage=20\n\
          [BLOCKER]\n\
          Cost=1\n\
-         Speed=0\n",
+         Speed=0\n\
+         [NAINDP]\n\
+         Strength=1000\n\
+         FactoryPlant=yes\n\
+         UnitsCostBonus=.75\n",
     ))
     .expect("stock refinery completion rules should parse");
     let art = ArtRegistry::from_ini(&IniFile::from_str(
@@ -579,7 +583,7 @@ fn ready_building(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &
     let started = sim
         .production
         .factory_shadow
-        .enqueue(owner_id, category, type_id, 0, cost);
+        .test_enqueue_kernel(owner_id, category, type_id, 0, cost);
     assert!(started, "test fixture arms one fresh factory head");
     super::construct_active_factory_fixture(sim, rules, owner_id, category, type_id)
         .expect("ready-building fixture constructs at StartProduction");
@@ -1335,6 +1339,8 @@ fn live_occupant_on_a_candidate_cell_drops_that_cell_from_the_fallback_pool() {
     }
 }
 
+/// The refund is the FreeUnit's GetRefund with `full` set, its Cost_Of, which
+/// the house's Industrial Plant discounts: 1400 * .75.
 #[test]
 fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     let mut sim = Simulation::new();
@@ -1360,6 +1366,8 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
         }
     }
     *super::credits_entry_for_owner(&mut sim, "Americans") = 100;
+    sim.spawn_object("NAINDP", "Americans", 40, 40, 0, &rules, &height_map)
+        .expect("the Industrial Plant unlimbos");
     let americans = sim.interner.get("Americans").expect("owner should exist");
     let owned_units_before = sim.owned_object_counts(americans).1;
     install_refinery_test_terrain(&mut sim);
@@ -1389,7 +1397,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
             .eq_ignore_ascii_case("CMIN")),
         "same-tick pending-delete drain must leave no living or limbo CMIN"
     );
-    assert_eq!(credits_for_owner(&sim, "Americans"), 1500);
+    assert_eq!(credits_for_owner(&sim, "Americans"), 1150);
     assert_eq!(
         sim.owned_object_counts(americans).1,
         owned_units_before,
@@ -1400,7 +1408,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     assert!(!later.spawned_entities);
     assert_eq!(
         credits_for_owner(&sim, "Americans"),
-        1500,
+        1150,
         "consumed BuildingUp transition must not refund twice"
     );
 }
@@ -2102,12 +2110,16 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
     let category =
         super::production_tech::production_category_for_object(rules.object("GAWALL").unwrap());
     let held = super::lifecycle_tests::held_id(&sim, owner, category);
-    assert!(super::enqueue_by_type(
-        &mut sim,
-        &rules,
-        "Americans",
-        "GAWALL"
-    ));
+    // A second wall waits behind the finished one, as when VERA queued it while the
+    // first was still building (gamemd never queues a building: see enqueue_by_type's
+    // building-path residual). A PRODUCE sent now would take the finished head's
+    // same-type branch instead (0x004FA5A8..0x004FA5C4), so the fixture appends it.
+    let cost = rules.object("GAWALL").unwrap().cost.max(0);
+    assert!(
+        !sim.production
+            .factory_shadow
+            .test_enqueue_kernel(owner, category, type_id, 1, cost)
+    );
     assert!(matches!(
         super::production_tech::revalidate_eligibility(&sim, &rules, "Americans", "GAWALL"),
         super::factory::BuildEligibility::Buildable
@@ -3439,71 +3451,6 @@ fn spawn_routing_prefers_active_producer_when_available() {
         spawn.0 >= 31 && spawn.0 <= 33 && spawn.1 >= 30 && spawn.1 <= 32,
         "spawn should prefer the active war factory, got {:?}",
         spawn
-    );
-}
-
-#[test]
-fn cancel_last_for_owner_cancels_latest_item_across_categories() {
-    let mut sim = Simulation::new();
-    let rules = basic_multi_queue_rules();
-
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 1000;
-    let americans = sim.interner.intern("Americans");
-    // P5d: arm two registry builds (E1 order 1, MTNK order 2 = the latest). No upfront
-    // charge, so credits stay 1000 until the cancel refund.
-    super::tests::arm_build_via(
-        &mut sim,
-        &rules,
-        "Americans",
-        "E1",
-        ProductionCategory::Infantry,
-        1,
-    );
-    super::tests::arm_build_via(
-        &mut sim,
-        &rules,
-        "Americans",
-        "MTNK",
-        ProductionCategory::Vehicle,
-        2,
-    );
-
-    // Simulate a partly-charged MTNK (the latest item) so the abandon refunds its SPENT
-    // portion (700-300=400), not the full cost — the legacy full-refund of a partly-charged
-    // build is the retired DRIFT.
-    {
-        let f = sim
-            .production
-            .factory_shadow
-            .test_factory_mut(americans, ProductionCategory::Vehicle)
-            .expect("vehicle factory armed");
-        f.progress = 20;
-        f.balance = 300;
-        f.original_balance = 700;
-    }
-
-    let canceled = cancel_last_for_owner(&mut sim, &rules, "Americans");
-    assert!(canceled);
-    assert_eq!(
-        credits_for_owner(&sim, "Americans"),
-        1400,
-        "partial refund of the spent portion (700-300=400), not the full cost"
-    );
-
-    // The latest (MTNK / Vehicle) build is cancelled + pruned; the Infantry build remains.
-    assert!(
-        sim.production
-            .factory_shadow
-            .view(americans, ProductionCategory::Infantry)
-            .is_some(),
-        "the Infantry build remains"
-    );
-    assert!(
-        sim.production
-            .factory_shadow
-            .view(americans, ProductionCategory::Vehicle)
-            .is_none(),
-        "the cancelled Vehicle build is pruned"
     );
 }
 

@@ -72,10 +72,9 @@ use crate::sim::world::{
 };
 use crate::util::lepton;
 
-use super::production_queue::credits_entry_for_owner;
 use super::production_tech::foundation_dimensions;
 
-/// `TechnoTypeClass::GetRefund @ 0x00711F60` for a BuildingType and a live
+/// `TechnoTypeClass::GetRefund @ 0x00711F60` (type vtable `+0xB8`) for a live
 /// house (`RET 8`), in its x87 order under the chop control word:
 ///
 /// ```text
@@ -83,24 +82,22 @@ use super::production_tech::foundation_dimensions;
 /// if (full) pct = 1.0f
 /// m1 = country Cost*Mult (0x0050BDF0); m2 = FactoryPlant product (0x0050BEB0)
 /// if (Soylent) return ftol(Soylent * m1)
-/// v = ftol(GetCost() * m2 * m1)         ; BuildingType vt+0xAC = 0x0045ED50
+/// v = ftol(GetCost() * m2 * m1)         ; vt+0xAC, RuleSet::type_cost
 /// if (human (0x0050B730)) v = ftol(v * pct)
 /// ```
 ///
 /// A sale credits it with `full` clear (`TechnoClass vt+0x2BC` =
-/// `0x0070ADA0`, `0x0044A215`).
-///
-/// RESIDUAL: VERA does not parse the country `Cost*Mult=` keys; no stock
-/// country authors them, so `m1` is the HouseType constructor's 1.0f
-/// (`0x00511481..0x005114CC`) for every stock house.
-pub(crate) fn building_type_refund(
+/// `0x0070ADA0`, `0x0044A215`); a refinery's unplaceable free unit with `full`
+/// set (`0x00446E82`, `0x00446ED0`). `factors` are the House's
+/// ([`Simulation::house_cost_factors`]).
+pub(crate) fn type_refund(
     rules: &RuleSet,
     object: &crate::rules::object_type::ObjectType,
     house: &crate::sim::house_state::HouseState,
+    factors: &crate::rules::ruleset::HouseCostFactors,
     game_mode_nonzero: bool,
     full: bool,
 ) -> i32 {
-    use crate::rules::object_type::BuildCategory;
     use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF32Bits};
 
     let pct = if full {
@@ -108,10 +105,8 @@ pub(crate) fn building_type_refund(
     } else {
         X87::store_f32_masked_chop(X87::load_f64(rules.general.refund_percent))
     };
-    let m1 = NativeF32Bits::ONE;
-    let m2 = house
-        .base_projection
-        .building_cost_factor(object.build_cat == Some(BuildCategory::Combat));
+    let slot = object.factor_slot();
+    let (m1, m2) = (factors.country[slot], factors.factory_plant[slot]);
     if object.soylent != 0 {
         return X87::ftol_i32_low_masked(X87::mul(
             X87::load_i32(object.soylent),
@@ -119,10 +114,7 @@ pub(crate) fn building_type_refund(
         ));
     }
     let value = X87::ftol_i32_low_masked(X87::mul(
-        X87::mul(
-            X87::load_i32(rules.building_actual_cost(object)),
-            X87::load_f32(m2),
-        ),
+        X87::mul(X87::load_i32(rules.type_cost(object)), X87::load_f32(m2)),
         X87::load_f32(m1),
     ));
     if house.is_controlled_by_human(game_mode_nonzero) {
@@ -489,7 +481,7 @@ fn sale_sounds(sim: &mut Simulation, rules: &RuleSet, id: u64) {
 /// for the owner's player unless it undeploys (`+0x41A`, `0x00449CE5`), then
 /// the conversion into its `UndeploysInto=` unit
 /// ([`Simulation::finish_undeploy`]) or the sale (`0x0044A1E8`): light off
-/// (`+0x614`), the refund credited ([`building_type_refund`], `full` clear,
+/// (`+0x614`), the refund credited ([`type_refund`], `full` clear,
 /// before Limbo), then Limbo and UnInit. Returns whether a unit entered the
 /// map.
 pub(crate) fn sell_complete(
@@ -520,19 +512,19 @@ pub(crate) fn sell_complete(
     let refund = sim.substrate.entities.get(id).and_then(|entity| {
         let object = sim.object_type(entity.type_ref(), rules)?;
         let house = sim.houses.get(&owner)?;
-        Some(building_type_refund(
+        Some(type_refund(
             rules,
             object,
             house,
+            &sim.house_cost_factors(owner, rules)?,
             sim.session.game_mode_nonzero,
             false,
         ))
     });
     sim.set_building_light_active(id, false);
     if let Some(refund) = refund {
-        let owner_name = sim.interner.resolve(owner).to_string();
-        let credits = credits_entry_for_owner(sim, &owner_name);
-        *credits = credits.wrapping_add(refund);
+        // Add_Credits (`0x0044A222`).
+        crate::sim::credit_income::add_credits(sim, owner, refund);
     }
     sim.uninit_with_context(id, UninitContext::with_rules(rules));
     if sim.session.game_options.super_weapons {

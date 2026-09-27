@@ -35,7 +35,7 @@ use crate::app::types::{CursorId, SIM_TICK_MS};
 use crate::match_bootstrap::{MatchSeedClock, MatchSeedSource, StartupSessionClassification};
 use crate::render::radar_anim::RadarAnimPhase;
 use crate::render::sidebar_chrome::SidebarTheme;
-use crate::sim::command::{Command, QueueMode};
+use crate::sim::command::Command;
 use crate::sim::house_state::HouseDifficulty;
 use crate::sim::production;
 use crate::ui::game_screen::GameScreen;
@@ -356,10 +356,7 @@ impl TacticalCaptureSession {
                     action_id,
                     observation.tick,
                     &owner,
-                    Command::QueueProduction {
-                        type_id: type_ref,
-                        mode: QueueMode::Append,
-                    },
+                    Command::QueueProduction { type_id: type_ref },
                 )?;
                 self.advance_exact_step(state)?;
             }
@@ -869,7 +866,6 @@ impl TacticalCaptureSession {
             in_game: state.frontend.screen == GameScreen::InGame,
             local_owner: owner.clone(),
             match_ended,
-            build_options_strict: production::has_strict_build_option_for_owner(sim, rules, &owner),
             entities,
             build_options,
             queued_production,

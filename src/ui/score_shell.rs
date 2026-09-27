@@ -454,30 +454,11 @@ impl ScorePage {
     }
 }
 
-/// MSVC `qsort` as `0x005C9D7A` calls it (`0x007C8B48`): up to eight
-/// elements it runs `shortsort`, which repeatedly swaps the first-found
-/// greatest element under `compare` to the end. Ties therefore land in a
-/// fixed permutation rather than in input order. Larger arrays take the
-/// median partition, which a skirmish cannot reach (at most eight players;
-/// passive houses and the observer get no row); they fall back to the same
-/// selection here.
-pub fn msvc_shortsort<T>(items: &mut [T], compare: impl Fn(&T, &T) -> std::cmp::Ordering) {
-    let mut hi = items.len();
-    while hi > 1 {
-        let mut max = 0;
-        for p in 1..hi {
-            if compare(&items[p], &items[max]) == std::cmp::Ordering::Greater {
-                max = p;
-            }
-        }
-        items.swap(max, hi - 1);
-        hi -= 1;
-    }
-}
-
-/// The score dialog's comparator `0x005C9AE0`: a higher score sorts first.
+/// The score dialog's `qsort` (`0x005C9D7A` calls `0x007C8B48`) with its
+/// comparator `0x005C9AE0`: a higher score sorts first, and equal scores land
+/// in qsort's fixed permutation rather than in input order.
 pub fn sort_rows(rows: &mut [ScoreRow]) {
-    msvc_shortsort(rows, |a, b| b.score.cmp(&a.score));
+    crate::util::retail_pointer_sort::sort_by(rows, |a, b| b.score.cmp(&a.score));
 }
 
 #[cfg(test)]

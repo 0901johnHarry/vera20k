@@ -10,14 +10,12 @@ use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 
 use super::PRODUCTION_STEPS;
-use super::factory_lifecycle::{self, enqueue_by_type};
+use super::factory_lifecycle;
 use super::production_spawn::{
     ProductionDeliveryKind, find_helipad_for_aircraft, find_spawn_selection_for_owner_with_type,
     mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
-use super::production_tech::{
-    owner_matches_build_identity, production_category_for_object, should_use_relaxed_build_mode,
-};
+use super::production_tech::{owner_matches_build_identity, production_category_for_object};
 use super::production_types::*;
 
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
@@ -72,33 +70,19 @@ pub(in crate::sim) fn credits_entry_for_owner<'a>(
     &mut sim.houses.get_mut(&key).unwrap().economy.credits
 }
 
-/// Try to enqueue a default buildable unit for `owner`.
-///
-/// Returns the enqueued type ID on success.
-pub fn enqueue_default_unit_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> Option<InternedId> {
-    let type_id: InternedId = pick_default_buildable_unit(sim, rules, owner)?;
-    let type_str = sim.interner.resolve(type_id).to_string();
-    enqueue_by_type(sim, rules, owner, &type_str).then_some(type_id)
-}
-
 /// Build a production list across supported sidebar categories for an owner.
 ///
-/// In RA2, only items the player has unlocked via the tech tree are shown.
-/// Items with missing prerequisites, wrong faction, or no factory are hidden
-/// entirely — only items with insufficient credits are shown greyed out.
+/// In RA2, only items the player has unlocked via the tech tree are shown
+/// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
-    let strict: Vec<BuildOption> =
-        super::production_tech::build_options_for_owner_mode(sim, rules, owner, BuildMode::Strict);
+    let options: Vec<BuildOption> =
+        super::production_tech::all_build_options_for_owner(sim, rules, owner);
 
     // Diagnostic: log reason breakdown when nothing is buildable.
-    let enabled_count = strict.iter().filter(|o| o.enabled).count();
+    let enabled_count = options.iter().filter(|o| o.enabled).count();
     if enabled_count == 0 && sim.session.tick % 90 == 0 {
         let mut reason_counts: BTreeMap<&str, usize> = BTreeMap::new();
-        for opt in &strict {
+        for opt in &options {
             let key = match &opt.reason {
                 Some(BuildDisabledReason::UnbuildableTechLevel) => "UnbuildableTechLevel",
                 Some(BuildDisabledReason::WrongOwner) => "WrongOwner",
@@ -108,8 +92,6 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
                 Some(BuildDisabledReason::MissingPrerequisite(_)) => "MissingPrerequisite",
                 Some(BuildDisabledReason::NoFactory) => "NoFactory",
                 Some(BuildDisabledReason::AtBuildLimit) => "AtBuildLimit",
-                Some(BuildDisabledReason::InsufficientCredits) => "InsufficientCredits",
-                Some(BuildDisabledReason::PlacementModeUnavailable) => "PlacementModeUnavailable",
                 None => "Enabled",
             };
             *reason_counts.entry(key).or_default() += 1;
@@ -118,7 +100,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
             "[BUILD-DIAG] owner='{}' tick={} total_items={} reasons={:?}",
             owner,
             sim.session.tick,
-            strict.len(),
+            options.len(),
             reason_counts
         );
         // Log owned structures and their factory status.
@@ -136,7 +118,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
             }
         }
         // Log a few sample failures to show the exact reason per item.
-        for opt in strict.iter().filter(|o| !o.enabled).take(5) {
+        for opt in options.iter().filter(|o| !o.enabled).take(5) {
             let type_str = sim.interner.resolve(opt.type_id);
             log::warn!(
                 "[BUILD-DIAG]   sample: '{}' reason={:?}",
@@ -146,33 +128,11 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         }
     }
 
-    let visible: Vec<BuildOption> = strict
+    let visible: Vec<BuildOption> = options
         .into_iter()
-        .filter(|opt| {
-            opt.enabled
-                || matches!(
-                    opt.reason,
-                    Some(BuildDisabledReason::InsufficientCredits)
-                        | Some(BuildDisabledReason::AtBuildLimit)
-                )
-        })
+        .filter(BuildOption::visible_in_sidebar)
         .collect();
-    let visible = dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner);
-    if !visible.is_empty() || !super::production_tech::prototype_fallback_enabled() {
-        return visible;
-    }
-    dedupe_visible_build_options(
-        super::production_tech::build_options_for_owner_mode(
-            sim,
-            rules,
-            owner,
-            BuildMode::PrototypeRelaxed,
-        ),
-        sim,
-        rules,
-        owner,
-        &sim.interner,
-    )
+    dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner)
 }
 
 fn dedupe_visible_build_options(
@@ -256,12 +216,10 @@ fn sidebar_variant_rank(
     (required_house_match as u8, owner_specificity, enabled)
 }
 
-/// True if this owner has at least one strictly buildable production option.
-///
-/// This ignores prototype-relaxed fallback and is useful for picking a likely
-/// local player house in UI code.
-pub fn has_strict_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> bool {
-    super::production_tech::build_options_for_owner_mode(sim, rules, owner, BuildMode::Strict)
+/// True if this owner has at least one buildable production option — useful
+/// for picking a likely local player house in UI code.
+pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> bool {
+    super::production_tech::all_build_options_for_owner(sim, rules, owner)
         .iter()
         .any(|o| o.enabled)
 }
@@ -296,9 +254,9 @@ fn tick_production_impl(
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // P5d: the registry is the queue-of-record + completion authority. Collect the
-    // (owner, category) keys whose active build has completed (progress == 54, object held,
-    // not paused), in deterministic temporal (insertion_seq) order — the SAME order
-    // step_all charged in and the hash folds. The registry advances (StartNextQueued) on a
+    // (owner, category) keys whose active build has completed (progress == 54, object held),
+    // in construction (insertion_seq) order — the SAME order step_all charged in and the
+    // hash folds. The registry advances (StartNextQueued) on a
     // successful delivery (C7), not on completion alone.
     let completed_keys = sim.production.factory_shadow.completed_keys();
     if completed_keys.is_empty() {
@@ -606,13 +564,13 @@ fn tick_production_impl(
 ///
 /// Projects the player-visible build queue from the registry (the queue-of-record).
 /// Per factory: the active build (head) then its FIFO tail, sorted by `(category,
-/// stamp)` where stamp is the head's `insertion_seq` or a tail entry's `enqueue_order`
-/// (D1: insertion_seq == active enqueue_order).
+/// stamp)` where stamp is the factory's construction stamp for the head (older than
+/// every entry queued behind it) or a tail entry's `enqueue_order`.
 ///
-/// `state` is DERIVED: head -> Paused if `manual`, else Done if complete-held
-/// (`progress >= PRODUCTION_STEPS`, the blocked-exit case that persists across ticks),
-/// else Building; tail -> Queued. `progress` is the factory's step count; a queued
-/// tail item has not started.
+/// `state` is DERIVED: head -> Paused if held by the user (`manual`), else Done if
+/// complete-held (`progress >= PRODUCTION_STEPS`, the blocked-exit case that persists
+/// across ticks), else Building (a cash stall included); tail -> Queued. `progress` is
+/// the factory's step count; a queued tail item has not started.
 pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<QueueItemView> {
     let Some(owner_id) = sim.interner.get(owner) else {
         return Vec::new();
@@ -692,29 +650,4 @@ pub fn ready_buildings_for_owner(
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn pick_default_buildable_unit(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> Option<InternedId> {
-    let mode = if should_use_relaxed_build_mode(sim, rules, owner) {
-        BuildMode::PrototypeRelaxed
-    } else {
-        BuildMode::Strict
-    };
-    super::production_tech::build_options_for_owner_mode(sim, rules, owner, mode)
-        .into_iter()
-        .find(|opt| {
-            opt.enabled
-                && matches!(
-                    opt.queue_category,
-                    ProductionCategory::Infantry
-                        | ProductionCategory::Vehicle
-                        | ProductionCategory::Ship
-                        | ProductionCategory::Aircraft
-                )
-        })
-        .map(|opt| opt.type_id)
 }

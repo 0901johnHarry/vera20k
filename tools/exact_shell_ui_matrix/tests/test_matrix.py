@@ -22,7 +22,7 @@ from tools.exact_shell_ui_matrix.catalog import (
     TRANSITIONS,
     resolution_token,
 )
-from tools.exact_shell_ui_matrix.generate import build_matrix
+from tools.exact_shell_ui_matrix.generate import OUTPUT_ROOT, build_matrix, main as generate_main
 from tools.exact_shell_ui_matrix.io import (
     MatrixError,
     canonical_json_bytes,
@@ -41,7 +41,6 @@ from tools.exact_shell_ui_matrix.validation import (
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = TOOL_ROOT.parents[1]
-GENERATED_MATRIX = REPO_ROOT / "target" / "exact-shell-ui" / "matrix.v1.json"
 TEST_ARTIFACT_BYTES = b'{"fixture":"exact-shell-ui-evidence"}\n'
 TEST_ARTIFACT_SHA256 = hashlib.sha256(TEST_ARTIFACT_BYTES).hexdigest()
 
@@ -586,13 +585,15 @@ class MatrixTests(unittest.TestCase):
             set(VERIFICATION_POLICIES),
         )
 
-    def test_checked_in_generator_matches_generated_target_artifact_when_present(self) -> None:
-        if not GENERATED_MATRIX.exists():
-            self.skipTest("generated target artifact not present")
-        self.assertEqual(
-            GENERATED_MATRIX.read_bytes(),
-            canonical_json_bytes(build_matrix()),
-        )
+    def test_generator_writes_the_canonical_matrix(self) -> None:
+        OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=OUTPUT_ROOT) as temporary:
+            output = Path(temporary).resolve() / "matrix.json"
+            self.assertEqual(generate_main(["--output", str(output)]), 0)
+            self.assertEqual(output.read_bytes(), canonical_json_bytes(build_matrix()))
+            self.assertEqual(generate_main(["--output", str(output), "--check"]), 0)
+            output.write_bytes(b"stale")
+            self.assertEqual(generate_main(["--output", str(output), "--check"]), 2)
 
 
 if __name__ == "__main__":

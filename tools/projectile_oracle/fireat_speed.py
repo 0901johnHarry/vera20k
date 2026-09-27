@@ -34,7 +34,7 @@ from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EIP, U
                                UC_X86_REG_FPCW)
 
 from tools.native_oracle import (load_image, run_checked, SCRATCH, SCRATCH_SIZE, STACK_BASE,
-                                 STACK_SIZE, RET_MAGIC, NATIVE_FPCW, finish_vectors, provenance)
+                                 STACK_SIZE, RET_MAGIC, NATIVE_FPCW, finish_vectors, provenance, OracleError)
 
 GET_SPEED, AIM = 0x773070, 0x70BCB0
 DISTANCE_BEGIN, DISTANCE_END = 0x6FE4F6, 0x6FE537
@@ -87,7 +87,8 @@ def get_speed(case):
     uc.reg_write(UC_X86_REG_ESP, SP)
     uc.reg_write(UC_X86_REG_ECX, WEAPON)
     run_checked(uc, GET_SPEED, RET_MAGIC, count=10_000)
-    assert uc.reg_read(UC_X86_REG_ESP) == SP + 8, "GetSpeed pops its one argument"
+    if uc.reg_read(UC_X86_REG_ESP) != SP + 8:
+        raise OracleError("GetSpeed did not pop its one argument")
     return dict(input=case, speed=struct.unpack("<i", u32(uc.reg_read(UC_X86_REG_EAX)))[0])
 
 
@@ -99,7 +100,8 @@ def distance(case):
     uc.reg_write(UC_X86_REG_ESP, SP)
     run_checked(uc, DISTANCE_BEGIN, DISTANCE_END, count=10_000,
                 required_addresses=[0x4CAC40, 0x7C5F00])
-    assert uc.reg_read(UC_X86_REG_ESP) == SP
+    if uc.reg_read(UC_X86_REG_ESP) != SP:
+        raise OracleError("Launch distance changed the stack pointer")
     return dict(input=case, distance=struct.unpack("<i", u32(uc.reg_read(UC_X86_REG_EAX)))[0])
 
 
@@ -158,7 +160,8 @@ def aim(case):
 
     uc.hook_add(UC_HOOK_CODE, hook)
     run_checked(uc, AIM, RET_MAGIC, count=100_000)
-    assert uc.reg_read(UC_X86_REG_ESP) == SP + 8, "the aim pops its out pointer"
+    if uc.reg_read(UC_X86_REG_ESP) != SP + 8:
+        raise OracleError("The aim did not pop its out pointer")
     return dict(input=case, calls=calls, aim=list(struct.unpack("<iii", uc.mem_read(OUT, 12))))
 
 

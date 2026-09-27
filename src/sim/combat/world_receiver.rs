@@ -661,24 +661,18 @@ pub(crate) fn commit_entities(
         if reached_exact_zero && postmortem_candidate.is_none() {
             world.begin_receiver_kill_record(target_id);
         }
-        if reached_exact_zero && let Some(target) = world.substrate.entities.get_mut(target_id) {
-            // ObjectClass routes its kill callback while Health is exactly zero,
-            // before Destroy's reference notification and before TechnoClass's
-            // victim-house anger callback.
-            capture_kill_credit(target, attacker_owner, rules, &mut world.interner);
-        }
-        // `Record_The_Kill` awards the killer's experience in the same call, so
-        // it is a same-tick write the victim's own death effects can already
-        // observe. Deferring it to the lifecycle release point would change that
-        // visibility.
+        // ObjectClass routes its kill callback while Health is exactly zero,
+        // before Destroy's reference notification and before TechnoClass's
+        // victim-house anger callback. `Record_The_Kill` awards the killer's
+        // experience in the same call, so it is a same-tick write the victim's
+        // own death effects can already observe. Deferring it to the lifecycle
+        // release point would change that visibility.
         if reached_exact_zero {
-            award_kill_experience(
-                &mut world.substrate.entities,
-                rules,
-                &mut world.interner,
-                &world.house_alliances,
-                attacker_id,
+            world.record_the_kill(
                 target_id,
+                (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
+                attacker_owner,
+                rules,
             );
         }
         if reached_exact_zero && postmortem_candidate.is_none() {

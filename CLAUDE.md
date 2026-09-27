@@ -222,8 +222,11 @@ Before fixing a bug whose expected behavior is established, first make a focused
 - Docs/skills: validate content, links/examples and tooling; no Cargo suite.
 - Every `cargo test` uses `--lib`.
 
-Before Cargo, check for running `cargo` and `rustc` processes. Wait for other
-owners; never compete or kill a compile. Confirm fresh-worktree config/assets.
+Run Cargo through `python -m tools.cargo_run -- <cargo arguments>` from the checkout.
+It waits for other builds and serializes cooperating worktrees; do not compete with or
+kill a compile. Use `--label <unique-name>` before `--` to preserve a build or
+`test --lib --no-run` executable with source and binary hashes. See the
+[tool index](tools/README.md) for cache locations and limits. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
 

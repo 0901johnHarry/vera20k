@@ -39,13 +39,13 @@ pub(crate) const ID_SCROLL_UP: u16 = 0x00C8; // −1 page, Kind 0
 /// slot index. Mirrors the gamemd id space and the A4 tooltip id base
 /// (`tooltips::CAMEO_TIP_ID_BASE`).
 pub(crate) const ID_CAMEO_BASE: u16 = 1000;
-/// Sidebar control/dev button id base (A6): 6 slots in a fixed order —
-/// cancel, cycle-owner, starter-base, spawn-test-units, pause, producer. These
-/// have NO gamemd counterpart (sandbox/control utilities); ids are app-local and
-/// chosen clear of the tab/repair/sell/scroll/cameo ranges.
+/// Sidebar control/dev button id base (A6): 4 slots in a fixed order —
+/// cycle-owner, starter-base, spawn-test-units, producer. These have NO gamemd
+/// counterpart (sandbox/control utilities); ids are app-local and chosen clear
+/// of the tab/repair/sell/scroll/cameo ranges.
 const ID_CONTROL_BASE: u16 = 0x0200;
 /// Number of control-button slots (A6).
-const CONTROL_SLOTS: usize = 6;
+const CONTROL_SLOTS: usize = 4;
 /// Control-button mask (A6): left + right press, fire-on-press, no held bits —
 /// preserves the legacy "any click fires" behavior of `sidebar::hit_test`
 /// (which ignored the right/left distinction for these buttons).
@@ -271,11 +271,9 @@ fn sync_controls(state: &mut AppState, view: &SidebarView) {
     }
     let handles = state.match_state.match_presentation.in_game_gadgets.controls.expect("built above");
     let slots: [Option<GadgetRect>; CONTROL_SLOTS] = [
-        Some(rect_px(view.cancel_button.rect)),
         Some(rect_px(view.cycle_owner_button.rect)),
         Some(rect_px(view.starter_base_button.rect)),
         Some(rect_px(view.spawn_test_units_button.rect)),
-        view.pause_button.as_ref().map(|b| rect_px(b.rect)),
         view.producer_button.as_ref().map(|b| rect_px(b.rect)),
     ];
     for (i, h) in handles.iter().enumerate() {
@@ -601,17 +599,18 @@ fn apply_gadget_result(state: &mut AppState, view: &SidebarView, result: u16) {
             play_gui_tab_sound(state);
         }
         // Cameo press (A2): map the fired id back to its SidebarItem and run the
-        // existing cameo action. `RESULT_RIGHT` (right-press marker) selects the
-        // right-click branch of `hit_test_item`. gamemd plays no extra cameo
-        // click Voc here — the per-action sound fires inside the build/queue path
-        // reached through `apply_sidebar_action` (matching the legacy cameo path).
+        // cameo action. `RESULT_RIGHT` (right-press marker) selects the right
+        // button and Shift the ABANDON_ALL variant (`SelectClass::Action`
+        // reads modifier bit 0 at `0x006AAD66`); the click decision plays
+        // `GUIBuildSound` itself (`dispatch::sidebar_cameo_press`).
         _ if (ID_CAMEO_BASE..ID_CAMEO_BASE.saturating_add(view.items.len() as u16))
             .contains(&id) =>
         {
             let slot = (id - ID_CAMEO_BASE) as usize;
             if let Some(item) = view.items.get(slot) {
                 let right = (result & RESULT_RIGHT) != 0;
-                let action = crate::sidebar::hit_test_item(item, right);
+                let shift = crate::app::input::dispatch::is_shift_held(state);
+                let action = crate::sidebar::hit_test_item(item, right, shift);
                 crate::app::input::dispatch::apply_sidebar_action(state, action);
             }
         }
@@ -619,12 +618,10 @@ fn apply_gadget_result(state: &mut AppState, view: &SidebarView, result: u16) {
         // Slot order matches `sync_controls`.
         _ if (ID_CONTROL_BASE..ID_CONTROL_BASE + CONTROL_SLOTS as u16).contains(&id) => {
             let action = match id - ID_CONTROL_BASE {
-                0 => Some(view.cancel_button.action.clone()),
-                1 => Some(view.cycle_owner_button.action.clone()),
-                2 => Some(view.starter_base_button.action.clone()),
-                3 => Some(view.spawn_test_units_button.action.clone()),
-                4 => view.pause_button.as_ref().map(|b| b.action.clone()),
-                5 => view.producer_button.as_ref().map(|b| b.action.clone()),
+                0 => Some(view.cycle_owner_button.action.clone()),
+                1 => Some(view.starter_base_button.action.clone()),
+                2 => Some(view.spawn_test_units_button.action.clone()),
+                3 => view.producer_button.as_ref().map(|b| b.action.clone()),
                 _ => None,
             };
             if let Some(action) = action {

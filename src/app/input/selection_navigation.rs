@@ -171,18 +171,17 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
             category_key(category)
         },
     );
-    // The existing production authority uses ObjectType.cost. Native731E29
-    // calls the house-adjusted cost virtual; house cost modifiers remain a
-    // shared production-model residual, documented with this command.
+    // Native731E29 sums each object's Cost_Of for its own house
+    // (`0x00731E2B..0x00731E42`).
     let worth = selected
         .iter()
         .filter_map(|id| sim.entities().get(*id))
         .filter_map(|entity| {
-            state
-                .rules()?
-                .object(sim.interner.resolve(entity.type_ref()))
+            let rules = state.rules()?;
+            let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
+            Some(sim.cost_of(entity.owner(), object, rules))
         })
-        .fold(0_i32, |total, object| total.wrapping_add(object.cost));
+        .fold(0_i32, |total, cost| total.wrapping_add(cost));
     let text = navigation_feedback(
         has_candidates,
         selected.len(),

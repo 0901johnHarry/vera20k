@@ -163,20 +163,6 @@ pub fn active_producer_for_owner_category(
     })
 }
 
-pub fn toggle_pause_for_owner_category(
-    sim: &mut Simulation,
-    owner: &str,
-    category: ProductionCategory,
-) -> bool {
-    let owner_id = sim.interner.intern(owner);
-    // P5d: pause is a registry flag on the active build (the retired `front.state` Paused
-    // bridge). `step_all` skips a `manual` factory without losing progress; unpausing
-    // auto-resumes via `set_rate`.
-    sim.production
-        .factory_shadow
-        .toggle_pause(owner_id, category)
-}
-
 pub fn cycle_active_producer_for_owner_category(
     sim: &mut Simulation,
     rules: &RuleSet,
