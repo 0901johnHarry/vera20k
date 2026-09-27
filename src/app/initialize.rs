@@ -9,8 +9,8 @@ use super::frontend::list_maps;
 use super::presentation::render;
 use super::{
     ActiveEventLoop, App, AppState, Arc, AssetManager, BTreeMap, BasicSection, BatchRenderer,
-    BitFont, DEV_SKIRMISH_SHELL_ENV, EguiIntegration, GameConfig, GameScreen, GpuContext, HashMap,
-    HashSet, HouseRoster, Instant, ModifiersState, MusicPlayer, PhysicalSize, PlatformState,
+    BitFont, EguiIntegration, GameConfig, GameScreen, GpuContext, HashMap, HashSet, HouseRoster,
+    Instant, ModifiersState, MusicPlayer, PhysicalSize, PlatformState,
     RandomMapGenerationRetention, Result, SelectionState, SfxPlayer, SidebarChromeLayoutSpec,
     SidebarTab, StartupAudioDisposition, Window, WindowAttributes, frontend::startup_splash,
     should_load_audio_indices,
@@ -90,16 +90,6 @@ fn apply_startup_audio_profile(
 }
 
 impl App {
-    fn build_startup_asset_manager(config: Option<&GameConfig>) -> Option<AssetManager> {
-        config.and_then(|cfg| match AssetManager::new(&cfg.paths.ra2_dir) {
-            Ok(manager) => Some(manager),
-            Err(err) => {
-                log::warn!("Could not load startup shell assets: {err:#}");
-                None
-            }
-        })
-    }
-
     fn load_version_txt() -> String {
         crate::util::version::retail_internal_version().to_owned()
     }
@@ -117,7 +107,10 @@ impl App {
         // full-read profile retained by persistence. Capture is a sealed
         // automation lane, so it uses exact defaults and its explicit
         // dimensions instead of ingesting operator argv/profile screen state.
-        let game_config = GameConfig::load().ok();
+        let (game_config, mut main_menu_shell_error) = match GameConfig::load() {
+            Ok(config) => (Some(config), None),
+            Err(err) => (None, Some(format!("{err:#}"))),
+        };
         let options_load = select_startup_options_load(
             capture_dimensions,
             &startup_options,
@@ -187,14 +180,17 @@ impl App {
         // 6A5090/6A5130 change row capacity on resize, never artwork scale.
         let ui_scale = 1.0;
         let sidebar_layout_spec = SidebarChromeLayoutSpec::stock();
-        let dev_skirmish_shell_enabled = Self::dev_skirmish_shell_enabled();
-        if dev_skirmish_shell_enabled {
-            log::info!(
-                "Development Skirmish shell enabled via {}",
-                DEV_SKIRMISH_SHELL_ENV
-            );
-        }
-        let mut startup_asset_manager = Self::build_startup_asset_manager(game_config.as_ref());
+        let mut startup_asset_manager = game_config.as_ref().and_then(|config| {
+            match AssetManager::new(&config.paths.ra2_dir) {
+                Ok(manager) => Some(manager),
+                Err(err) => {
+                    let message = format!("Could not load the game archives: {err:#}");
+                    log::warn!("{message}");
+                    main_menu_shell_error = Some(message);
+                    None
+                }
+            }
+        });
         // Native process startup seeds Scenario before the MPModes loader. The
         // Cooperative factory reached by that loader then advances this cursor
         // before the first shell is shown.
@@ -306,17 +302,7 @@ impl App {
                 }
             }
         }
-        let skirmish_shell_chrome = if dev_skirmish_shell_enabled {
-            startup_asset_manager.as_ref().and_then(|assets| {
-                crate::render::skirmish_shell_chrome::build_skirmish_shell_chrome_atlas(
-                    &gpu,
-                    &batch_renderer,
-                    assets,
-                )
-            })
-        } else {
-            None
-        };
+        let skirmish_shell_chrome = None;
         let main_menu_shell_chrome = startup_asset_manager.as_ref().and_then(|assets| {
             crate::render::main_menu_shell_chrome::build_main_menu_shell_chrome_atlas(
                 &gpu,
@@ -324,8 +310,9 @@ impl App {
                 assets,
             )
         });
-        let main_menu_shell_failed =
-            startup_asset_manager.is_none() || main_menu_shell_chrome.is_none();
+        if main_menu_shell_chrome.is_none() && main_menu_shell_error.is_none() {
+            main_menu_shell_error = Some("Required game-menu artwork is missing or unreadable. Check that the installation includes Yuri's Revenge.".to_owned());
+        }
         let version_txt = Self::load_version_txt();
         let available_maps = list_maps::list_available_maps().unwrap_or_else(|err| {
             log::warn!("Could not list maps for menu: {:#}", err);
@@ -644,7 +631,6 @@ impl App {
                     crate::app::loading::pump::LoadingProgressState::standard_skirmish(),
                 frontend_rules: startup_rules,
                 shell_preview_overlay_registry: None,
-                dev_skirmish_shell_enabled,
                 skirmish_shell_state,
                 choose_map_last_mode_row: None,
                 offline_skirmish_runtime,
@@ -658,7 +644,7 @@ impl App {
                 main_menu_movie: None,
                 main_menu_movie_identity: None,
                 main_menu_movie_last_step: Instant::now(),
-                main_menu_shell_failed,
+                main_menu_shell_error,
                 version_txt,
                 shell_first_paint_slide: None,
                 shell_slide_active_shell: None,
@@ -740,10 +726,6 @@ impl App {
         // an audible source. The profile keeps native negative values for
         // round-trip; the output owners provide the documented safe clamp.
         apply_startup_audio_profile(&state.persistence.options_profile, &mut state.audio);
-
-        if state.frontend.dev_skirmish_shell_enabled {
-            Self::ensure_active_cooperative_shell_selection(&mut state);
-        }
 
         if let Ok(quickplay) = std::env::var("RA2_QUICKPLAY") {
             let skirmish_settings = state.frontend.skirmish_settings.clone();

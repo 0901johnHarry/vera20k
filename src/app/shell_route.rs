@@ -7,9 +7,8 @@
 //! teardown blocks each cleared with slightly different subsets. Exclusivity
 //! is now structural: the state can no longer represent two shells at once,
 //! and the skirmish return arrow travels inside the variant it belongs to.
-//! The env-gated `dev_skirmish_shell_enabled` override and the degraded
-//! `main_menu_shell_failed` latch remain separate flags — they gate rendering,
-//! not routing.
+//! A terminal menu error is owned separately by the frontend; it stops shell
+//! rendering and input without creating an alternate gameplay route.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ShellRoute {

@@ -16,7 +16,6 @@ use crate::ui::main_menu::SkirmishSettings;
 
 pub(crate) struct FrontendState {
     /// Opt-in research shell path. Defaults off so the egui Skirmish setup is visible.
-    pub(crate) dev_skirmish_shell_enabled: bool,
     pub(crate) skirmish_shell_state: crate::ui::skirmish_shell::SkirmishShellState,
     /// Choose Map's last clicked game-type row `[0x008316FC]`: starts at -1,
     /// written only by a game-type click and never reset, so it outlives
@@ -44,7 +43,8 @@ pub(crate) struct FrontendState {
     pub(crate) main_menu_movie_identity:
         Option<crate::app::frontend::main_menu_shell_render::Ra2tsMovieSessionIdentity>,
     pub(crate) main_menu_movie_last_step: Instant,
-    pub(crate) main_menu_shell_failed: bool,
+    /// Terminal menu failure; retained for the error screen and input gate.
+    pub(crate) main_menu_shell_error: Option<String>,
     /// Numeric internal-version string used by the bottom-right main-menu line.
     /// Resolution follows the retail 16-byte/CR-only cached contract.
     pub(crate) version_txt: String,
