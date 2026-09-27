@@ -3,10 +3,12 @@
   "date_utc": "2026-09-27",
   "scope": "Physical Shrapnel low wooden bridge repair, Road crossing, and the adjacent Water ship whose movement head enters the repaired cell; retained sinking lifetime and its connected consumers.",
   "source": {
-    "base": "042f9350",
-    "production_candidate": "f0d5d5a5724d305358297320dc954e580cecd47a",
+    "base": "772808f1",
+    "production_candidate": "9a1765618b705d7d80aec315433060c217292972",
     "test_only_followup": "1ab95bde677271fbaf8a5524176b06e3b0148ce3",
-    "snapshot_and_hash_feature": 227
+    "snapshot_and_hash_feature": 227,
+    "pre_review_production_candidate": "f0d5d5a5724d305358297320dc954e580cecd47a",
+    "critic_fix": "090fed29"
   },
   "local_evidence_directory": "/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927/engineer-entry-followup",
   "binaries": [
@@ -25,6 +27,26 @@
     {
       "file": "low-v227-scene",
       "sha256": "04caecf3ce2c37fba07e876fa9cb1faff42f2aba98e2b81ae4be47d7f14160b3"
+    },
+    {
+      "file": "low-v227-admission-red-libtests",
+      "sha256": "55fad36bcfee354ca2469bf06aec36c3187580354db6ceb0a5f418b79e4a3003"
+    },
+    {
+      "file": "low-v227-admission-green-libtests",
+      "sha256": "64557b2f02522a4b29aaec30133aeefdd1bef2872e9c9d248901542cd9d0dbde"
+    },
+    {
+      "file": "low-v227-final-full-libtests",
+      "sha256": "8736b742d0aa7aff35e7f46d4d1128ec1bf04a0f2bd011c6aaad733e7dfa7289"
+    },
+    {
+      "file": "low-v227-final-vera20k",
+      "sha256": "d7ec024e0faf4bf0bb416839e5af6ddcfb9452a0f0cd29f4b5c59d9cc4ec70f0"
+    },
+    {
+      "file": "low-v227-final-scene",
+      "sha256": "7cc36a7e53dbd0d3008b4e3ef654b4266aae2bd8bbc03306c68b7b26c2d4a699"
     }
   ],
   "rust_validation": [
@@ -36,7 +58,7 @@
       "results": [
         "test result: FAILED. 9573 passed; 2 failed; 181 ignored; 0 measured; 0 filtered out; finished in 61.55s"
       ],
-      "followup": "Both failures were stale score-timing assertions. Native Object5F579A calls RecordKill before Destroy; the Foot dead-crash arm skips a second kill. Tests only changed at 1ab95bde; both and the surrounding 1102 sim::world tests pass in the subsequent check. The complete suite was not repeated after those test-only changes."
+      "followup": "Both failures were stale score-timing assertions. Native Object5F579A calls RecordKill before Destroy; the Foot dead-crash arm skips a second kill. Tests only changed at 1ab95bde; both and the surrounding 1102 sim::world tests pass in the subsequent check. The complete suite was not repeated after those test-only changes. After the critic correction and a clean merge of main772808f1, a new full retail suite passed9582 tests with zero failures; see low-v227-final-full.log."
     },
     {
       "file": "low-v227-score-fix.log",
@@ -88,6 +110,75 @@
       "command": "cargo build -p vera20k --release --bin vera20k --example bridge_target_layer_scene",
       "exit_code": 0,
       "results": []
+    },
+    {
+      "file": "low-v227-admission-green.log",
+      "sha256": "dd7646b8efccc55505c74e44287ad74b9d079739c526ebd9c6c64d48bc62781e",
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 cargo test -p vera20k --lib app::presentation::instances:: -- --nocapture",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 79 passed; 0 failed; 1 ignored; 0 measured; 9678 filtered out; finished in 0.32s"
+      ]
+    },
+    {
+      "file": "low-v227-final-full.log",
+      "sha256": "65145991679e02ad1ca76d0f9df846388b8daa030837c3dda51519cec81083ca",
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 cargo test -p vera20k --lib -- --nocapture",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 9582 passed; 0 failed; 181 ignored; 0 measured; 0 filtered out; finished in 60.00s"
+      ]
+    },
+    {
+      "file": "low-v227-final-clippy.log",
+      "sha256": "f2e6dc9084165d59ed903f8a5088357c9bb210fd273d0ed03338b82e269d3db6",
+      "command": "VERA20K_REQUIRE_RETAIL_INI=1 cargo clippy -p vera20k --lib",
+      "exit_code": 0,
+      "results": [],
+      "warnings": 924
+    },
+    {
+      "file": "low-v227-final-physical.log",
+      "sha256": "5c2bd067e5584a69e459bbd036afc89501d1f94d4dbdcccac171163401c3c0b6",
+      "command": "retained --lib binary: bridge_low_repair_tests --ignored --nocapture; physical retail map and full production exports",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9761 filtered out; finished in 58.35s"
+      ]
+    },
+    {
+      "file": "low-v227-final-gpu.log",
+      "sha256": "a96615a2d3c06916d9c75b0b826ae3595dc4fb0998ba13995ba672d472adfdb1",
+      "command": "retained --lib binary: native_sinking_clip_survives_camera_scissor_and_ground_upload --ignored --nocapture",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9762 filtered out; finished in 2.11s"
+      ]
+    },
+    {
+      "file": "low-v227-final-aegis-raster.log",
+      "sha256": "7b8be1b067b71a4e2dc089ce86c124f2927792b2081a1620e8390224ab4d04c2",
+      "command": "retained --lib binary: retail_aegis_raster_and_parent_waterline_match_original_ship_draw --ignored --nocapture",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9762 filtered out; finished in 1.04s"
+      ]
+    },
+    {
+      "file": "low-v227-final-release.log",
+      "sha256": "0dbb788f181f66adbb5ed6c5f38e31074230b2fa1fcd29e35cad26603fd34134",
+      "command": "cargo build -p vera20k --release --bin vera20k --example bridge_target_layer_scene",
+      "exit_code": 0,
+      "results": []
+    },
+    {
+      "file": "low-v227-final-visible-seed.log",
+      "sha256": "5556adb15da85aed448bc23d7bd4c54e0a81e80a6c2a4707a84ebf1cae5a34ce",
+      "command": "retained --lib binary: retail_shrapnel_repair_reaches_moving_water_neighbor --ignored --nocapture, logical map alias for visible load",
+      "exit_code": 0,
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9762 filtered out; finished in 21.16s"
+      ]
     }
   ],
   "native_gamemd_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
@@ -98,7 +189,7 @@
     "naval_lifetime_audio": "a332b614d21b1aa110d3c8c5a47aaa8c4a84a39f3d7ce19a8bf5f8a9dfc25866",
     "naval_lifetime_cleanup": "cf3e5aa1ef0b09b6efb67c7472fd69372b574f7e981d6643c88292b99c5b850e",
     "naval_lifetime_controls": "845ef54b42c6f3bc6bb55934326d56eb244d19d6f351a97d848da52561ddda42",
-    "naval_sinking_clip": "3dc2fbbd7380b3aaee280708d1d2f12217b4b535574d367ec50210e5733b0266",
+    "naval_sinking_clip": "cb53a815d591d470991990a01cda4dcb18ecc0c404b6abc552e7876b97af5b27",
     "naval_draw_bounds": "46384d9d714c808e51b38fb1fc27c89d5902b55417ec7402348e69ad756a086a",
     "naval_house_stats": "80fefe9bf4f5ccca1e9af8ac85603ce5f221a41b5a82b9cb8deb47e4c31f8c0d",
     "naval_head_producer": "e95fbb0ff148b9bc1be44a36f9f26cd929332382703300ff3c5d1af0c74df497"
@@ -128,7 +219,7 @@
       "production_sha256": "4107546b1b8a1e0f409ac4e4786a9d59afe47300aca80068afca8079c6904e06"
     },
     "physical_map": "XShrapnel.MAP",
-    "source_head": "f0d5d5a5"
+    "source_head": "9a1765618b705d7d80aec315433060c217292972"
   },
   "ghidra_saved_readbacks": [
     {
@@ -146,6 +237,10 @@
     {
       "file": "ghidra-naval-head-readback.json",
       "sha256": "35a5d29a26b530d0540330b5fdf5dfe5bdac1da50a273dac08de8af279a1baf2"
+    },
+    {
+      "file": "ghidra-naval-admission-readback.json",
+      "sha256": "078c6e6ca8989da1085c9d4466713c54cec627668f8a7ca3d34da54e04d0ac65"
     }
   ],
   "visible": {
@@ -279,5 +374,63 @@
     "settings": "Temporary reveal and PathGrid overlays OFF at completion. Diagnostic tps1 restored to63 by ordinary save load; persistent ra2md.ini was last written before these debug changes, at17:14:54Z. ScrollRate remains4. Owned app closed.",
     "limits": "A visible production smoke check, not native whole-frame RGB or scene-timing parity. Screenshot tick numbers are not inferred. Raw suffix inspection is corroborating wire evidence, not an independent full-save decoder. The native GPU test separately compares all16 clip visits pixel-for-pixel with unchanged depth."
   },
-  "remaining_goal_scope": "Other bridge/ship families and the remaining whole-bridge audit stay open. The selected Shrapnel reader sees retail CliffBack2; its separate missing-key constructor/retention difference is recorded in shrapnel_repair/README.md. No whole-system completion claim."
+  "remaining_goal_scope": "Other bridge/ship families and the remaining whole-bridge audit stay open. The selected Shrapnel reader sees retail CliffBack2; its separate missing-key constructor/retention difference is recorded in shrapnel_repair/README.md. No whole-system completion claim.",
+  "critic": {
+    "agent": "/root/critic_low_wood_naval_chain",
+    "passes": 1,
+    "reviewed_range": "042f9350..1b6b1092",
+    "report": {
+      "file": "low-wood-naval-critic.md",
+      "sha256": "21ce0132bdf31132fc504c506e3882eb787522df7d647617ad3c826e4a48db4e"
+    },
+    "finding": "P2: old120px cull delayed stateful waterline capture for natively admitted offscreen Unit anchors.",
+    "resolution": "Accepted and fixed090fed29: share original padded projection admission with Bullet rendering and use tactical dimensions;15 native entry boundary cases plus3 retained physical AEGIS draws. Both added regressions fail before correction, all79 instance tests pass afterward. No second critic.",
+    "expected_before_fix_failure": {
+      "file": "low-v227-admission-red.log",
+      "sha256": "fb8b75f13c0f8f9d41df9dcf5d291ab060fdef5ac88199aeb361bcd2ae187b2d",
+      "exit_code": 101,
+      "results": [
+        "test result: FAILED. 0 passed; 2 failed; 1 ignored; 0 measured; 9755 filtered out; finished in 0.01s"
+      ]
+    }
+  },
+  "visible_final_followup": {
+    "launch": {
+      "pid": 39400,
+      "exe": "/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927/VERA20k Bridge Validation.app/Contents/MacOS/vera20k",
+      "sha256": "d7ec024e0faf4bf0bb416839e5af6ddcfb9452a0f0cd29f4b5c59d9cc4ec70f0",
+      "cwd": "/Users/halvor/Documents/vera20k",
+      "args": [],
+      "branch": "feature/bridge-low-repair",
+      "source_head": "9a1765618b705d7d80aec315433060c217292972",
+      "retained": "low-v227-final-vera20k"
+    },
+    "route": "Normal no-argument release -> SinglePlayer -> Skirmish physical bridge-shrapnel-low-20260927.yrm -> Start Game -> pause -> ordinary Load -> SaveAs -> resume/pan -> pause.",
+    "seed": {
+      "file": "next-low-wood-assets/production-shrapnel-final-visible.naval-sinking.bin",
+      "sha256": "768b743dabbdd1f4e89bea5bd1785fb735e76da754d90c02de151d8f84674ddb"
+    },
+    "save": {
+      "file": "save_bridge-final-offscreen-t30_tick30_1790532892.bin",
+      "sha256": "839e9b06bacdb2e742ada17f1156cf1a6e0d723b147121a69d1043b11fdef607",
+      "raw_bincode_presentation_suffix": {
+        "count": 1,
+        "stable_id": 1539,
+        "signed_world_row": 2610
+      }
+    },
+    "log": {
+      "file": "visible-v227-final-ra2.log",
+      "sha256": "2cc144ab48745dc1a0073a411d7ebc568a99623be777073f33349f0a7b2dab64"
+    },
+    "observations": [
+      "Release retail map loaded and drew normally; overlay reported about100FPS/10ms in this small scene.",
+      "Ordinary Load restored the active ship at tick30 with50 entities. Before any camera pan the viewport was unrevealed/black; the ordinary SaveAs retained stableID1539 waterline2610.",
+      "After resume and camera pan, entity count became49, matching terminal ship retirement; this followup did not capture a visible intermediate hull.",
+      "The original app received Close requested at18:16:01Z and shut down cleanly. A subsequent UI refresh opened an assetless copy without the launch environment; that window was closed."
+    ],
+    "fixture_correction": "The first followup save used an absolute map name and was correctly rejected by the active logical-map-name check. Regenerated through the same retained production test with the logical alias; this passed and its ordinary app load succeeded. No binary or production behavior change.",
+    "settings": "PathGrid temporarily enabled to locate camera; Reveal remainedOFF. The process closed, resetting the process-local debug flag. No persistent debug setting or camera-speed setting was changed.",
+    "limits": "Visible production smoke plus ordinary persisted offscreen draw history. No native whole-frame RGB, precise live camera boundary, scene timing or intermediate hull claim for this followup. Earlier visible hull captures and the final GPU/native-adapter tests cover those separate boundaries."
+  }
 }

@@ -154,9 +154,12 @@ real batch lowering, upload and Metal shader, checking every 640×480 pixel and
 unchanged depth. The [chain validation record](naval_repair_validation.json)
 retains the actual suite/focused results, binary and log hashes, navigation
 comparison, Ghidra readbacks and ordinary visible save/load/sinking captures.
-Its full suite had two stale score-timing assertions; the native-backed test-only
-fix passed with all 1,102 surrounding world tests. These bounded passes do not
-close the whole-bridge goal.
+The final candidate9a176561, including the critic correction and main772808f1,
+passes9,582 retail lib tests with zero failures and181 ignored; clippy exits0.
+The two earlier stale score assertions were corrected and are included in that
+clean full run. Both physical-map tests, the four-facing raster comparison and
+the16-visit Metal comparison also pass again. These bounded passes do not close
+the whole-bridge goal.
 
 ### Reproduce the additional packets
 
