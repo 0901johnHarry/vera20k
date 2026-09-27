@@ -157,6 +157,7 @@ impl App {
         let batch_renderer: BatchRenderer = BatchRenderer::new(&gpu);
         let terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
             &gpu.device,
+            &gpu.queue,
             gpu.surface_format,
             &batch_renderer,
         );
@@ -565,6 +566,7 @@ impl App {
                     show_hotkey_help: false,
                     show_save_load_panel: false,
                     combat_lights: Default::default(),
+                    line_trails: Default::default(),
                     minimap: None,
                     radar_anim: None,
                     radar_animation_source: None,
@@ -572,14 +574,11 @@ impl App {
                     has_radar: false,
                     selection_overlay: None,
                     shroud_buffer: None,
-                    tactical_bridge_inverse_map: BTreeMap::new(),
                     theater_name: "TEMPERATE".to_string(),
                     theater_ext: "tem".to_string(),
                     target_lines: startup_target_lines,
                     idle_anim_elapsed_ms: 0,
                     cached_overlay_instances: Vec::new(),
-                    cached_unit_instances: Vec::new(),
-                    cached_unit_pages: Vec::new(),
                     terrain_grid: None,
                     installed_playfield_authority: None,
                     overlays: Default::default(),
@@ -614,7 +613,6 @@ impl App {
                 scenario_elapsed_clock:
                     crate::app::match_runtime::frame_pacer::ScenarioElapsedClock::new(),
                 configured_input_delay_ticks: input_delay_ticks,
-                local_player_owner: None,
                 local_owner_override: None,
                 sandbox_full_visibility: false,
                 paused: false,

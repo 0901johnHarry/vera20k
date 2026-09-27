@@ -99,7 +99,8 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             state.match_state.input.cursor_y,
         );
         let valid = if repair {
-            crate::app::input::commands::own_building_under_point(state, wx, wy).is_some()
+            crate::app::input::commands::own_repairable_building_under_point(state, wx, wy)
+                .is_some()
         } else {
             crate::app::input::commands::own_sellable_building_under_point(state, wx, wy).is_some()
                 || crate::app::input::commands::sell_wall_under_cursor_is_eligible(state)
@@ -158,12 +159,7 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
         state.match_state.sandbox_full_visibility,
         state.rules(),
         &state.height_map(),
-        Some(
-            &state
-                .match_state
-                .match_presentation
-                .tactical_bridge_inverse_map,
-        ),
+        crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
     );
     // gamemd's DetermineAction resolves ONE object for the whole selection and
     // shows that object's action, for the cell branch as well as the object

@@ -187,14 +187,15 @@ impl SimRuntime {
         self.simulation.acknowledge_radar_terrain_dirty(generation)
     }
 
-    /// One command-free Ordinary-lane frame for side binaries (parity-digest):
+    /// One Ordinary-lane frame for side binaries (parity-digest, sim-bench):
     /// the same bound-resource transaction as `advance_frame`, with the
     /// crate-private frame output discarded so no internal type goes public.
-    pub fn advance_idle_frame_for_tooling(
+    pub fn advance_frame_for_tooling(
         &mut self,
+        commands: &[crate::sim::command::CommandEnvelope],
         tick_ms: u32,
     ) -> Result<(), crate::sim::world::FrameAdvanceError> {
-        self.advance_frame(&[], tick_ms, crate::sim::world::TickLane::Ordinary)
+        self.advance_frame(commands, tick_ms, crate::sim::world::TickLane::Ordinary)
             .map(|_| ())
     }
 
@@ -449,12 +450,14 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         };
         let inits = GeneratedTechnoInitTable::try_new([GeneratedTechnoInit {
             entity_index: 0,
             techno_type: "MTNK".to_string(),
             cell: (7, 9),
             techno_ctor_random_word: 0xA55A,
+            native_unique_id: 0,
         }])
         .expect("one exact generated binding");
         let mut sim = Simulation::with_seed(0xC701_0412);
@@ -725,7 +728,7 @@ where
         .effective_destroyable_bridges(bridge_destroyability_mode);
     let bridge_strength = rules
         .map(|rules| rules.bridge_rules.strength)
-        .unwrap_or(1500);
+        .unwrap_or(1000);
     sim.bridge_state = Some(
         crate::sim::bridge_state::BridgeRuntimeState::from_resolved_terrain_with_map_size(
             resolved_terrain,
@@ -734,24 +737,12 @@ where
             (map_data.header.width as i32, map_data.header.height as i32),
         ),
     );
-    sim.bridge_explosions = rules
-        .map(|r| {
-            r.bridge_rules
-                .explosions
-                .iter()
-                .map(|s| sim.interner.intern(s))
-                .collect()
-        })
-        .unwrap_or_default();
-    sim.metallic_debris = rules
-        .map(|r| {
-            r.general
-                .metallic_debris
-                .iter()
-                .map(|s| sim.interner.intern(s))
-                .collect()
-        })
-        .unwrap_or_default();
+    if let Some(rules) = rules {
+        sim.resolve_rule_animation_lists(rules);
+    } else {
+        sim.bridge_explosions.clear();
+        sim.metallic_debris.clear();
+    }
     // gamemd `TerrainClass::Read_Map_Section` runs while the map sections are
     // walked, ahead of `[Units]`/`[Aircraft]`/`[Infantry]`/`[Structures]`: every
     // tree owns its cell before the first map object is placed on it. The

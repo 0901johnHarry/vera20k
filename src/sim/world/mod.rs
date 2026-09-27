@@ -18,9 +18,12 @@ pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
 pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
+mod cell_content;
 mod crash;
 pub mod edge_cell;
 mod gap_generator;
+mod ground_move;
+pub(crate) use ground_move::GroundMove;
 mod hash_schema;
 mod house_base;
 mod house_defeat;
@@ -38,6 +41,7 @@ mod display_registry;
 mod fly_landing;
 mod fly_orders;
 mod frame_error;
+mod ground_keys;
 mod lifecycle;
 mod load_object_lifecycle;
 mod logic_vector;
@@ -70,8 +74,6 @@ mod aircraft_deployment_tests;
 #[cfg(test)]
 mod crash_tests;
 #[cfg(test)]
-mod jumpjet_infantry_tests;
-#[cfg(test)]
 mod damage_consequence_tests;
 #[cfg(test)]
 mod eva_dispatch_tests;
@@ -83,6 +85,8 @@ pub(crate) mod gap_generator_tests;
 mod gsi_04_18_tests;
 #[cfg(test)]
 mod house_ai_activation_tests;
+#[cfg(test)]
+mod jumpjet_infantry_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
@@ -168,8 +172,9 @@ use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
 use crate::sim::vision::{self, FogState};
 use crate::util::fixed_math::SimFixed;
 
-/// Dev/test fallback seed. Real launches negotiate a per-match seed through
-/// `ScenarioDescriptor`; nothing on the launch path may rely on this value.
+/// Test fixtures' seed. Real launches negotiate a per-match seed through
+/// `ScenarioDescriptor`, and only test builds can construct with this value.
+#[cfg(test)]
 const DEFAULT_SIM_SEED: u64 = 0x5EED_CAFE_D15E_A5E5;
 
 #[derive(Default)]
@@ -294,7 +299,8 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// Animation destruction releases its current handle before optional StopSound.
+    /// Hard-stop the owner's handle, then optionally play StopSound. Anim
+    /// destruction emits ObjectSoundReleased first so its Report plays out.
     AnimationStopped {
         anim_id: crate::sim::anim_class::AnimId,
         stop_sound_id: Option<InternedId>,
@@ -316,8 +322,9 @@ pub enum SimSoundEvent {
     /// 0x00406060`): it stops repeating and plays out.
     GattlingLoopRelease { owner: u64 },
     /// `SoundEvent::Release @ 0x00406060` on an object's own sound handle
-    /// (`FootClass+0x544`, keyed by the object's id) as the object goes: the
-    /// crash sound it holds plays out (`FootClass::~FootClass`, `0x004D3677`).
+    /// (`FootClass+0x544` or `AnimClass+0x1A0`, keyed by object id). A one-shot
+    /// plays out; an uncounted loop stops repeating. Anim Destroy4255D5 and
+    /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
     AircraftPhase {
@@ -944,7 +951,7 @@ pub struct Simulation {
     /// Native numeric IDs may duplicate and are neither stable handles nor RNG.
     /// Original689310/689470 preserve the cursor across save/load, including
     ///683560's post-read Scenario reinitialization. See native_id_snapshot.
-    /// Runtime constructors still need to consume this shared continuation.
+    /// Runtime constructors consume this continuation before class admission.
     pub(crate) native_unique_ids: Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     /// `MapClass+0x134` (`0x0087F91C`) analogue: the wrapping signed total that
     /// authored `ScenarioClass::Full_Init @ 0x00686B20` stores from
@@ -1176,13 +1183,13 @@ pub struct Simulation {
     /// edge; cell-local bridge dirtiness is deliberately a separate channel.
     #[serde(default)]
     pub(crate) playfield_revision: u64,
-    /// SHP interned IDs for bridge destruction explosions (from rules.ini BridgeExplosions=).
+    /// Interned projection of RuleSet's ordered BridgeExplosions references.
+    /// Rebuilt at map binding and snapshot restoration; not serialized authority.
     #[serde(skip)]
     pub bridge_explosions: Vec<InternedId>,
-    /// SHP interned IDs for bridge metallic-debris animations
-    /// (from `[General] MetallicDebris=`). Pre-interned at sim init so the
-    /// per-cell debris cascade in `bridge_orchestrator::spawn_bridge_debris`
-    /// runs allocation-free.
+    /// Interned projection of RuleSet's ordered MetallicDebris references,
+    /// including unread types without an SHP. Rebuilt at map binding and
+    /// snapshot restoration so per-cell selection needs no string interning.
     #[serde(skip)]
     pub metallic_debris: Vec<InternedId>,
     /// Runtime terrain cells whose radar/minimap terrain pixel needs refresh.
@@ -1239,6 +1246,7 @@ pub struct Simulation {
     pub(crate) trigger_runtime: TriggerRuntime,
 }
 
+#[cfg(test)]
 impl Default for Simulation {
     fn default() -> Self {
         Self::new()
@@ -1733,11 +1741,15 @@ impl Simulation {
                 // An absorbing building's passengers leave through
                 // SpawnSurvivors' Phase A; its KillPassengers (`0x00441F27`)
                 // runs after that and finds the list empty.
-                let absorbs = self.substrate.entities.get(stable_id).is_some_and(|entity| {
-                    rules
-                        .object(self.interner.resolve(entity.type_ref()))
-                        .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
-                });
+                let absorbs = self
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .is_some_and(|entity| {
+                        rules
+                            .object(self.interner.resolve(entity.type_ref()))
+                            .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
+                    });
                 if let Some(event) = garrison {
                     production::eject_destruction_garrison_with_context(
                         self,
@@ -1805,7 +1817,7 @@ impl Simulation {
             projectile_detonations,
             wave_damage_events,
         );
-        result.consequences.finish_navigation(run.finish(self));
+        result.consequences.finish_navigation(run.finish());
         result
     }
 
@@ -1817,9 +1829,9 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         detonations: &[crate::sim::projectile::ProjectileDetonation],
-    ) {
+    ) -> bool {
         if detonations.is_empty() {
-            return;
+            return false;
         }
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
         let commit = crate::sim::combat::world_receiver::commit_projectiles(
@@ -1829,7 +1841,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
 
         for projectile in commit.projectile_spawns {
             let stable_id = self.allocate_stable_id();
@@ -1837,10 +1849,11 @@ impl Simulation {
         }
         #[cfg(test)]
         if let Some(fixture) = self.receiver_fixture.as_mut() {
+            let changed = commit.effects.bridge_state_changed;
             fixture
                 .tail_effects
                 .push((commit.effects, commit.under_attack_events));
-            return;
+            return changed;
         }
         self.absorb_noncombat_damage_effects(
             rules,
@@ -1848,7 +1861,8 @@ impl Simulation {
             commit.effects,
             commit.under_attack_events,
             terrain_navigation_changed_cells,
-        );
+        )
+        .bridge_state_changed
     }
 
     pub(crate) fn commit_fired_wave(&mut self, rules: &RuleSet, event: &SimFireEvent) {
@@ -1979,22 +1993,26 @@ impl Simulation {
         first_tail_id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    ) {
+    ) -> bool {
+        let mut bridge_state_changed = false;
         let mut index = 0;
         while index < self.substrate.logic.len() {
             let stable_id = self.substrate.logic.as_slice()[index];
             if stable_id >= first_tail_id && !self.substrate.entities.contains(stable_id) {
-                let _ = self.object_ai_visit_one(
-                    stable_id,
-                    Some(rules),
-                    techno_ai::ObjectAiCtx {
-                        overlay_registry,
-                        ..techno_ai::ObjectAiCtx::default()
-                    },
-                );
+                bridge_state_changed |= self
+                    .object_ai_visit_one_with_effects(
+                        stable_id,
+                        Some(rules),
+                        techno_ai::ObjectAiCtx {
+                            overlay_registry,
+                            ..techno_ai::ObjectAiCtx::default()
+                        },
+                    )
+                    .bridge_state_changed;
             }
             index += 1;
         }
+        bridge_state_changed
     }
 
     /// Walk one Wave damage request in recorded-cell and current Cell-list
@@ -2374,7 +2392,7 @@ impl Simulation {
             }
         }
 
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.dynamic_terrain_cells.extend(collapsed_terrain_cells);
         if let Some(terrain) = self.resolved_terrain.as_ref() {
             self.real_cell_bridge_flags_0x1180 = terrain.capture_real_cell_bridge_flags_0x1180();
@@ -2407,7 +2425,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2434,7 +2452,7 @@ impl Simulation {
             rules,
             overlay_registry,
         );
-        let terrain_navigation_changed_cells = run.finish(self);
+        let terrain_navigation_changed_cells = run.finish();
         self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
@@ -2470,28 +2488,26 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
-    ) -> Vec<u64> {
+    ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
-        let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_area(
-            self,
-            &mut run,
-            receivers,
-            rules,
-            overlay_registry,
-        );
-        let terrain_navigation_changed_cells = run.finish(self);
-        // Fatal transitions are facts of this receiver transaction. Retain
-        // them before consequence delivery can retire their objects.
-        let fatal_ids = effects.despawned_ids.clone();
-
-        self.absorb_noncombat_damage_effects(
+        let (effects, under_attack_events, area_result) =
+            crate::sim::combat::world_receiver::commit_area_with_dispatch(
+                self,
+                &mut run,
+                receivers,
+                rules,
+                overlay_registry,
+            );
+        let terrain_navigation_changed_cells = run.finish();
+        let mut receipt = self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
         );
-        fatal_ids
+        receipt.area_result = Some(area_result);
+        receipt
     }
 
     /// World-owned half of a non-combat damage transaction. Physical death
@@ -2505,13 +2521,13 @@ impl Simulation {
         effects: crate::sim::combat::DeathEffects,
         under_attack_events: Vec<crate::sim::combat::UnderAttackEvent>,
         terrain_navigation_changed_cells: Vec<(u16, u16)>,
-    ) {
-        let _ = damage_consequences::DamageConsequences::immediate(
+    ) -> damage_consequences::DamageCommitReceipt {
+        damage_consequences::DamageConsequences::immediate(
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
         )
-        .commit(self, rules, overlay_registry, None);
+        .commit(self, rules, overlay_registry, None)
     }
 
     /// `HouseClass::NotifyUnderAttack @ 0x004F93E0` for one damaged asset,
@@ -2814,7 +2830,11 @@ impl Simulation {
         self.mapgen_rng = mapgen_rng;
     }
 
-    /// Create a new empty simulation with the default deterministic seed.
+    /// Create a new empty simulation with the test fixtures' seed. Test builds
+    /// only: a launch constructs through `ScenarioDescriptor`
+    /// (`Simulation::from_descriptor`, `ScenarioBootstrapRng::into_simulation`),
+    /// so no match can start on the default seed (AT-3).
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::with_seed(DEFAULT_SIM_SEED)
     }
@@ -2847,6 +2867,25 @@ impl Simulation {
         {
             self.interner.intern(id);
         }
+    }
+
+    /// Resolve the rules-owned ordered AnimType lists in this world's interner.
+    /// These IDs are derived, never portable between independently constructed
+    /// worlds. Native ReadGeneral owns the list names/order; both map binding
+    /// and snapshot restoration project those names through this one writer.
+    pub(crate) fn resolve_rule_animation_lists(&mut self, rules: &RuleSet) {
+        self.bridge_explosions = rules
+            .bridge_rules
+            .explosions
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
+        self.metallic_debris = rules
+            .general
+            .metallic_debris
+            .iter()
+            .map(|name| self.interner.intern(name))
+            .collect();
     }
 
     /// Pre-resolved rule handles for combat comparisons.
@@ -2883,7 +2922,10 @@ impl Simulation {
             &crate::sim::scenario_session::ScenarioDescriptor::default(),
         );
         session.seed = seed;
-        Self::construct(session)
+        let mut simulation = Self::construct(session);
+        simulation.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
+        simulation
     }
 
     /// Construct a session simulation from an app-layer launch descriptor.
@@ -3811,6 +3853,10 @@ impl Simulation {
             .spawn_at(stable_id, self.session.binary_frame, spawn);
         let registered = self.register_projectile(stable_id, spawn.flat);
         debug_assert!(registered);
+        if let Some(style) = spawn.line_trail {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::LineTrailConstructed { stable_id, style });
+        }
         stable_id
     }
 
@@ -3923,6 +3969,11 @@ impl Simulation {
             flagged
         );
     }
+
+    /// Release test builds have no debug assertions, so the check is a no-op
+    /// there, like the `debug_assert!`s it holds. Tests call it without a cfg.
+    #[cfg(all(test, not(debug_assertions)))]
+    pub(crate) fn debug_assert_logic_membership_consistent(&self) {}
 
     /// Debug-only checks for relationships that remain true while the native
     /// lifecycle axes themselves are deliberately independent.
@@ -4475,11 +4526,13 @@ impl Simulation {
             crate::sim::house_tracking::HouseTracking::add_tracking,
         );
         // `BuildingClass::ChangeOwner @ 0x00448723` marks every transferred
-        // building HasBeenCaptured (+0x6E3); survivors read it at death.
+        // building HasBeenCaptured (+0x6E3); survivors read it at death. Its
+        // repair stops without a sound (`+0x6E8 = 0`, `0x00448CE8`).
         if category == EntityCategory::Structure
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {
             entity.has_been_captured = true;
+            entity.repairing = false;
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.
@@ -4741,13 +4794,13 @@ impl Simulation {
     ///
     /// Overlay, bridge, and navigation authority are restored separately by
     /// `restore_map_authority_after_snapshot_load` once rules and the overlay
-    /// registry are bound.
+    /// registry are bound. Rule animation lists are re-interned from names:
+    /// an outgoing simulation's numeric IDs do not belong to this saved world.
     pub fn rebuild_caches_after_load(
         &mut self,
         mut resolved_terrain: ResolvedTerrainGrid,
         terrain_speed_config: terrain_speed::TerrainSpeedConfig,
-        bridge_explosions: Vec<InternedId>,
-        metallic_debris: Vec<InternedId>,
+        rules: &RuleSet,
     ) {
         resolved_terrain.bind_shared_cell_dummy(self.shared_cell_dummy.clone());
         // Restore externally-derived data only. Substrate caches are rebuilt
@@ -4777,8 +4830,7 @@ impl Simulation {
 
         self.resolved_terrain = Some(resolved_terrain);
         self.terrain_speed_config = terrain_speed_config;
-        self.bridge_explosions = bridge_explosions;
-        self.metallic_debris = metallic_debris;
+        self.resolve_rule_animation_lists(rules);
         self.terrain_costs = terrain_costs;
     }
 
@@ -5386,6 +5438,10 @@ impl Simulation {
                         HouseAiActivationOrderTestEvent::HouseActivation(owner),
                     );
                 }
+                self.houses
+                    .get_mut(&owner)
+                    .expect("represented House remains registered during its update")
+                    .release_repair_latch(self.session.binary_frame);
 
                 #[cfg(test)]
                 if self
@@ -5517,18 +5573,19 @@ impl Simulation {
         let keys = self.substrate.entities.keys_sorted();
         let mut finished: Vec<u64> = Vec::new();
         for &sid in &keys {
-            if let Some(entity) = self.substrate.entities.get_mut(sid) {
-                // Construction and deconstruction are the building's missions,
-                // which hold while it is warped (`GameEntity::ai_frozen`).
-                if entity.ai_frozen() {
-                    continue;
-                }
-                if let Some(ref mut bu) = entity.building_up
-                    && bu.frame(now, options)
-                        == crate::sim::building_construction::ConstructionFrame::Complete
-                {
-                    finished.push(sid);
-                }
+            // Construction and deconstruction are the building's missions,
+            // which hold while it is warped (`GameEntity::ai_frozen`).
+            if let Some(bu) = self
+                .substrate
+                .entities
+                .get_mut_if(sid, |entity| {
+                    entity.building_up.is_some() && !entity.ai_frozen()
+                })
+                .and_then(|entity| entity.building_up.as_mut())
+                && bu.frame(now, options)
+                    == crate::sim::building_construction::ConstructionFrame::Complete
+            {
+                finished.push(sid);
             }
         }
         for &sid in &finished {
@@ -5591,10 +5648,15 @@ impl Simulation {
             if visit != PackUpFrame::NoVisit {
                 entity.mission.set_handler_state(status);
                 entity.mission.write_dispatch_epilogue(now, 1);
-                entity.repairing = false;
             }
             visit
         };
+        // Every visit stops a repair first (`ToggleRepair(0)`, `0x00449C41`).
+        if visit != PackUpFrame::NoVisit
+            && let Some(rules) = rules
+        {
+            production::toggle_repair(self, rules, sid, production::RepairControl::Stop);
+        }
         let spawned = match visit {
             PackUpFrame::StageZero => {
                 production::sell_stage_zero(self, rules, sid);
@@ -6092,7 +6154,9 @@ impl Simulation {
         bridge_state_changed |= object_pass.bridge_state_changed;
         let tube_turn_owned_ids = object_pass.tube_turn_owned_ids;
         if let Some(rules) = rules {
-            self.for_each_multiplayer_feedback_anim(|sim, id| sim.visit_anim(id, rules, None));
+            self.for_each_multiplayer_feedback_anim(|sim, id| {
+                sim.visit_anim(id, rules, None);
+            });
         }
         // Spawn-manager missiles that reached their target during the movement
         // pass are consumed here — the missile leaves the world at the moment
@@ -6307,7 +6371,7 @@ impl Simulation {
                 let stable_id = self.allocate_stable_id();
                 self.admit_projectile(stable_id, projectile);
             }
-            self.visit_combat_tail(first_tail_id, rules, overlay_registry);
+            bridge_state_changed |= self.visit_combat_tail(first_tail_id, rules, overlay_registry);
             let post_combat_path_grid = self.path_grid_snapshot();
             let active_post_combat_path_grid =
                 post_combat_path_grid.as_deref().or(active_path_grid);
@@ -6412,7 +6476,7 @@ impl Simulation {
                 }
             }
 
-            // --- Phase 7: Production + Repairs + Docks + Ore ---
+            // --- Phase 7: Production + Docks + Ore ---
             // DEPENDS ON: combat (dead entities removed), movement (positions stable).
             // PRODUCES: new entities (spawned units), credit changes, ore growth.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
@@ -6422,24 +6486,24 @@ impl Simulation {
             // insertion_seq (temporal) order; the spawn/placement pass below then
             // delivers completed builds and advances the queue-of-record.
             //
-            // DRIFT (same-tick transaction ordering; repair lane's to fix):
+            // DRIFT (same-tick transaction ordering; the depot repair's to fix):
             // `LogicClass::PerTickUpdate @ 0x0055AFB0` runs the object loop
             // first — every depot repair debit
-            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) and every
-            // building's own repair debit are spent inside that object's `AI`
-            // visit — then Tactical, then a SEPARATE pass over
-            // `g_FactoryClass_Array` at 0x0055B66A where each factory's
-            // per-step charge (`FactoryClass::AI`) sees the wallet, then the
-            // houses (see
+            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) is spent
+            // inside that object's `AI` visit, as a building's own repair debit
+            // already is here (`production::update_repair_and_power`) — then
+            // Tactical, then a SEPARATE pass over `g_FactoryClass_Array` at
+            // 0x0055B66A where each factory's per-step charge
+            // (`FactoryClass::AI`) sees the wallet, then the houses (see
             // docs/research/ADVANCE_TICK_PHASE_PARTITION_NATIVE_SPINE_GHIDRA_REPORT.md).
-            // So within one frame EVERY repair/depot debit precedes EVERY
-            // factory step natively; VERA charges every factory here first,
-            // then `tick_repairs` and `tick_building_docks` below. Trigger: a house whose credits fall
-            // below one factory step plus one repair step in the same frame.
-            // Player effect: which of the two stalls for that frame differs.
-            // Frequency: only while a player is nearly broke with both a
-            // factory and a repair running. Downstream risk: credit trajectory
-            // and stall cadence, no lifecycle or RNG effect.
+            // So within one frame EVERY depot debit precedes EVERY factory step
+            // natively; VERA charges every factory here first, then
+            // `tick_building_docks` below. Trigger: a house whose credits fall
+            // below one factory step plus one depot repair step in the same
+            // frame. Player effect: which of the two stalls for that frame
+            // differs. Frequency: only while a player is nearly broke with both
+            // a factory and a depot repair running. Downstream risk: credit
+            // trajectory and stall cadence, no lifecycle or RNG effect.
             production::revalidate_and_step_factories(self, rules);
             spawned_entities |= production::tick_production_with_overlay_registry(
                 self,
@@ -6452,7 +6516,6 @@ impl Simulation {
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            production::tick_repairs(self, rules);
             building_dock::tick_building_docks(self, rules, phase_six_path_grid);
             crate::sim::docking::bunker_install::tick_bunker_install(
                 self,
@@ -6850,11 +6913,11 @@ pub(crate) mod tests;
 mod smudge_integration_tests;
 
 #[cfg(test)]
-#[path = "refinery_dock_oracle_tests.rs"]
-mod refinery_dock_oracle_tests;
-#[cfg(test)]
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;
+#[cfg(test)]
+#[path = "refinery_dock_oracle_tests.rs"]
+mod refinery_dock_oracle_tests;
 
 #[cfg(test)]
 #[path = "harvest_field_cycle_tests.rs"]
@@ -6871,6 +6934,10 @@ mod slave_manager_cycle_tests;
 #[cfg(test)]
 #[path = "building_sale_oracle_tests.rs"]
 mod building_sale_oracle_tests;
+
+#[cfg(test)]
+#[path = "building_repair_oracle_tests.rs"]
+mod building_repair_oracle_tests;
 
 #[cfg(test)]
 #[path = "refinery_dock_cycle_tests.rs"]

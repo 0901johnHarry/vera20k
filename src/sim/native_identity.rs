@@ -14,7 +14,7 @@ use crate::sim::world::Simulation;
 pub(crate) const FRESH_SCENARIO_NATIVE_ID_SEED: u32 = 1_000_000;
 pub(crate) const MAP_READ_NATIVE_ID_RESERVATION: u32 = 0x2710;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 enum NativeFreshIdPhase {
     PrefixSaved,
     MapReadReserved,
@@ -23,7 +23,7 @@ enum NativeFreshIdPhase {
 /// One Scenario's wrapping numeric-ID cursor. Original689310/689470 save/load
 /// +214 as part of the raw Scenario block;683560 preserves it while resetting
 /// the adjacent RNG. Evidence: tools/spatial_oracle/native_id_snapshot.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct NativeUniqueIdCursor {
     value: u32,
     saved_after_fresh_prefix: u32,
@@ -31,6 +31,26 @@ pub(crate) struct NativeUniqueIdCursor {
 }
 
 impl NativeUniqueIdCursor {
+    /// The explicit test/dev simulation entry starts with this declared cursor.
+    /// Production descriptors install their original Full_Init prefix instead.
+    pub(crate) fn for_synthetic_simulation() -> Self {
+        Self {
+            value: 0,
+            saved_after_fresh_prefix: 0,
+            phase: NativeFreshIdPhase::MapReadReserved,
+        }
+    }
+
+    /// Original410230's no-Scenario branch stores zero, but admitted gameplay
+    /// always owns a Scenario. A missing production prefix is an initialization
+    /// defect, not permission to silently use that unrelated native branch.
+    pub(crate) fn assign_runtime(cursor: &mut Option<Self>) -> i32 {
+        cursor
+            .as_mut()
+            .expect("runtime constructor requires the admitted Scenario native-ID cursor")
+            .next_id()
+    }
+
     #[cfg(test)]
     pub(crate) fn test_at_current_value(value: u32) -> Self {
         Self {
@@ -104,6 +124,13 @@ pub(crate) enum NativeMapTubeConstructionError {
 }
 
 impl Simulation {
+    /// Assign AbstractClass+10 at the constructor boundary, before class
+    /// registration, optional constructor draws, or a later failed admission.
+    /// Original410230/68BCB0; never derived from the Rust stable handle.
+    pub(crate) fn next_native_runtime_id(&mut self) -> i32 {
+        NativeUniqueIdCursor::assign_runtime(&mut self.native_unique_ids)
+    }
+
     /// Assign one native numeric identity for an actual fresh-map constructor.
     /// Stable Rust handles remain independent; callers must invoke this only
     /// after the native-equivalent allocation/type gate has succeeded.
@@ -276,6 +303,43 @@ mod tests {
         let mut simulation = Simulation::with_seed(0);
         simulation.native_unique_ids = Some(NativeUniqueIdCursor::from_saved_prefix(saved));
         simulation
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "runtime constructor requires the admitted Scenario native-ID cursor"
+    )]
+    fn runtime_identity_rejects_an_unstaged_production_descriptor() {
+        let mut sim = Simulation::from_descriptor(&Default::default());
+        sim.next_native_runtime_id();
+    }
+
+    #[test]
+    fn runtime_identity_uses_native_wrap_and_changes_future_state_hash() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/native_id_snapshot.json"
+        ))
+        .unwrap();
+        for case in corpus["cases"].as_array().unwrap() {
+            let mut sim = Simulation::with_seed(0);
+            sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(
+                case["input"].as_u64().unwrap() as u32,
+            ));
+            let hash = sim.state_hash();
+            let rng = sim.scenario_rng.logical_state();
+            let stable_cursor = sim.substrate.next_stable_object_id;
+            assert_eq!(
+                sim.next_native_runtime_id() as u32,
+                case["next"].as_u64().unwrap() as u32,
+            );
+            assert_ne!(
+                sim.state_hash(),
+                hash,
+                "future constructor phase is authority"
+            );
+            assert_eq!(sim.scenario_rng.logical_state(), rng);
+            assert_eq!(sim.substrate.next_stable_object_id, stable_cursor);
+        }
     }
 
     #[test]

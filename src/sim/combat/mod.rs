@@ -26,6 +26,7 @@ pub(crate) mod combat_targeting;
 pub(crate) mod combat_weapon;
 pub(crate) mod damage;
 pub(crate) mod destruction_effects;
+pub(crate) mod detonation_anim;
 pub(crate) mod fire_coord;
 pub(crate) mod fire_error;
 pub(crate) mod fire_error_world;
@@ -84,9 +85,17 @@ mod combat_cloak_damage_tests;
 mod delayed_building_fire_tests;
 
 #[cfg(test)]
+mod bridge_cluster_tests;
+#[cfg(test)]
+mod bridge_launch_tests;
+#[cfg(test)]
+mod bridge_live_chain_tests;
+#[cfg(test)]
 #[path = "fireat_launch_tests.rs"]
 mod fireat_launch_tests;
 
+#[cfg(test)]
+mod ifv_fireat_tests;
 #[cfg(test)]
 #[path = "open_topped_fire_tests.rs"]
 mod open_topped_fire_tests;
@@ -121,7 +130,7 @@ use crate::sim::overlay_grid::WallMutation;
 use crate::sim::power_system::PowerState;
 use crate::sim::projectile::{
     ProjectileCollisionPolicy, ProjectileCoord, ProjectileDetonation, ProjectileGuidance,
-    ProjectilePayload, ProjectileSpawn, ProjectileTarget, ProjectileTrajectory, ProjectileVelocity,
+    ProjectilePayload, ProjectileSpawn, ProjectileTarget, ProjectileTrajectory,
     ProjectileVisualState, SpecialDetonationAction, SpecialDetonationFlags,
     SpecialDetonationTarget, TargetExpiryPolicy, projectile_next_cluster_coord,
     projectile_random_shrapnel_cell, projectile_shrapnel_count,
@@ -142,9 +151,6 @@ use super::animation::SequenceKind;
 use super::game_entity::{GameEntity, PendingBuildingFire};
 use super::occupancy::OccupancyGrid;
 use super::production::foundation_dimensions;
-
-/// Step size for selecting explosion anim from a warhead's AnimList: idx = damage / 25.
-const ANIM_LIST_DAMAGE_STEP: u16 = 25;
 
 /// One Unit's post-Foot Facing slot output for this tick — the write half of
 /// `UnitClass::Facing_Update @ 0x00736990` plus the `Fire_At_Target @
@@ -334,21 +340,17 @@ fn classify_projectile_delivery(
             .then_some(projectile.flak_scatter && !projectile.inviso),
         guidance: (projectile.rot > 0).then_some(ProjectileGuidance {
             rot: projectile.rot,
-            missile_rot_var: rules.general.missile_rot_var,
-            course_lock_duration: projectile
-                .course_lock_duration
-                .clamp(0, i32::from(u16::MAX)) as u16,
-            // The RE contract proves this is BulletClass-identity-derived but
-            // not its formula. Keep the raw phase as an explicit live seam.
-            sidewinder_phase: 0,
+            missile_rot_var: crate::util::native_x87::NativeF64Bits::from_bits(
+                rules.general.missile_rot_var.to_bits(),
+            ),
+            course_lock_duration: projectile.course_lock_duration,
+            course_frames: 0,
+            course_locked: true,
             airburst: projectile.airburst,
             inaccurate: projectile.inaccurate,
             very_high: projectile.very_high,
             level: projectile.level,
-            // Replaced at construction with the launch facing.
-            heading_bam: 0,
-            frames_elapsed: 0,
-            max_speed: weapon.speed.clamp(0, i32::from(u16::MAX)) as u16,
+            max_speed: weapon.speed,
             acceleration: projectile.acceleration,
             // Replaced at construction with the launch-time target coord.
             fuse_reference: ProjectileCoord::new(0, 0, 0),
@@ -1501,47 +1503,6 @@ pub(crate) fn emit_infantry_death_anim(
     });
 }
 
-/// Emit the warhead's AnimList animation for one detonation at (rx, ry, z).
-/// Its scorch or crater is the anim's own `AnimClass::Middle`, which the anim
-/// runtime runs at the anim's middle frame.
-///
-/// Pushes nothing if `warhead.anim_list` is empty.
-///
-/// `base_damage` is the post-modifier damage at the impact center; it
-/// drives AnimList selection via `damage / 25`, clamped to `len - 1`.
-/// The dying object's OWN explosion is emitted separately, in the death loop —
-/// see `UnitClass::Death_Explosion @ 0x00738680` there. This function is only
-/// the warhead's half.
-pub(crate) fn emit_warhead_detonation_effects(
-    warhead: &WarheadType,
-    base_damage: i32,
-    rx: u16,
-    ry: u16,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
-    z: u8,
-    world_z_leptons: i32,
-    interner: &mut StringInterner,
-    explosion_effects: &mut Vec<ExplosionEffect>,
-) {
-    if warhead.anim_list.is_empty() {
-        return;
-    }
-    let idx = (base_damage / ANIM_LIST_DAMAGE_STEP as i32).max(0) as usize;
-    let idx = idx.min(warhead.anim_list.len() - 1);
-    let interned_name = interner.intern(&warhead.anim_list[idx]);
-    explosion_effects.push(ExplosionEffect {
-        shp_name: interned_name,
-        rx,
-        ry,
-        sub_x,
-        sub_y,
-        z,
-        world_z: world_z_leptons,
-        death: None,
-    });
-}
-
 /// One captured TerrainClass receiver in a fixed Apply_area_damage transaction.
 ///
 /// Transient only: stable identity, cell, distance, and isolation scope are
@@ -1571,6 +1532,9 @@ pub struct TiberiumReductionRequest {
 /// The frame admits bullets and applies facing before committing the packet at
 /// its existing post-SpawnManager boundary.
 pub struct CombatTickResult {
+    /// Test adapter observations of actual inline AnimStore construction.
+    #[cfg(test)]
+    pub(crate) fixture_anims: Vec<receiver_fixture::ConstructedAnimObservation>,
     /// Shrapnel bullets from detonations the combat pass committed; the frame
     /// admits them before its Logic tail visits the new objects. FireAt admits
     /// its own bullets directly.
@@ -1715,83 +1679,8 @@ pub(crate) fn object_world_z_leptons(
     base_z.wrapping_add(altitude)
 }
 
-/// The **one** impact height for an attack, in tile-step level units (signed).
-///
-/// The original engine forms a single impact coordinate per detonation and
-/// hands that same coordinate to area damage and to the animation placement —
-/// there is no second Z anywhere on the path. This function is VERA's
-/// equivalent single value, and every consumer reads it rather than deriving
-/// its own: the AoE object-layer selector, the bridge-damage Z gate, the
-/// persistent-projectile impact coordinate, the impact-animation height, and
-/// (through `app::presentation::fire_effects`) the pixel the tracer ends on. A second
-/// derivation could only agree with this one by coincidence.
-///
-/// Three native quantities sit close together here and are not the same
-/// thing:
-/// * a cell's **own** coordinate — cell centre on both axes, terrain floor
-///   height for Z;
-/// * the **aim point** for a cell target — that, plus a four-level structural
-///   bridge deck offset when a span crosses the cell;
-/// * the **impact** coordinate — the projectile's own location, whose Z the
-///   flight step clamps to the plain cell ground-height lookup at the moment
-///   of ground contact. The resolution ladder that can substitute a target's
-///   bridge-aware aim point runs only when there is a live *object* target;
-///   for a shot at bare ground it is skipped entirely.
-///
-/// VERA models the impact, so a ground cell contributes its terrain floor
-/// level and nothing else. There is no branch yielding zero: zero is what a
-/// level-0 cell is worth, never a stand-in for a height we failed to look up.
-/// VERA carries this quantity in whole tile-step levels along the entire
-/// impact path; native carries the same step count scaled into leptons.
-///
-/// **Residual DRIFT — the structural-bridge deck term is unmodelled here.**
-/// A force-fire at a bridge cell therefore damages the ground occupant list
-/// and draws its explosion at ground height rather than four levels up on the
-/// deck. It is not a one-line addition, because two VERA consumers want
-/// opposite values: `combat_aoe::select_object_damage_layer` picks the bridge
-/// occupant list only for an impact well above the cell's ground level (it
-/// wants the deck term), while `bridge_state`'s path Z gate accepts only an
-/// impact within one level of the cell's *ground* level (it rejects the deck
-/// term outright). With ground-only Z that gate now admits every cell target:
-/// it is **disabled, not widened** — a gate that can no longer reject
-/// anything is not a modelled gate. That is RNG-visible: a path that newly
-/// matches consumes a bridge-strength draw from the scenario stream, so a
-/// replay containing a `Wall=yes` force-fire at a bridge over ground level ≥ 2
-/// diverges from one recorded before this change. Trigger frequency: needs
-/// deliberate bridge-cutting over raised ground, uncommon per match but a real
-/// tactic on bridge maps.
-/// *Settling step:* walk the bridge block of the native area-damage routine
-/// and establish which reference **its** Z comparisons use — cell ground
-/// height or deck plane — before either the gate or the deck term moves. The
-/// VERA gate's native equivalent is UNCHECKED and is not authority for
-/// dropping a verified native term.
-///
-/// `terrain` is `None` only where combat runs without a loaded map (headless
-/// fixtures). With no map there is no cell to read — a VERA API boundary, not
-/// a game rule.
-pub(crate) fn attack_impact_z(
-    target: TargetKind,
-    entities: &EntityStore,
-    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
-) -> i32 {
-    match target {
-        TargetKind::Entity(eid) => entities
-            .get(eid)
-            .map(|entity| i32::from(entity.position.z))
-            .unwrap_or(0),
-        TargetKind::Cell(rx, ry) => terrain
-            .and_then(|grid| grid.cell(rx, ry))
-            .map(|cell| i32::from(cell.level))
-            .unwrap_or(0),
-    }
-}
-
 fn attack_world_z_leptons(
     target: TargetKind,
-    impact_rx: u16,
-    impact_ry: u16,
-    impact_sub_x: SimFixed,
-    impact_sub_y: SimFixed,
     entities: &EntityStore,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> i32 {
@@ -1799,21 +1688,11 @@ fn attack_world_z_leptons(
         TargetKind::Entity(entity_id) => entities
             .get(entity_id)
             .map(|entity| object_world_z_leptons(entity, terrain))
-            .unwrap_or_else(|| {
-                attack_impact_z(target, entities, terrain).wrapping_mul(LEPTONS_PER_LEVEL as i32)
-            }),
-        TargetKind::Cell(_, _) => combat_aoe::air_impact_from_layer_z(
-            terrain,
-            impact_rx,
-            impact_ry,
-            impact_sub_x,
-            impact_sub_y,
-            attack_impact_z(target, entities, terrain),
-        )
-        .map(|impact| impact.z_leptons)
-        .unwrap_or_else(|| {
-            attack_impact_z(target, entities, terrain).wrapping_mul(LEPTONS_PER_LEVEL as i32)
-        }),
+            .unwrap_or(0),
+        // FireAt6FE1FF and Get_Led_Target_Coords70BCB0 read Cell+58;
+        // Bullet::Fire468707 freezes that same unled aim. The flight/impact
+        // owners separately resolve ground contact and the final detonation.
+        TargetKind::Cell(rx, ry) => crate::sim::projectile::cell_target_coord(terrain, rx, ry).z,
     }
 }
 
@@ -1925,7 +1804,9 @@ pub(crate) struct DeathEffects {
     /// deferred admission preserves the existing allocation and Logic order.
     pub(crate) voxel_debris: Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
     pub(crate) combat_light_requests: Vec<CombatLightRequest>,
-    pub(crate) bridge_damage_events: Vec<BridgeDamageEvent>,
+    /// Receipt of synchronous Apply_area_damage bridge callbacks. Gameplay
+    /// already ran before the detonation's animation and cluster successor.
+    pub(crate) bridge_state_changed: bool,
     #[cfg(test)]
     pub(crate) wall_mutations: Vec<WallMutation>,
     #[cfg(test)]
@@ -2001,8 +1882,7 @@ impl DeathEffects {
         self.voxel_debris.append(&mut other.voxel_debris);
         self.combat_light_requests
             .append(&mut other.combat_light_requests);
-        self.bridge_damage_events
-            .append(&mut other.bridge_damage_events);
+        self.bridge_state_changed |= other.bridge_state_changed;
         #[cfg(test)]
         self.wall_mutations.append(&mut other.wall_mutations);
 
@@ -2066,6 +1946,7 @@ fn throw_debris_for_death(
     (world_x, world_y): (i32, i32),
     world_z_leptons: i32,
     scenario_rng: &mut SimRng,
+    native_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     voxel_debris: &mut Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
     explosion_effects: &mut Vec<ExplosionEffect>,
 ) {
@@ -2111,14 +1992,30 @@ fn throw_debris_for_death(
         glam::IVec3::new(world_x, world_y, world_z_leptons),
         scenario_rng,
         &mut |source, index, rng| {
+            // The selected piece is allocated before Anim42203D assigns its
+            // identity, then RandomRate/Bouncer draws run before the next pick.
+            // Carry this constructor result through delayed world publication.
+            let native_unique_id =
+                crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_ids);
             let Some(config) = debris_name(source, index).and_then(|name| {
                 rules
                     .art_registry
                     .anim_runtime_config(&name.to_ascii_uppercase())
             }) else {
-                return Ok(None);
+                // A missing bound SHP still corresponds to a native Anim
+                // constructor. Admission reports the asset failure later.
+                return Ok(Some(crate::sim::anim_class::AnimConstructorDraws {
+                    native_unique_id: Some(native_unique_id),
+                    random_rate: None,
+                    bounce: None,
+                }));
             };
-            crate::sim::anim_class::anim_constructor_draws(config, anim_coord, rng).map(Some)
+            crate::sim::anim_class::anim_constructor_draws(config, anim_coord, rng).map(
+                |mut draws| {
+                    draws.native_unique_id = Some(native_unique_id);
+                    Some(draws)
+                },
+            )
         },
     ) else {
         // A launch velocity outside the verified x87 domain needs a modded
@@ -2558,22 +2455,29 @@ fn has_active_area_invulnerability(entity: &GameEntity, current_tick: u64) -> bo
     )
 }
 
+fn event_arms_ic_isolation(
+    event: &EntityDamageEvent,
+    entities: &EntityStore,
+    current_tick: u64,
+) -> bool {
+    event.near_center_ic_isolation_eligible
+        && event.distance_leptons.is_some_and(|distance| distance < 85)
+        && entities.get(event.target_id).is_some_and(|target| {
+            has_active_area_invulnerability(target, current_tick)
+                && target.invulnerability.as_ref().is_some_and(|state| {
+                    state.kind == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
+                })
+        })
+}
+
 fn near_center_ic_isolation_armed(
     damage_events: &[EntityDamageEvent],
     entities: &EntityStore,
     current_tick: u64,
 ) -> bool {
-    damage_events.iter().any(|event| {
-        event.near_center_ic_isolation_eligible
-            && event.distance_leptons.is_some_and(|distance| distance < 85)
-            && entities.get(event.target_id).is_some_and(|target| {
-                has_active_area_invulnerability(target, current_tick)
-                    && target.invulnerability.as_ref().is_some_and(|state| {
-                        state.kind
-                            == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
-                    })
-            })
-    })
+    damage_events
+        .iter()
+        .any(|event| event_arms_ic_isolation(event, entities, current_tick))
 }
 
 fn area_near_center_ic_isolation_armed(
@@ -2582,18 +2486,8 @@ fn area_near_center_ic_isolation_armed(
     current_tick: u64,
 ) -> bool {
     receivers.iter().any(|receiver| {
-        let combat_aoe::AreaDamageReceiver::Entity(event) = receiver else {
-            return false;
-        };
-        event.near_center_ic_isolation_eligible
-            && event.distance_leptons.is_some_and(|distance| distance < 85)
-            && entities.get(event.target_id).is_some_and(|target| {
-                has_active_area_invulnerability(target, current_tick)
-                    && target.invulnerability.as_ref().is_some_and(|state| {
-                        state.kind
-                            == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
-                    })
-            })
+        matches!(receiver, combat_aoe::AreaDamageReceiver::Entity(event)
+            if event_arms_ic_isolation(event, entities, current_tick))
     })
 }
 
@@ -2659,6 +2553,7 @@ fn emit_projectile_shrapnel(
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
     house_alliances: &HouseAllianceMap,
     scenario_rng: &mut SimRng,
+    native_unique_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     out: &mut CombatEmit,
 ) {
     let Some(parent_weapon) = rules.weapon(interner.resolve(detonation.payload.weapon)) else {
@@ -2853,7 +2748,14 @@ fn emit_projectile_shrapnel(
                     .unwrap_or(ProjectileCoord::new(0, 0, 0)),
             }
         };
+        let native_unique_id =
+            crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_unique_ids);
         out.projectile_spawns.push(ProjectileSpawn {
+            native_unique_id,
+            line_trail: crate::sim::projectile::ProjectileLineTrail::from_type(
+                child_projectile,
+                rules.general.line_trail_color_override,
+            ),
             flat: child_projectile.flat,
             source_id: detonation.source_id,
             origin: detonation.impact,
@@ -3300,14 +3202,13 @@ pub(crate) use self::combat_targeting::acquire_best_target_for_entity;
 pub use self::threat_range::ScanMission;
 pub(crate) use self::threat_range::scan_mission_for;
 
-/// Impact-height tests: a shot that lands on a ground cell must take that
-/// cell's terrain floor height, not a constant. Kept inline because they pin
-/// `attack_impact_z` and the single-impact-coordinate wiring that lives in
-/// this file.
+/// Ordinary launch-height, resolved impact presentation and damage-effect
+/// wiring. Bridge Cell+58 launch and +48/+58 impact comparisons use the native
+/// oracle cases in `bridge_launch_tests` and `world::projectile_collision`.
 #[cfg(test)]
 mod impact_height_tests {
     use super::*;
-    use crate::map::bridge_facts::{BRIDGE_FLAG_STRUCTURAL, BridgeCellFacts};
+    use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::sim::intern::test_interner;
@@ -3395,7 +3296,7 @@ mod impact_height_tests {
     }
 
     /// `TechnoClass::ReceiveDamage`'s metallic debris loop
-    /// (`0x007024E0..0x0070256B`, `tools/spatial_oracle/anim_bouncer_launch.py`,
+    /// (`0x007024E0..0x0070256B`, `tools/spatial_oracle/bridge_debris_producer.py`,
     /// executed with the whole AnimClass constructor per piece) on retail
     /// rules and art: each piece's `MetallicDebris=` pick, then that piece's
     /// constructor draws, before the next pick. The budget is pinned (equal
@@ -3412,11 +3313,11 @@ mod impact_height_tests {
             crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
         rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art));
         let golden: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/anim_bouncer_launch.json"
+            "../../../tools/spatial_oracle/bridge_debris_producer.json"
         ))
         .unwrap();
-        let rows = golden["debris_loop"].as_array().unwrap();
-        assert_eq!(rows.len(), 9);
+        let rows = golden["death_loop"].as_array().unwrap();
+        assert_eq!(rows.len(), 12);
         for row in rows {
             let input = &row["input"];
             let pieces = input["pieces"].as_i64().unwrap() as i32;
@@ -3433,6 +3334,8 @@ mod impact_height_tests {
             assert_eq!(rng.native_state_hex(), row["rng_before"].as_str().unwrap());
             let mut voxels = Vec::new();
             let mut effects = Vec::new();
+            let mut native_ids =
+                Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
             throw_debris_for_death(
                 &object_type,
                 &rules,
@@ -3441,6 +3344,7 @@ mod impact_height_tests {
                 (at(0), at(1)),
                 at(2),
                 &mut rng,
+                &mut native_ids,
                 &mut voxels,
                 &mut effects,
             );
@@ -3474,10 +3378,18 @@ mod impact_height_tests {
                     std::array::from_fn(|i| location[i].as_i64().unwrap() as i32),
                     "{input}"
                 );
-                let body = spawn
+                let draws = spawn
                     .draws
-                    .and_then(|draws| draws.bounce)
-                    .expect("a bouncing chunk");
+                    .expect("the resolved type supplies constructor draws");
+                if native["is_bouncing"].as_u64().unwrap() == 0 {
+                    assert!(
+                        draws.bounce.is_none(),
+                        "unread retail D is not a Bouncer: {input}"
+                    );
+                    assert_eq!(native["type"], "D");
+                    continue;
+                }
+                let body = draws.bounce.expect("an ART-read bouncing chunk");
                 let bits = |key: &str, i: usize| native["bounce"][key][i].as_u64().unwrap() as u32;
                 for axis in 0..3 {
                     assert_eq!(body.position[axis].bits(), bits("position_bits", axis));
@@ -3570,74 +3482,34 @@ mod impact_height_tests {
     }
 
     #[test]
-    fn cell_target_impact_z_is_the_cells_terrain_floor() {
+    fn ordinary_cell_launch_uses_terrain_ground_leptons() {
         let entities = EntityStore::new();
         let flat = terrain_at_level(0);
         let raised = terrain_at_level(RAISED_LEVEL);
 
         assert_eq!(
-            attack_impact_z(TargetKind::Cell(7, 9), &entities, Some(&raised)),
-            i32::from(RAISED_LEVEL),
-            "a ground-cell impact takes the cell's terrain floor height; a \
-             constant 0 here renders the impact one whole tile below the ground \
-             it landed on"
+            attack_world_z_leptons(TargetKind::Cell(7, 9), &entities, Some(&raised)),
+            208,
+            "a non-bridge Cell+58 aim is its ground surface in leptons"
         );
         assert_eq!(
-            attack_impact_z(TargetKind::Cell(7, 9), &entities, Some(&flat)),
+            attack_world_z_leptons(TargetKind::Cell(7, 9), &entities, Some(&flat)),
             0,
             "level-0 ground is still zero — that is the value, not the fallback"
         );
         assert_eq!(
-            attack_impact_z(TargetKind::Cell(7, 9), &entities, None),
+            attack_world_z_leptons(TargetKind::Cell(7, 9), &entities, None),
             0,
             "no loaded map means no cell to read"
         );
         assert_eq!(
-            attack_impact_z(
+            attack_world_z_leptons(
                 TargetKind::Cell(TEST_GRID + 5, TEST_GRID + 5),
                 &entities,
                 Some(&raised)
             ),
             0,
-            "VERA API boundary, no native equivalent: an off-map cell is not a \
-             targetable cell in the first place, so this pins only that the \
-             helper stays total, not a game rule about off-map heights"
-        );
-    }
-
-    #[test]
-    fn cell_target_impact_z_is_the_ground_floor_not_the_bridge_aim_point() {
-        // A structural bridge cell whose ground floor is RAISED_LEVEL and whose
-        // deck sits a full deck height above it.
-        let mut cells: Vec<ResolvedTerrainCell> = (0..TEST_GRID)
-            .flat_map(|ry| (0..TEST_GRID).map(move |rx| terrain_cell(rx, ry, RAISED_LEVEL)))
-            .collect();
-        let idx = 9 * TEST_GRID as usize + 7;
-        cells[idx].bridge_facts = BridgeCellFacts {
-            raw_flags: BRIDGE_FLAG_STRUCTURAL,
-            ..BridgeCellFacts::default()
-        };
-        cells[idx].has_bridge_deck = true;
-        cells[idx].bridge_walkable = true;
-        cells[idx].bridge_deck_level = RAISED_LEVEL + 4;
-        let terrain = ResolvedTerrainGrid::from_cells(TEST_GRID, TEST_GRID, cells);
-
-        let entities = EntityStore::new();
-        assert_eq!(
-            attack_impact_z(TargetKind::Cell(7, 9), &entities, Some(&terrain)),
-            i32::from(RAISED_LEVEL),
-            "the impact coordinate is the projectile's own location clamped to \
-             the cell's ground height, not the bridge-aware aim point — the \
-             deck-adding accessor is reached only for a live object target. The \
-             deck term is a recorded residual on `attack_impact_z`, not an \
-             oversight"
-        );
-        assert_ne!(
-            attack_impact_z(TargetKind::Cell(7, 9), &entities, Some(&terrain)),
-            combat_aoe::bridge_adjusted_impact_z(Some(&terrain), 7, 9),
-            "the aim-point helper is a different quantity; if these two ever \
-             agree, the deck residual was closed and the bridge-damage Z gate \
-             has to be settled in the same change"
+            "mapless test boundary; production fallback targets retain the shared CellClass"
         );
     }
 
@@ -3668,25 +3540,26 @@ mod impact_height_tests {
     }
 
     #[test]
-    fn entity_target_impact_z_still_reads_the_entity_height() {
+    fn entity_launch_uses_the_object_coordinate() {
         let mut entities = EntityStore::new();
         let mut on_deck = GameEntity::test_default(1, "MTNK", "Americans", 7, 9);
         on_deck.position.z = 6;
+        on_deck.on_bridge = true;
         entities.insert(on_deck);
         let terrain = terrain_at_level(RAISED_LEVEL);
 
         assert_eq!(
-            attack_impact_z(TargetKind::Entity(1), &entities, Some(&terrain)),
-            6,
-            "an object target still contributes its own height, terrain or not"
+            attack_world_z_leptons(TargetKind::Entity(1), &entities, Some(&terrain)),
+            624,
+            "the object-owned bridge layer raises its ground coordinate"
         );
         assert_eq!(
-            attack_impact_z(TargetKind::Entity(1), &entities, None),
-            6,
-            "entity height does not depend on the terrain grid"
+            attack_world_z_leptons(TargetKind::Entity(1), &entities, None),
+            624,
+            "the mapless fallback already includes the object layer"
         );
         assert_eq!(
-            attack_impact_z(TargetKind::Entity(404), &entities, Some(&terrain)),
+            attack_world_z_leptons(TargetKind::Entity(404), &entities, Some(&terrain)),
             0,
             "a vanished target contributes nothing"
         );
@@ -3694,7 +3567,10 @@ mod impact_height_tests {
 
     #[test]
     fn force_fire_on_raised_ground_places_the_explosion_at_the_terrain_height() {
-        let rules = impact_rules();
+        let mut rules = impact_rules();
+        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+            &IniFile::from_str(""),
+        ));
         let mut terrain = terrain_at_level(RAISED_LEVEL);
         let mut store = EntityStore::new();
         // `test_interner` snapshots the thread-local, so the entity's type and
@@ -3733,14 +3609,14 @@ mod impact_height_tests {
         );
 
         let effect = result
-            .consequences
-            .effects()
-            .explosion_effects
+            .fixture_anims
             .first()
-            .expect("force-fire should emit the warhead's impact animation");
-        assert_eq!((effect.rx, effect.ry), (5, 6));
+            .expect("force-fire should construct the warhead's impact animation");
+        let (rx, ry, _, _, _) = effect.world_coord.to_cell_sub_z();
+        assert_eq!((rx, ry), (5, 6));
         assert_eq!(
-            effect.z, RAISED_LEVEL,
+            effect.world_coord.z,
+            i32::from(RAISED_LEVEL) * 104,
             "the impact animation is placed at the impact height; a constant 0 \
              draws it 15 screen pixels per level below the ground it hit"
         );

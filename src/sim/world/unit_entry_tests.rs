@@ -2,6 +2,7 @@ use super::*;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::occupancy::CellListInsertion;
+use crate::util::fixed_math::SimFixed;
 
 #[test]
 fn unit_entry_preserves_original_numeric_results_and_repair_projection() {

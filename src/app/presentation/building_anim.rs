@@ -515,9 +515,10 @@ pub(crate) fn drain_sound_events(state: &mut AppState) {
         };
         let Some(world) = sim.looping_sound_owner_coord(owner) else {
             // The owner object is gone. Native's `ObjectClass` uninit path
-            // releases the handle before the pointer can dangle
-            // (`release_move_sound` / `destroy_anim` push the stop event), so
-            // this is the belt-and-braces arm.
+            // releases or stops its handle before the pointer can dangle.
+            // Anim Destroy emits release, removing the owner handle while
+            // leaving one-shot Reports playing; MoveSound emits stop. Those
+            // handled owners never enter this fallback.
             sfx.stop_animation_sound(owner);
             continue;
         };

@@ -47,7 +47,7 @@ use crate::util::pixel_conversion::PixelConversionBounds;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{
     Arc,
-    atomic::{AtomicI16, AtomicU8, AtomicU32, AtomicU64, Ordering},
+    atomic::{AtomicI16, AtomicI32, AtomicU8, AtomicU32, AtomicU64, Ordering},
 };
 #[cfg(test)]
 pub(crate) use tests::{
@@ -1142,6 +1142,8 @@ pub struct SharedCellDummy {
 #[derive(Debug)]
 struct SharedCellDummyState {
     cell: AtomicU64,
+    /// CellClass+0xEC; ctor47BC93 sets Clear0, ordinary misses retain it.
+    land_type: AtomicI32,
     /// Complete CellClass+0x140, including the setter's bit0x10000.
     raw_flags: AtomicU32,
     /// CellClass+0x2C: 0=null, 1=shared dummy, real storage index+2 otherwise.
@@ -1270,6 +1272,7 @@ impl SharedCellDummy {
         Self {
             state: Arc::new(SharedCellDummyState {
                 cell: AtomicU64::new(0),
+                land_type: AtomicI32::new(0),
                 raw_flags: AtomicU32::new(0),
                 native_anchor: AtomicU64::new(0),
                 overlay: AtomicU64::new(SHARED_DUMMY_DEFAULT_OVERLAY),
@@ -1287,6 +1290,7 @@ impl SharedCellDummy {
         Self {
             state: Arc::new(SharedCellDummyState {
                 cell: AtomicU64::new(self.state.cell.load(Ordering::Relaxed)),
+                land_type: AtomicI32::new(self.land_type()),
                 raw_flags: AtomicU32::new(self.state.raw_flags.load(Ordering::Relaxed)),
                 native_anchor: AtomicU64::new(self.state.native_anchor.load(Ordering::Relaxed)),
                 overlay: AtomicU64::new(self.state.overlay.load(Ordering::Relaxed)),
@@ -1311,6 +1315,7 @@ impl SharedCellDummy {
     /// this handle yet.
     pub(crate) fn reconstruct_for_map_resize(&self) {
         self.state.cell.store(0, Ordering::Relaxed);
+        self.state.land_type.store(0, Ordering::Relaxed);
         // Constructor47BBF0: AND FF800000 at47BCE1; preserve upper residue.
         self.state
             .raw_flags
@@ -1343,6 +1348,15 @@ impl SharedCellDummy {
         self.state.neighbor_count.load(Ordering::Relaxed)
     }
 
+    pub(crate) fn land_type(&self) -> i32 {
+        self.state.land_type.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_land_type(&self, land_type: i32) {
+        self.state.land_type.store(land_type, Ordering::Relaxed);
+    }
+
     pub(crate) fn adjust_neighbor_count(&self, add: bool) {
         self.state
             .neighbor_count
@@ -1360,6 +1374,9 @@ impl SharedCellDummy {
     /// Publish an already validated post-Resize candidate onto the retained
     /// process identity. Preserve its later lookup effects; do not reset twice.
     pub(crate) fn adopt_prepared_load_state(&self, prepared: &Self) {
+        self.state
+            .land_type
+            .store(prepared.land_type(), Ordering::Relaxed);
         self.state.cell.store(
             prepared.state.cell.load(Ordering::Relaxed),
             Ordering::Relaxed,
@@ -4993,36 +5010,19 @@ impl ResolvedTerrainGrid {
             .map(|cell| ((cell.rx, cell.ry), cell.bridge_deck_level))
             .collect()
     }
+}
 
-    /// Build bridge metadata for the tactical screen-to-cell inverse.
-    ///
-    /// This keeps the existing deck-height map intact for render/debug users,
-    /// while exposing the structural and direction-zero flags consumed by the
-    /// verified gamemd tactical inverse branch.
-    pub fn build_tactical_bridge_inverse_map(
-        &self,
-    ) -> BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell> {
-        self.cells
-            .iter()
-            .filter(|cell| {
-                cell.has_bridge_deck
-                    && !cell
-                        .bridge_layer
-                        .as_ref()
-                        .is_some_and(|bl| bl.direction == BridgeDirection::Low)
-            })
-            .map(|cell| {
-                (
-                    (cell.rx, cell.ry),
-                    crate::map::terrain::TacticalBridgeCell {
-                        structural: cell.bridge_facts.has_structural_bridge(),
-                        direction_zero: cell
-                            .bridge_facts
-                            .has_flag(crate::map::bridge_facts::BRIDGE_FLAG_DIRECTION_ZERO),
-                    },
-                )
-            })
-            .collect()
+impl crate::map::terrain::TacticalBridgeLookup for ResolvedTerrainGrid {
+    fn bridge_cell(&self, rx: u16, ry: u16) -> Option<crate::map::terrain::TacticalBridgeCell> {
+        let facts = &self.cell(rx, ry)?.bridge_facts;
+        // Original6D6760/6D6793 reads raw100/800, independent of inferred
+        // topology or deck-walkability. Collapse and restore already update
+        // this authoritative cell word; retaining a second map makes it stale.
+        // Executed reader: tools/bridge_click_state_oracle/README.md.
+        Some(crate::map::terrain::TacticalBridgeCell {
+            structural: facts.has_structural_bridge(),
+            direction_zero: facts.has_flag(crate::map::bridge_facts::BRIDGE_FLAG_DIRECTION_ZERO),
+        })
     }
 }
 
@@ -6847,6 +6847,8 @@ mod tests {
             sim.admit_projectile(
                 100,
                 ProjectileSpawn {
+                    native_unique_id: 0,
+                    line_trail: None,
                     flat: false,
                     source_id: 999,
                     origin: ProjectileCoord::new(896, 896, 500),

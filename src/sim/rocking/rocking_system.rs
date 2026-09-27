@@ -167,12 +167,9 @@ pub fn tick(
 ) {
     let keys = entities.keys_sorted();
     for &id in &keys {
-        let Some(entity) = entities.get_mut(id) else {
+        let Some(entity) = entities.get_mut_if(id, |entity| entity.rocking.is_some()) else {
             continue;
         };
-        if entity.rocking.is_none() {
-            continue;
-        }
 
         // Read whole-entity properties before borrowing rocking mutably.
         let is_moving = entity_is_moving(entity);

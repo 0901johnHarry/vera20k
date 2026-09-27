@@ -75,6 +75,34 @@ impl IniSection {
         strtrim_ascii(truncate_bytes(raw, capacity - 1)).to_string()
     }
 
+    /// ReadCoord529CA0 (`CCINIClass` coordinate read `0x00529CA0`, the art FLH
+    /// keys): a 64-byte buffer, trim, then `%d,%d,%d` (`0x008189B0`), each `,`
+    /// a literal that must follow the previous number at once.
+    /// Missing/empty input returns the current coordinate. Complete decimal
+    /// triples retain signed32 wrapping and ignore text after the third number.
+    /// Original incomplete nonempty scans expose stale ABI argument bits (the
+    /// key, section and default pointers); modded malformed coordinates
+    /// deterministically retain `default` here. Stock coordinates are all
+    /// full triples.
+    /// Executable coverage: tools/projectile_oracle/ifv_fire_coord.
+    pub fn read_coord3(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
+        self.read_coord3_value(key).unwrap_or(default)
+    }
+
+    /// [`Self::read_coord3`]'s scan alone: `None` wherever it keeps its default.
+    pub fn read_coord3_value(&self, key: &str) -> Option<[i32; 3]> {
+        let raw = self.read_string(key, "", 64);
+        let mut bytes = raw.as_bytes();
+        let mut out = [0; 3];
+        for (index, value) in out.iter_mut().enumerate() {
+            *value = scan_decimal_i32(&mut bytes)?;
+            if index < 2 {
+                bytes = bytes.strip_prefix(b",")?;
+            }
+        }
+        Some(out)
+    }
+
     /// Read3Int (P8): comma "%d,%d,%d". All-defaults on ABSENT key. Each field
     /// atoi-lenient; missing trailing fields keep the corresponding default.
     #[cfg(test)]
@@ -84,38 +112,6 @@ impl IniSection {
                 current[index] = atoi_lenient(strtrim_ascii(token));
             }
             current
-        })
-    }
-
-    /// The coordinate read `0x00529CA0` (art FLH keys): an absent key, or a
-    /// value that is blank once cut to 63 bytes and strtrimmed, keeps
-    /// `default`; otherwise sscanf `"%d,%d,%d"` (`0x008189B0`) fills the
-    /// fields in order, each `,` a literal that must follow the previous
-    /// number at once. Native leaves a field the scan does not reach holding
-    /// its stack argument slot (a pointer or a CRC); VERA keeps that field's
-    /// default, which only malformed data can tell apart (stock art FLHs are
-    /// all full triples).
-    pub fn read_coordinate(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
-        self.fold_rules_values(key, default, |current, raw| {
-            let value = strtrim_ascii(truncate_bytes(raw, 0x3F));
-            if value.is_empty() {
-                return current;
-            }
-            let mut out = current;
-            let mut bytes = value.as_bytes();
-            for (index, field) in out.iter_mut().enumerate() {
-                if index > 0 {
-                    let Some(rest) = bytes.strip_prefix(b",") else {
-                        break;
-                    };
-                    bytes = rest;
-                }
-                let Some(number) = scan_decimal_i32(&mut bytes) else {
-                    break;
-                };
-                *field = number;
-            }
-            out
         })
     }
 
@@ -150,21 +146,31 @@ impl IniSection {
         (out[0], out[1], out[2], out[3])
     }
 
-    /// ReadColorRGB (P21): COMMA "%d,%d,%d" -> [u8;3]. Per-component plain %d
-    /// (stops at first non-digit; NO atoi-leniency beyond sign, NO hex). Default
-    /// RGB on absent key or short value; component byte-narrowed to u8 (gamemd
-    /// packs the sscanf int into a byte).
-    ///
-    /// `atoi_lenient` matches sscanf `%d` over the whole stock domain (leading
-    /// sign + decimal digits, stop at non-digit) — corpus-confirmed ZERO `$`/`h`
-    /// triplet components (plan-review C-R3). The `$`/`h` hex lives in `read_int`,
-    /// NOT in `atoi_lenient`, so reusing it here stays faithful to `%d`.
+    /// Original474B50: ReadString64 then one `%d,%d,%d` scan, byte narrowing.
+    /// Literal commas must immediately follow each of the first two numbers;
+    /// a suffix there stops the WHOLE scan. Absent/empty input keeps the default.
+    /// Original incomplete nonempty scans copy uninitialized stack bytes. We
+    /// deterministically retain the current RGB for that malformed domain,
+    /// matching read_coord3's policy instead of reproducing fixture stack data.
+    /// Full-reader controls: tools/projectile_oracle/line_trail.json.
     pub fn read_color_rgb(&self, key: &str, default: [u8; 3]) -> [u8; 3] {
-        self.fold_rules_values(key, default, |mut current, raw| {
-            for (index, token) in strtrim_ascii(raw).split(',').enumerate().take(3) {
-                current[index] = atoi_lenient(strtrim_ascii(token)) as u8;
+        self.fold_rules_values(key, default, |current, raw| {
+            let raw = strtrim_ascii(raw);
+            let mut bytes = &raw.as_bytes()[..raw.len().min(63)];
+            let mut result = [0; 3];
+            for (index, component) in result.iter_mut().enumerate() {
+                let Some(value) = scan_decimal_i32(&mut bytes) else {
+                    return current;
+                };
+                *component = value as u8;
+                if index < 2 {
+                    if bytes.first() != Some(&b',') {
+                        return current;
+                    }
+                    bytes = &bytes[1..];
+                }
             }
-            current
+            result
         })
     }
 
@@ -177,7 +183,6 @@ impl IniSection {
     /// P4/P18; corpus harness scans stock for present-empty Speed/Range.
     ///
     /// Retail provenance: INI speed conversion — `CCINIClass__ReadSpeed` @ `0x00474810`.
-    #[cfg(test)]
     pub fn read_speed(&self, key: &str, default: i32) -> i32 {
         self.fold_rules_values(key, default, |current, raw| {
             let parsed = parse_read_int(-1, raw);
@@ -516,6 +521,22 @@ pub(crate) fn scan_decimal_i32(bytes: &mut &[u8]) -> Option<i32> {
 /// and optional exponent. Parsing stops at the first byte outside that token
 /// (`12.5%` -> 12.5, `1.25e2junk` -> 125). Empty/junk -> 0.0.
 pub(crate) fn parse_leading_f32(s: &str) -> f32 {
+    leading_float_token(s)
+        .and_then(|token| token.parse::<f32>().ok())
+        .unwrap_or(0.0)
+}
+
+/// Decimal/exponent prefix used by Verses75DE39's CRT `atof7C9D66` route.
+/// Unlike ReadDouble's `%f` route, this retains binary64. Executed finite,
+/// malformed and exponent forms are pinned in bridge_landing_inputs.json;
+/// arbitrary extreme CRT rounding/range behavior is not certified here.
+pub(crate) fn parse_leading_f64(s: &str) -> f64 {
+    leading_float_token(s)
+        .and_then(|token| token.parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
+
+fn leading_float_token(s: &str) -> Option<&str> {
     let b = s.as_bytes();
     let mut end = usize::from(b.first().is_some_and(|c| matches!(c, b'-' | b'+')));
     let mut mantissa_digits = 0usize;
@@ -532,7 +553,7 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         }
     }
     if mantissa_digits == 0 {
-        return 0.0;
+        return None;
     }
 
     if b.get(end).is_some_and(|c| matches!(c, b'e' | b'E')) {
@@ -550,7 +571,7 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         }
     }
 
-    s[..end].parse::<f32>().unwrap_or(0.0)
+    Some(&s[..end])
 }
 
 #[cfg(test)]
@@ -673,21 +694,24 @@ mod tests {
 
     /// `0x00529CA0`: sscanf `"%d,%d,%d"` after the 63-byte cut and strtrim.
     #[test]
-    fn read_coordinate_scans_like_the_native_coordinate_read() {
+    fn read_coord3_scans_like_the_native_coordinate_read() {
         let ini = IniFile::from_str(
             "[S]\nFull=45,-190,90;gun port\nPad= 80, 0, 120 \nSpaced=80 ,0,120\n\
-             Pair=100,-25\nJunk=abc,1,2\nPlus=+7,-0,3x\n",
+             Pair=100,-25\nJunk=abc,1,2\nPlus=+7,-0,3x\nBlank=\n",
         );
         let section = ini.section("S").unwrap();
         let default = [1, 2, 3];
-        assert_eq!(section.read_coordinate("Full", default), [45, -190, 90]);
+        assert_eq!(section.read_coord3("Full", default), [45, -190, 90]);
         // `%d` skips the blanks before a number, never before the comma.
-        assert_eq!(section.read_coordinate("Pad", default), [80, 0, 120]);
-        assert_eq!(section.read_coordinate("Spaced", default), [80, 2, 3]);
-        assert_eq!(section.read_coordinate("Pair", default), [100, -25, 3]);
-        assert_eq!(section.read_coordinate("Junk", default), default);
-        assert_eq!(section.read_coordinate("Plus", default), [7, 0, 3]);
-        assert_eq!(section.read_coordinate("Absent", default), default);
+        assert_eq!(section.read_coord3("Pad", default), [80, 0, 120]);
+        assert_eq!(section.read_coord3("Plus", default), [7, 0, 3]);
+        // Incomplete scans: native leaves stack words, VERA the default.
+        assert_eq!(section.read_coord3("Spaced", default), default);
+        assert_eq!(section.read_coord3("Pair", default), default);
+        assert_eq!(section.read_coord3("Junk", default), default);
+        assert_eq!(section.read_coord3_value("Junk"), None);
+        assert_eq!(section.read_coord3("Blank", default), default);
+        assert_eq!(section.read_coord3("Absent", default), default);
     }
 
     #[test] // P8 partial keeps default component

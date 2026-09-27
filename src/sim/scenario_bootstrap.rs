@@ -1575,6 +1575,7 @@ pub(crate) fn populate_launch_houses(
         house.set_difficulty(
             slot.difficulty,
             &rules.general.difficulty_rof,
+            &rules.general.difficulty_repair_delay,
             rules.country_rof(country_name),
             sim.session.game_mode_nonzero,
         );
@@ -2335,6 +2336,7 @@ impl ScenarioBootstrapRng {
 
 fn replay_generated_construction_trace_with_rng(
     scenario: &mut SimRng,
+    native_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     trace: &crate::map::construction_trace::RmgConstructionTrace,
 ) -> Result<crate::sim::world::GeneratedTechnoInitTable, crate::sim::world::GeneratedTechnoInitError>
 {
@@ -2349,6 +2351,10 @@ fn replay_generated_construction_trace_with_rng(
             );
         }
         let techno_ctor_random_word = (scenario.next_u32() & 0xFFFF) as u16;
+        // Building43BA15 assigns after base Techno6F3254, before placement.
+        // Discarded construction attempts spend both effects, like live rows.
+        let native_unique_id =
+            crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_ids);
         if let crate::map::construction_trace::RmgConstructionOutcome::Emitted {
             entity_index,
             cell,
@@ -2359,6 +2365,7 @@ fn replay_generated_construction_trace_with_rng(
                 techno_type: event.techno_type.clone(),
                 cell: *cell,
                 techno_ctor_random_word,
+                native_unique_id,
             });
         }
     }
@@ -2397,7 +2404,11 @@ impl Simulation {
         crate::sim::world::GeneratedTechnoInitTable,
         crate::sim::world::GeneratedTechnoInitError,
     > {
-        replay_generated_construction_trace_with_rng(&mut self.scenario_rng, trace)
+        replay_generated_construction_trace_with_rng(
+            &mut self.scenario_rng,
+            &mut self.native_unique_ids,
+            trace,
+        )
     }
 
     #[cfg(test)]
@@ -2567,12 +2578,17 @@ pub(crate) fn initialize_map_roster_houses(
             sim.session.game_options.tech_level,
         );
         house_state.player_control = player_control;
-        // RESIDUAL: a map-declared house keeps the constructor's difficulty
-        // and ROF bias 1.0 (`HouseClass+0x1A8`); only launch slots pass
-        // through `set_difficulty`. Native's difficulty assignment for map
-        // houses (campaign computer houses, map civilians) is not traced.
-        // Trigger: a weapon reload of such a house. Effect: its GetROF lacks
-        // the difficulty row.
+        // RESIDUAL: a map-declared house keeps the constructor's difficulty,
+        // ROF bias 1.0 (`HouseClass+0x1A8`) and repair delay 0.0 (`+0x1C0`);
+        // only launch slots pass through `set_difficulty`. In a campaign,
+        // `HouseClass::Read_INI` passes every map house through SetDifficulty
+        // after its section (`0x00500AA4..0x00500ADE`): a human-controlled
+        // one with the scenario's player difficulty (`Scenario+0x60C`), any
+        // other with its computer difficulty (`+0x610`); VERA's campaigns do
+        // not launch yet, so neither value exists. Trigger: a weapon reload,
+        // or the computer's auto-repair start, of such a house. Effect: its
+        // GetROF lacks the difficulty row; its auto-repair latch releases at
+        // the same frame's house update.
         house_state.base_plan.percent_built = house.base_plan.percent_built;
         house_state.base_plan.nodes = house
             .base_plan
@@ -2856,6 +2872,7 @@ mod tests {
                     .into_stock_offline_staged_simulation(&scenario, bound_prefix)
                     .expect("production admission installs the paired RNG/native-ID prefix");
                 assert!(sim.native_unique_ids.is_some());
+                let native_before_map = sim.native_unique_ids.as_ref().unwrap().current_raw();
                 let mut terrain = techno_constructor_flat_start_terrain(96);
                 let overlay_grid = crate::sim::overlay_grid::OverlayGrid::new(96, 96);
                 crate::sim::runtime::populate_staged_scenario_with_generated_inits(
@@ -2886,6 +2903,11 @@ mod tests {
                 )
                 .expect("shared staged object construction");
                 assert_eq!(sim.entities().len(), 1, "map object actually constructed");
+                assert_eq!(
+                    sim.entities().values().next().unwrap().native_unique_id,
+                    native_before_map.wrapping_add(1) as i32,
+                    "production admission retains its concrete native constructor ID",
+                );
                 let player = sim.interner.get(owner_key).unwrap();
                 assert_eq!(sim.session.current_house, Some(player));
                 if block_placement {
@@ -3838,6 +3860,7 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         });
         let launch = one_player_battle_launch("payload.mmx");
         let plan_a =
@@ -4023,6 +4046,9 @@ mod tests {
         let mut reference = SimRng::new(u64::from(seed));
         let owner = ScenarioBootstrapRng::new(seed);
         let mut sim = owner.into_simulation(&descriptor(seed));
+        // This isolated RNG fixture omits the full native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         sim.session.binary_frame = 77;
         let retained_handle = sim.allocate_stable_id();
 
@@ -4082,6 +4108,9 @@ mod tests {
             .expect("fresh launch owner accepts the Full-Init prefix");
         // The match load stages the Simulation here, before Fill.
         let mut sim = owner.into_simulation(&descriptor(seed));
+        // This isolated RNG fixture omits the full native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         {
             let (mut scenario_fill, main) = sim.terrain_load_draws();
             let actual = scenario_fill.next_range_u32_inclusive(5, 17);
@@ -4252,6 +4281,9 @@ mod tests {
         scenario.local_height = 32;
         scenario.mp_start_waypoints.insert(0, (start.rx, start.ry));
         let mut sim = owner.into_simulation(&scenario);
+        // This isolated RNG fixture omits the full native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         {
             let (mut scenario_fill, main) = sim.terrain_load_draws();
             let actual = scenario_fill.next_range_u32_inclusive(5, 17);

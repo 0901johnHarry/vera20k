@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original Type reset through its first complete Process call.\n\nThe reset prefix executes all populated native Type scalar/base destructors.\nStop at668A2C, before the later INI/file reload tail. Filtered physical General,\nCombatDamage and referenced Warhead sections supply the ordinary reread case;\nthis is not full retail discovery or the complete Full_Init lifecycle.\n",
+  "assumptions": [
+    "Original populated AnimType, WeaponType and WarheadType scalar/base destructors execute. Read-only observations record delete calls; no detach/dtor instruction or result is replaced.",
+    "The first case stops before post-reset Process. Freed Anim references remain stale native addresses; they are not dereferenced to claim live identity. LightningWarhead detaches to null.",
+    "The second case executes complete Process before and inside reset over physical selected fields and the full referenced IonWH section. It excludes unrelated retail type discovery and later reset INI/file reload passes.",
+    "Original global vector initialization runs before atexit registration; SEH begins empty. Inherited unrelated synthetic Color registry fallback is removed from fixture initial state."
+  ],
+  "substitutions": [
+    "BulletReader supplies deterministic bump allocation, no-op free, TLS, archive and cached lexical INI boundaries. Free calls are observed before that boundary; no storage reuse is modeled."
+  ],
+  "entry_points": {
+    "rules_ctor": "0x00665650",
+    "reset": "0x006686C0",
+    "first_reset_process_call": "0x00668A27",
+    "process": "0x00668BF0",
+    "stop_after_first_process": "0x00668A2C"
+  },
+  "payload_sha256": "a935d92e2504a3ac53b85c17cfa3610ef6543c75b3f3fff522de77097c2d167d"
+}

@@ -59,7 +59,9 @@ pub struct WeaponType {
     pub range_leptons: i32,
     /// Rate of fire: frames between consecutive shots (lower = faster).
     pub rof: i32,
-    /// Projectile travel speed (0 = instant hit / hitscan).
+    /// Native stored travel speed in leptons/frame, after ReadSpeed and the
+    /// per-pass ballistic postpass. Authored Speed=40 reads as 102. Zero alone
+    /// does not designate hitscan; projectile type and launch determine motion.
     pub speed: i32,
     /// Projectile type ID (references a [ProjectileName] section).
     pub projectile: Option<String>,
@@ -247,7 +249,10 @@ impl WeaponType {
             // 0x00771CB6, so an absent (or literal `-1`) key leaves 0.
             range_leptons: section.read_range("Range", 0),
             rof: section.get_i32("ROF").unwrap_or(0),
-            speed: section.get_i32("Speed").unwrap_or(0),
+            // Weapon771C70 initializes +A8 to zero; ReadINI7722FD calls
+            // ReadSpeed474810. Ordered Rules processing applies the later
+            // Weapon7729F0 postpass to the live retained value.
+            speed: section.read_speed("Speed", 0),
             projectile: section.get("Projectile").map(|s| s.to_string()),
             warhead: section.get("Warhead").map(|s| s.to_string()),
             report: section.get("Report").map(|s| s.to_string()),
@@ -393,7 +398,7 @@ mod tests {
         assert_eq!(weapon.range, sim_from_f32(5.75));
         assert_eq!(weapon.range_leptons, 1472, "5.75 cells * 256");
         assert_eq!(weapon.rof, 50);
-        assert_eq!(weapon.speed, 40);
+        assert_eq!(weapon.speed, 102);
         assert_eq!(weapon.projectile, Some("InvisibleLow".to_string()));
         assert_eq!(weapon.warhead, Some("AP".to_string()));
     }

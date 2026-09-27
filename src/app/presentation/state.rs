@@ -67,6 +67,7 @@ pub(crate) struct MatchPresentationState {
     /// (`0x00688094`). `None` for launches without a skirmish session.
     pub(crate) local_player_handle: Option<String>,
     pub(crate) lighting: super::lighting::MatchLighting,
+    pub(crate) line_trails: super::line_trails::LineTrails,
     pub(crate) combat_lights: crate::app::presentation::combat_lights::CombatLightRuntime,
     pub(crate) minimap: Option<MinimapRenderer>,
     /// Animated radar chrome — plays 33-frame open/close animation when radar gained/lost.
@@ -90,9 +91,6 @@ pub(crate) struct MatchPresentationState {
     /// SHROUD.SHP brightness pixels blitted per-cell, then a full-screen multiply pass
     /// darkens the scene.
     pub(crate) shroud_buffer: Option<crate::render::shroud_buffer::ShroudBuffer>,
-    /// Cell (rx, ry) -> high-bridge facts used by the tactical cursor inverse.
-    pub(crate) tactical_bridge_inverse_map:
-        BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>,
     /// Active map theater name (e.g., DESERT).
     pub(crate) theater_name: String,
     /// Active map theater extension (e.g., des).
@@ -104,10 +102,6 @@ pub(crate) struct MatchPresentationState {
     // -- Reusable per-frame scratch buffers (avoid allocation each frame) --
     /// Overlay instance scratch vec — cleared and refilled each frame.
     pub(crate) cached_overlay_instances: Vec<crate::render::batch::SpriteInstance>,
-    /// Unit (voxel) instance scratch vec — cleared and refilled each frame.
-    pub(crate) cached_unit_instances: Vec<crate::render::batch::SpriteInstance>,
-    /// UnitAtlas texture-page tags aligned with `cached_unit_instances`.
-    pub(crate) cached_unit_pages: Vec<usize>,
     /// Animated power bar — segment-by-segment transition matching original PowerClass.
     pub(crate) power_bar_anim: crate::sidebar::PowerBarAnimState,
     /// Persistent flash + mode state for in-game sidebar gadgets. Ticked from

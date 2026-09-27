@@ -27,6 +27,9 @@
 //! interned ids can be numbered differently from a pre-212 run: raw-index
 //! folds such as a bullet's weapon and warhead move with them, gameplay does
 //! not (nothing orders or looks up by weapon ids).
+//! Schema217 replaces approximate guided heading/age/phase with the native
+//! velocity and signed control fields. Former arbitrary guided states cannot
+//! be reconstructed; earlier feature projections do not recover those hashes.
 
 #[derive(Clone, Copy)]
 pub(super) enum HashSchema {
@@ -155,6 +158,15 @@ pub(super) enum HashFeature {
     /// A building's AI sale byte (`BuildingClass+0x6DC`). Earlier schemas
     /// fold nothing.
     AiSellable = 213,
+    /// A building's repair byte (`BuildingClass+0x6E8`) and AI repair byte
+    /// (`+0x6CB`); a house's repair delay (`HouseClass+0x1C0`), auto-repair
+    /// latch (`+0x245`) and its timer (`+0x280`). Earlier schemas fold
+    /// nothing.
+    BuildingRepair = 216,
+    /// Scenario constructor cursor and retained native Abstract IDs determine
+    /// guided Bullet phase independently of Rust handles. This schema also
+    /// introduces retained fallback-cell Land for impact animation selection.
+    NativeRuntimeIdentity = 217,
 }
 
 impl HashSchema {
@@ -193,6 +205,8 @@ impl HashSchema {
                     | HashFeature::SlaveManager
                     | HashFeature::RetiredJumpjetLegacyBlock
                     | HashFeature::AiSellable
+                    | HashFeature::BuildingRepair
+                    | HashFeature::NativeRuntimeIdentity
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

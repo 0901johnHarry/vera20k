@@ -55,6 +55,7 @@ fn make_test_entity(type_id: &str, category: EntityCategory) -> MapEntity {
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -2538,17 +2539,17 @@ fn gsi_04_10_terrain_object(
     cell: (u16, u16),
     occupation_bits: u8,
 ) -> crate::sim::terrain_object::TerrainObjectState {
-    crate::sim::terrain_object::TerrainObjectState {
-        stable_id,
-        native_unique_id: None,
-        in_logic_vector: false,
-        type_ref: sim.interner.intern("TREE01"),
-        rx: cell.0,
-        ry: cell.1,
-        health: 10,
-        max_health: 10,
-        occupation_bits,
-        lifecycle: crate::sim::terrain_object::TerrainObjectLifecycle::Live,
+    {
+        let mut terrain = crate::sim::terrain_object::TerrainObjectState::for_test(
+            stable_id,
+            sim.interner.intern("TREE01"),
+            cell.0,
+            cell.1,
+        );
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain.occupation_bits = occupation_bits;
+        terrain
     }
 }
 
@@ -4218,6 +4219,7 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &heights,
@@ -4320,6 +4322,7 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &heights,
@@ -4362,7 +4365,7 @@ fn test_bridge_damage_rebuilds_path_grid() {
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4404,7 +4407,7 @@ fn test_bridge_collapse_signals_pathgrid_refresh() {
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
     assert!(
@@ -4488,7 +4491,7 @@ fn test_bridge_collapse_clears_transition_flag() {
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4530,6 +4533,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::from([((5, 5), 1)]),
@@ -4547,7 +4551,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4593,6 +4597,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4610,7 +4615,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4661,6 +4666,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4678,7 +4684,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4721,6 +4727,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4738,7 +4745,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4784,6 +4791,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&combat_test_rules()),
         &BTreeMap::new(),
@@ -4801,7 +4809,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4864,6 +4872,7 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         Some(&rules),
         &BTreeMap::new(),
@@ -4898,7 +4907,7 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4935,7 +4944,7 @@ fn test_bridge_walker_collapses_full_3_cell_strip_on_single_hit() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -4952,102 +4961,6 @@ fn test_bridge_walker_collapses_full_3_cell_strip_on_single_hit() {
             "cell ({x}, 5) must hold the EW final-stage overlay"
         );
     }
-}
-
-/// Path mutual exclusion: a cell whose overlay has been TRANSITIONED out
-/// of the raw body range (e.g. 0x6) routes to the state-machine path,
-/// never to direct-overlay. The reverse (raw body overlay) routes to the
-/// direct path. Verifies the dispatcher's overlay invariant prevents
-/// double-firing on the same hit.
-#[test]
-fn test_bridge_dispatcher_state_machine_overlay_routes_to_high_sm_not_direct() {
-    use crate::sim::bridge_state::{
-        AnchorSpan, Axis, BridgeCellRole, BridgeRuntimeCell, DamageState, Direction, DispatchPath,
-    };
-    let mut sim = Simulation::new();
-    let (resolved, mut bridge_state) = ew_high_bridge_strip_for_dispatch(5, 5, 4, false, 0);
-    // Override center cell to the post-transition state: overlay 0x6 (out
-    // of the 0xCD..=0xE6 raw HIGH range), role=Anchor, damage_state=Damaged
-    // (so a single hit Damaged→Destroyed). Anchor span carries only the
-    // anchor itself so set_bridge_direction emits one BlowUpBridge action.
-    bridge_state.test_seed_cell(
-        5,
-        5,
-        BridgeRuntimeCell {
-            deck_present: true,
-            destroyable: true,
-            deck_level: 4,
-            bridge_group_id: Some(1),
-            damage_state: DamageState::Damaged,
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Anchor,
-            anchor_span_id: Some(1),
-            overlay_byte: 0x6,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-        },
-    );
-    bridge_state.test_seed_anchor_span(AnchorSpan {
-        id: 1,
-        anchor: (5, 5),
-        cells: [Some((5, 5)), None, None, None, None, None],
-        axis: Axis::EW,
-        direction: Direction::S,
-        damage_state: DamageState::Damaged,
-        bridge_group_id: 1,
-    });
-    sim.resolved_terrain = Some(resolved);
-    sim.bridge_state = Some(bridge_state);
-
-    // Path classifier: HighSM matches, HighDirect does NOT, when the
-    // overlay has been transitioned out of the raw body range.
-    let bs = sim.bridge_state.as_ref().unwrap();
-    let ctx = crate::sim::bridge_state::BridgeDamageContext {
-        damage: 15,
-        warhead_ref: crate::sim::intern::InternedId::default(),
-        is_ion_cannon: true,
-        bridge_strength: bs.bridge_strength(),
-        impact_z: 0,
-    };
-    let terrain = sim.resolved_terrain.as_ref().unwrap();
-    assert!(
-        bs.path_matches_cell(DispatchPath::HighStateMachine, 5, 5, &ctx, terrain),
-        "transitioned overlay routes to HighSM"
-    );
-    assert!(
-        !bs.path_matches_cell(DispatchPath::HighDirect, 5, 5, &ctx, terrain),
-        "transitioned overlay must NOT also match HighDirect"
-    );
-
-    // BR-02: a cell still in the raw body range matches HighDirect AND the
-    // High SM block — the SM block's overlay-first driver routes it to the
-    // direct walker, so both blocks fire and consume two BridgeStrength draws.
-    // Re-seed (4, 5) with overlay 0xDC.
-    let bs_mut = sim.bridge_state.as_mut().unwrap();
-    bs_mut.test_seed_cell(
-        4,
-        5,
-        BridgeRuntimeCell {
-            deck_present: true,
-            destroyable: true,
-            deck_level: 4,
-            bridge_group_id: Some(1),
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::EW),
-            role: BridgeCellRole::Body,
-            anchor_span_id: Some(1),
-            overlay_byte: 0xDC,
-            bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-        },
-    );
-    let bs = sim.bridge_state.as_ref().unwrap();
-    assert!(
-        bs.path_matches_cell(DispatchPath::HighDirect, 4, 5, &ctx, terrain),
-        "raw body overlay routes to HighDirect"
-    );
-    assert!(
-        bs.path_matches_cell(DispatchPath::HighStateMachine, 4, 5, &ctx, terrain),
-        "BR-02: in-band cell also matches the High SM block (overlay-first), consuming a second draw"
-    );
 }
 
 /// Integration test: full apply_bridge_damage_events pipeline on a
@@ -5148,7 +5061,7 @@ fn test_bridge_orchestrator_state_machine_path_collapses_anchor_and_deactivates_
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 0, // Z-gate window for level=0 is [-1, 1]
+            impact_z_leptons: 416, // Native structural deck over level0.
         }],
     );
 
@@ -5228,7 +5141,11 @@ fn test_bridge_orchestrator_state_machine_path_collapses_anchor_and_deactivates_
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(terrain_cache, Default::default(), Vec::new(), Vec::new());
+    restored.rebuild_caches_after_load(
+        terrain_cache,
+        Default::default(),
+        &rules,
+    );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert_eq!(restored.path_grid(), Some(expected_path.as_ref()));
 }
@@ -5259,7 +5176,7 @@ fn test_bridge_collapse_is_deterministic_under_replay() {
                 damage: 100,
                 warhead_ref: crate::sim::intern::InternedId::default(),
                 is_ion_cannon: false, // exercises per-path RNG gate
-                impact_z: 4,
+                impact_z_leptons: 416,
             }],
         );
         sim.state_hash()
@@ -5299,7 +5216,7 @@ fn replay_determinism_with_bridge_collapse_and_rim_refresh() {
                 damage: 100,
                 warhead_ref: crate::sim::intern::InternedId::default(),
                 is_ion_cannon: false,
-                impact_z: 4,
+                impact_z_leptons: 416,
             }],
         );
         sim.state_hash()
@@ -5337,7 +5254,7 @@ fn test_bridge_snapshot_roundtrip_preserves_state_after_collapse() {
             damage: 15,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -5420,7 +5337,7 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
             damage: 9999,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: false,
-            impact_z: 4,
+            impact_z_leptons: 416,
         }],
     );
 
@@ -6362,6 +6279,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6443,6 +6361,7 @@ fn test_move_queue_command_appends_waypoint() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6508,6 +6427,7 @@ fn test_stop_command_clears_move_and_attack_intent() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6569,6 +6489,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6820,6 +6741,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -6936,6 +6858,7 @@ fn test_move_command_rejects_non_owned_entity() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -7118,6 +7041,7 @@ fn test_attack_command_rejects_friendly_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "British".to_string(),
@@ -7135,6 +7059,7 @@ fn test_attack_command_rejects_friendly_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7184,6 +7109,7 @@ fn test_attack_move_auto_acquires_enemy() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7201,6 +7127,7 @@ fn test_attack_move_auto_acquires_enemy() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7274,6 +7201,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7291,6 +7219,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7382,6 +7311,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Russians".to_string(),
@@ -7399,6 +7329,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7476,6 +7407,7 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
             MapEntity {
                 owner: "Americans".to_string(),
@@ -7493,6 +7425,7 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             },
         ],
         None,
@@ -7556,6 +7489,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }],
         None,
         &empty_heights(),
@@ -8250,12 +8184,11 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
     );
 }
 
-/// Combat-death counterpart: a structure killed in combat (Phase 5) now lives in the
-/// Dying window through Phase 7 and is freed only by the single end-of-tick drain. The
-/// Phase-7 auto-repair scan is dying-gated, so a destroyed building on auto-repair is
-/// NOT healed (no credits spent) on the death tick, and after the tick it is gone.
+/// Combat-death counterpart: a structure killed in combat (Phase 5) lives in the
+/// Dying window through Phase 7 and is freed only by the single end-of-tick drain. Its
+/// repair took its step in the building's own visit, before its death, and none after.
 #[test]
-fn combat_death_not_repaired_then_freed_at_end_of_tick() {
+fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     use crate::sim::components::Health;
     use crate::sim::house_state::HouseState;
 
@@ -8310,10 +8243,14 @@ fn combat_death_not_repaired_then_freed_at_end_of_tick() {
         sim.substrate.pending_delete.is_empty(),
         "end-of-tick drain emptied the queue"
     );
+    // The repair step belongs to the building's own LogicVector visit
+    // (`BuildingClass::UpdateRepairAndPower`, `0x004401B6`), which VERA runs
+    // before this tick's Phase 5 combat: frame 0 takes one step (Cost 1000 over
+    // 150 steps at 25% costs 1) while the building lives, and none after.
     assert_eq!(
         sim.houses.get(&russia).map(|h| h.economy.credits),
-        Some(1000),
-        "destroyed building must not be repaired at Phase 7 (dying-gated, no credits spent)",
+        Some(999),
+        "one repair step in the building's visit, none after its death",
     );
 }
 
@@ -9198,6 +9135,104 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
         shared_ticks.is_empty(),
         "two ground vehicles shared a cell during transit on ticks {shared_ticks:?}"
     );
+}
+
+/// A Drive request made inside the movement pass searches with the owner
+/// sets the pass holds, brought current in place. Lending them a second time
+/// would build the owner's sets from every placement for each such pass.
+#[test]
+fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
+    let (mut sim, rules, grid) = stacking_world_native(24);
+    let heights = empty_heights();
+    sim.spawn_object("MTNK", "Americans", 12, 8, 64, &rules, &heights)
+        .expect("blocker spawns");
+    let mover = sim
+        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules, &heights)
+        .expect("mover spawns");
+    let cmd = cmd_envelope(
+        &sim,
+        "Americans",
+        1,
+        Command::Move {
+            entity_id: mover,
+            target_rx: 12,
+            target_ry: 8,
+            queue: false,
+            group_id: None,
+        },
+    );
+    let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
+    let builds = sim.movement_pass_cache.block_index_view_builds();
+    for _ in 0..60 {
+        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    }
+    assert_eq!(
+        sim.movement_pass_cache.block_index_view_builds(),
+        builds,
+        "a request inside a pass rebuilt the owner's sets"
+    );
+}
+
+/// Idle objects are handed out mutably only for their own turn, plus an
+/// infantry's frame-end animation clock: the per-frame walks read first and
+/// borrow only what they change. The tanks carry turrets, whose idle return
+/// the facing pass sets every frame. Every hand-out lands in the entity store's
+/// touch logs, whose per-object budget (`TouchLog::note`) a 20k-object world
+/// overran when each walk borrowed every entity, so the block index and the
+/// kept Ground keys rebuilt from every object each tick.
+#[test]
+fn idle_objects_are_handed_out_only_for_their_own_turn() {
+    use crate::sim::entity_store::TouchReader;
+    use crate::sim::touch_log::Touched;
+
+    let (mut sim, _, grid) = stacking_crusher_world(24);
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[BuildingTypes]\n0=GAPOWR\n\
+         [E1]\nStrength=125\nArmor=flak\nSpeed=4\n\
+         [MTNK]\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nStrength=300\n\
+         Armor=heavy\nSpeed=6\nTurret=yes\n\
+         [GAPOWR]\nStrength=750\nArmor=wood\nFoundation=2x2\nPower=100\n",
+    ))
+    .expect("idle object rules parse");
+    let heights = empty_heights();
+    let mut vehicles = Vec::new();
+    let mut infantry = Vec::new();
+    let mut buildings = Vec::new();
+    for x in 4..12u16 {
+        for y in [6u16, 12] {
+            vehicles.push(
+                sim.spawn_object("MTNK", "Americans", x, y, 64, &rules, &heights)
+                    .expect("tank spawns"),
+            );
+            infantry.push(
+                sim.spawn_object("E1", "Americans", x, y + 3, 0, &rules, &heights)
+                    .expect("infantry spawns"),
+            );
+        }
+    }
+    for x in [4u16, 7, 10] {
+        buildings.push(
+            sim.spawn_object("GAPOWR", "Americans", x, 19, 0, &rules, &heights)
+                .expect("power plant spawns"),
+        );
+    }
+    for _ in 0..3 {
+        let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    }
+    let _ = sim.substrate.entities.take_touched(TouchReader::BlockIndex);
+    let _ = sim.advance_tick(&[], Some(&rules), &heights, Some(&grid), None, 100);
+    let Touched::Ids(ids) = sim.substrate.entities.take_touched(TouchReader::BlockIndex) else {
+        panic!("an idle tick overflowed the touch log");
+    };
+    // A log drops a repeat of its last id, so this counts the runs of
+    // hand-outs; an object's own turn is one run.
+    let handed_out = |id: u64| ids.iter().filter(|&&noted| noted == id).count();
+    for &id in vehicles.iter().chain(&buildings) {
+        assert!(handed_out(id) <= 1, "idle vehicle or building {id}");
+    }
+    for &id in &infantry {
+        assert!(handed_out(id) <= 2, "idle infantry {id}");
+    }
 }
 
 /// FAITHFUL CASE: eight vehicles selected as a group, one Move order each to

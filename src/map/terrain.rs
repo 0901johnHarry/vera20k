@@ -55,11 +55,26 @@ pub struct TacticalBridgeCell {
     pub direction_zero: bool,
 }
 
+/// The tactical inverse queries current CellClass flags at each candidate and
+/// neighbor, not a map-load bridge list (original6D6760..6D6888). This borrowed
+/// interface keeps the inverse independent of its real-cell storage owner.
+pub trait TacticalBridgeLookup: std::fmt::Debug {
+    fn bridge_cell(&self, rx: u16, ry: u16) -> Option<TacticalBridgeCell>;
+}
+
+/// Native oracle fixtures supply literal cells; production uses the live grid.
+#[cfg(test)]
+impl TacticalBridgeLookup for BTreeMap<(u16, u16), TacticalBridgeCell> {
+    fn bridge_cell(&self, rx: u16, ry: u16) -> Option<TacticalBridgeCell> {
+        self.get(&(rx, ry)).copied()
+    }
+}
+
 /// Inputs for the YR-shaped tactical screen-to-cell inverse.
 #[derive(Debug, Clone, Copy)]
 pub struct TacticalInverseContext<'a> {
     pub height_map: &'a BTreeMap<(u16, u16), u8>,
-    pub bridge_cells: Option<&'a BTreeMap<(u16, u16), TacticalBridgeCell>>,
+    pub bridge_cells: Option<&'a dyn TacticalBridgeLookup>,
     pub viewport_offset_x: f32,
     pub viewport_offset_y: f32,
 }
@@ -430,7 +445,7 @@ fn apply_tactical_bridge_inverse(
     adjusted_scan_y: &mut f32,
 ) -> Option<TacticalInverseResult> {
     let bridge_cells = context.bridge_cells?;
-    let bridge = bridge_cells.get(&(cell_rx, cell_ry)).copied()?;
+    let bridge = bridge_cells.bridge_cell(cell_rx, cell_ry)?;
     if !bridge.structural {
         return None;
     }
@@ -507,13 +522,13 @@ fn apply_tactical_bridge_inverse(
 }
 
 fn tactical_bridge_neighbor(
-    bridge_cells: &BTreeMap<(u16, u16), TacticalBridgeCell>,
+    bridge_cells: &dyn TacticalBridgeLookup,
     rx: u16,
     ry: u16,
     direction: u8,
 ) -> Option<TacticalBridgeCell> {
     let (nx, ny) = tactical_cardinal_neighbor(rx, ry, direction)?;
-    bridge_cells.get(&(nx, ny)).copied()
+    bridge_cells.bridge_cell(nx, ny)
 }
 
 fn tactical_neighbor_height(

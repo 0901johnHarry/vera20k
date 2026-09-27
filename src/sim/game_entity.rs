@@ -315,6 +315,7 @@ pub(crate) struct GeneratedTechnoInit {
     pub techno_type: String,
     pub cell: (u16, u16),
     pub techno_ctor_random_word: u16,
+    pub native_unique_id: i32,
 }
 
 /// The three evidence-backed ways a live Techno obtains its persistent
@@ -362,6 +363,10 @@ pub struct GameEntity {
     pub(crate) stable_id: u64,
     #[cfg(not(test))]
     stable_id: u64,
+    /// AbstractClass+10, assigned by the concrete constructor after the base
+    /// Techno Scenario word (Unit735454 / Building43BA15). May wrap or duplicate;
+    /// stable handles remain the reference and storage authority.
+    pub(crate) native_unique_id: i32,
     /// Low word of the one raw Scenario RNG draw performed by the active-retail
     /// `TechnoClass` constructor (`0x006F3254`, stored at native `+0x3C8`).
     /// Later report-selection consumers read this persistent value; placement
@@ -522,7 +527,9 @@ pub struct GameEntity {
     /// Mutations: `Command::Select` → `apply_selection_snapshot()` in world_commands.rs;
     /// combat.rs sets `selected = false` on death/transport entry.
     pub selected: bool,
-    /// Building is being repaired (spending credits to heal).
+    /// A building's repair byte (`BuildingClass+0x6E8`), which only
+    /// `production::toggle_repair` sets; the repair step pays for each
+    /// `RepairStep=` of health while it is on.
     pub repairing: bool,
     /// LogicClass active-vector membership — mirrors gamemd ObjectClass+0x98.
     /// True iff this entity is currently in `Simulation::logic`. Not serialized:
@@ -655,6 +662,14 @@ pub struct GameEntity {
     /// then writes its AI Sellable field (`0x0044FB5B`).
     #[serde(default)]
     pub ai_sellable: bool,
+    /// A building's AI repair byte (`BuildingClass+0x6CB`), which lets the
+    /// computer's auto-repair start repair it (`0x004506DE`). The constructor
+    /// clears it (`0x0043B91F`); the map's `[Structures]` reader writes its AI
+    /// Repairable field (`0x0044FB70`), then the building's Unlimbo sets it
+    /// outside a campaign for a house no human controls (`0x00440B7A`), and
+    /// so does an MCV deploy for a computer house (`0x007397F4`).
+    #[serde(default)]
+    pub ai_repairable: bool,
     /// Independent turret/barrel facing — only on entities with Turret=yes in rules.ini.
     /// Timer-based 16-bit interpolator mirroring gamemd's BarrelFacing primitive.
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
@@ -1423,6 +1438,7 @@ impl GameEntity {
     /// render, and diagnostic code cannot silently invent the native word.
     pub(in crate::sim) fn new_at_frame_from_constructor_word(
         stable_id: u64,
+        native_unique_id: i32,
         rx: u16,
         ry: u16,
         z: u8,
@@ -1453,6 +1469,7 @@ impl GameEntity {
             dont_score: false,
             tracking_facts: Default::default(),
             stable_id,
+            native_unique_id,
             techno_ctor_random_word,
             discovery: TechnoDiscoveryHistory::default(),
             structure_upgrade_link: None,
@@ -1527,6 +1544,7 @@ impl GameEntity {
             rally_target: None,
             was_attacked_by_enemy: false,
             ai_sellable: false,
+            ai_repairable: false,
             barrel_facing: None,
             turret_rotation_latch: false,
             last_fire_frame: NATIVE_LAST_FIRE_FRAME_INIT,
@@ -1675,6 +1693,7 @@ impl GameEntity {
     ) -> Self {
         Self::new_at_frame_from_constructor_word(
             stable_id,
+            0,
             rx,
             ry,
             z,

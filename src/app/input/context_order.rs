@@ -592,12 +592,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             state.match_state.sandbox_full_visibility,
             Some(&resources.rules),
             &resources.height_map,
-            Some(
-                &state
-                    .match_state
-                    .match_presentation
-                    .tactical_bridge_inverse_map,
-            ),
+            crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
         );
 
         let only_miners_selected = mobile_count > 0 && selected_miner_ids.len() == mobile_count;
@@ -1203,12 +1198,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
                     &resources.height_map,
-                    Some(
-                        &state
-                            .match_state
-                            .match_presentation
-                            .tactical_bridge_inverse_map,
-                    ),
+                    crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             } else {
                 pick_enemy_target_stable_id(
@@ -1219,12 +1209,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     state.match_state.sandbox_full_visibility,
                     Some(&resources.rules),
                     &resources.height_map,
-                    Some(
-                        &state
-                            .match_state
-                            .match_presentation
-                            .tactical_bridge_inverse_map,
-                    ),
+                    crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             };
             // Assign a shared group_id when multiple units move together.

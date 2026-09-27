@@ -880,6 +880,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     };
     assert_eq!(
         sim.spawn_from_map(&[placement], Some(&rules), &BTreeMap::new()),
@@ -4071,6 +4072,8 @@ fn lifecycle_authority_set_logic_order_for_test_synchronizes_all_membership_flag
 
 pub(super) fn gsi_05_02_projectile(source_id: u64, fuse_frames: Option<u16>) -> ProjectileSpawn {
     ProjectileSpawn {
+        native_unique_id: 0,
+        line_trail: None,
         flat: false,
         source_id,
         origin: ProjectileCoord::new(0, 0, 0),
@@ -4229,20 +4232,19 @@ fn gsi_05_04_guided_projectile(
     spawn.initial_target_position = initial_target_position;
     spawn.guidance = Some(ProjectileGuidance {
         rot: 60,
-        missile_rot_var: SimFixed::lit("0.25"),
+        missile_rot_var: crate::util::native_x87::NativeF64Bits::from_bits(0.25f64.to_bits()),
         course_lock_duration: 0,
-        sidewinder_phase: 0,
+        course_frames: 0,
+        course_locked: true,
         airburst: false,
         inaccurate: false,
         very_high: false,
         level: false,
-        heading_bam: 0,
         max_speed: 0,
         acceleration: 3,
         fuse_reference: crate::sim::projectile::ProjectileCoord::new(0, 0, 0),
         closing_frames: 0,
         closing_accumulator_bits: 0,
-        frames_elapsed: 0,
     });
     spawn.tracks_target = true;
     spawn.target_expiry = TargetExpiryPolicy::DetonateAtLastKnown;
@@ -4255,8 +4257,14 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
     use crate::rules::ruleset::RuleSet;
     use crate::sim::runtime::SimRuntime;
 
-    // Retail AAHeatSeeker2's active ROT/Arm/collision policy, with a one-point
-    // wall receiver to expose the final impact cell and ground-layer handoff.
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/projectile_oracle/ifv_lifecycle_controls.json"
+    ))
+    .unwrap();
+    // Supplied guided motion isolates the OLD-height collision predicate and
+    // JumpJet fuse handoff, with a one-point wall receiver exposing the final
+    // impact cell. Full retail AAHeatSeeker2 steering has separate native
+    // flight comparisons; it may climb here rather than cross the ground.
     let ini = IniFile::from_str(
         "[VehicleTypes]\n0=MTNK\n[MTNK]\nJumpJet=yes\nStrength=100\n\
          [Warheads]\n0=WALLWH\n[OverlayTypes]\n0=GAWALL\n\
@@ -4291,6 +4299,12 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         shot.ranged_fuse = true;
         let guidance = shot.guidance.as_mut().unwrap();
         guidance.max_speed = 4;
+        // Original HomingTrack5B20F0 honors Level by skipping cruise-height
+        // correction. No acceleration keeps the supplied first [4,0,-2]
+        // step; otherwise native ramp/clearance changes this fixture's crossing.
+        // Exact supplied controls: ifv_lifecycle_controls.{py,json}.
+        guidance.level = true;
+        guidance.acceleration = 0;
         guidance.fuse_reference = shot.initial_target_position;
         let source_id = if with_source {
             let source_id = sim.allocate_stable_id();
@@ -4334,7 +4348,12 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
                 "crossing below ground does not trigger the OLD-height predicate until next visit",
             );
             assert!(bullet.in_logic_vector);
-            assert_eq!(bullet.position.z, 207);
+            // Native ground_old1 uses level6; this fixture uses level2.
+            let row = &native["rows"][0];
+            assert_eq!(row["input"]["name"], "ground_old1_level_no_acceleration");
+            let native_relative_z = row["candidate"][2].as_i64().unwrap()
+                - row["prepared"]["level"].as_i64().unwrap() * 104;
+            assert_eq!(i64::from(bullet.position.z), 208 + native_relative_z);
             assert_eq!(
                 runtime
                     .simulation
@@ -4427,21 +4446,13 @@ fn gsi_05_02_mixed_fixture() -> (Simulation, [u64; 6]) {
     sim.register_live_object(particle_id);
 
     let terrain_id = sim.allocate_stable_id();
-    sim.production.terrain_objects.insert(
-        terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: sim.interner.intern("TREE01"),
-            rx: 8,
-            ry: 9,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
-        },
-    );
+    sim.production.terrain_objects.insert(terrain_id, {
+        let mut terrain =
+            TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 8, 9);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain
+    });
     assert!(sim.register_terrain_object(terrain_id, None));
 
     let projectile_id = sim.allocate_stable_id();
@@ -4729,21 +4740,12 @@ fn gsi_05_02_lethal_terrain_unregisters_and_inactive_slot_cannot_roundtrip() {
     let terrain_id = sim.allocate_stable_id();
     let type_ref = sim.interner.intern("TREE01");
     let warhead_ref = sim.interner.intern("WOODWH");
-    sim.production.terrain_objects.insert(
-        terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
-        },
-    );
+    sim.production.terrain_objects.insert(terrain_id, {
+        let mut terrain = TerrainObjectState::for_test(terrain_id, type_ref, 5, 6);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain
+    });
     sim.production
         .terrain_object_cells
         .insert((5, 6), terrain_id);
@@ -4805,21 +4807,12 @@ fn gsi_05_03_terminal_non_entities_remain_resolvable_until_common_drain() {
     let terrain_id = sim.allocate_stable_id();
     let terrain_type = sim.interner.intern("TREE01");
     let warhead_ref = sim.interner.intern("WOODWH");
-    sim.production.terrain_objects.insert(
-        terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_type,
-            rx: 5,
-            ry: 6,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
-        },
-    );
+    sim.production.terrain_objects.insert(terrain_id, {
+        let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_type, 5, 6);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain
+    });
     sim.production
         .terrain_object_cells
         .insert((5, 6), terrain_id);
@@ -5485,6 +5478,12 @@ fn gsi_05_04_sentinel_origin_cell_target_becomes_explicit_null() {
 
 #[test]
 fn gsi_05_04_high_flying_source_and_target_become_explicit_null() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/projectile_oracle/ifv_lifecycle_controls.json"
+    ))
+    .unwrap();
+    let control = &native["rows"][2];
+    assert_eq!(control["input"]["name"], "expired_null_below_safety");
     let mut sim = Simulation::new();
     sim.session.map_width = 32;
     sim.session.map_height = 32;
@@ -5510,7 +5509,13 @@ fn gsi_05_04_high_flying_source_and_target_become_explicit_null() {
         ProjectileTarget::Entity(target_id),
         ProjectileCoord::new(13 * 256 + 128, 15 * 256 + 64, 208),
     );
-    spawn.origin = ProjectileCoord::new(1024, 1024, 1000);
+    // Null-target Bullet466E70 detonates at old height>=MissileSafetyAltitude.
+    // Stay below its constructor500 to observe the separate null pitch arm.
+    // ifv_lifecycle_controls preserves the executed ID/frame and velocity;
+    // translating native floor624 to0 keeps the same400-lepton height.
+    spawn.origin = ProjectileCoord::new(1024, 1024, 400);
+    spawn.native_unique_id = control["prepared"]["unique_id"].as_i64().unwrap() as i32;
+    sim.session.binary_frame = control["prepared"]["binary_frame"].as_u64().unwrap() as u32;
     sim.admit_projectile(projectile_id, spawn);
     sim.lifecycle_test_events.clear();
 
@@ -5547,10 +5552,20 @@ fn gsi_05_04_high_flying_source_and_target_become_explicit_null() {
     assert!(restored.pending_projectile_detonations.is_empty());
     let advanced = restored.projectiles.get(projectile_id).unwrap();
     assert_eq!(advanced.target, ProjectileTarget::None);
-    assert!(
-        f64::from_bits(advanced.velocity.y.bits()) < 0.0,
-        "guided Bullet AI steers toward native null's zero CoordStruct, not its cached target"
+    let expected_velocity: [u64; 3] = std::array::from_fn(|i| {
+        u64::from_str_radix(control["velocity"]["bits"][i].as_str().unwrap(), 16).unwrap()
+    });
+    assert_eq!(
+        [
+            advanced.velocity.x.bits(),
+            advanced.velocity.y.bits(),
+            advanced.velocity.z.bits()
+        ],
+        expected_velocity,
+        "native null-target tracking preserves yaw and pitches upward, rather than tracking the cached target"
     );
+    // Closing-accumulator distance depends on the translated absolute XYZ;
+    // this pointer-lifecycle comparison deliberately does not compare it.
 }
 
 #[test]
@@ -6273,18 +6288,7 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
         let terrain_id = sim.allocate_stable_id();
         sim.production.terrain_objects.insert(
             terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: sim.interner.intern("TREE01"),
-                rx: 4,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 0,
-                lifecycle: TerrainObjectLifecycle::Live,
-            },
+            TerrainObjectState::for_test(terrain_id, sim.interner.intern("TREE01"), 4, 5),
         );
         sim.production
             .terrain_object_cells
@@ -6857,12 +6861,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
         expected_hash,
         "serialized collapse state must hash equally before derived map caches rebuild",
     );
-    restored.rebuild_caches_after_load(
-        pristine_terrain,
-        Default::default(),
-        Vec::new(),
-        Vec::new(),
-    );
+    restored.rebuild_caches_after_load(pristine_terrain, Default::default(), &rules);
     restored
         .restore_map_authority_after_snapshot_load(&rules, &overlay_registry)
         .expect("dynamic cliff terrain reprojects over the pristine map");
@@ -6965,21 +6964,13 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
 fn gsi_05_02_restore_rejects_each_live_modeled_family_missing_from_logic() {
     let mut terrain = Simulation::new();
     let terrain_id = terrain.allocate_stable_id();
-    terrain.production.terrain_objects.insert(
-        terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain.interner.intern("TREE01"),
-            rx: 1,
-            ry: 1,
-            health: 1,
-            max_health: 1,
-            occupation_bits: 0,
-            lifecycle: TerrainObjectLifecycle::Live,
-        },
-    );
+    terrain.production.terrain_objects.insert(terrain_id, {
+        let mut terrain =
+            TerrainObjectState::for_test(terrain_id, terrain.interner.intern("TREE01"), 1, 1);
+        terrain.health = 1;
+        terrain.max_health = 1;
+        terrain
+    });
     assert_eq!(
         terrain.restore_after_snapshot_load(),
         Err(SnapshotRestoreError::MissingRequiredLogicIdentity {
@@ -7186,6 +7177,35 @@ fn detach_sweep_never_matches_a_cell_target() {
         attacker.mission.current(),
         MissionId::from_known(MissionType::Attack),
         "a cell-targeted object is never restored by the detach sweep"
+    );
+}
+
+#[test]
+fn bridge_cell_success_restores_before_conditional_target_clear() {
+    let mut sim = Simulation::new();
+    insert_entity(&mut sim, 1, EntityCategory::Infantry);
+    insert_entity(&mut sim, 2, EntityCategory::Unit);
+    let attacker = sim.substrate.entities.get_mut(1).unwrap();
+    attacker.attack_target = Some(AttackTarget::for_cell(9, 11));
+    attacker.suspended_attack_target = Some(TargetKind::Entity(2));
+    attacker.navigation.suspended_nav_com = Some(NavTargetRef::Cell { rx: 7, ry: 8 });
+    attacker.mission.apply_test_fixture(attack_fixture(
+        MissionType::Attack,
+        MissionId::from_known(MissionType::Move),
+    ));
+    sim.stop_all_targeting_cell(9, 11, None);
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        attacker.attack_target.as_ref().map(|target| target.target),
+        Some(TargetKind::Entity(2))
+    );
+    assert_eq!(
+        attacker.navigation.nav_com,
+        Some(NavTargetRef::Cell { rx: 7, ry: 8 })
+    );
+    assert_eq!(
+        attacker.mission.current(),
+        MissionId::from_known(MissionType::Move)
     );
 }
 
@@ -7844,7 +7864,7 @@ fn display_lifecycle_is_independent_of_logic_and_survives_production_save() {
     restored
         .substrate
         .display
-        .submit(999, Some(DisplayLayer::TOP), |_| 0);
+        .submit(999, Some(DisplayLayer::TOP), &|_| 0);
     assert!(matches!(
         restored.restore_after_snapshot_load(),
         Err(SnapshotRestoreError::MissingDisplayIdentity { object_id: 999 })
@@ -7905,17 +7925,16 @@ fn mixed_display_lifecycle_matches_original_sequences_and_save_restore() {
                         IVec3::from_array(xyz);
                 }
                 "terrain" => {
-                    let terrain = TerrainObjectState {
-                        stable_id: id,
-                        native_unique_id: None,
-                        in_logic_vector: false,
-                        type_ref: sim.interner.intern("TREE"),
-                        rx: (xyz[0] / 256) as u16,
-                        ry: (xyz[1] / 256) as u16,
-                        health: 10,
-                        max_health: 10,
-                        occupation_bits: 0,
-                        lifecycle: TerrainObjectLifecycle::Live,
+                    let terrain = {
+                        let mut terrain = TerrainObjectState::for_test(
+                            id,
+                            sim.interner.intern("TREE"),
+                            (xyz[0] / 256) as u16,
+                            (xyz[1] / 256) as u16,
+                        );
+                        terrain.health = 10;
+                        terrain.max_health = 10;
+                        terrain
                     };
                     sim.production
                         .terrain_object_cells
@@ -8051,7 +8070,7 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     // queries and leaves this history alone while the Process answer is stable.
     sim.substrate
         .display
-        .submit(id, Some(DisplayLayer::TOP), |_| 0);
+        .submit(id, Some(DisplayLayer::TOP), &|_| 0);
     sim.tick_air_movement_with_cell_lists_one(id, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 

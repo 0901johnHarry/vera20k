@@ -9,8 +9,8 @@
 //!
 //! Values are in leptons (256 leptons = 1 cell). Read from art.ini keys
 //! (`PrimaryFireFLH=`, `SecondaryFireFLH=`, `ElitePrimaryFireFLH=`,
-//! `EliteSecondaryFireFLH=`, `AlternateFLH0..4=`) by the native coordinate
-//! read, `IniSection::read_coordinate`.
+//! `EliteSecondaryFireFLH=`, `Weapon%dFLH=`, `AlternateFLH0..4=`) by the native coordinate
+//! read, `IniSection::read_coord3`.
 //!
 //! ## Dependency rules
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
@@ -21,7 +21,7 @@
 /// turret pivot (or body center for turretless units).
 ///
 /// Values are in leptons (256 leptons = 1 cell).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Flh {
     /// Distance along the unit's facing direction. Positive = forward.
     pub forward: i32,
@@ -32,7 +32,7 @@ pub struct Flh {
 }
 
 /// The art read's `[forward, lateral, height]` fields
-/// ([`IniSection::read_coordinate`](crate::rules::ini_parser::IniSection::read_coordinate),
+/// ([`IniSection::read_coord3`](crate::rules::ini_parser::IniSection::read_coord3),
 /// `0x00529CA0`).
 impl From<[i32; 3]> for Flh {
     fn from([forward, lateral, height]: [i32; 3]) -> Self {

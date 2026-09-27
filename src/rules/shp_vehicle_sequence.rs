@@ -165,7 +165,6 @@ mod tests {
             frame_width: 30,
             frame_height: 30,
             voxel: false,
-            authored_voxel: None,
             turret_offset: 0,
             y_draw_offset: 0,
             x_draw_offset: 0,
@@ -184,6 +183,9 @@ mod tests {
             secondary_fire_flh: Default::default(),
             elite_primary_fire_flh: None,
             elite_secondary_fire_flh: None,
+            numbered_weapon_flh: [Default::default(); crate::rules::object_type::WEAPON_SLOT_COUNT],
+            elite_numbered_weapon_flh: [Default::default();
+                crate::rules::object_type::WEAPON_SLOT_COUNT],
             alternate_flh: Default::default(),
             primary_fire_pixel_offset: None,
             secondary_fire_pixel_offset: None,

@@ -1115,9 +1115,9 @@ fn a_warp_in_progress_survives_a_snapshot() {
 
 /// The freeze reaches the phases VERA runs outside the AI shell
 /// (`GameEntity::ai_frozen`): a warped guarding infantryman takes no idle
-/// turn (no Scenario draw), and a warped building neither repairs nor bills
-/// (UpdateRepairAndPower's only caller `0x004401B6` lies past the frozen
-/// jump).
+/// turn (no Scenario draw); and a warped building's visit neither repairs
+/// nor bills (UpdateRepairAndPower's only caller `0x004401B6` lies past the
+/// frozen jump).
 #[test]
 fn a_warped_object_runs_none_of_its_ai_phases() {
     let rules = rules();
@@ -1165,7 +1165,10 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
         !idle_turn(&mut sim, now.wrapping_add(200_000)),
         "no idle draw while warped"
     );
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    // A frame the repair period (14) divides.
+    sim.session.binary_frame = sim.session.binary_frame.next_multiple_of(14);
+    let ctx = crate::sim::world::ObjectAiCtx::default();
+    sim.object_ai_visit_one(plant, Some(&rules), ctx);
     assert_eq!(entity(&sim, plant).health.current, 300, "no repair");
     assert_eq!(
         sim.houses[&sim.interner.get("Americans").unwrap()]
@@ -1176,7 +1179,7 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
     );
     // Released, the building repairs again.
     sim.temporal_let_go(cleg2);
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    sim.object_ai_visit_one(plant, Some(&rules), ctx);
     assert!(entity(&sim, plant).health.current > 300);
 }
 

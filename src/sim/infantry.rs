@@ -223,13 +223,18 @@ pub fn tick_fear_for_entities(
 ) {
     let keys = entities.keys_sorted();
     for id in keys {
-        let Some(entity) = entities.get_mut(id) else {
+        // InfantryClass::AI returns before its fear work while warped. With no
+        // fear to decay and no prone stance to leave the handler changes
+        // nothing.
+        let Some(entity) = entities.get_mut_if(id, |entity| {
+            !entity.ai_frozen()
+                && entity
+                    .infantry
+                    .as_ref()
+                    .is_some_and(|infantry| infantry.fear_level > 0 || infantry.is_prone)
+        }) else {
             continue;
         };
-        // InfantryClass::AI returns before its fear work while warped.
-        if entity.ai_frozen() {
-            continue;
-        }
         let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
             continue;
         };
@@ -457,12 +462,11 @@ pub fn tick_idle_actions(
     use crate::sim::movement::infantry_action::{DO_IDLE1, DO_IDLE2, doing_owns_sequence};
     let mut fidgets = Vec::new();
     for &id in order {
-        let Some(entity) = entities.get_mut(id) else {
+        let Some(entity) = entities.get_mut_if(id, |entity| {
+            entity.infantry.is_some() && idle_action_ready(entity, frame)
+        }) else {
             continue;
         };
-        if entity.infantry.is_none() || !idle_action_ready(entity, frame) {
-            continue;
-        }
         let type_name = interner.resolve(entity.type_ref());
         let Some(obj) = rules.object(type_name) else {
             continue;

@@ -284,9 +284,9 @@ impl Simulation {
         let mut retry = false;
         loop {
             if let Some(request) = pending_movement.take_foot_path_request() {
-                let lent = pending_movement.lent_block_set(request.owner());
+                let held = Some(pending_movement.held_block_sets());
                 let outcome = sim
-                    .run_foot_path_request(&request, lent, rules, path_grid, overlay_registry)
+                    .run_foot_path_request(&request, held, rules, path_grid, overlay_registry)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
                     reenter_pending_pass(
@@ -313,6 +313,7 @@ impl Simulation {
                         id,
                         family,
                         movement::ProcessMovementArgs::OUTER,
+                        Some(pending_movement.held_block_sets()),
                         rules,
                         path_grid,
                         overlay_registry,
@@ -477,7 +478,8 @@ impl Simulation {
             .entities
             .get(stable_id)
             .is_some_and(|entity| entity.category == EntityCategory::Structure);
-        sim.object_ai_visit_one(stable_id, rules, object_ctx);
+        let ai = sim.object_ai_visit_one_with_effects(stable_id, rules, object_ctx);
+        outcome.bridge_state_changed |= ai.bridge_state_changed;
         if was_structure
             && sim
                 .substrate

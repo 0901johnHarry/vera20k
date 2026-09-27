@@ -31,17 +31,7 @@ impl Occupants<'_, '_> {
         p: CellCoord,
         layer: MovementLayer,
     ) -> impl Iterator<Item = CellObjectMember> + '_ {
-        self.live.sim.substrate.occupancy.cell_objects(
-            p.0 as u16,
-            p.1 as u16,
-            layer,
-            self.live
-                .sim
-                .production
-                .terrain_object_cells
-                .get(&(p.0 as u16, p.1 as u16))
-                .copied(),
-        )
+        self.live.sim.cell_objects((p.0 as u16, p.1 as u16), layer)
     }
 }
 
@@ -70,33 +60,16 @@ impl RepairOccupantHost for Occupants<'_, '_> {
     fn next_object(&self, member: Member) -> Option<Member> {
         // For an object moved by a synchronous receiver, its Next now belongs
         // to its new list. Removed/unmarked objects have no surviving link.
-        let (p, layer) = match member.object {
-            CellObjectMember::Entity(id) => {
-                let e = self.live.sim.substrate.entities.get(id)?;
-                if !e.lifecycle.cell_marked {
-                    return None;
-                }
-                (
-                    (e.position.rx as i16, e.position.ry as i16),
-                    if e.on_bridge {
-                        MovementLayer::Bridge
-                    } else {
-                        MovementLayer::Ground
-                    },
-                )
-            }
-            CellObjectMember::Terrain(id) => {
-                self.live.sim.production.terrain_objects.get(&id)?;
-                (member.list_cell, MovementLayer::Ground)
-            }
-        };
-        let mut members = self.members(p, layer);
-        members.find(|candidate| *candidate == member.object)?;
-        members.next().map(|object| Member {
-            object,
-            list_cell: p,
-        })
+        let (cell, _) = self.live.sim.cell_object_list_location(member.object)?;
+        self.live
+            .sim
+            .next_cell_object(member.object)
+            .map(|object| Member {
+                object,
+                list_cell: (cell.0 as i16, cell.1 as i16),
+            })
     }
+
     fn is_foot(&self, member: Member) -> bool {
         match member.object {
             CellObjectMember::Entity(id) => self

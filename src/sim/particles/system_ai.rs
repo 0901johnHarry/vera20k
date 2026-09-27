@@ -803,4 +803,51 @@ SpawnSparkPercentage=1
             assert_eq!(p.animation_state, 52);
         }
     }
+
+    /// One BigGreySmokeSys-shaped system through the production system tick:
+    /// it spawns particles and their state AI advances.
+    #[test]
+    fn smoke_animation_state_advances_over_ticks() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[Particles]\n1=LargeGreySmoke\n\
+             [LargeGreySmoke]\nBehavesLike=Smoke\nImage=LGRYSMK1\nMaxEC=80\n\
+             Translucency=50\nEndStateAI=20\nStateAIAdvance=4\nDeleteOnStateLimit=yes\n\
+             [ParticleSystems]\n1=BigGreySmokeSys\n\
+             [BigGreySmokeSys]\nBehavesLike=Smoke\nHoldsWhat=LargeGreySmoke\nSpawns=yes\n\
+             SpawnFrames=10\nParticleCap=15\n",
+        ))
+        .expect("rules parse");
+        let mut sim = crate::sim::world::Simulation::new();
+        sim.spawn_particle_system(
+            ParticleSystemTypeId(0),
+            IVec3::new(1024, 1024, 0),
+            None,
+            None,
+            IVec3::ZERO,
+            None,
+            &rules,
+        )
+        .expect("spawn");
+
+        // SpawnFrames=10 puts the first particle at tick 10. Without a retail
+        // asset binder the missing-SHP fallback yields denom = (0+1) + 4 = 5;
+        // rules/asset binding and the odd stock LGRYSMK1 count are covered by
+        // the library boundary tests.
+        for _ in 0..30 {
+            tick_particle_systems(&mut sim, &rules);
+            sim.session.tick += 1;
+        }
+
+        // The tick removes, advances and reinserts each system, so read the
+        // single survivor from the store.
+        let (_, system) = sim.particle_systems().iter().next().expect("system alive");
+        assert!(
+            !system.particles.is_empty(),
+            "should have spawned particles"
+        );
+        assert!(
+            system.particles[0].animation_state > 0,
+            "animation_state should advance"
+        );
+    }
 }

@@ -1034,3 +1034,20 @@ fn retail_animations_render_from_the_file_their_frames_are_counted_in() {
         "the Grinder's grinding animation is the known case"
     );
 }
+
+#[test]
+fn animation_atlas_candidates_keep_exact_type_image_and_skip_unread_d() {
+    let mut art = ArtRegistry::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+        "[ FX]\nImage=REAL\n[FX]\nImage=WRONG\n",
+    ));
+    art.apply_anim_type_read_states(&[(" FX".to_owned(), true), ("D".to_owned(), false)]);
+    assert_eq!(
+        effect_anim_shp_candidates(" FX", Some(&art), "TEM", "TEMPERATE"),
+        vec!["REAL.SHP", "RGAL.SHP", "REAL.TEM"]
+    );
+    assert_eq!(
+        effect_anim_shp_candidates("FX", Some(&art), "TEM", "TEMPERATE"),
+        vec!["WRONG.SHP", "WGONG.SHP", "WRONG.TEM"]
+    );
+    assert!(effect_anim_shp_candidates("D", Some(&art), "TEM", "TEMPERATE").is_empty());
+}

@@ -204,8 +204,10 @@ pub(crate) const AIRCRAFT_SMOKE_ANIM: &str = "SGRYSMK1";
 pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
     let mut roots = BTreeSet::new();
     let mut insert = |name: &str| {
-        if let Some(name) = canonical_asset_id(name) {
-            roots.insert(name);
+        // Type factory references are literal IDs: comma tokens may contain
+        // spaces. Particle asset filenames use their own canonicalizer below.
+        if !name.is_empty() {
+            roots.insert(name.to_ascii_uppercase());
         }
     };
     for warhead in rules.warheads_iter() {
@@ -244,6 +246,10 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
     for name in &rules.combat_damage.splash_list {
         insert(name);
     }
+    // SelectAnim48A594 returns this retained AnimType for LightningWarhead.
+    insert(&rules.general.weather_con_bolt_explosion);
+    // Bullet46A2A1 substitutes this after an Iron Curtain area receipt2.
+    insert(&rules.general.weapon_nullify_anim);
     // `[General] Parachute=`: the canopy `ObjectClass::Paradrop` attaches to a
     // dropped object (`sim::movement::parachute_descent`).
     if let Some(name) = rules.general.parachute_shp.as_deref() {
@@ -482,6 +488,20 @@ mod anim_class_root_tests {
     use super::anim_class_roots;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
+
+    #[test]
+    fn bridge_roots_preserve_literal_factory_tokens_and_unread_types() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nMetallicDebris=ONE, FX, none, ,D,ONE\n\
+             BridgeExplosions=FX, FX,none,<none>\n",
+        ))
+        .unwrap();
+        let roots = anim_class_roots(&rules);
+        for name in ["ONE", " FX", " NONE", " ", "D", "FX"] {
+            assert!(roots.iter().any(|root| root == name), "{name:?}: {roots:?}");
+        }
+        assert!(!roots.iter().any(|root| root == "NONE"));
+    }
 
     /// Every producer that constructs an `AnimClass` needs its type bound by
     /// the loader, or the animation silently draws nothing. The roots come

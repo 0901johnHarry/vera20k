@@ -46,8 +46,6 @@ pub struct ArtEntry {
     pub frame_height: u16,
     /// Render as VXL+HVA model (true) or SHP sprite (false).
     pub voxel: bool,
-    /// Preserve an absent Voxel key for ObjectType's retained-default reader.
-    pub authored_voxel: Option<bool>,
     /// Optional voxel turret/barrel forward/backward alignment tweak.
     pub turret_offset: i32,
     /// Extra Y pixel offset for sprite rendering.
@@ -92,12 +90,17 @@ pub struct ArtEntry {
     /// Elite-rank override for secondary fire offset (from art.ini `EliteSecondaryFireFLH=`).
     /// None means use `secondary_fire_flh`.
     pub elite_secondary_fire_flh: Option<Flh>,
+    /// Numbered weapon offsets read by715B10 when TurretCount>0. The type's
+    /// WeaponCount bounds consumption; each elite default is its normal FLH.
+    pub numbered_weapon_flh: [Flh; crate::rules::object_type::WEAPON_SLOT_COUNT],
+    pub elite_numbered_weapon_flh: [Flh; crate::rules::object_type::WEAPON_SLOT_COUNT],
     /// `AlternateFLH0..4=` (`TechnoTypeClass+0x85C`, five 12-byte slots read
-    /// at `0x00715FA4..0x00716005`, each defaulting to Weapon[0]'s FLH
-    /// `+0x89C`): the firing ports an `OpenTopped=` transport lends its
-    /// passengers, by cargo index (`TechnoClass::GetFLH 0x006F3AD0` with a
-    /// negative weapon index). Stock: only `[BFRT]`'s five gun ports.
-    pub alternate_flh: [Flh; 5],
+    /// at `0x00715FA4..0x00716005`): the firing ports an `OpenTopped=`
+    /// transport lends its passengers, by cargo index. `None` where the
+    /// coordinate read kept its default, Weapon[0]'s FLH (`+0x89C`); see
+    /// [`ArtEntry::open_topped_port_flh`]. Stock: only `[BFRT]`'s five gun
+    /// ports.
+    pub alternate_flh: [Option<Flh>; 5],
     /// Fixed building primary fire screen-pixel offset.
     /// Used by non-turret buildings before converting the pixel delta to world leptons.
     pub primary_fire_pixel_offset: Option<(i32, i32)>,
@@ -190,6 +193,61 @@ pub struct ArtEntry {
     pub normal_z_adjust: i32,
 }
 
+impl ArtEntry {
+    /// Native715B10 tests HasTurrets717880 (`TurretCount > 0`) before
+    /// reading Weapon1..WeaponCount FLHs. GetFLH6F3B28 uses the selected
+    /// weapon-array index; it does not reduce numbered indices to two slots.
+    /// `use_elite` means GetWeapon70E140 resolved a nonnull elite weapon.
+    pub(crate) fn weapon_flh(
+        &self,
+        turret_count: i32,
+        weapon_count: i32,
+        index: i32,
+        use_elite: bool,
+    ) -> Flh {
+        if turret_count > 0 {
+            let Ok(slot) = usize::try_from(index) else {
+                return Flh::default();
+            };
+            if index >= weapon_count {
+                return Flh::default();
+            }
+            let slots = if use_elite {
+                &self.elite_numbered_weapon_flh
+            } else {
+                &self.numbered_weapon_flh
+            };
+            return slots.get(slot).copied().unwrap_or_default();
+        }
+        crate::rules::flh::resolve_flh(
+            self.primary_fire_flh,
+            self.secondary_fire_flh,
+            self.elite_primary_fire_flh,
+            self.elite_secondary_fire_flh,
+            index != 1,
+            if use_elite { 200 } else { 0 },
+        )
+    }
+
+    /// `TechnoClass::GetFLH @ 0x006F3AD0` for weapon index `-k`, the port an
+    /// `OpenTopped=` transport lends its `k`th rider (`port = k - 1`):
+    /// `AlternateFLH[k-1]` for `k <= 5`, else a zero FLH
+    /// (`0x006F3AF5..0x006F3B21`). A slot the coordinate read left at its
+    /// default holds Weapon[0]'s FLH as the weapon arm stored it (`+0x89C`).
+    pub(crate) fn open_topped_port_flh(
+        &self,
+        port: usize,
+        turret_count: i32,
+        weapon_count: i32,
+    ) -> Flh {
+        match self.alternate_flh.get(port) {
+            Some(Some(flh)) => *flh,
+            Some(None) => self.weapon_flh(turret_count, weapon_count, 0, false),
+            None => Flh::default(),
+        }
+    }
+}
+
 /// One native building-damage-fire art offset.
 ///
 /// The source pair remains available for z-adjust. The world delta is bound once
@@ -239,6 +297,10 @@ pub struct AnimTypeRuntimeConfig {
     /// False means the allocated native type has never completed ART ReadINI.
     /// It retains constructor bounds and must not load an orphan SHP.
     pub art_body_read: bool,
+    /// ObjectType::ReadINI @ 0x005F933B reads Image from the exact AnimType
+    /// section with a 25-byte buffer and the constructor's type ID default.
+    /// Keep this animation value separate from generic object-art resolution.
+    image: String,
     pub start: i32,
     pub loop_start: i32,
     pub loop_end: i32,
@@ -744,6 +806,7 @@ fn parse_anim_runtime_config(section: &IniSection) -> AnimTypeRuntimeConfig {
     let explicit_loop_end = section.get_i32("LoopEnd");
     AnimTypeRuntimeConfig {
         art_body_read: true,
+        image: section.read_string("Image", &section.name, 0x19),
         start: section.get_i32("Start").unwrap_or(0),
         loop_start: section.get_i32("LoopStart").unwrap_or(0),
         loop_end: explicit_loop_end.unwrap_or(0),
@@ -1083,26 +1146,34 @@ impl ArtRegistry {
             // The non-turret arm of TechnoTypeClass's art read
             // (`0x00715D94..0x00715F4D`): each key through the coordinate
             // read, the elite slot defaulting to its base slot. A
-            // `TurretCount>0` type reads `Weapon%dFLH=` instead (not parsed).
-            let primary_fire_flh = Flh::from(section.read_coordinate("PrimaryFireFLH", [0; 3]));
-            let secondary_fire_flh = Flh::from(section.read_coordinate("SecondaryFireFLH", [0; 3]));
+            // `TurretCount>0` type reads the numbered keys instead
+            // (`0x00715B10`); `ArtEntry::weapon_flh` picks the arm.
+            let primary_fire_flh = Flh::from(section.read_coord3("PrimaryFireFLH", [0; 3]));
+            let secondary_fire_flh = Flh::from(section.read_coord3("SecondaryFireFLH", [0; 3]));
             let elite_primary_fire_flh: Option<Flh> =
                 section.get("ElitePrimaryFireFLH").map(|_| {
-                    Flh::from(
-                        section.read_coordinate("ElitePrimaryFireFLH", primary_fire_flh.into()),
-                    )
+                    Flh::from(section.read_coord3("ElitePrimaryFireFLH", primary_fire_flh.into()))
                 });
             let elite_secondary_fire_flh: Option<Flh> =
                 section.get("EliteSecondaryFireFLH").map(|_| {
                     Flh::from(
-                        section.read_coordinate("EliteSecondaryFireFLH", secondary_fire_flh.into()),
+                        section.read_coord3("EliteSecondaryFireFLH", secondary_fire_flh.into()),
                     )
                 });
-            let alternate_flh: [Flh; 5] = std::array::from_fn(|slot| {
-                Flh::from(
-                    section
-                        .read_coordinate(&format!("AlternateFLH{slot}"), primary_fire_flh.into()),
-                )
+            let numbered_weapon_flh: [Flh; crate::rules::object_type::WEAPON_SLOT_COUNT] =
+                std::array::from_fn(|index| {
+                    Flh::from(section.read_coord3(&format!("Weapon{}FLH", index + 1), [0; 3]))
+                });
+            let elite_numbered_weapon_flh = std::array::from_fn(|index| {
+                Flh::from(section.read_coord3(
+                    &format!("EliteWeapon{}FLH", index + 1),
+                    numbered_weapon_flh[index].into(),
+                ))
+            });
+            let alternate_flh: [Option<Flh>; 5] = std::array::from_fn(|slot| {
+                section
+                    .read_coord3_value(&format!("AlternateFLH{slot}"))
+                    .map(Flh::from)
             });
             let primary_fire_pixel_offset = section
                 .get("PrimaryFirePixelOffset")
@@ -1278,7 +1349,6 @@ impl ArtRegistry {
                     frame_width: 30,
                     frame_height: 30,
                     voxel,
-                    authored_voxel: section.get_bool("Voxel"),
                     turret_offset,
                     y_draw_offset,
                     x_draw_offset,
@@ -1303,6 +1373,8 @@ impl ArtRegistry {
                     secondary_fire_flh,
                     elite_primary_fire_flh,
                     elite_secondary_fire_flh,
+                    numbered_weapon_flh,
+                    elite_numbered_weapon_flh,
                     alternate_flh,
                     primary_fire_pixel_offset,
                     secondary_fire_pixel_offset,
@@ -1400,6 +1472,7 @@ impl ArtRegistry {
             }
             let mut config = parse_anim_runtime_config(&IniSection::new(name.clone()));
             config.art_body_read = false;
+            config.image = name.clone();
             self.anim_runtime_configs.insert(key, config);
         }
     }
@@ -1456,7 +1529,7 @@ impl ArtRegistry {
         let mut skipped = 0;
         let mut pending: VecDeque<String> = roots
             .iter()
-            .map(|root| root.trim().to_ascii_uppercase())
+            .map(|root| root.to_ascii_uppercase())
             .filter(|name| !name.is_empty())
             .collect();
         let mut visited = BTreeSet::new();
@@ -1502,7 +1575,7 @@ impl ArtRegistry {
         if !config.art_body_read {
             return Ok(());
         }
-        let image_id = self.resolve_effective_image_id(name, name);
+        let image_id = self.resolve_anim_image_id(name);
         let candidates =
             anim_shp_candidates(Some(self), name, &image_id, theater_ext, theater_name);
         let data = candidates
@@ -1545,7 +1618,7 @@ impl ArtRegistry {
 
         let mut pending: VecDeque<String> = roots
             .iter()
-            .map(|name| name.trim().to_ascii_uppercase())
+            .map(|name| name.to_ascii_uppercase())
             .filter(|name| !name.is_empty())
             .collect();
         let mut resolved = BTreeSet::new();
@@ -1681,6 +1754,18 @@ impl ArtRegistry {
     /// Resolve the effective image id for an object.
     pub fn resolve_effective_image_id(&self, type_id: &str, rules_image: &str) -> String {
         self.resolve_object_art(type_id, rules_image).image_id
+    }
+
+    /// Animation image identity from its own exact ART body, never an Image
+    /// redirect's metadata or a whitespace-normalized type section. The native
+    /// loader @ 0x00427BA5 falls back to the literal type ID when Image is empty.
+    /// Unread types never load an image (the binding and draw gates own that).
+    pub fn resolve_anim_image_id(&self, anim_type: &str) -> String {
+        self.anim_runtime_config(anim_type)
+            .map(|config| config.image.as_str())
+            .filter(|image| !image.is_empty())
+            .unwrap_or(anim_type)
+            .to_ascii_uppercase()
     }
 
     /// Resolve the declared cameo id for an object.
@@ -1829,12 +1914,12 @@ impl ArtRegistry {
     ) -> (u32, u32) {
         // Two-pass: collect (name, image_id) under &self, then mutate via
         // get_mut. Direct iter_mut would conflict with the &self call to
-        // resolve_effective_image_id.
+        // resolve_anim_image_id.
         let pending: Vec<(String, String)> = self
             .iter_entries()
             .filter(|(_name, entry)| entry.crater || entry.scorch || entry.force_big_craters)
             .map(|(name, _entry)| {
-                let image_id: String = self.resolve_effective_image_id(name, name);
+                let image_id: String = self.resolve_anim_image_id(name);
                 (name.to_string(), image_id)
             })
             .collect();

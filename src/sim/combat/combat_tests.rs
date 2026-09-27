@@ -873,7 +873,7 @@ fn gsi_04_10_projectile_inert_suppresses_bridge_ore_and_collector_rng() {
     assert!(emit.damage_events.is_empty());
     assert!(emit.effects.wall_mutations.is_empty());
     assert!(emit.effects.cell_target_detaches.is_empty());
-    assert!(emit.effects.bridge_damage_events.is_empty());
+    assert!(!emit.effects.bridge_state_changed);
     assert!(emit.effects.tiberium_reduction_requests.is_empty());
     assert_eq!(scenario_rng.state(), before_rng);
 }
@@ -1098,7 +1098,7 @@ fn test_armor_index_lookup() {
 }
 
 #[test]
-fn cell_center_coords_remains_ground_z_for_cell_targets() {
+fn cell_center_coords_and_mapless_launch_height() {
     let (rx, ry, sub_x, sub_y) = cell_center_coords(7, 9);
     assert_eq!((rx, ry), (7, 9));
     assert_eq!(sub_x.to_num::<i32>(), 128);
@@ -1106,7 +1106,7 @@ fn cell_center_coords_remains_ground_z_for_cell_targets() {
 
     let entities = EntityStore::new();
     assert_eq!(
-        attack_impact_z(TargetKind::Cell(7, 9), &entities, None),
+        attack_world_z_leptons(TargetKind::Cell(7, 9), &entities, None),
         0,
         "with no loaded terrain there is no cell floor to read; the cell-centre \
          helper never invents one. The terrain-backed cases live in \
@@ -1507,103 +1507,6 @@ fn ic_target_takes_zero_damage() {
 }
 
 #[test]
-fn test_tick_combat_only_emits_bridge_damage_for_wall_warheads() {
-    let mut store = EntityStore::new();
-    let rules_without_wall = test_rules();
-    store.insert(make_entity(1, "MTNK", 5, 5, 300));
-    store.insert(make_entity(2, "MTNK", 8, 5, 300));
-    let mut interner = test_interner();
-    issue_attack_command(&mut store, 1, 2, None, &interner);
-    let mut main_rng = SimRng::new(1);
-    align_attackers_to_targets(&mut store, &rules_without_wall, &interner);
-    let result = tick_combat_with_fog(
-        &mut store,
-        &mut OccupancyGrid::new(),
-        &rules_without_wall,
-        &mut interner,
-        None,
-        &BTreeMap::<InternedId, PowerState>::new(),
-        None,
-        None,
-        None,
-        None,
-        0u64,
-        100,
-        0u32,
-        &[],
-        None,
-        &mut main_rng,
-    );
-    assert!(
-        result
-            .consequences
-            .effects()
-            .bridge_damage_events
-            .is_empty(),
-        "non-wall warheads must not emit bridge damage"
-    );
-    assert!(
-        result.consequences.effects().wall_mutations.is_empty(),
-        "non-wall warheads must not emit wall damage"
-    );
-
-    let mut bridge_rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n\
-         [VehicleTypes]\n0=MTNK\n\n\
-         [AircraftTypes]\n\n\
-         [BuildingTypes]\n\n\
-         [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\n\n\
-         [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
-         [AP]\nWall=yes\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
-    ))
-    .expect("bridge combat rules should parse");
-    // Combat reads IonCannonWarhead at the bridge-damage emit boundary; tests
-    // that drive tick_combat must resolve before invoking it.
-    let _handles =
-        crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&bridge_rules, &mut interner);
-    let mut wall_store = EntityStore::new();
-    wall_store.insert(make_entity(3, "MTNK", 5, 5, 300));
-    wall_store.insert(make_entity(4, "MTNK", 8, 5, 300));
-    issue_attack_command(&mut wall_store, 3, 4, None, &interner);
-    align_attackers_to_targets(&mut wall_store, &bridge_rules, &interner);
-    let wall_result = tick_combat_with_fog(
-        &mut wall_store,
-        &mut OccupancyGrid::new(),
-        &bridge_rules,
-        &mut interner,
-        None,
-        &BTreeMap::<InternedId, PowerState>::new(),
-        None,
-        None,
-        None,
-        None,
-        0u64,
-        100,
-        0u32,
-        &[],
-        None,
-        &mut main_rng,
-    );
-    assert_eq!(
-        wall_result.consequences.effects().bridge_damage_events,
-        vec![BridgeDamageEvent {
-            rx: 8,
-            ry: 5,
-            damage: 65,
-            warhead_ref: interner
-                .get("AP")
-                .expect("AP warhead interned by tick_combat"),
-            is_ion_cannon: false,
-            impact_z: 0,
-        }]
-    );
-    // Without an overlay grid+registry, the discriminator can't identify a wall
-    // cell — events fall through to bridge_damage_events. Immediate wall
-    // mutation requires both a grid lookup and Wall=yes in the registry.
-    assert!(wall_result.consequences.effects().wall_mutations.is_empty());
-}
-
-#[test]
 fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
     fn fire(extra_warhead_flags: &str, overlay_armor: &str) -> (CombatTickResult, OverlayGrid) {
         let ini = IniFile::from_str(&format!(
@@ -1663,13 +1566,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
         "WallAbsoluteDestroyer wins and commits forced removal inline"
     );
     assert_eq!(absolute_grid.cell(8, 5).overlay_id, None);
-    assert!(
-        absolute
-            .consequences
-            .effects()
-            .bridge_damage_events
-            .is_empty()
-    );
+    assert!(!absolute.consequences.effects().bridge_state_changed);
 
     let (wood, wood_grid) = fire("Wood=yes", "wood");
     assert!(!wood.consequences.effects().wall_mutations.is_empty());
@@ -6639,12 +6536,20 @@ fn pursuit_weapon_range_none_for_unarmed_attacker() {
     assert_eq!(range, None);
 }
 
+/// The app loader publishes the canonical AnimType read receipt through this
+/// owner before combat. These phase fixtures supply no ART/SHP, so registered
+/// AnimList types retain real constructor-only End0 state; they still create
+/// AnimClass objects. Do not fabricate spawn observations or loaded frames.
+fn initialize_fixture_anim_types(rules: &mut RuleSet) {
+    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::empty());
+}
+
 #[test]
 fn v3_non_killing_aoe_emits_one_detonation_anim() {
     // V3-style splash hits a heavy-armor target with HP > splash damage.
     // The target survives; the shot still starts one AnimList anim, whose
     // own Middle marks the ground.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=MTNK\n1=V3\n\n\
          [AircraftTypes]\n\n\
@@ -6656,6 +6561,7 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("v3 test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "MTNK", 5, 5, 300));
@@ -6682,11 +6588,9 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
     );
     let v3exp = interner.intern("V3EXP");
     let anims: Vec<_> = result
-        .consequences
-        .effects()
-        .explosion_effects
+        .fixture_anims
         .iter()
-        .map(|effect| effect.shp_name)
+        .map(|effect| effect.type_id)
         .collect();
     assert_eq!(
         anims,
@@ -6699,7 +6603,7 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
 fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
     // V3 splash kills a low-HP target with no Explosion= list. Only ONE
     // detonation occurred, so ONE AnimList anim starts; the kill adds none.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=MTNK\n1=WEAK\n\n\
          [AircraftTypes]\n\n\
@@ -6711,6 +6615,7 @@ fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("v3 kill test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "MTNK", 5, 5, 300));
@@ -6737,7 +6642,7 @@ fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
         "target must die (test setup invariant)"
     );
     assert_eq!(
-        result.consequences.effects().explosion_effects.len(),
+        result.fixture_anims.len(),
         1,
         "kill must start exactly one anim — no double from the kill handler"
     );
@@ -6749,7 +6654,7 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     // AnimList) is killed by a tank with a different warhead and AnimList.
     // ReceiveDamage synchronously completes the demo's UCEXPLOD death weapon;
     // only then does the outer Bullet detonation start TANKEXP.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=TNK\n1=DEMO\n\n\
          [AircraftTypes]\n\n\
@@ -6764,6 +6669,7 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("demo-truck test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "TNK", 5, 5, 300));
@@ -6788,11 +6694,9 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     let ucexplod = interner.intern("UCEXPLOD");
     assert_eq!(
         result
-            .consequences
-            .effects()
-            .explosion_effects
+            .fixture_anims
             .iter()
-            .map(|effect| effect.shp_name)
+            .map(|effect| effect.type_id)
             .collect::<Vec<_>>(),
         vec![ucexplod, tankexp]
     );
@@ -7048,9 +6952,22 @@ fn explosion_coord(effect: &ExplosionEffect) -> (u16, u16, SimFixed, SimFixed) {
     (effect.rx, effect.ry, effect.sub_x, effect.sub_y)
 }
 
+fn constructed_anim_coord(
+    anim: &super::receiver_fixture::ConstructedAnimObservation,
+) -> (u16, u16, SimFixed, SimFixed) {
+    let p = anim.world_coord;
+    (
+        p.x.div_euclid(256) as u16,
+        p.y.div_euclid(256) as u16,
+        SimFixed::from_num(p.x.rem_euclid(256)),
+        SimFixed::from_num(p.y.rem_euclid(256)),
+    )
+}
+
 #[test]
 fn inviso_scatter_uses_scenario_rng_only_for_effect_and_paired_smudge() {
-    let rules = inviso_weapon_rules(true, true);
+    let mut rules = inviso_weapon_rules(true, true);
+    initialize_fixture_anim_types(&mut rules);
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
     store.insert(make_entity(2, "TARGET", 8, 5, 500));
@@ -7083,9 +7000,9 @@ fn inviso_scatter_uses_scenario_rng_only_for_effect_and_paired_smudge() {
 
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
     assert_eq!(store.get(2).unwrap().health.current, 490);
-    assert_eq!(result.consequences.effects().explosion_effects.len(), 1);
+    assert_eq!(result.fixture_anims.len(), 1);
     assert_eq!(
-        explosion_coord(&result.consequences.effects().explosion_effects[0]),
+        constructed_anim_coord(&result.fixture_anims[0]),
         expected_effect
     );
     assert_ne!(expected_effect, target_coord);
@@ -7195,7 +7112,8 @@ fn gsi_08_05_non_inviso_projectile_advances_scenario_rng_by_the_reload_jitter() 
 /// detonates next frame.
 #[test]
 fn two_inviso_attackers_fire_in_live_order_and_the_second_bullet_waits_a_frame() {
-    let rules = inviso_weapon_rules(true, true);
+    let mut rules = inviso_weapon_rules(true, true);
+    initialize_fixture_anim_types(&mut rules);
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
     store.insert(make_entity(2, "SHOOTER", 6, 5, 300));
@@ -7246,11 +7164,8 @@ fn two_inviso_attackers_fire_in_live_order_and_the_second_bullet_waits_a_frame()
         vec![2, 1]
     );
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
-    assert_eq!(result.consequences.effects().explosion_effects.len(), 1);
-    assert_eq!(
-        explosion_coord(&result.consequences.effects().explosion_effects[0]),
-        expected
-    );
+    assert_eq!(result.fixture_anims.len(), 1);
+    assert_eq!(constructed_anim_coord(&result.fixture_anims[0]), expected);
     assert_eq!(
         result.projectile_spawns.len(),
         1,
@@ -7296,7 +7211,8 @@ fn inviso_special_arms_claim_the_impact_and_keep_the_shared_tail() {
         "MakesDisguise=yes",
         "NukeMaker=yes",
     ] {
-        let rules = inviso_special_rules(special_key);
+        let mut rules = inviso_special_rules(special_key);
+        initialize_fixture_anim_types(&mut rules);
         let mut store = EntityStore::new();
         store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
         store.insert(make_entity(2, "TARGET", 8, 5, 500));
@@ -7340,10 +7256,10 @@ fn inviso_special_arms_claim_the_impact_and_keep_the_shared_tail() {
             expected_rng.logical_state(),
             "{special_key}: the reload jitter, then the tail's scatter and cluster draws"
         );
-        let effects = result.consequences.effects();
-        assert_eq!(effects.explosion_effects.len(), 1, "{special_key}");
+        let anims = &result.fixture_anims;
+        assert_eq!(anims.len(), 1, "{special_key}");
         assert_eq!(
-            explosion_coord(&effects.explosion_effects[0]),
+            constructed_anim_coord(&anims[0]),
             expected_effect,
             "{special_key}: the shared tail places the AnimList anim"
         );
@@ -7446,117 +7362,8 @@ fn retail_special_inviso_weapons_claim_their_impact() {
     }
 }
 
-// --- emit_warhead_detonation_effects helper tests ---------------------------
-
-fn emit_helper_test_warhead(animlist: &[&str]) -> crate::rules::warhead_type::WarheadType {
-    let animlist_csv = animlist.join(",");
-    let ini_text = format!("[WH]\nFixtureOnly=1\nAnimList={}\n", animlist_csv);
-    let ini = IniFile::from_str(&ini_text);
-    let section = ini.section("WH").expect("section parses");
-    crate::rules::warhead_type::WarheadType::from_ini_section("WH", section)
-}
-
-#[test]
-fn emit_warhead_detonation_effects_empty_animlist_emits_nothing() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&[]);
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        100,
-        5,
-        5,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert!(explosions.is_empty());
-}
-
-#[test]
-fn emit_warhead_detonation_effects_single_animlist_entry_emits_one_anim() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&["EXPLOSION1"]);
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        100,
-        5,
-        5,
-        SimFixed::from_num(160),
-        SimFixed::from_num(96),
-        0,
-        731,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions.len(), 1);
-    let expected_id = interner.intern("EXPLOSION1");
-    assert_eq!(explosions[0].shp_name, expected_id);
-    assert_eq!(explosions[0].rx, 5);
-    assert_eq!(explosions[0].ry, 5);
-    assert_eq!(explosions[0].sub_x.to_num::<i32>(), 160);
-    assert_eq!(explosions[0].sub_y.to_num::<i32>(), 96);
-    assert_eq!(explosions[0].z, 0);
-    assert_eq!(explosions[0].world_z, 731);
-}
-
-#[test]
-fn emit_warhead_detonation_effects_animlist_index_is_damage_div_25_clamped() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&["EXP1", "EXP2", "EXP3"]);
-
-    // damage=0 → idx=0 → EXP1.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        0,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP1"));
-
-    // damage=50 → idx=2 (50/25) → EXP3.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        50,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP3"));
-
-    // damage=10000 → idx clamped to len-1 (2) → EXP3.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        10000,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP3"));
-}
+// SelectAnim behavior and RNG are compared against the original executable
+// in detonation_anim::tests, including the native zero-damage no-animation case.
 
 #[test]
 fn combat_resolves_in_live_object_order_not_stable_id() {
@@ -7714,11 +7521,37 @@ fn rad_combat_tick(
 }
 
 /// Radiation damage applies only on `frame % RadApplicationDelay == 0`
-/// boundaries, scaled by the RadSiteWarhead Verses per armor class:
-/// trunc(min(500, 500) × 0.2) = 100 base → 100 vs none, 10 vs heavy.
+/// boundaries. Original reader/Foot producer/Object receiver outcomes are
+/// pinned in spatial_oracle/radiation_damage_boundary. This checks selected
+/// final health/admission, not the known intermediate radiation precision gap.
 #[test]
 fn rad_damage_fires_on_application_delay_boundary_only() {
+    let native: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/radiation_damage_boundary.json"
+    ))
+    .unwrap();
+    let native_row = |frame: u32, armor: u8| {
+        native["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["frame"] == frame && row["armor"] == armor)
+            .unwrap()
+    };
     let rules = radiation_rules();
+    for (index, verse) in rules
+        .warhead("RadSite")
+        .unwrap()
+        .verses_f64
+        .iter()
+        .enumerate()
+    {
+        assert_eq!(
+            format!("{:016x}", verse.to_bits()),
+            native_row(16, 5)["verses_bits"][index],
+            "original RadSite reader, armor{index}"
+        );
+    }
     let mut sim = crate::sim::world::Simulation::new();
     let heights = BTreeMap::new();
     let inf = sim
@@ -7739,23 +7572,36 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
         None,
     );
 
-    // Frame 15: not an application boundary — nobody takes damage.
+    // Original Foot4DA554 skips the application on frame15.
+    assert_eq!(native_row(15, 0)["admitted"], false);
+    assert_eq!(native_row(15, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 15);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 300);
     assert_eq!(
-        sim.substrate.entities.get(tank).unwrap().health.current,
-        300
+        i64::from(sim.substrate.entities.get(inf).unwrap().health.current),
+        native_row(15, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(sim.substrate.entities.get(tank).unwrap().health.current),
+        native_row(15, 5)["final_health"].as_i64().unwrap()
     );
 
-    // Frame 16: boundary. E2 stands on the center cell (level 500, clamped
-    // 500): trunc(500 × 0.2) = 100, Verses none = 100% → 100 damage. The
-    // tank is one cell out (falloff (640−256)/640 × 500 = 300): trunc(300 ×
-    // 0.2) = 60, Verses heavy = 10% → 6 damage.
+    // Original spread65B9C0/Cell487CB0/Foot4DA5FA emits base59 at the
+    // side cell, while Rust currently emits60. Original 10% reader bits and
+    // Object5F5390 nevertheless produce the same selected health295. See
+    // the companion's required radiation precision follow-up; no base parity.
+    assert_eq!(native_row(16, 0)["admitted"], true);
+    assert_eq!(native_row(16, 5)["admitted"], true);
     rad_combat_tick(&mut sim, &rules, 16);
     let inf_hp = sim.substrate.entities.get(inf).unwrap().health.current;
     let tank_hp = sim.substrate.entities.get(tank).unwrap().health.current;
-    assert_eq!(inf_hp, 200, "100 rad damage vs armor none");
-    assert_eq!(tank_hp, 294, "6 rad damage vs heavy armor (10% Verses)");
+    assert_eq!(
+        i64::from(inf_hp),
+        native_row(16, 0)["final_health"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(tank_hp),
+        native_row(16, 5)["final_health"].as_i64().unwrap()
+    );
     // Sourceless damage must not arm retaliation.
     assert!(
         sim.substrate
@@ -7767,8 +7613,17 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
     );
 
     // Frame 17: off-boundary again.
+    assert_eq!(native_row(17, 0)["admitted"], false);
+    assert_eq!(native_row(17, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 17);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, 200);
+    assert_eq!(
+        sim.substrate.entities.get(inf).unwrap().health.current,
+        inf_hp
+    );
+    assert_eq!(
+        sim.substrate.entities.get(tank).unwrap().health.current,
+        tank_hp
+    );
 }
 
 #[test]
@@ -7965,8 +7820,14 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
             .known()
             == Some(crate::sim::mission::MissionType::Selling)
     };
+    // Each building's UpdateRepairAndPower, in its LogicVector visit.
+    let repair_and_power = |sim: &mut crate::sim::world::Simulation| {
+        for id in [hostile_target, allied_target, null_target] {
+            crate::sim::production::update_repair_and_power(sim, &rules, id);
+        }
+    };
     let low_iq_rng = sim.scenario_rng.logical_state();
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         !selling(&sim, hostile_target),
         "scenario CurrentIQ 1 stays below RepairSell/SellBack 2"
@@ -7985,7 +7846,7 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
         expected_rng.next_range_u32_inclusive(0, 0x32) < 51,
         "TechLevel 51 makes every inclusive native roll win"
     );
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         selling(&sim, hostile_target),
         "the computer's Sell_Back(1) starts the Selling mission"
@@ -8592,7 +8453,7 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
     assert_eq!(child.initial_target_position, center);
     assert_eq!(
         child.velocity,
-        crate::sim::projectile::launch::shrapnel_launch_velocity(impact, center, 40, false)
+        crate::sim::projectile::launch::shrapnel_launch_velocity(impact, center, rules.weapon("CHILD").unwrap().speed, false)
     );
 }
 
@@ -8676,6 +8537,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
         Some(&terrain),
         &HouseAllianceMap::default(),
         &mut scenario_rng,
+        &mut Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation()),
         &mut out,
     );
 
@@ -8697,7 +8559,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
             crate::sim::projectile::launch::shrapnel_launch_velocity(
                 detonation.impact,
                 expected_positions[index],
-                40,
+                rules.weapon("CHILD").unwrap().speed,
                 true
             )
         );
@@ -8744,7 +8606,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
 fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
     use crate::sim::combat::combat_aoe::AreaDamageReceiver;
     use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
-    use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
+    use crate::sim::terrain_object::TerrainObjectState;
 
     fn run(kind: InvulnKind, techno_distance: i32) -> i32 {
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
@@ -8777,21 +8639,11 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
 
         let terrain_id = 700;
         let terrain_ref = sim.interner.intern("TREE01");
-        sim.production.terrain_objects.insert(
-            terrain_id,
-            TerrainObjectState {
-                stable_id: terrain_id,
-                native_unique_id: None,
-                in_logic_vector: false,
-                type_ref: terrain_ref,
-                rx: 5,
-                ry: 5,
-                health: 100,
-                max_health: 100,
-                occupation_bits: 4,
-                lifecycle: TerrainObjectLifecycle::Live,
-            },
-        );
+        sim.production.terrain_objects.insert(terrain_id, {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.occupation_bits = 4;
+            terrain
+        });
         sim.production
             .terrain_object_cells
             .insert((5, 5), terrain_id);
@@ -8866,21 +8718,13 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
         .expect("fatal vehicle spawns");
     let terrain_id = 701;
     let terrain_ref = sim.interner.intern("TREE01");
-    sim.production.terrain_objects.insert(
-        terrain_id,
-        TerrainObjectState {
-            stable_id: terrain_id,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: terrain_ref,
-            rx: 5,
-            ry: 5,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 4,
-            lifecycle: TerrainObjectLifecycle::Live,
-        },
-    );
+    sim.production.terrain_objects.insert(terrain_id, {
+        let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain.occupation_bits = 4;
+        terrain
+    });
     sim.production
         .terrain_object_cells
         .insert((5, 5), terrain_id);
@@ -9646,17 +9490,21 @@ fn gsi_08_06_homing_launch_uses_one_lepton_and_stores_speed_as_the_ceiling() {
         "every ROT > 0 launch starts at one lepton per frame"
     );
     let guidance = spawn.guidance.expect("a ROT > 0 shot carries guidance");
-    assert_eq!(guidance.max_speed, 30, "weapon Speed= is only the ceiling");
+    // Original ReadSpeed528A90 converts authored30 to76; the saved
+    // weapon_speed.json control establishes the native retained DWORD.
+    assert_eq!(guidance.max_speed, 76, "effective weapon Speed is the ceiling");
     assert_eq!(guidance.acceleration, 3, "BulletTypeClass ctor default");
-    assert_eq!(
-        guidance.heading_bam, 0,
-        "the turret faces east (0x4000), which is heading BAM 0"
-    );
     assert_eq!(
         guidance.fuse_reference, spawn.initial_target_position,
         "the ProximityDetector reference is frozen on the launch-time target"
     );
-    assert_eq!(spawn.velocity, ProjectileVelocity::new(1, 0, 0));
+    // This fixture checks the shot's facing, not an idealized unit vector:
+    // native Bullet::Fire renormalizes using its approximate square root.
+    // Full launch bits are compared with execution in projectile::launch.
+    assert_eq!(
+        spawn.velocity.integer_projection(),
+        ProjectileCoord::new(1, 0, 0)
+    );
 }
 
 /// A launch with no ballistic solution skips the rest of the shot. Under
@@ -10052,6 +9900,8 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
                 &dummy,
                 rules.general.gravity,
                 false,
+                false,
+                rules.general.safety_altitude,
                 |_, _, _| None,
             )
             .expect("the bomb is still in flight");
@@ -10378,7 +10228,7 @@ fn gsi_05_14_a_type_without_maxdebris_takes_no_draw() {
 /// `AnimList=YURICNTL`, so a Yuri beam impact must still draw.
 #[test]
 fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n0=TARGET\n\
          [AircraftTypes]\n\
@@ -10391,6 +10241,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("Controller/Plain warhead rules");
+    initialize_fixture_anim_types(&mut rules);
 
     struct TailOutcome {
         damage_events: usize,
@@ -10417,7 +10268,8 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
         };
         let mut scenario_rng = SimRng::new(9);
         let mut emitted = CombatEmit::default();
-        let mut inline_hooks = None;
+        let mut trace = FixtureTrace::default();
+        let mut inline_hooks = Some(&mut trace);
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(rules, &mut interner);
         emit_projectile_detonations(
@@ -10439,16 +10291,15 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
             &mut inline_hooks,
             &mut emitted,
         );
-        let anims: Vec<(String, u16, u16, u8)> = emitted
-            .effects
-            .explosion_effects
+        let anims: Vec<(String, u16, u16, u8)> = trace
+            .constructed_anims
             .iter()
             .map(|effect| {
                 (
-                    interner.resolve(effect.shp_name).to_string(),
-                    effect.rx,
-                    effect.ry,
-                    effect.z,
+                    interner.resolve(effect.type_id).to_string(),
+                    (effect.world_coord.x / 256) as u16,
+                    (effect.world_coord.y / 256) as u16,
+                    (effect.world_coord.z / 104) as u8,
                 )
             })
             .collect();
@@ -10486,7 +10337,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
 /// the previous cluster.
 #[test]
 fn clusters_scatter_around_the_impact() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n0=LAUNCHER\n\
          [AircraftTypes]\n\
@@ -10499,6 +10350,7 @@ fn clusters_scatter_around_the_impact() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("cluster rules");
+    initialize_fixture_anim_types(&mut rules);
     let mut interner = test_interner();
     let mut entities = EntityStore::new();
     let occupancy = OccupancyGrid::new();
@@ -10517,7 +10369,8 @@ fn clusters_scatter_around_the_impact() {
     };
     let mut scenario_rng = SimRng::new(11);
     let mut emitted = CombatEmit::default();
-    let mut inline_hooks = None;
+    let mut trace = FixtureTrace::default();
+    let mut inline_hooks = Some(&mut trace);
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
     emit_projectile_detonations(
@@ -10539,16 +10392,10 @@ fn clusters_scatter_around_the_impact() {
         &mut inline_hooks,
         &mut emitted,
     );
-    let points: Vec<(i32, i32)> = emitted
-        .effects
-        .explosion_effects
+    let points: Vec<(i32, i32)> = trace
+        .constructed_anims
         .iter()
-        .map(|effect| {
-            (
-                i32::from(effect.rx) * 256 + effect.sub_x.to_num::<i32>(),
-                i32::from(effect.ry) * 256 + effect.sub_y.to_num::<i32>(),
-            )
-        })
+        .map(|effect| (effect.world_coord.x, effect.world_coord.y))
         .collect();
     assert_eq!(points.len(), 5, "one anim per cluster");
     assert_eq!(points[0], (impact.x, impact.y), "the first at the impact");
@@ -10572,7 +10419,7 @@ fn clusters_scatter_around_the_impact() {
 /// `DirectRocker=` line — but kept correct.
 #[test]
 fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=FOOT\n\
          [VehicleTypes]\n0=TARGET\n\
          [AircraftTypes]\n\
@@ -10584,6 +10431,7 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("DirectRocker warhead rules");
+    initialize_fixture_anim_types(&mut rules);
     assert!(
         rules.warhead("Rocker").expect("Rocker").direct_rocker,
         "DirectRocker= must reach the parsed field, not a dead raw byte"
@@ -10610,7 +10458,8 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
         };
         let mut scenario_rng = SimRng::new(9);
         let mut emitted = CombatEmit::default();
-        let mut inline_hooks = None;
+        let mut trace = FixtureTrace::default();
+        let mut inline_hooks = Some(&mut trace);
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(rules, &mut interner);
         emit_projectile_detonations(
@@ -10633,7 +10482,7 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
             &mut emitted,
         );
         assert_eq!(
-            emitted.effects.explosion_effects.len(),
+            trace.constructed_anims.len(),
             1,
             "both branches reach LAB_00469AA4"
         );

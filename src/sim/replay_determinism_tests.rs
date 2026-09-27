@@ -32,6 +32,7 @@ fn make_test_sim() -> Simulation {
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     };
     let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     sim.spawn_from_map(&[entity], None, &heights);
@@ -126,6 +127,9 @@ fn replay_reapplies_header_seed() {
 
     fn sim_with_unit(desc: &ScenarioDescriptor) -> Simulation {
         let mut sim = Simulation::from_descriptor(desc);
+        // This synthetic fixture omits the production native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let entity = MapEntity {
             owner: "Americans".to_string(),
             type_id: "MTNK".to_string(),
@@ -142,6 +146,7 @@ fn replay_reapplies_header_seed() {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         };
         let heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();
         sim.spawn_from_map(&[entity], None, &heights);

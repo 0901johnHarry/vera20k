@@ -731,6 +731,12 @@ impl Simulation {
         // ScenarioClass owns the sole saved/synchronized RNG. Main and MapGen
         // are process globals and are deliberately absent from this hash.
         self.scenario_rng.hash_state(&mut hasher);
+        // Scenario+214 controls identities of future constructors and therefore
+        // guided Bullet steering. The saved prefix/phase also controls a fresh
+        // map-read continuation. This is independent of Rust stable handles.
+        if schema.includes(HashFeature::NativeRuntimeIdentity) {
+            self.native_unique_ids.hash(&mut hasher);
+        }
         self.substrate.next_stable_object_id.hash(&mut hasher);
         self.substrate.next_occupancy_enter_order.hash(&mut hasher);
         // YR LogicClass trigger latches are save/lockstep state, even though
@@ -842,6 +848,10 @@ impl Simulation {
                 gap_flags.hash(&mut hasher);
             }
             let shared_dummy_overlay = shared_dummy_handle.overlay_identity_state();
+            if schema.includes(HashFeature::NativeRuntimeIdentity) {
+                b"shared-cell-dummy-land-v1".hash(&mut hasher);
+                shared_dummy_handle.land_type().hash(&mut hasher);
+            }
             if schema.includes(HashFeature::FootNeighborHistory)
                 && shared_dummy_handle.neighbor_count() != 0
             {
@@ -959,6 +969,9 @@ impl Simulation {
         for (&id, projectile) in self.projectiles.iter() {
             id.hash(hasher);
             projectile.id.hash(hasher);
+            if schema.includes(HashFeature::NativeRuntimeIdentity) {
+                projectile.native_unique_id.hash(hasher);
+            }
             projectile.source_id.hash(hasher);
             projectile.position.x.hash(hasher);
             projectile.position.y.hash(hasher);
@@ -1192,6 +1205,11 @@ impl Simulation {
                 // 0x004F8B3C..0x004F8DAB`): both live in the native save.
                 house.eva_funds_timer.hash(hasher);
                 house.eva_low_power_guard.hash(hasher);
+            }
+            if schema.includes(HashFeature::BuildingRepair) {
+                house.repair_delay.to_bits().hash(hasher);
+                house.repair_start_latch.hash(hasher);
+                house.repair_latch_timer.hash(hasher);
             }
         }
     }
@@ -1624,6 +1642,9 @@ impl Simulation {
                 entity.techno_ctor_random_word.hash(hasher);
                 entity.structure_upgrade_link.hash(hasher);
             }
+            if schema.includes(HashFeature::NativeRuntimeIdentity) {
+                entity.native_unique_id.hash(hasher);
+            }
             if schema.includes(HashFeature::SlaveManager) {
                 if let Some(manager) = entity.slave_manager.as_ref() {
                     b"slave-manager-v209".hash(hasher);
@@ -1777,6 +1798,12 @@ impl Simulation {
                 && entity.category == crate::map::entities::EntityCategory::Structure
             {
                 entity.ai_sellable.hash(hasher);
+            }
+            if schema.includes(HashFeature::BuildingRepair)
+                && entity.category == crate::map::entities::EntityCategory::Structure
+            {
+                entity.repairing.hash(hasher);
+                entity.ai_repairable.hash(hasher);
             }
             if schema.includes(HashFeature::BaseDefenseResponse) {
                 b"base-defense-response-v1".hash(hasher);
@@ -3463,6 +3490,7 @@ mod rally_hash_tests {
                 house.set_difficulty(
                     HouseDifficulty::Hard,
                     &[0.8, 1.0, 1.2],
+                    &[0.02; 3],
                     0.9,
                     game_mode_nonzero,
                 );

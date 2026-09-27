@@ -9,6 +9,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{CellRect, resolve_reservation_real_cell, scan_cell_rect};
 use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::map::bridge_topology::BRIDGE_DECK_HEIGHT_LEPTONS;
@@ -267,13 +268,36 @@ pub(crate) enum ConcealOutcome {
 /// but the stream preserves the verified native relative ordering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LifecycleOutput {
-    RevealDisplay { stable_id: u64 },
-    DisplayRemove { stable_id: u64 },
-    DetachAttachedAnims { stable_id: u64 },
-    StopVoc { stable_id: u64 },
-    DirtyTacticalRect { stable_id: u64 },
-    ClearDrawnState { stable_id: u64 },
-    ClearRedraw { stable_id: u64 },
+    /// ObjectUnlimbo5F517A/5F5207 constructs and attaches a presentation trail.
+    LineTrailConstructed {
+        stable_id: u64,
+        style: crate::sim::projectile::ProjectileLineTrail,
+    },
+    /// ObjectDtor5F3D56 detaches; its fading registry entry remains alive.
+    LineTrailDetached {
+        stable_id: u64,
+    },
+    RevealDisplay {
+        stable_id: u64,
+    },
+    DisplayRemove {
+        stable_id: u64,
+    },
+    DetachAttachedAnims {
+        stable_id: u64,
+    },
+    StopVoc {
+        stable_id: u64,
+    },
+    DirtyTacticalRect {
+        stable_id: u64,
+    },
+    ClearDrawnState {
+        stable_id: u64,
+    },
+    ClearRedraw {
+        stable_id: u64,
+    },
 }
 
 #[cfg(test)]
@@ -996,6 +1020,7 @@ impl Simulation {
             };
         }
         if !attached_upgrade {
+            self.mark_ai_repairable_at_unlimbo(stable_id);
             self.append_live_build_const(stable_id);
             self.refresh_waypoint_edge_from_committed_structure(stable_id);
             self.mark_building_base_reservation_with_arg(stable_id, false, context);
@@ -1013,6 +1038,26 @@ impl Simulation {
             false
         };
         RevealOutcome::Revealed { logic_registered }
+    }
+
+    /// `BuildingClass::Unlimbo 0x00440B4F..0x00440B7A`, after the Techno
+    /// Unlimbo and its alive gate: outside a campaign, a building of a house
+    /// no human controls whose house type is not `MultiplayPassive=` becomes
+    /// AI-repairable (`+0x6CB`), whatever its map line said.
+    fn mark_ai_repairable_at_unlimbo(&mut self, stable_id: u64) {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
+            return;
+        };
+        let game_mode_nonzero = self.session.game_mode_nonzero;
+        if entity.category == EntityCategory::Structure
+            && game_mode_nonzero
+            && self.houses.get(&entity.owner()).is_some_and(|house| {
+                !house.is_controlled_by_human(game_mode_nonzero) && !house.multiplay_passive
+            })
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+        {
+            entity.ai_repairable = true;
+        }
     }
 
     /// The owner-receiver portion of Foot4D722F -> Techno6F4960. Constructor
@@ -2371,8 +2416,8 @@ impl Simulation {
         {
             return false;
         }
-        // Terrain ctor71BC76 reveals at cell center/Z=0; Object5F4260 is
-        // Ground for this stationary surface object, including elevated cells.
+        // Terrain ctor71BC76 reveals at the retained type-adjusted coordinate;
+        // Object5F4260 selects Ground even on elevated cells.
         self.submit_object_display(stable_id, DisplayLayer::GROUND, rules);
         self.register_logic_object(stable_id)
     }
@@ -3148,28 +3193,130 @@ impl Simulation {
         )
     }
 
-    /// Represented entries in global ObjectClass construction order. Stable
-    /// IDs are monotonic and never reused, so merging the separate Rust stores
-    /// by ID reproduces the native registration order without walking holes
-    /// left by already-finalized objects.
+    /// Whether the pointer-expiry forwards an entity listener receives can
+    /// change anything for `expired_id`: the listener is the expiring object,
+    /// a field [`Self::notify_entity_pointer_expired`] compares names it, or
+    /// it holds an object a forward reaches (SpawnManager, CaptureManager,
+    /// TemporalClass, its parasite). A superset of each forward's own test, so
+    /// passing over a listener without any of these matches visiting it. A
+    /// field or forward added to the broadcast must be added here too.
+    fn entity_expiry_listener_acts(
+        listener: &GameEntity,
+        listener_id: u64,
+        expired_id: u64,
+    ) -> bool {
+        let names = |target: Option<TargetKind>| target == Some(TargetKind::Entity(expired_id));
+        let nav_names = |target: Option<&NavTargetRef>| {
+            target.is_some_and(|target| Self::nav_ref_targets_expired(target, expired_id))
+        };
+        listener_id == expired_id
+            || names(listener.attack_target.as_ref().map(|attack| attack.target))
+            || names(listener.suspended_attack_target)
+            || names(listener.archive_target())
+            || listener.has_live_contact_with(expired_id)
+            || match &listener.passenger_role {
+                PassengerRole::Transport { cargo } => cargo.passengers.contains(&expired_id),
+                PassengerRole::Boarding {
+                    target_transport_id,
+                    ..
+                } => *target_transport_id == expired_id,
+                PassengerRole::Inside { transport_id, .. } => *transport_id == expired_id,
+                PassengerRole::None => false,
+            }
+            || nav_names(listener.navigation.suspended_nav_com.as_ref())
+            || nav_names(listener.navigation.nav_com.as_ref())
+            || listener
+                .navigation
+                .nav_queue
+                .iter()
+                .any(|target| Self::nav_ref_targets_expired(target, expired_id))
+            || listener.capture_target == Some(expired_id)
+            || listener
+                .c4_plant
+                .as_ref()
+                .is_some_and(|plant| plant.target_building_id == expired_id)
+            || listener
+                .dock_state
+                .as_ref()
+                .is_some_and(|dock| dock.dock_building_id == expired_id)
+            || listener
+                .aircraft_ammo
+                .as_ref()
+                .is_some_and(|ammo| ammo.target_airfield == Some(expired_id))
+            || listener
+                .miner
+                .as_ref()
+                .is_some_and(|miner| miner.reserved_refinery == Some(expired_id))
+            || listener
+                .pending_c4_detonation
+                .as_ref()
+                .is_some_and(|pending| pending.source_entity_id == Some(expired_id))
+            || listener.homing_state.is_some()
+            || listener.spawn_manager.is_some()
+            || listener.capture_manager.is_some()
+            || listener.temporal.has_link()
+            || listener.parasite_eating_me.is_some()
+    }
+
+    /// Each RNG stream's cursor, which every draw moves.
+    #[cfg(test)]
+    fn rng_cursors(&self) -> [(u8, i32, i32); 3] {
+        [&self.scenario_rng, &self.main_rng, &self.mapgen_rng].map(|rng| {
+            let view = rng.logical_view();
+            (view.disabled, view.index_a, view.index_b)
+        })
+    }
+
+    /// Represented entries in global ObjectClass construction order, each
+    /// with the store it lives in. Stable IDs are monotonic and never reused,
+    /// so merging the separate Rust stores by ID reproduces the native
+    /// registration order without walking holes left by already-finalized
+    /// objects, and an ID's store never changes.
     ///
     /// gamemd-derived: active YR `ObjectClass` construction/destruction at
     /// `0x005F3900` / `0x005F3B80` maintains the listener roster in object
     /// construction order.
-    fn removal_listener_order(&self) -> Vec<u64> {
-        let mut listeners = self.substrate.entities.keys_sorted();
-        listeners.extend(self.substrate.anims.iter().map(|(&stable_id, _)| stable_id));
+    fn removal_listener_order(&self) -> Vec<(u64, ObjectKind)> {
+        let mut listeners = Vec::with_capacity(
+            self.substrate.entities.len()
+                + self.substrate.anims.len()
+                + self.substrate.particle_systems.len()
+                + self.projectiles.len()
+                + self.waves.len(),
+        );
+        listeners.extend(
+            self.substrate
+                .entities
+                .iter_sorted()
+                .map(|(stable_id, _)| (stable_id, ObjectKind::Entity)),
+        );
+        listeners.extend(
+            self.substrate
+                .anims
+                .iter()
+                .map(|(&stable_id, _)| (stable_id, ObjectKind::Anim)),
+        );
         listeners.extend(
             self.substrate
                 .particle_systems
                 .iter()
-                .map(|(&stable_id, _)| stable_id),
+                .map(|(&stable_id, _)| (stable_id, ObjectKind::ParticleSystem)),
         );
-        listeners.extend(self.projectiles.iter().map(|(&stable_id, _)| stable_id));
-        listeners.extend(self.waves.iter().map(|(&stable_id, _)| stable_id));
-        listeners.sort_unstable();
+        listeners.extend(
+            self.projectiles
+                .iter()
+                .map(|(&stable_id, _)| (stable_id, ObjectKind::Projectile)),
+        );
+        listeners.extend(
+            self.waves
+                .iter()
+                .map(|(&stable_id, _)| (stable_id, ObjectKind::Wave)),
+        );
+        // Each store yields its IDs in order: the run-adaptive stable sort
+        // merges those runs instead of sorting from scratch.
+        listeners.sort_by_key(|&(stable_id, _)| stable_id);
         debug_assert!(
-            listeners.windows(2).all(|pair| pair[0] != pair[1]),
+            listeners.windows(2).all(|pair| pair[0].0 != pair[1].0),
             "object stable ID exists in more than one represented store"
         );
         listeners
@@ -3202,20 +3349,10 @@ impl Simulation {
     ///    the target.** A successful Restore re-installs the archived target, and
     ///    the null-out then does not run.
     ///
-    /// **ONLY ONE OF SIX NATIVE ENTRY POINTS IS WIRED.** The sweep is reached
-    /// from six distinct functions in the original — area damage (six call
-    /// sites in one function), building sale, an unnamed pair, the building
-    /// occupy-map placement, the owner change, and the teleport locomotor's
-    /// state machine. VERA calls it only from the owner change. The earlier
-    /// "1 of 3 Restore sites" framing counted CALL sites through the Restore
-    /// vtable slot, which is a different and smaller set than the sweep's own
-    /// callers, and read more complete than it was. Consequence: an attacker
-    /// stays latched onto a target that is being sold or chrono-teleported
-    /// until the target is actually removed and the pointer-expiry broadcast
-    /// catches it. Frequency: every building sale and every Chrono
-    /// Legionnaire / Chronosphere use — tens of times a match — though the
-    /// window is short and the blast radius today is limited to objects that
-    /// went through a blocked-step Override.
+    /// The native sweep has callers in area damage, building sale, owner change,
+    /// building placement and teleportation. The represented owner-change and
+    /// bridge-damage callers share this owner; the other caller chains remain
+    /// separate migration work.
     ///
     /// RESIDUALS, recorded rather than guessed:
     /// - The native suppression clause (`0x0070D4DB..0x0070D4FB`) skips the
@@ -3229,15 +3366,27 @@ impl Simulation {
     /// - The aircraft-Patrol arm, which clears two patrol-cursor fields on an
     ///   aircraft whose committed mission is Patrol. Neither field is
     ///   represented; the arm is a no-op for every ground object.
-    /// - A second native table swept after the techno vector, nulling two
-    ///   pointer slots that match the detaching object. Its element class is
-    ///   UNKNOWN, so it is not modelled.
+    /// - The second sweep is TeamClass (0x0070D554..0x0070D57B), clearing
+    ///   matching pointers at +0x3C/+0x40. The represented Team owner does not
+    ///   yet retain both native pointers. Bridge damage needs that lifecycle
+    ///   when those Team states are implemented.
     pub(crate) fn stop_all_targeting_on_detach(&mut self, detach_id: u64, rules: Option<&RuleSet>) {
+        self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules);
+    }
+
+    /// Apply_area_damage bridge success calls the same 0x0070D4A0 sweep with a
+    /// CellClass pointer. This is not CellClass PointerExpired: Restore must
+    /// precede the conditional target clear, in descending Techno order.
+    pub(crate) fn stop_all_targeting_cell(&mut self, rx: u16, ry: u16, rules: Option<&RuleSet>) {
+        self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules);
+    }
+
+    fn stop_all_targeting_target(&mut self, target: TargetKind, rules: Option<&RuleSet>) {
         let mut listeners = self.substrate.entities.keys_sorted();
         listeners.reverse();
 
         for listener_id in listeners {
-            if !self.listener_targets(listener_id, detach_id) {
+            if !self.listener_targets(listener_id, target) {
                 continue;
             }
 
@@ -3245,7 +3394,7 @@ impl Simulation {
                 .mission_restore_on_target_detach(listener_id, rules)
                 .expect("detach sweep listener was resolved immediately before the Restore");
 
-            let target_cleared = self.listener_targets(listener_id, detach_id);
+            let target_cleared = self.listener_targets(listener_id, target);
             if target_cleared {
                 self.assign_target_represented(listener_id, None, rules)
                     .expect("detach sweep listener remains present for the target clear");
@@ -3253,29 +3402,28 @@ impl Simulation {
 
             let _ = restored;
             #[cfg(test)]
-            self.trace_lifecycle_for_test(LifecycleTestEvent::DetachTargetingSweepVisited {
-                detach_id,
-                listener_id,
-                restored,
-                target_cleared,
-            });
+            if let TargetKind::Entity(detach_id) = target {
+                self.trace_lifecycle_for_test(LifecycleTestEvent::DetachTargetingSweepVisited {
+                    detach_id,
+                    listener_id,
+                    restored,
+                    target_cleared,
+                });
+            }
         }
     }
 
-    /// Whether `listener_id` currently holds `detach_id` as its shoot-at target.
-    ///
-    /// Cell targets never match: the native comparison is against an object
-    /// pointer, so an object overridden onto a wall cell is invisible to both
-    /// detach sweeps.
-    fn listener_targets(&self, listener_id: u64, detach_id: u64) -> bool {
+    /// Match the retained target identity, preserving Cell/Techno distinction.
+    fn listener_targets(&self, listener_id: u64, target: TargetKind) -> bool {
         self.substrate
             .entities
             .get(listener_id)
             .is_some_and(|listener| {
-                matches!(
-                    listener.attack_target.as_ref().map(|target| target.target),
-                    Some(TargetKind::Entity(id)) if id == detach_id
-                )
+                listener
+                    .attack_target
+                    .as_ref()
+                    .map(|current| current.target)
+                    == Some(target)
             })
     }
 
@@ -3327,6 +3475,9 @@ impl Simulation {
         }
     }
 
+    /// The broadcast passes over listeners that
+    /// [`Self::entity_expiry_listener_acts`] rejects, so a field compared here
+    /// must be tested there too.
     #[allow(clippy::too_many_arguments)]
     fn notify_entity_pointer_expired(
         &mut self,
@@ -3358,6 +3509,16 @@ impl Simulation {
             .remaining(self.session.binary_frame);
         let mission_is_suspended =
             listener.mission.suspended() != crate::sim::mission::MissionId::NONE;
+        // What the radio and cargo clears below would change. A listener is
+        // handed out mutably only when something changes: every hand-out
+        // enters the store's touch logs, and most listeners hold no
+        // reference to the expiring object.
+        let drops_contact =
+            control == PointerExpiryControl::Uninit && listener.has_live_contact_with(expired_id);
+        let drops_passenger = matches!(
+            &listener.passenger_role,
+            PassengerRole::Transport { cargo } if cargo.passengers.contains(&expired_id)
+        );
 
         // `TechnoClass::PointerExpired @ 0x007077C0`, the `allowClear` local
         // (`[ESP+0x24]`): it starts true and is cancelled only on the
@@ -3389,7 +3550,9 @@ impl Simulation {
         // reproduces.
         let passive_scan_delay = (clears_current_target && passive_scan_remaining > 10)
             .then(|| self.scenario_rng.next_range_u32_inclusive(4, 8));
-        if let Some(listener) = self.substrate.entities.get_mut(listener_id) {
+        if (passive_scan_delay.is_some() || drops_contact || drops_passenger)
+            && let Some(listener) = self.substrate.entities.get_mut(listener_id)
+        {
             if let Some(delay) = passive_scan_delay {
                 listener
                     .passive_scan_timer
@@ -3412,13 +3575,15 @@ impl Simulation {
             // So `Detach_All(false)` — the dive — leaves radio contacts intact,
             // and only UnInit breaks them. A diving submarine therefore keeps
             // its naval-yard repair link and its transport link.
-            if control == PointerExpiryControl::Uninit {
+            if drops_contact {
                 listener.clear_live_contact_with(expired_id);
             }
 
             // TechnoClass removes an expiring passenger from its CargoClass before
             // clearing its target/archive/manager reference family.
-            if let PassengerRole::Transport { cargo } = &mut listener.passenger_role {
+            if drops_passenger
+                && let PassengerRole::Transport { cargo } = &mut listener.passenger_role
+            {
                 let _ = cargo.disembark(expired_id);
             }
         }
@@ -3432,26 +3597,22 @@ impl Simulation {
             }
         }
 
-        let Some(listener) = self.substrate.entities.get_mut(listener_id) else {
+        // Decide every clear from a read, then hand the listener out mutably
+        // only when one applies (see `drops_contact`).
+        let Some(listener) = self.substrate.entities.get(listener_id) else {
             return;
         };
         // `+0x2B8` is cleared on an exact match under `allowClear` alone — the
         // same-owner exemption applies only to `+0x2B4`.
-        if allow_clear
+        let clear_suspended_target = allow_clear
             && matches!(
                 listener.suspended_attack_target,
                 Some(TargetKind::Entity(id)) if id == expired_id
-            )
-        {
-            listener.suspended_attack_target = None;
-        }
+            );
         // `0x00707AE7..0x00707B03`: on a nonzero control the ArchiveTarget
         // (`+0x218`) that names the expiring object is cleared too.
-        if control == PointerExpiryControl::Uninit
-            && listener.archive_target() == Some(TargetKind::Entity(expired_id))
-        {
-            listener.set_archive_target(None);
-        }
+        let clear_archive_target = control == PointerExpiryControl::Uninit
+            && listener.archive_target() == Some(TargetKind::Entity(expired_id));
 
         // FootClass clears SuspendedNavCom first, then its current/aux target,
         // and removes every matching queue entry. Cell targets are unaffected.
@@ -3465,14 +3626,11 @@ impl Simulation {
         // PAIR clear below; the `+0x5A8` clear above it is unguarded. The two
         // Booleans are equal in value because both read the receiver's house at
         // the same cell, so the single `allow_clear` local models both.
-        if listener
+        let clear_suspended_nav_com = listener
             .navigation
             .suspended_nav_com
             .as_ref()
-            .is_some_and(|target| Self::nav_ref_targets_expired(target, expired_id))
-        {
-            listener.navigation.suspended_nav_com = None;
-        }
+            .is_some_and(|target| Self::nav_ref_targets_expired(target, expired_id));
         let current_nav_matches = listener
             .navigation
             .nav_com
@@ -3488,44 +3646,30 @@ impl Simulation {
             && !expired_is_selling;
         //4D9A0F gates the pair on current NavCom identity;4D9ABD then
         //clears both fields, irrespective of the auxiliary pointer's value.
-        if current_nav_matches && !retain_capture_nav && allow_clear {
-            listener.navigation.nav_com_aux = None;
-            listener.navigation.nav_com = None;
-        }
-        listener
+        let clear_nav_com = current_nav_matches && !retain_capture_nav && allow_clear;
+        let prune_nav_queue = listener
             .navigation
             .nav_queue
-            .retain(|target| !Self::nav_ref_targets_expired(target, expired_id));
+            .iter()
+            .any(|target| Self::nav_ref_targets_expired(target, expired_id));
 
-        if listener.capture_target == Some(expired_id) {
-            listener.capture_target = None;
-        }
-        if listener
+        let clear_capture_target = listener.capture_target == Some(expired_id);
+        let clear_c4_plant = listener
             .c4_plant
             .as_ref()
-            .is_some_and(|plant| plant.target_building_id == expired_id)
-        {
-            listener.c4_plant = None;
-        }
-
-        if listener
+            .is_some_and(|plant| plant.target_building_id == expired_id);
+        let clear_dock = listener
             .dock_state
             .as_ref()
-            .is_some_and(|dock| dock.dock_building_id == expired_id)
-        {
-            listener.dock_state = None;
-        }
-        if let Some(ammo) = listener.aircraft_ammo.as_mut() {
-            if ammo.target_airfield == Some(expired_id) {
-                ammo.target_airfield = None;
-                ammo.target_pad = None;
-            }
-        }
-        if let Some(miner) = listener.miner.as_mut()
-            && miner.reserved_refinery == Some(expired_id)
-        {
-            miner.reserved_refinery = None;
-        }
+            .is_some_and(|dock| dock.dock_building_id == expired_id);
+        let clear_airfield = listener
+            .aircraft_ammo
+            .as_ref()
+            .is_some_and(|ammo| ammo.target_airfield == Some(expired_id));
+        let clear_refinery = listener
+            .miner
+            .as_ref()
+            .is_some_and(|miner| miner.reserved_refinery == Some(expired_id));
 
         let clear_passenger_role = match &listener.passenger_role {
             PassengerRole::Transport { .. } => false,
@@ -3536,10 +3680,73 @@ impl Simulation {
             PassengerRole::Inside { transport_id, .. } => *transport_id == expired_id,
             PassengerRole::None => false,
         };
+        // `HomingState::expire_object_target` changes nothing for another
+        // target; a homing listener is rare enough to hand out regardless.
+        let homing = listener.homing_state.is_some();
+        let clear_c4_source = listener
+            .pending_c4_detonation
+            .as_ref()
+            .is_some_and(|pending| pending.source_entity_id == Some(expired_id));
+        if !(clear_suspended_target
+            || clear_archive_target
+            || clear_suspended_nav_com
+            || clear_nav_com
+            || prune_nav_queue
+            || clear_capture_target
+            || clear_c4_plant
+            || clear_dock
+            || clear_airfield
+            || clear_refinery
+            || clear_passenger_role
+            || homing
+            || clear_c4_source)
+        {
+            return;
+        }
+
+        let listener = self
+            .substrate
+            .entities
+            .get_mut(listener_id)
+            .expect("expiry listener read above");
+        if clear_suspended_target {
+            listener.suspended_attack_target = None;
+        }
+        if clear_archive_target {
+            listener.set_archive_target(None);
+        }
+        if clear_suspended_nav_com {
+            listener.navigation.suspended_nav_com = None;
+        }
+        if clear_nav_com {
+            listener.navigation.nav_com_aux = None;
+            listener.navigation.nav_com = None;
+        }
+        if prune_nav_queue {
+            listener
+                .navigation
+                .nav_queue
+                .retain(|target| !Self::nav_ref_targets_expired(target, expired_id));
+        }
+        if clear_capture_target {
+            listener.capture_target = None;
+        }
+        if clear_c4_plant {
+            listener.c4_plant = None;
+        }
+        if clear_dock {
+            listener.dock_state = None;
+        }
+        if clear_airfield && let Some(ammo) = listener.aircraft_ammo.as_mut() {
+            ammo.target_airfield = None;
+            ammo.target_pad = None;
+        }
+        if clear_refinery && let Some(miner) = listener.miner.as_mut() {
+            miner.reserved_refinery = None;
+        }
         if clear_passenger_role {
             listener.passenger_role = PassengerRole::None;
         }
-
         if let Some(homing) = listener.homing_state.as_mut() {
             homing.expire_object_target(
                 expired_id,
@@ -3547,10 +3754,7 @@ impl Simulation {
                 expired_is_high_flying,
             );
         }
-
-        if let Some(pending) = listener.pending_c4_detonation.as_mut()
-            && pending.source_entity_id == Some(expired_id)
-        {
+        if clear_c4_source && let Some(pending) = listener.pending_c4_detonation.as_mut() {
             pending.source_entity_id = None;
         }
     }
@@ -3677,13 +3881,35 @@ impl Simulation {
         // one shared dummy at `0x00ABDC50`. Later `BulletClass::AI @ 0x004666E0`
         // dispatches that live pointer and observes its most recent coord stamp.
 
-        for listener_id in self.removal_listener_order() {
-            let is_entity = self.substrate.entities.contains(listener_id);
-            let is_anim = self.substrate.anims.contains_key(listener_id);
-            let is_particle = self.substrate.particle_systems.contains_key(listener_id);
-            let is_projectile = self.projectiles.get(listener_id).is_some();
-            let is_wave = self.waves.get(listener_id).is_some();
-            if !is_entity && !is_anim && !is_particle && !is_projectile && !is_wave {
+        for (listener_id, kind) in self.removal_listener_order() {
+            // A callback may have removed a later listener; an ID never
+            // moves to another store. An entity listener is read once, for
+            // its presence and for whether it holds anything this expiry
+            // changes.
+            let mut entity_acts = false;
+            let present = match kind {
+                ObjectKind::Entity => {
+                    self.substrate
+                        .entities
+                        .get(listener_id)
+                        .is_some_and(|listener| {
+                            entity_acts = Self::entity_expiry_listener_acts(
+                                listener,
+                                listener_id,
+                                expired_id,
+                            );
+                            true
+                        })
+                }
+                ObjectKind::Anim => self.substrate.anims.contains_key(listener_id),
+                ObjectKind::ParticleSystem => {
+                    self.substrate.particle_systems.contains_key(listener_id)
+                }
+                ObjectKind::Projectile => self.projectiles.get(listener_id).is_some(),
+                ObjectKind::Wave => self.waves.get(listener_id).is_some(),
+                ObjectKind::VoxelAnim | ObjectKind::Terrain => false,
+            };
+            if !present {
                 continue;
             }
 
@@ -3703,7 +3929,17 @@ impl Simulation {
                 });
             }
 
-            if is_entity {
+            if kind == ObjectKind::Entity {
+                // Most entity listeners hold nothing this expiry changes, and
+                // the game passes over them. Test builds visit them as well,
+                // and check below that their forwards handed out no entity and
+                // drew no random number.
+                if !entity_acts && !cfg!(test) {
+                    continue;
+                }
+                #[cfg(test)]
+                let passed_over = (!entity_acts)
+                    .then(|| (self.substrate.entities.hand_outs(), self.rng_cursors()));
                 self.notify_entity_pointer_expired(
                     listener_id,
                     expired_id,
@@ -3728,6 +3964,11 @@ impl Simulation {
                 // `0x00707AE7`, so a dive leaves mind-control links alone while
                 // a death drops them.
                 if control == PointerExpiryControl::Uninit
+                    && self
+                        .substrate
+                        .entities
+                        .get(listener_id)
+                        .is_some_and(|entity| entity.capture_manager.is_some())
                     && let Some(manager) = self
                         .substrate
                         .entities
@@ -3742,9 +3983,18 @@ impl Simulation {
                 // FootClass::PointerExpired 0x004D998C..0x004D99CD follows the
                 // Techno body: the parasite link and its forward.
                 self.foot_parasite_pointer_expired(listener_id, expired_id, context.rules());
-            } else if is_anim {
+                #[cfg(test)]
+                if let Some(before) = passed_over {
+                    assert_eq!(
+                        before,
+                        (self.substrate.entities.hand_outs(), self.rng_cursors()),
+                        "the expiry of {expired_id} changed listener {listener_id}, which \
+                         entity_expiry_listener_acts passes over"
+                    );
+                }
+            } else if kind == ObjectKind::Anim {
                 self.expire_anim_owner_reference(listener_id, expired_id);
-            } else if is_particle {
+            } else if kind == ObjectKind::ParticleSystem {
                 let system = self
                     .substrate
                     .particle_systems
@@ -3759,7 +4009,7 @@ impl Simulation {
                     // spawn-cutoff paths set.
                     system.done_spawning = true;
                 }
-            } else if is_projectile {
+            } else if kind == ObjectKind::Projectile {
                 let target_matches = self.projectiles.get(listener_id).is_some_and(|projectile| {
                     projectile.target == ProjectileTarget::Entity(expired_id)
                 });
@@ -3812,7 +4062,7 @@ impl Simulation {
                         },
                     );
                 }
-            } else if is_wave {
+            } else if kind == ObjectKind::Wave {
                 let (owner_cleared, _) = self
                     .waves
                     .pointer_expired(listener_id, expired_id)
@@ -3982,6 +4232,10 @@ impl Simulation {
             }
         }
         let projectile = self.projectiles.remove(stable_id);
+        if projectile.is_some() {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::LineTrailDetached { stable_id });
+        }
         let wave = self.waves.remove(stable_id);
         if let Some(wave) = wave.as_ref()
             && let Some(owner_id) = wave.owner_id

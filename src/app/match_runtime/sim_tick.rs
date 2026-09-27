@@ -102,7 +102,7 @@ pub(crate) fn drive_local_player_outcome_voice_wait(state: &mut AppState, wall_m
         return;
     }
     if state.match_state.scenario_outcome.is_none() {
-        let Some(owner) = state.match_state.local_player_owner.as_deref() else {
+        let Some(owner) = state.match_state.local_player_owner() else {
             return;
         };
         let outcome = state
@@ -954,6 +954,22 @@ fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bo
         // direct attachment or retained audio handle.
         for output in drained_lifecycle_outputs {
             match output {
+                LifecycleOutput::LineTrailConstructed { stable_id, style } => {
+                    let presentation = &mut state.match_state.match_presentation;
+                    presentation.line_trails.attach(
+                        stable_id,
+                        style.color,
+                        style.decrement,
+                        presentation.in_game_options.detail_level as i32,
+                    );
+                }
+                LifecycleOutput::LineTrailDetached { stable_id } => {
+                    state
+                        .match_state
+                        .match_presentation
+                        .line_trails
+                        .detach(stable_id);
+                }
                 // Attached anims are simulation objects; the store detaches
                 // them itself.
                 LifecycleOutput::DetachAttachedAnims { .. } => {}
@@ -1357,6 +1373,18 @@ pub(crate) fn screen_point_to_world_with_camera(
     (screen.0 / zoom + camera.0, screen.1 / zoom + camera.1)
 }
 
+/// Borrow current real-cell flags for the inverse. There is no retained app
+/// bridge projection to invalidate after collapse, repair or world replacement.
+/// Native 6D674C resolves the current cell before reading 0x100/0x800; see
+/// tools/bridge_click_state_oracle/README.md.
+pub(crate) fn tactical_bridge_cells(
+    sim: &crate::sim::world::Simulation,
+) -> Option<&dyn terrain::TacticalBridgeLookup> {
+    sim.resolved_terrain
+        .as_ref()
+        .map(|terrain| terrain as &dyn terrain::TacticalBridgeLookup)
+}
+
 /// Shared owner for world-space point -> map-cell resolution in the app layer.
 ///
 /// Any app code that already has world coordinates should use this instead of
@@ -1365,9 +1393,7 @@ pub(crate) fn world_point_to_cell(
     world_x: f32,
     world_y: f32,
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
-    bridge_cells: Option<
-        &std::collections::BTreeMap<(u16, u16), crate::map::terrain::TacticalBridgeCell>,
-    >,
+    bridge_cells: Option<&dyn terrain::TacticalBridgeLookup>,
 ) -> (u16, u16) {
     let inverse = terrain::screen_to_cell_tactical_inverse(
         world_x,
@@ -1405,12 +1431,9 @@ pub(crate) fn screen_point_to_world_cell(
         world_x,
         world_y,
         &state.height_map(),
-        Some(
-            &state
-                .match_state
-                .match_presentation
-                .tactical_bridge_inverse_map,
-        ),
+        state.sim_view().and_then(|view| {
+            crate::app::match_runtime::sim_tick::tactical_bridge_cells(view.simulation())
+        }),
     )
 }
 
@@ -1463,8 +1486,7 @@ mod tests {
     use crate::sim::combat::combat_weapon::WeaponSlot;
     use crate::sim::intern::{InternedId, StringInterner, test_intern};
     use crate::sim::terrain_object::{
-        TerrainObjectLifecycle, TerrainObjectState, mark_terrain_occupation,
-        unmark_terrain_occupation,
+        TerrainObjectState, mark_terrain_occupation, unmark_terrain_occupation,
     };
     use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
     use crate::util::fixed_math::SimFixed;
@@ -1557,17 +1579,12 @@ mod tests {
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolved_terrain = Some(terrain);
         let mut interner = StringInterner::default();
-        let tree = TerrainObjectState {
-            stable_id: 1,
-            native_unique_id: None,
-            in_logic_vector: false,
-            type_ref: interner.intern("TREE01"),
-            rx: 0,
-            ry: 0,
-            health: 10,
-            max_health: 10,
-            occupation_bits: 7,
-            lifecycle: TerrainObjectLifecycle::Live,
+        let tree = {
+            let mut terrain = TerrainObjectState::for_test(1, interner.intern("TREE01"), 0, 0);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 7;
+            terrain
         };
         {
             let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);
@@ -1703,7 +1720,7 @@ mod tests {
     }
 
     #[test]
-    fn world_point_to_cell_forwards_tactical_bridge_inverse_map() {
+    fn world_point_to_cell_forwards_bridge_lookup() {
         let (world_x, world_y) = (150.0, 180.0);
         let height_map = BTreeMap::new();
         let bridge_cells = BTreeMap::from([(

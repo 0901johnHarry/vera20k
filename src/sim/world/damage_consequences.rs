@@ -26,9 +26,11 @@ pub(crate) struct DamageConsequences {
     delivery: DamageDelivery,
 }
 
-pub(super) struct DamageCommitReceipt {
+pub(crate) struct DamageCommitReceipt {
+    pub(crate) area_result: Option<crate::sim::combat::world_receiver::AreaDamageResult>,
+    pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
-    pub(super) bridge_state_changed: bool,
+    pub(crate) bridge_state_changed: bool,
     pub(super) path_grid: Option<Arc<PathGrid>>,
 }
 
@@ -135,12 +137,10 @@ impl DamageConsequences {
             world.uninit_with_rules(dead_id, rules);
         }
 
-        let bridge_state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(
-            world,
-            rules,
-            &effects.bridge_damage_events,
-            overlay_registry,
-        );
+        // Apply_area_damage already completed its bridge callbacks before
+        // returning to the caller's animation/cluster tail. Delivery carries
+        // only the resulting frame notification, never deferred gameplay.
+        let bridge_state_changed = effects.bridge_state_changed;
         debug_assert!(effects.tiberium_reduction_requests.is_empty());
         for request in &effects.tiberium_reduction_requests {
             world.reduce_tiberium_at_with_native_context(
@@ -180,21 +180,7 @@ impl DamageConsequences {
         // plays the art type's `Report=`/`StartSound=`, and only the real
         // AnimType carries its `Translucent=` and `Rate=`.
         for fx in std::mem::take(&mut effects.explosion_effects) {
-            match fx.death {
-                Some(spawn) => world.admit_death_anim(rules, fx.shp_name, spawn),
-                None => {
-                    world.spawn_combat_explosion_anim(
-                        rules,
-                        fx.shp_name,
-                        fx.rx,
-                        fx.ry,
-                        fx.sub_x,
-                        fx.sub_y,
-                        fx.z,
-                        fx.world_z,
-                    );
-                }
-            }
+            admit_explosion_effect(world, rules, fx);
         }
         if let DamageDelivery::Ordinary { fire_events, .. } = &delivery {
             admit_electric_sparks(world, rules, fire_events);
@@ -231,9 +217,35 @@ impl DamageConsequences {
                 .append(&mut effects.smudge_spawn_requests);
         }
         DamageCommitReceipt {
+            area_result: None,
+            fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
             path_grid,
+        }
+    }
+}
+
+/// One constructor authority for immediate native tails and deferred receiver
+/// packets. Bullet469C40 calls this before its next Cluster draw469057.
+pub(crate) fn admit_explosion_effect(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    fx: crate::sim::combat::ExplosionEffect,
+) {
+    match fx.death {
+        Some(spawn) => world.admit_death_anim(rules, fx.shp_name, spawn),
+        None => {
+            world.spawn_combat_explosion_anim(
+                rules,
+                fx.shp_name,
+                fx.rx,
+                fx.ry,
+                fx.sub_x,
+                fx.sub_y,
+                fx.z,
+                fx.world_z,
+            );
         }
     }
 }

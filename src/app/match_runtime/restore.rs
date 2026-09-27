@@ -36,6 +36,11 @@ pub(crate) fn commit_prepared_load(
     let occupied_overlays = prepared.commit_into(runtime);
     crate::app::loading::transitions::sync_in_game_options_speed_from_sim(state);
     state.match_state.match_presentation.combat_lights.clear();
+    state
+        .match_state
+        .match_presentation
+        .line_trails
+        .clear_on_load();
     // The restored world's strips are seeded silently on the first refresh
     // below (`SidebarClass::AddCameo` init gate), not read as insertions
     // against the outgoing timeline's cameos.
@@ -50,7 +55,8 @@ pub(crate) fn commit_prepared_load(
     );
 
     // F10: the fog view cache was discarded with the load (nonserialized) —
-    // rebuild it for the local owner BEFORE the first tactical render, and
+    // rebuild it for the restored session.current_house BEFORE the first
+    // tactical render (the owner query derives from the committed simulation), and
     // invalidate the render dirty-gates: the view generation restarts from
     // zero, so an equal counter no longer proves an unchanged view.
     if let Some(owner) = crate::app::input::commands::preferred_local_owner_name(state) {
@@ -83,8 +89,12 @@ pub(crate) fn commit_prepared_load(
         && let Some(terrain) = runtime.resources.terrain_template.as_ref()
     {
         let presentation = &mut state.match_state.match_presentation;
-        presentation.lighting.restore(terrain, &runtime.simulation,
-            &runtime.resources.rules, presentation.in_game_options.detail_level);
+        presentation.lighting.restore(
+            terrain,
+            &runtime.simulation,
+            &runtime.resources.rules,
+            presentation.in_game_options.detail_level,
+        );
     }
 
     // Reset timing to prevent a burst of ticks after the load.

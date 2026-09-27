@@ -257,8 +257,11 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
             .or_else(|| rules.art_registry.get(&object.id))
             .expect("BFRT art");
         let transport = sim.substrate.entities.get(bfrt).unwrap();
+        let ports: [crate::rules::flh::Flh; 5] = std::array::from_fn(|port| {
+            art.open_topped_port_flh(port, object.turret_count, object.weapon_count)
+        });
         (
-            art.alternate_flh,
+            ports,
             super::object_world_z_leptons(transport, sim.resolved_terrain.as_ref()),
         )
     };

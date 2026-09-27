@@ -12,7 +12,7 @@ use crate::app::presentation::sidebar_render::{
     current_sidebar_gclock_texture,
 };
 use crate::app::presentation::ui_overlays::current_software_cursor_texture;
-use crate::render::batch::{BatchRenderer, BatchTexture, InstanceBufferPool, SpriteInstance};
+use crate::render::batch::{BatchRenderer, BatchTexture, InstanceBufferPool};
 use crate::render::bridge_atlas::BridgeAtlas;
 use crate::render::overlay_atlas::OverlayAtlas;
 use crate::render::tactical_draw_plan::RenderZPolicy;
@@ -27,13 +27,7 @@ use super::merge_passes;
 /// depth values that match the uploaded GPU buffers.
 pub(super) struct DrawPassData<'a> {
     pub overlay_render_z: &'a [RenderZPolicy],
-    pub ground: &'a super::draw_plan_lowering::GroundObjectPass,
-    pub unit_instances: &'a [SpriteInstance],
-    pub unit_pages: &'a [usize],
-    pub unit_transition_paged: &'a [Vec<SpriteInstance>],
-    pub shp_paged: &'a [Vec<SpriteInstance>],
-    pub top_unit_pages: &'a [usize],
-    pub top_shp_pages: &'a [usize],
+    pub object_layers: &'a [super::draw_plan_lowering::ObjectLayerPass; 5],
     pub ghost_page: u8,
 }
 
@@ -210,54 +204,44 @@ pub(super) fn dispatch_draw_passes(
     // Bridge units share the native Ground parent pass below. Their body
     // split changes per-pixel Z, never their position among buildings.
 
-    // --- Step 5: Ground objects (native integer LayerClass order) ---
-    // Terrain, units, infantry, and building-owned pieces share the exact
-    // signed X+Y + stable-registration order. Atlas bindings dispatch only
-    // after the parent slot has been selected.
+    // --- Step 5: Retained Display layers0..3 ---
+    // Ground keeps the simulation's partial signed-key sort; other layers
+    // retain submission order. Texture bindings never reorder parent slots.
     drop(pass);
-    merge_passes::draw_native_ground_object_pass(
-        encoder,
-        view,
-        &state.renderer.depth_view,
-        &mut state.renderer.terrain_draw_renderer,
-        [tac_x, tac_y, tac_w, tac_h],
-        &state.renderer.batch_renderer,
-        pool,
-        data.ground,
-        state.match_state.match_presentation.overlay_atlas.as_ref(),
-        state.match_state.match_presentation.unit_atlas.as_ref(),
-        &transition_cache,
-        state.match_state.match_presentation.sprite_atlas.as_ref(),
-        state.match_state.match_presentation.palette_set.as_ref(),
-        state
-            .match_state
-            .match_presentation
-            .building_zshape
-            .as_ref()
-            .map_or(
-                state.renderer.batch_renderer.default_zshape_bind_group(),
-                |z| &z.bind_group,
-            ),
-    );
+    state
+        .renderer
+        .terrain_draw_renderer
+        .note_external_passes(encoder, 1);
+    for layer in 0..=3 {
+        merge_passes::draw_native_object_pass(
+            encoder,
+            view,
+            &state.renderer.depth_view,
+            &mut state.renderer.terrain_draw_renderer,
+            [tac_x, tac_y, tac_w, tac_h],
+            &state.renderer.batch_renderer,
+            pool.get_page("object_layer", layer),
+            &data.object_layers[layer],
+            state.match_state.match_presentation.overlay_atlas.as_ref(),
+            state.match_state.match_presentation.unit_atlas.as_ref(),
+            pose_cache.texture(),
+            &transition_cache,
+            state.match_state.match_presentation.sprite_atlas.as_ref(),
+            state.match_state.match_presentation.palette_set.as_ref(),
+            state
+                .match_state
+                .match_presentation
+                .building_zshape
+                .as_ref()
+                .map_or(
+                    state.renderer.batch_renderer.default_zshape_bind_group(),
+                    |z| &z.bind_group,
+                ),
+        );
+    }
 
     let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
     pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
-
-    // Scheduler-owned effects not yet carrying verified class-specific
-    // YSortAdjust remain in the pre-existing residual SHP stream.
-    merge_passes::draw_merged_object_pass(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        data.unit_instances,
-        data.unit_pages,
-        data.unit_transition_paged,
-        data.shp_paged,
-        state.match_state.match_presentation.unit_atlas.as_ref(),
-        &transition_cache,
-        state.match_state.match_presentation.sprite_atlas.as_ref(),
-        state.match_state.match_presentation.palette_set.as_ref(),
-    );
 
     if let (Some(overlay), Some((buffer, count))) = (
         state
@@ -276,12 +260,8 @@ pub(super) fn dispatch_draw_passes(
     }
 
     // (There is no separate building-turret pass. gamemd draws a building's
-    // voxel turret inside the building's own display call, in the sorted
-    // ground layer, right after the body — the pass that does run after
-    // layer 2 walks the building array to draw a production/ally overlay and
-    // never touches a turret. The turret instances are therefore emitted into
-    // the same UnitAtlas stream as the vehicles and interleave with them in
-    // step 5; see the note in build_instances.)
+    // voxel turret inside the building's retained Display slot, after the
+    // body. Atlas page changes preserve that parent and its piece order.)
 
     // --- Step 7.5: Particles (Layer 3, above all ground geometry) ---
     // ParticleClass::GetLayer = 3 in the original engine, drawing particles
@@ -312,54 +292,41 @@ pub(super) fn dispatch_draw_passes(
             .draw_spotlight_type16(&mut pass, buffer, count);
     }
 
-    // --- Step 7.7: The band above Ground (gamemd layers 3 and 4) ---
-    // The native object loop walks its display layers in index order and only
-    // layer 2 is kept sorted, so everything an air locomotor puts in layers 3
-    // and 4 is drawn after every ground object, in submission order. That is
-    // the whole reason this pass exists: an aircraft off its pad must never be
-    // covered by a building or a unit, whatever iso row it happens to be over.
-    //
-    // Instance order inside the band is emission order, not depth — see the
-    // note on `top_unit` in build_instances.
-    //
-    // Current SHP and VXL upper-body pipelines read depth without writing it.
-    // Complete native upper-layer depth/terrain interaction remains outside
-    // this Ground bridge correction; painter band alone does not prove it.
-    if let (Some(unit_atlas), Some(palette_set)) = (
+    // Finish remaining Layer3 families before the distinct retained Top4.
+    drop(pass);
+    state
+        .renderer
+        .terrain_draw_renderer
+        .note_external_passes(encoder, 1);
+    let layer = 4;
+    merge_passes::draw_native_object_pass(
+        encoder,
+        view,
+        &state.renderer.depth_view,
+        &mut state.renderer.terrain_draw_renderer,
+        [tac_x, tac_y, tac_w, tac_h],
+        &state.renderer.batch_renderer,
+        pool.get_page("object_layer", layer),
+        &data.object_layers[layer],
+        state.match_state.match_presentation.overlay_atlas.as_ref(),
         state.match_state.match_presentation.unit_atlas.as_ref(),
-        state.match_state.match_presentation.palette_set.as_ref(),
-    ) {
-        if let Some((buf, count)) = pool.get("unit_top") {
-            if count > 0 {
-                merge_passes::draw_unit_atlas_page_runs(
-                    &mut pass,
-                    &state.renderer.batch_renderer,
-                    unit_atlas,
-                    palette_set,
-                    buf,
-                    data.top_unit_pages,
-                    0,
-                    count,
-                    pose_cache.texture(),
-                );
-            }
-        }
-    }
-    if let (Some(atlas), Some((buffer, count))) = (
+        pose_cache.texture(),
+        &transition_cache,
         state.match_state.match_presentation.sprite_atlas.as_ref(),
-        pool.get("shp_top"),
-    ) && count > 0
-    {
-        merge_passes::draw_shp_atlas_page_runs(
-            &mut pass,
-            &state.renderer.batch_renderer,
-            atlas,
-            buffer,
-            data.top_shp_pages,
-            0,
-            count,
-        );
-    }
+        state.match_state.match_presentation.palette_set.as_ref(),
+        state
+            .match_state
+            .match_presentation
+            .building_zshape
+            .as_ref()
+            .map_or(
+                state.renderer.batch_renderer.default_zshape_bind_group(),
+                |z| &z.bind_group,
+            ),
+    );
+
+    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
 
     // --- Step 7.8: Persistent combat-light vector ---
     // gamemd edits the completed tactical object surface here, tail-to-head,
@@ -427,6 +394,17 @@ pub(super) fn dispatch_draw_passes(
             buf.draw(&mut pass);
         }
     }
+
+    // Tactical LineTrail556D40 edits the completed tactical destination and
+    // samples the same native Z authority as bridge/object rendering. End the
+    // attachment pass while the ordered RGB565 stores execute, then load it.
+    drop(pass);
+    state
+        .renderer
+        .terrain_draw_renderer
+        .draw_line_trails(encoder, view);
+    let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+    pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
 
     // --- Step 10: UI elements ---
     // Factory rally and selected action lines are separate line families.
@@ -503,6 +481,21 @@ pub(super) fn dispatch_draw_passes(
         pool,
         bomb_clock_tex,
         "bomb_clocks",
+    );
+    // The repair wrench follows the bomb clock in `DrawExtras`.
+    let repair_wrench_tex = state
+        .match_state
+        .match_presentation
+        .selection_overlay
+        .as_ref()
+        .and_then(|o| o.repair_wrench())
+        .map(|wrench| wrench.texture());
+    draw_pooled_no_depth(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        repair_wrench_tex,
+        "repair_wrenches",
     );
     // Occupant pips for garrisoned buildings (pips.shp frames 6-12).
     let occupant_pip_tex = state

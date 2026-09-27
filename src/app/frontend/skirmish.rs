@@ -1021,6 +1021,9 @@ mod tests {
                 seed: 9,
                 ..Default::default()
             });
+        // This synthetic fixture omits the production native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let mut expected_rng = sim.scenario_rng.clone();
         let _ = expected_rng.next_range_u32_inclusive(0, 0xffff);
 
@@ -1135,6 +1138,7 @@ mod tests {
                 recruitable_b: true,
                 structure_upgrades: [None, None, None],
                 structure_ai_sellable: false,
+                structure_ai_repairable: false,
             }],
             Some(&rules),
             &BTreeMap::new(),
@@ -1542,6 +1546,9 @@ mod tests {
             ..Default::default()
         };
         let mut sim = bootstrap_rng.into_simulation(&descriptor);
+        // This synthetic fixture omits the production native Rules prefix.
+        sim.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let mut expected_rng = SimRng::new(u64::from(launch_seed));
         for _ in 0..8 {
             let _ = expected_rng

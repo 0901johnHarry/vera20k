@@ -76,33 +76,41 @@ fn overlay_radar_loader_separates_cell_anim_from_overlay_own_shp() {
     let registry = OverlayTypeRegistry::from_ini(&rules, None);
     let art = ArtRegistry::from_ini(&rules);
     let names = BTreeMap::from([(24, "BRIDGE1".to_string())]);
-    let colors = compute_overlay_radar_colors(
-        &assets,
-        &registry,
-        &names,
-        "tem",
-        "TEMPERATE",
-        &rules,
-        &art,
-    );
+    let colors =
+        compute_overlay_radar_colors(&assets, &registry, &names, "tem", "TEMPERATE", &rules, &art);
 
-    assert_eq!(registry.flags(0).and_then(|flags| flags.cell_anim.as_deref()), None);
     assert_eq!(
-        registry.flags(1).and_then(|flags| flags.cell_anim.as_deref()),
+        registry
+            .flags(0)
+            .and_then(|flags| flags.cell_anim.as_deref()),
+        None
+    );
+    assert_eq!(
+        registry
+            .flags(1)
+            .and_then(|flags| flags.cell_anim.as_deref()),
         Some("TWNK1"),
     );
     assert_eq!(
-        registry.flags(5).and_then(|flags| flags.cell_anim.as_deref()),
+        registry
+            .flags(5)
+            .and_then(|flags| flags.cell_anim.as_deref()),
         None,
         "FindByName failure leaves the native pointer null",
     );
-    assert!(!colors.contains_key(&(0, 11)), "stock TIB01 own SHP is ignored");
+    assert!(
+        !colors.contains_key(&(0, 11)),
+        "stock TIB01 own SHP is ignored"
+    );
     assert_eq!(
         colors.get(&(1, 11)),
         Some(&[31, 41, 59]),
         "tiberium reads the referenced CellAnim SHP, not TIBANIM.SHP",
     );
-    assert!(!colors.contains_key(&(2, 11)), "missing CellAnim SHP stays absent");
+    assert!(
+        !colors.contains_key(&(2, 11)),
+        "missing CellAnim SHP stays absent"
+    );
     assert_eq!(colors.get(&(3, 0)), Some(&[8, 9, 10]));
     assert!(
         !colors.contains_key(&(4, 0)),
