@@ -596,17 +596,23 @@ pub struct GeneralRules {
     /// A garrisoned building's `ThreatPosed` is `occupants * this` instead of
     /// its own type value (`TechnoClass::Get_ThreatPosed @ 0x00708B40`).
     pub threat_per_occupant: i32,
-    /// `NormalTargetingDelay=` ([General], stock 27) — frames between passive
-    /// target scans for every mission except Area Guard. The per-object scan
-    /// timer is re-armed to this value plus a 0..=2 scenario-RNG jitter.
-    pub normal_targeting_delay: u32,
+    /// `NormalTargetingDelay=` ([General], stock 27; `Rules+0xE08`, ReadInt
+    /// `0x006701BA..0x006701D3`, constructor 27 at `0x00666911`, no clamp) —
+    /// frames between passive target scans for every mission except Area
+    /// Guard. The per-object scan timer is re-armed to this value plus a
+    /// 0..=2 scenario-RNG jitter.
+    pub normal_targeting_delay: i32,
     /// `[General] DeadBodies=` (`Rules+0x124`): the corpse anims an
     /// infantryman's Die1..Die5 completion picks from when its type names none
     /// (`0x00520C42..0x00520C91`). Retail: `DEATH_A`..`DEATH_F`.
     pub dead_bodies: Vec<String>,
-    /// `GuardAreaTargetingDelay=` ([General], stock 36) — the same cadence for
-    /// an Area Guard object, which scans twice as far and so scans less often.
-    pub guard_area_targeting_delay: u32,
+    /// `GuardAreaTargetingDelay=` ([General], stock 36; `Rules+0xE04`, ReadInt
+    /// at `0x0067019A..0x006701B4`, constructor 36 at `0x00666906`, no clamp)
+    /// — the same cadence for an Area Guard object, which scans twice as far
+    /// and so scans less often (`0x0070985E`). It is also the dwell after a
+    /// shot before a unit's idle turret returns (`0x00736B45`) and before a
+    /// Gattling building's idle decay starts (`0x0043FEE9`), each plus 5.
+    pub guard_area_targeting_delay: i32,
     /// SFX played when the first occupant enters a CanBeOccupied building.
     /// Parsed from [AudioVisual] BuildingGarrisonedSound (typically "BuildingGarrisoned").
     /// None = no sound configured. Resolved at app layer to a sound.ini entry.
@@ -2067,11 +2073,9 @@ impl GeneralRules {
                 .collect(),
             normal_targeting_delay: general
                 .get_i32("NormalTargetingDelay")
-                .map(|v| v.max(0) as u32)
                 .unwrap_or(defaults.normal_targeting_delay),
             guard_area_targeting_delay: general
                 .get_i32("GuardAreaTargetingDelay")
-                .map(|v| v.max(0) as u32)
                 .unwrap_or(defaults.guard_area_targeting_delay),
             // Gravity lives in [AudioVisual] (stock value 6). Reading it from
             // [General] silently fell back to the code default 3 — half stock
@@ -7281,6 +7285,13 @@ DefaultSparkSystem=SparkSys
         ));
         assert_eq!(g.normal_targeting_delay, 9);
         assert_eq!(g.guard_area_targeting_delay, 13);
+        // ReadInt keeps a negative delay (no clamp at `0x006701B4` or
+        // `0x006701D3`).
+        let g = GeneralRules::from_ini(&ini_with_general(
+            "NormalTargetingDelay=-3\nGuardAreaTargetingDelay=-10",
+        ));
+        assert_eq!(g.normal_targeting_delay, -3);
+        assert_eq!(g.guard_area_targeting_delay, -10);
     }
 
     #[test]

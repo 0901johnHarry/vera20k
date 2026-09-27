@@ -184,7 +184,10 @@ impl MissionCom {
 
     /// `+0xC4 = 0` outside an assignment: Unit and Infantry PerCellProcess
     /// zero it as the object enters a transport or building (`0x0073A6FC`,
-    /// `0x0073A29E`, `0x0051A40E`, `0x0051A2B0`).
+    /// `0x0073A29E`, `0x0051A40E`, `0x0051A2B0`); a building's Mission_Attack
+    /// and Mission_Guard zero it after their Gattling calls and on
+    /// Mission_Attack's drop, CLOAKED and aim-only arms
+    /// (`world::techno_ai::building_missions`).
     pub(crate) fn clear_ai_counter(&mut self) {
         self.ai_counter = 0;
     }
