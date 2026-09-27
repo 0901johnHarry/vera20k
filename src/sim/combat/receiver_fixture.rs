@@ -719,6 +719,36 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             if let Some(radiation) = radiation.as_deref() {
                 world.radiation = radiation.clone();
             }
+            // No object pass runs here: a building holding a target takes its
+            // Mission_Attack visit before the receiver, as its Update does.
+            let holders: Vec<u64> = world
+                .substrate
+                .entities
+                .keys_sorted()
+                .into_iter()
+                .filter(|&id| {
+                    world.substrate.entities.get(id).is_some_and(|entity| {
+                        entity.category == EntityCategory::Structure
+                            && entity.attack_target.is_some()
+                            && entity.health.current > 0
+                            && !entity.lifecycle.in_limbo
+                    })
+                })
+                .collect();
+            for id in holders {
+                // A hand-built object switched to Structure keeps its first
+                // category's leaf; construction gives a building its own.
+                if let Some(entity) = world.substrate.entities.get_mut(id)
+                    && entity.mission_leaf.as_building().is_none()
+                {
+                    entity.mission_leaf =
+                        crate::sim::mission::MissionLeafState::for_entity_category(
+                            EntityCategory::Structure,
+                        );
+                }
+                world.fixture_building_attack_visit(id, rules, overlay_registry);
+            }
+            let fire_requests = std::mem::take(&mut world.fire_requests);
             let first_tail_id = world.substrate.next_stable_object_id;
             let mut result = world_receiver::tick_combat(
                 world,
@@ -728,7 +758,7 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 tick_ms,
                 live_order,
                 fire_suppressed,
-                &BTreeSet::new(),
+                &fire_requests,
                 projectile_detonations,
                 wave_damage_events,
             );

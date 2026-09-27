@@ -1324,20 +1324,21 @@ impl GameEntity {
     /// and do nothing" ([`MissionType::holds_until_retasked`]). Those never
     /// finish, so letting the derived Guard reading win there would make every
     /// map-authored Sleep/Sticky/Harmless placement scan and shoot.
+    ///
+    /// A building needs no bridge: its Update dispatches its committed
+    /// missions (`world::techno_ai::building_missions`), so the block reads
+    /// `+0xAC` as it stands.
     pub fn passive_acquire_mission(&self) -> MissionType {
         // A Health-0 wreck runs no mission handler (`MissionClass::AI @
         // 0x005B30A7`), so no job of its can finish and hand it back to Guard:
         // the passive block reads its committed mission as it stands
         // (`0x006FA697`).
-        if self.health.current <= 0 {
+        if self.health.current <= 0 || self.category == EntityCategory::Structure {
             return self.mission.current().known().unwrap_or(MissionType::None);
         }
         let (derived, _) = self.derived_mission_with(!self.passively_acquired_target);
         let derived = if derived == MissionType::None
-            && matches!(
-                self.category,
-                EntityCategory::Structure | EntityCategory::Infantry
-            )
+            && self.category == EntityCategory::Infantry
             && self.guards_when_idle()
         {
             MissionType::Guard

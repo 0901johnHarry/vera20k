@@ -843,6 +843,8 @@ mod tests {
             non_vehicle: false,
             jumpjet_turn: false,
             emp_pulse_cannon: false,
+            has_stupid_guard_mode: false,
+            tick_tank: false,
             is_gattling: false,
             artillary: false,
             gattling_stages: Default::default(),

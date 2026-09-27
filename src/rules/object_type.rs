@@ -1319,6 +1319,15 @@ pub struct ObjectType {
     pub non_vehicle: bool,
     pub jumpjet_turn: bool,
     pub emp_pulse_cannon: bool,
+    /// BuildingType `HasStupidGuardMode=` (`+0x16B5`, ReadINI `0x00460EB4`,
+    /// read over the BuildingTypeClass constructor's true, `0x0045E108`). An
+    /// unarmed building's Mission_Guard returns 100 frames at once while it
+    /// holds (`0x004497E4..0x00449800`); retail clears it on the depots,
+    /// airfields, the missile silo and the defences.
+    pub has_stupid_guard_mode: bool,
+    /// BuildingType `TickTank=` (`+0x16C4`, ReadINI `0x00460B95`, constructor
+    /// false). No retail type sets it.
+    pub tick_tank: bool,
 
     /// `IsGattling=` (`TechnoTypeClass+0xCD5`, ReadINI `0x0071402A`).
     pub is_gattling: bool,
@@ -2371,6 +2380,10 @@ impl ObjectType {
                 && section.get_bool("JumpJetTurn").unwrap_or(false),
             emp_pulse_cannon: category == ObjectCategory::Building
                 && section.get_bool("EMPulseCannon").unwrap_or(false),
+            has_stupid_guard_mode: category == ObjectCategory::Building
+                && section.get_bool("HasStupidGuardMode").unwrap_or(true),
+            tick_tank: category == ObjectCategory::Building
+                && section.get_bool("TickTank").unwrap_or(false),
             artillary: category == ObjectCategory::Building
                 && section.get_bool("Artillary").unwrap_or(false),
             is_gattling,

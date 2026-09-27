@@ -147,7 +147,9 @@ impl MissionLeafState {
         self.expect_aircraft_mut().action_latch = u8::from(active);
     }
 
-    #[cfg(test)]
+    /// Building `+0x6DD`, written by Mission_Guard (`0x00449701`),
+    /// Mission_Attack (`0x0044B008`), the first opening (`0x004467C9`) and
+    /// cleared by Update's ready checks (`0x0043FE4D`, `0x0043FFAD`).
     pub(crate) fn set_building_ready_latch(&mut self, raw: u8) {
         self.expect_building_mut().ready_latch = raw;
     }
@@ -178,7 +180,6 @@ impl MissionLeafState {
     }
 
     #[track_caller]
-    #[cfg(test)]
     fn expect_building_mut(&mut self) -> &mut BuildingMissionLeaf {
         match self {
             Self::Building(leaf) => leaf,
