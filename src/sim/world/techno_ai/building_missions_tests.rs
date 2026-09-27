@@ -1,7 +1,8 @@
 //! Native evidence for [`super`]: `tools/spatial_oracle/building_guard_attack.json`
 //! replayed through the Rust handlers and, for its cadence rows, through the
-//! production frame; and the retail inputs that keep the module's dormant arms
-//! dormant.
+//! production frame; the retail inputs that keep the module's dormant arms
+//! dormant; and retail Dustbowl runs of a Pillbox and a Sentry Gun through
+//! the production frame (ignored: they need the retail install).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -744,4 +745,296 @@ fn retail_building_mission_inputs() {
             .unwrap_or(false);
         assert!(!sam, "{id}");
     }
+}
+
+/// Retail Dustbowl with a `kind` base defence of `owner` at the returned cell
+/// and an `enemy` `mcv` five cells east of it, on open level ground from two
+/// cells west to twenty cells east and one cell north and south, and a power
+/// plant for each house twenty-four or more cells away. The MCV is placed
+/// first, so the spot is one a vehicle's Unlimbo admits. Americans and
+/// Russians are both human (no AI orders) and allied with the map's own
+/// `Player` house, as in `combat::open_topped_fire_tests`.
+fn retail_dustbowl_defence(
+    kind: &str,
+    owner: &str,
+    enemy: &str,
+    mcv: &str,
+) -> (
+    crate::headless_scenario::HeadlessScenario,
+    u64,
+    u64,
+    (u16, u16),
+) {
+    let dir = std::env::var("RA2_DIR")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            crate::util::config::GameConfig::load()
+                .expect("set RA2_DIR or provide config.toml for this ignored test")
+                .paths
+                .ra2_dir
+        });
+    let mut scenario =
+        crate::headless_scenario::load(&dir, "Dustbowl.mmx", 0x00C0_FFEE).expect("Dustbowl loads");
+    let crate::sim::runtime::SimRuntime {
+        simulation: sim,
+        resources,
+    } = &mut scenario.runtime;
+    let rules = &resources.rules;
+    for (name, side) in [("Americans", 0), ("Russians", 1)] {
+        let house = sim.interner.intern(name);
+        sim.houses.entry(house).or_insert_with(|| {
+            crate::sim::house_state::HouseState::new(house, side, None, true, 10_000, 10)
+        });
+        if !sim.session.house_order.contains(&house) {
+            sim.session.house_order.push(house);
+        }
+    }
+    let (defence, truck, x, y) = (40..100_u16)
+        .flat_map(|y| (40..100_u16).map(move |x| (x, y)))
+        .find_map(|(x, y)| {
+            let grid = sim.path_grid()?;
+            let terrain = sim.resolved_terrain.as_ref()?;
+            let level = terrain.cell(x, y)?.level;
+            let open = (x - 2..=x + 20).all(|cx| {
+                (y - 1..=y + 1).all(|cy| {
+                    terrain.cell(cx, cy).is_some_and(|cell| cell.level == level)
+                        && grid.cell(cx, cy).is_some_and(|cell| cell.ground_walkable)
+                })
+            });
+            if !open {
+                return None;
+            }
+            let truck = sim.spawn_object(mcv, enemy, x + 5, y, 0, rules, &resources.height_map)?;
+            let defence = sim
+                .spawn_object(kind, owner, x, y, 0, rules, &resources.height_map)
+                .expect("the defence stands where the MCV does");
+            Some((defence, truck, x, y))
+        })
+        .expect("open level ground for the fight");
+    for (plant, house) in [("GAPOWR", "Americans"), ("NAPOWR", "Russians")] {
+        (20..120_u16)
+            .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
+            .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 24)
+            .find_map(|(px, py)| {
+                sim.spawn_object(plant, house, px, py, 0, rules, &resources.height_map)
+            })
+            .unwrap_or_else(|| panic!("room for {plant}"));
+    }
+    for (house, ally) in [
+        ("AMERICANS", "PLAYER"),
+        ("PLAYER", "AMERICANS"),
+        ("RUSSIANS", "PLAYER"),
+        ("PLAYER", "RUSSIANS"),
+    ] {
+        sim.house_alliances
+            .entry(house.to_string())
+            .or_default()
+            .insert(ally.to_string());
+    }
+    sim.resolve_type_handles(rules);
+    (scenario, defence, truck, (x, y))
+}
+
+fn retail_frame(
+    scenario: &mut crate::headless_scenario::HeadlessScenario,
+    orders: Vec<CommandEnvelope>,
+) -> crate::sim::world::SimFrameOutput {
+    scenario
+        .runtime
+        .advance_frame(
+            &orders,
+            crate::headless_scenario::SIM_TICK_MS,
+            crate::sim::world::TickLane::Ordinary,
+        )
+        .expect("retail frame")
+}
+
+fn retail_spawn(
+    scenario: &mut crate::headless_scenario::HeadlessScenario,
+    kind: &str,
+    owner: &str,
+    cell: (u16, u16),
+) -> u64 {
+    let crate::sim::runtime::SimRuntime {
+        simulation: sim,
+        resources,
+    } = &mut scenario.runtime;
+    let id = sim
+        .spawn_object(
+            kind,
+            owner,
+            cell.0,
+            cell.1,
+            0,
+            &resources.rules,
+            &resources.height_map,
+        )
+        .expect("spawns");
+    sim.resolve_type_handles(&resources.rules);
+    id
+}
+
+/// The 3-D lepton distance between two objects' coordinates.
+fn retail_distance(scenario: &crate::headless_scenario::HeadlessScenario, a: u64, b: u64) -> i32 {
+    let entities = &scenario.sim().substrate.entities;
+    let [a, b] = [a, b].map(|id| {
+        let coord = crate::sim::movement::ground_pose::position_world_coord(
+            &entities.get(id).expect("object lives").position,
+        );
+        [coord.x, coord.y, coord.z]
+    });
+    crate::util::native_x87::distance_3d_leptons(a, b)
+}
+
+/// A retail base defence through the production frame, on the chain's common
+/// path:
+///
+/// - Unlimbo queues Guard (`0x0044D6A0`) and its first Update commences it.
+/// - An unarmed enemy MCV stands five cells east, inside the 5.5-cell
+///   `Vulcan`/`Vulcan2` (`ROF=26`). The Guard scan picks it, Mission_Guard
+///   flips to Attack, and the defence fires only on Attack. It fires every 27
+///   or 29 frames: GetROF's `RandomRanged(0, 2)` makes the rearm 26, 27 or
+///   28, and Mission_Attack's REARM return of 2 leaves only odd offsets from
+///   the shot's frame, the cadence the oracle's rows pin natively.
+/// - The MCV drives off. The defence fires only while it is in range, drops
+///   it only once it is out of range (Mission_Attack's RANGE arm or the
+///   Update's range drop), and returns to Guard.
+/// - An enemy infantryman three cells east is shot dead; Mission_Attack's
+///   null-target arm returns the defence to Guard.
+fn retail_defence_guards_attacks_and_returns(
+    kind: &str,
+    owner: &str,
+    enemy: &str,
+    mcv: &str,
+    infantry: &str,
+) {
+    let (mut scenario, defence, truck, (x, y)) = retail_dustbowl_defence(kind, owner, enemy, mcv);
+    let weapon = {
+        let rules = &scenario.runtime.resources.rules;
+        let weapon = rules
+            .object(kind)
+            .and_then(|obj| obj.primary.clone())
+            .unwrap();
+        let spec = rules.weapon(&weapon).unwrap();
+        assert_eq!((spec.rof, spec.range_leptons), (26, 1408), "{weapon}");
+        weapon
+    };
+    let mission = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let entity = scenario.sim().substrate.entities.get(defence).unwrap();
+        (
+            entity.mission.current().known(),
+            entity.attack_target.as_ref().map(|attack| attack.target),
+        )
+    };
+    {
+        let placed = scenario.sim().substrate.entities.get(defence).unwrap();
+        assert_eq!(placed.mission.current(), MissionId::NONE);
+        assert_eq!(
+            placed.mission.queued(),
+            MissionId::from_known(MissionType::Guard)
+        );
+    }
+    retail_frame(&mut scenario, Vec::new());
+    assert_eq!(mission(&scenario).0, Some(MissionType::Guard));
+
+    let mut shots = Vec::new();
+    for frame in 0..900_u32 {
+        let output = retail_frame(&mut scenario, Vec::new());
+        for event in output
+            .fire_events
+            .iter()
+            .filter(|event| event.attacker_id == defence)
+        {
+            assert_eq!(scenario.sim().interner.resolve(event.weapon_id), weapon);
+            assert_eq!(event.target, TargetKind::Entity(truck));
+            assert_eq!(
+                mission(&scenario),
+                (Some(MissionType::Attack), Some(TargetKind::Entity(truck))),
+                "a shot only on Attack"
+            );
+            shots.push(frame);
+        }
+        if shots.len() == 12 {
+            break;
+        }
+    }
+    let intervals: Vec<u32> = shots.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    println!("{kind}: shots at {shots:?}, intervals {intervals:?}");
+    assert_eq!(shots.len(), 12, "{kind} acquires the MCV and fires");
+    assert!(
+        intervals.iter().all(|gap| [27, 29].contains(gap)),
+        "{kind} fires every 27 or 29 frames: {intervals:?}"
+    );
+
+    let enemy_house = scenario.sim().interner.get(enemy).unwrap();
+    let tick = scenario.sim().session.tick;
+    retail_frame(
+        &mut scenario,
+        vec![CommandEnvelope::new(
+            enemy_house,
+            tick + 1,
+            Command::Move {
+                entity_id: truck,
+                target_rx: x + 17,
+                target_ry: y,
+                queue: false,
+                group_id: None,
+            },
+        )],
+    );
+    let mut dropped = None;
+    for frame in 0..600_u32 {
+        let output = retail_frame(&mut scenario, Vec::new());
+        let reach = retail_distance(&scenario, defence, truck);
+        // Measured after the frame: the MCV drives on after the shot's
+        // GetFireError, a few leptons a frame.
+        if output
+            .fire_events
+            .iter()
+            .any(|event| event.attacker_id == defence)
+        {
+            assert!(reach <= 1408 + 64, "{kind} fired at {reach} leptons");
+        }
+        if mission(&scenario).1.is_none() {
+            dropped = Some((frame, reach));
+            break;
+        }
+    }
+    let (frame, reach) = dropped.expect("the defence drops the MCV");
+    println!("{kind}: dropped the MCV {frame} frames after the order, {reach} leptons out");
+    assert!(reach > 1408, "{kind} dropped the MCV in range: {reach}");
+    for _ in 0..2 {
+        retail_frame(&mut scenario, Vec::new());
+    }
+    assert_eq!(mission(&scenario), (Some(MissionType::Guard), None));
+
+    let grunt = retail_spawn(&mut scenario, infantry, enemy, (x + 3, y));
+    let killed = (0..900_u32).find(|_| {
+        retail_frame(&mut scenario, Vec::new());
+        scenario
+            .sim()
+            .substrate
+            .entities
+            .get(grunt)
+            .is_none_or(|entity| entity.health.current == 0)
+    });
+    assert!(killed.is_some(), "{kind} kills the {infantry}");
+    for _ in 0..3 {
+        retail_frame(&mut scenario, Vec::new());
+    }
+    assert_eq!(mission(&scenario), (Some(MissionType::Guard), None));
+}
+
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_pillbox_guards_attacks_and_returns_to_guard() {
+    retail_defence_guards_attacks_and_returns("GAPILL", "Americans", "Russians", "SMCV", "E2");
+}
+
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_sentry_gun_guards_attacks_and_returns_to_guard() {
+    retail_defence_guards_attacks_and_returns("NALASR", "Russians", "Americans", "AMCV", "E1");
 }
