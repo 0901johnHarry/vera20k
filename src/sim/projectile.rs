@@ -944,6 +944,7 @@ pub fn projectile_special_detonation_action(
 }
 
 /// Stable projectile payload transferred to combat only at detonation.
+/// Built by [`Self::new`]; the private multiplier keeps struct literals out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectilePayload {
     /// Damage after firing-side modifiers, before target/warhead resolution.
@@ -958,12 +959,35 @@ pub struct ProjectilePayload {
     /// ([`Self::area_damage`]) and the DirectRocker arm's damage
     /// (`0x004697FC..0x0046980C`, not ported: dormant in retail, see
     /// [`SpecialDetonationAction::DirectRocker`]).
-    pub damage_multiplier: i32,
+    damage_multiplier: i32,
 }
 
 impl ProjectilePayload {
     /// `BulletClass::Construct @ 0x004664C0` writes 256 (`0x00466546`).
     pub const UNSCALED: i32 = 256;
+
+    /// A payload as `BulletClass::Construct` leaves it: unscaled damage.
+    pub fn new(base_damage: i32, warhead: InternedId, weapon: InternedId) -> Self {
+        Self {
+            base_damage,
+            warhead,
+            weapon,
+            damage_multiplier: Self::UNSCALED,
+        }
+    }
+
+    /// The same payload carrying another `+0x150` multiplier, as a Prism
+    /// master's supported shot does.
+    pub fn with_damage_multiplier(self, damage_multiplier: i32) -> Self {
+        Self {
+            damage_multiplier,
+            ..self
+        }
+    }
+
+    pub fn damage_multiplier(&self) -> i32 {
+        self.damage_multiplier
+    }
 
     /// `BulletClass::DetonateAtCoord @ 0x004690B0` hands
     /// `(+0x150 * +0x6C) >> 8` to `Apply_area_damage` (`0x00469A56..0x00469A66`:
@@ -2333,12 +2357,11 @@ mod tests {
                 ProjectileTarget::None => ProjectileCoord::new(0, 0, 0),
                 ProjectileTarget::DummyCell => ProjectileCoord::new(0, 0, 0),
             },
-            payload: ProjectilePayload {
-                base_damage: 40,
-                warhead: InternedId::from_index(3),
-                weapon: InternedId::from_index(4),
-                damage_multiplier: ProjectilePayload::UNSCALED,
-            },
+            payload: ProjectilePayload::new(
+                40,
+                InternedId::from_index(3),
+                InternedId::from_index(4),
+            ),
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),
             trajectory: ProjectileTrajectory::Straight,

@@ -987,11 +987,11 @@ impl Simulation {
             projectile.payload.warhead.index().hash(hasher);
             projectile.payload.weapon.index().hash(hasher);
             if schema.includes(HashFeature::PrismSupport)
-                && projectile.payload.damage_multiplier
+                && projectile.payload.damage_multiplier()
                     != crate::sim::projectile::ProjectilePayload::UNSCALED
             {
                 b"prism-damage-multiplier-v1".hash(hasher);
-                projectile.payload.damage_multiplier.hash(hasher);
+                projectile.payload.damage_multiplier().hash(hasher);
             }
             if !schema.includes(HashFeature::InvisoBullet) {
                 // The retired owner-house snapshot: the live source's house.
@@ -5472,11 +5472,8 @@ mod prism_support_hash_tests {
             .base_projection
             .replace_buildings_for_test(vec![1]);
         let list = sim.state_hash();
-        sim.projectiles
-            .get_mut(bullet)
-            .unwrap()
-            .payload
-            .damage_multiplier = 1024;
+        let payload = &mut sim.projectiles.get_mut(bullet).unwrap().payload;
+        *payload = payload.with_damage_multiplier(1024);
         let multiplier = sim.state_hash();
         let hashes = [unset, count, list, multiplier];
         for (index, hash) in hashes.iter().enumerate() {

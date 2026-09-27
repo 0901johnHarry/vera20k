@@ -232,12 +232,11 @@ fn immediate_bullet_commits_before_return_with_its_original_sound_order() {
     spawn.origin = impact;
     spawn.target = ProjectileTarget::Entity(victim);
     spawn.initial_target_position = impact;
-    spawn.payload = ProjectilePayload {
-        base_damage: 40,
-        warhead: sim.interner.intern("AP"),
-        weapon: sim.interner.intern("CoilBolt"),
-        damage_multiplier: ProjectilePayload::UNSCALED,
-    };
+    spawn.payload = ProjectilePayload::new(
+        40,
+        sim.interner.intern("AP"),
+        sim.interner.intern("CoilBolt"),
+    );
     sim.admit_projectile(projectile, spawn);
     assert!(sim.object_ai_visit_one(projectile, Some(&rules), ObjectAiCtx::default()));
     let ids = delivered_ids(&sim);

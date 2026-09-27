@@ -100,12 +100,11 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             input["live"]
         );
         assert_eq!(input["live"], input["placement"]);
-        let payload = ProjectilePayload {
-            base_damage: rules.weapon("HoverMissile").unwrap().damage,
-            warhead: world.interner.intern("HE"),
-            weapon: world.interner.intern("HoverMissile"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        };
+        let payload = ProjectilePayload::new(
+            rules.weapon("HoverMissile").unwrap().damage,
+            world.interner.intern("HE"),
+            world.interner.intern("HoverMissile"),
+        );
         let target = ProjectileTarget::Cell { rx: 10, ry: 20 };
         let id = world.allocate_stable_id();
         world.admit_projectile(
@@ -315,12 +314,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                     source_id: RAD_NO_ATTACKER,
                     target: ProjectileTarget::Cell { rx: 10, ry: 20 },
                     impact: ProjectileCoord::new(2688, 5248, 624),
-                    payload: crate::sim::projectile::ProjectilePayload {
-                        base_damage: 25,
-                        warhead: missing,
-                        weapon,
-                        damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
-                    },
+                    payload: crate::sim::projectile::ProjectilePayload::new(25, missing, weapon),
                     reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
                 }],
                 &rules,
