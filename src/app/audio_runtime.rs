@@ -239,6 +239,26 @@ impl AppAudioRuntime {
         self.apply_theme_action(action);
     }
 
+    /// `ThemeClass::Stop(fade=1)`: Theme ramps its own stream to silence and
+    /// Theme AI stops it when the ramp ends.
+    pub(crate) fn fade_out_theme(&mut self, wall_ms: u64) {
+        let gates = self.theme_gates();
+        let physical = self.music_output_state();
+        let action = self.theme.stop(gates, true, physical, wall_ms);
+        self.apply_theme_action(action);
+    }
+
+    /// The audio master (`[0x0087E758]`), one multiplier over the music and
+    /// sound outputs; the scenario exits fade it to zero and restore it.
+    pub(crate) fn set_master_output_scale(&mut self, scale: f64) {
+        if let Some(player) = self.music_player.as_mut() {
+            player.set_output_scale(scale);
+        }
+        if let Some(player) = self.sfx_player.as_mut() {
+            player.set_output_scale(scale);
+        }
+    }
+
     /// B8 user commands preserve Theme fade/queue ordering and output ownership.
     pub(crate) fn play_sound_selection(&mut self, index: i32, wall_ms: u64) {
         let gates = self.theme_gates();
