@@ -23,7 +23,7 @@ use std::hash::{Hash, Hasher};
 use crate::rules::combat_damage::CombatDamageDefaults;
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::error::RulesError;
-use crate::rules::ini_parser::IniFile;
+use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::mission_data::MissionControl;
 use crate::rules::native_processing::{ProcessedRulesLayers, RulesLayerStack};
 use crate::rules::object_type::{BuildCategory, FactoryType, ObjectCategory, ObjectType};
@@ -457,6 +457,9 @@ pub struct GeneralRules {
     pub prism_type: Option<String>,
     /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
     pub prism_support: PrismSupportRules,
+    /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=` and
+    /// `WallTower=` (Rules `+0x86C..+0x87C`).
+    pub wall_gate_types: WallGateTypes,
     /// Whether ore cells grow denser over time (TiberiumGrows= in [General]).
     /// Default true. Can be overridden per-map in [SpecialFlags].
     pub tiberium_grows: bool,
@@ -1342,6 +1345,58 @@ const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
 /// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
 /// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
 /// reader outside the constructor and ReadGeneral.
+/// The building types `CellClass::Is_Clear_To_Build` lets stand on their own
+/// house's wall overlay (`sim::build_site`): WallTower and the two GDI gates
+/// over GASAND/GAWALL (`0x0047C8DD..0x0047C8F7`), the two Nod gates over
+/// NAWALL (`0x0047C92F..0x0047C943`). Retail names GADUMY for all five.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WallGateTypes {
+    pub gdi_gate_one: Option<String>,
+    pub gdi_gate_two: Option<String>,
+    pub nod_gate_one: Option<String>,
+    pub nod_gate_two: Option<String>,
+    pub wall_tower: Option<String>,
+}
+
+impl WallGateTypes {
+    /// `type == Rules+0x87C || +0x86C || +0x870`.
+    pub fn stands_on_gdi_wall(&self, type_id: &str) -> bool {
+        [&self.wall_tower, &self.gdi_gate_one, &self.gdi_gate_two]
+            .into_iter()
+            .any(|name| {
+                name.as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(type_id))
+            })
+    }
+
+    /// `type == Rules+0x874 || +0x878`.
+    pub fn stands_on_nod_wall(&self, type_id: &str) -> bool {
+        [&self.nod_gate_one, &self.nod_gate_two]
+            .into_iter()
+            .any(|name| {
+                name.as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(type_id))
+            })
+    }
+}
+
+/// ReadGeneral's BuildingType identity reads (PrismType `0x0067BCE0`, the
+/// gates and WallTower `0x0066F450..0x0066F583`): ReadString128 into a local
+/// buffer; an empty value keeps the current pointer, anything else goes
+/// through BuildingType FindOrAllocate (`0x004653C0`), whose `<none>` and
+/// `none` answer null.
+fn read_building_identity(
+    general: &IniSection,
+    key: &str,
+    current: Option<String>,
+) -> Option<String> {
+    match general.read_string(key, "", 0x80) {
+        name if name.is_empty() => current,
+        name if name.eq_ignore_ascii_case("none") || name.eq_ignore_ascii_case("<none>") => None,
+        name => Some(name.to_ascii_uppercase()),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PrismSupportRules {
     /// `PrismSupportModifier=` (`Rules+0x49C`), the percent each supporter
@@ -1440,6 +1495,7 @@ impl Default for GeneralRules {
             separate_aircraft: false,
             prism_type: None,
             prism_support: PrismSupportRules::default(),
+            wall_gate_types: WallGateTypes::default(),
             tiberium_grows: true,
             tiberium_spreads: true,
             growth_rate_minutes: 2.0,
@@ -2264,20 +2320,17 @@ impl GeneralRules {
             separate_aircraft: general
                 .get_bool("SeparateAircraft")
                 .unwrap_or(defaults.separate_aircraft),
-            // `0x00671144` -> `0x0067BCE0`: ReadString128, an empty value
-            // keeps the current type and `none`/`<none>` clear it
-            // (BuildingType FindOrAllocate `0x004653C0`). The layered reader
+            // `0x00671144` -> `0x0067BCE0`. The layered reader
             // (`native_processing`) replaces this projection.
-            prism_type: match general.read_string("PrismType", "", 0x80) {
-                name if name.is_empty() => defaults.prism_type,
-                name if name.eq_ignore_ascii_case("none")
-                    || name.eq_ignore_ascii_case("<none>") =>
-                {
-                    None
-                }
-                name => Some(name.to_ascii_uppercase()),
-            },
+            prism_type: read_building_identity(general, "PrismType", defaults.prism_type),
             prism_support: defaults.prism_support.read_pass(general),
+            wall_gate_types: WallGateTypes {
+                gdi_gate_one: read_building_identity(general, "GDIGateOne", None),
+                gdi_gate_two: read_building_identity(general, "GDIGateTwo", None),
+                nod_gate_one: read_building_identity(general, "NodGateOne", None),
+                nod_gate_two: read_building_identity(general, "NodGateTwo", None),
+                wall_tower: read_building_identity(general, "WallTower", None),
+            },
             tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
             tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
             growth_rate_minutes: general.get_f32("GrowthRate").unwrap_or(2.0),
@@ -3268,6 +3321,7 @@ impl RuleSet {
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
+        rules.general.wall_gate_types = processed.wall_gate_types().clone();
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
         rules.general.weather_con_bolt_explosion = weather_anim.to_owned();

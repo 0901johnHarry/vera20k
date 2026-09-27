@@ -459,7 +459,7 @@ impl Simulation {
                     id,
                     super::track_turn::PerCellReason::Arrival,
                     rules,
-                    fallback_grid,
+                    registry,
                 );
                 observe(self, id, TrackWorldEvent::PerCell);
                 if !self.track_survives(id) {
@@ -1113,7 +1113,7 @@ impl Simulation {
             id,
             super::track_turn::PerCellReason::Arrival,
             Some(rules),
-            fallback_grid,
+            registry,
         );
         observe(self, id, TrackWorldEvent::PerCell);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -1299,8 +1299,18 @@ impl Simulation {
 
     /// Unit Per_Cell_Process(2) (`0x00739EC0`) outside a track: the Teleport
     /// warp's arrival call (`0x0071971C`).
-    pub(crate) fn unit_per_cell_process_arrival(&mut self, id: u64, rules: Option<&RuleSet>) {
-        self.unit_track_per_cell(id, super::track_turn::PerCellReason::Arrival, rules, None);
+    pub(crate) fn unit_per_cell_process_arrival(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        self.unit_track_per_cell(
+            id,
+            super::track_turn::PerCellReason::Arrival,
+            rules,
+            registry,
+        );
     }
 
     pub(super) fn unit_track_per_cell(
@@ -1308,11 +1318,11 @@ impl Simulation {
         id: u64,
         reason: super::track_turn::PerCellReason,
         rules: Option<&RuleSet>,
-        _fallback_grid: Option<&PathGrid>,
+        registry: Option<&OverlayTypeRegistry>,
     ) {
         // Unit739EC0 invokes the MCV receiver before normal crush/Foot tail.
         if let Some(rules) = rules {
-            crate::sim::mcv_deploy::per_cell_process(self, id, rules);
+            crate::sim::mcv_deploy::per_cell_process(self, id, rules, registry);
         }
         if !self.track_survives(id) {
             return;

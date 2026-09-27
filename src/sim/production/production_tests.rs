@@ -227,7 +227,7 @@ pub(super) fn build_catalog_rules() -> RuleSet {
              Factory=UnitType\n\
              [GAAIRC]\n\
              TechLevel=-1\n\
-             Factory=AircraftType\n",
+             Factory=AircraftType\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("build catalog rules should parse")
 }
@@ -375,7 +375,7 @@ pub(super) fn placement_radius_rules() -> RuleSet {
              Owner=Americans\n\
              Foundation=2x2\n\
              BaseNormal=no\n\
-             Adjacent=0\n",
+             Adjacent=0\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("placement radius rules should parse")
 }

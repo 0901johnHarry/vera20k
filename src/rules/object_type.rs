@@ -1108,6 +1108,9 @@ pub struct ObjectType {
     /// Whether this building type uses the LaserFence runtime connectivity
     /// exclusion in Spark collision (`LaserFence=yes`).
     pub laser_fence: bool,
+    /// BuildingType+0x16BE, cleared by the constructor (`0x0045E13F`) and read
+    /// as `LaserFencePost=` at `0x00460A93`. No retail type sets it.
+    pub laser_fence_post: bool,
 
     /// BuildingType+16C0, initialized false45E14B; ReadBool460AC0 reads
     /// FirestormWall. Body frame43EF90 selects the retained firestorm frame.
@@ -2337,6 +2340,7 @@ impl ObjectType {
             show_occupant_pips: section.get_bool("ShowOccupantPips").unwrap_or(true),
             bridge_repair_hut: section.get_bool("BridgeRepairHut").unwrap_or(false),
             laser_fence: section.get_bool("LaserFence").unwrap_or(false),
+            laser_fence_post: section.get_bool("LaserFencePost").unwrap_or(false),
             firestorm_wall: section.get_bool("FirestormWall").unwrap_or(false),
             passengers: section.get_i32("Passengers").unwrap_or(0),
             size_limit: section.get_i32("SizeLimit").unwrap_or(0).max(0) as u32,

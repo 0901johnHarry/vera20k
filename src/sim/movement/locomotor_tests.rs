@@ -390,6 +390,7 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         to_tile: None,
         bridge_repair_hut: false,
         laser_fence: false,
+        laser_fence_post: false,
         firestorm_wall: false,
         passengers: 0,
         size_limit: 0,

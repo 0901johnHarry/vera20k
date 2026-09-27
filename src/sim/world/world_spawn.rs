@@ -1415,14 +1415,20 @@ impl Simulation {
         }
     }
 
-    /// Deploy an MCV entity: despawn it and spawn a construction yard in its place.
-    /// Checks that the footprint area is free of other structures and passable terrain
-    /// before deploying. Returns false if deployment is blocked.
+    /// `UnitClass::Deploy @ 0x007393C0`: a stopped unit whose DeploysInto
+    /// type can stand at its origin turns to the type's `DeployFacing=` or,
+    /// already facing it, becomes that building. False when it refuses.
+    ///
+    /// Not carried over to the building: the unit's Group (`+0x214`,
+    /// `0x007397C6`; VERA's control groups live in the app), its AttachedTag
+    /// (`+0x34`, `0x007399EE`), its looping sound handles (`+0x4DC..+0x4F4`,
+    /// `0x00739971`), `DiscoveredBy(owner)` (vt+0x198, `0x00739848`) and the
+    /// turret facing a `+0x16CA`/`+0x16C4` type starts at (`0x007397FB`).
     pub(crate) fn deploy_mcv(
         &mut self,
         stable_id: u64,
         rules: &RuleSet,
-        _height_map: &BTreeMap<(u16, u16), u8>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         // Native early navigation/movement exits (0x7393E4/0x73940A) retain
         // runtime +0x68C. They must not attempt placement while stopping.
@@ -1458,20 +1464,22 @@ impl Simulation {
             let type_str = self.interner.resolve(entity.type_ref());
             let yard_type = construction_yard_type_for_mcv(type_str, rules)?;
             let yard_obj = rules.object(&yard_type)?;
-            let (spawn_rx, spawn_ry) = deploy_origin_from_unit_cell(
+            let origin = deploy_origin_from_unit_cell(
                 entity.position.rx,
                 entity.position.ry,
                 &yard_obj.foundation,
             );
             Some((
                 entity.owner(),
-                spawn_rx,
-                spawn_ry,
+                origin,
                 entity.position.z,
                 yard_type.clone(),
                 yard_obj.deploy_facing,
-                entity.selected,
-                yard_obj.foundation.clone(),
+                (
+                    entity.selected,
+                    entity.veterancy_raw,
+                    entity.attack_target.as_ref().map(|t| t.target),
+                ),
                 crate::sim::mcv_deploy::current_direction(entity, self.session.binary_frame),
                 yard_obj.construction_yard,
                 rules
@@ -1486,13 +1494,11 @@ impl Simulation {
         });
         let Some((
             owner_id,
-            rx,
-            ry,
+            origin,
             z,
             yard_type,
             deploy_facing,
-            was_selected,
-            foundation,
+            (was_selected, veterancy, source_target),
             source_facing,
             is_construction_yard,
             deploy_cue,
@@ -1502,83 +1508,64 @@ impl Simulation {
             return false;
         };
 
-        // Check that all footprint cells are free before deploying.
-        //
-        // `UnitClass::Deploy @ 0x007393C0` speaks `EVA_CannotDeployHere`
-        // (`0x0073950A`) only when the owner is a human player AND
-        // `Type+0x5EC` (`ResourceGatherer=`, `ReadINI 0x007143E4`) is clear
-        // (`0x007394EB..0x0073950A`): a blocked Slave Miner (`[SMIN]`, the
-        // one stock ResourceGatherer with DeploysInto) stays silent. The
-        // event's owner carries the human half to presentation.
-        let (fw, fh) = foundation_dimensions(&foundation);
-        for dy in 0..fh {
-            for dx in 0..fw {
-                let cell_x = rx.saturating_add(dx);
-                let cell_y = ry.saturating_add(dy);
-                // Check for existing structures (excluding the MCV itself).
-                let occupied = self.substrate.entities.values().any(|e| {
-                    // A Dying structure corpse (sold/destroyed earlier in this
-                    // command batch) no longer blocks an MCV deploy footprint.
-                    if e.dying
-                        || e.lifecycle.in_limbo
-                        || e.stable_id() == stable_id
-                        || e.category != EntityCategory::Structure
-                    {
-                        return false;
-                    }
-                    let Some(existing) = self.object_type(e.type_ref(), rules) else {
-                        return false;
-                    };
-                    if existing.wall {
-                        return false;
-                    }
-                    let (ew, eh) = foundation_dimensions(&existing.foundation);
-                    cell_x >= e.position.rx
-                        && cell_x < e.position.rx.saturating_add(ew)
-                        && cell_y >= e.position.ry
-                        && cell_y < e.position.ry.saturating_add(eh)
-                });
-                if occupied {
-                    log::info!("MCV deploy blocked: structure at ({},{})", cell_x, cell_y,);
-                    if !resource_gatherer {
-                        self.sound_events
-                            .push(SimSoundEvent::CannotDeployHere { owner: owner_id });
-                    }
-                    self.substrate
-                        .entities
-                        .get_mut(stable_id)
-                        .unwrap()
-                        .mcv_deploy_pending = false;
-                    crate::sim::mcv_deploy::queue_guard(self, stable_id);
-                    return false;
-                }
-                // Check terrain build-blocked.
-                if self
-                    .effective_build_blocked(cell_x, cell_y)
-                    .unwrap_or(false)
-                {
-                    log::info!("MCV deploy blocked: terrain at ({},{})", cell_x, cell_y,);
-                    if !resource_gatherer {
-                        self.sound_events
-                            .push(SimSoundEvent::CannotDeployHere { owner: owner_id });
-                    }
-                    self.substrate
-                        .entities
-                        .get_mut(stable_id)
-                        .unwrap()
-                        .mcv_deploy_pending = false;
-                    crate::sim::mcv_deploy::queue_guard(self, stable_id);
-                    return false;
-                }
+        // `0x00739422..0x007394D8`: the unit leaves its cell (Mark(UP),
+        // vt+0x124(0); the Drive locomotor's Mark_All_Occupation_Bits(0)
+        // clears the same bits for a unit standing still), the DeploysInto
+        // type's CanPlaceAt tests the origin for no house, and the unit is put
+        // back (`0x0073953B..0x00739565` / `0x0073959C..0x007395B4`) before
+        // either outcome acts.
+        self.foot_mark_remove(stable_id, Some(rules), None, registry);
+        let placeable = rules.object(&yard_type).is_some_and(|yard| {
+            crate::sim::build_site::can_place_building_at(self, rules, registry, yard, origin, None)
+        });
+        self.foot_mark_put(stable_id, Some(rules), None, registry);
+        if !placeable {
+            log::info!("MCV deploy blocked at origin {origin:?}");
+            // `0x007394E0..0x0073950A`: EVA CannotDeployHere only for the
+            // local player's (`IsHumanPlayer`, carried by the event's owner)
+            // non-`ResourceGatherer=` unit; a blocked Slave Miner is silent.
+            //
+            // RESIDUAL: a computer owner's refusal first runs
+            // `BuildingTypeClass::Flush_For_Placement @ 0x0045EE70`
+            // (`0x0073950F..0x00739536`), which clears friendly units off the
+            // footprint. Trigger: a computer house's Unload-mission deploy of a
+            // further MCV onto a blocked site (the Hunt route tests the same
+            // site first and never calls Deploy on a refusal). Effect: its MCV
+            // retries from Guard without the blockers having been asked to
+            // move. Frequency: rare. Ported with its main consumer, the
+            // computer's building placement.
+            if !resource_gatherer {
+                self.sound_events
+                    .push(SimSoundEvent::CannotDeployHere { owner: owner_id });
             }
+            // `0x00739573..0x0073957A`: +0x68C cleared, Queue_Mission(Guard, 0).
+            self.substrate
+                .entities
+                .get_mut(stable_id)
+                .unwrap()
+                .mcv_deploy_pending = false;
+            crate::sim::mcv_deploy::queue_guard(self, stable_id);
+            return false;
         }
+        // An admitted foundation lies on real cells, so the origin is on the map.
+        let (rx, ry) = (origin.0 as u16, origin.1 as u16);
 
         if source_facing != deploy_facing {
+            // `0x007395EF..0x0073965F`: Do_Turn unless already turning, OVER_OUT
+            // to radio contact 0, then +0x68C.
             let now = self.session.binary_frame;
+            if let Some(entity) = self.substrate.entities.get_mut(stable_id)
+                && !crate::sim::movement::ready_producer::is_moving_now_for(entity, now)
+            {
+                crate::sim::mcv_deploy::start_turn(entity, deploy_facing, now);
+            }
+            crate::sim::radio::transmit_to_contact(
+                self,
+                stable_id,
+                crate::sim::radio::RadioMessage::Break,
+                Some(rules),
+            );
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                if !crate::sim::movement::ready_producer::is_moving_now_for(entity, now) {
-                    crate::sim::mcv_deploy::start_turn(entity, deploy_facing, now);
-                }
                 entity.mcv_deploy_pending = true;
             }
             return true;
@@ -1666,10 +1653,55 @@ impl Simulation {
             self.session.binary_frame as i32,
         ));
         let (new_sid, outcome) =
-            self.unlimbo_after_constructor_managers(destination, Some(rules), None);
+            self.unlimbo_after_constructor_managers(destination, Some(rules), registry);
         if !matches!(outcome, RevealOutcome::Revealed { .. }) {
             self.discard_constructed_limbo(new_sid);
             return false;
+        }
+        // 0x0073971F: OVER_OUT to radio contact 0.
+        crate::sim::radio::transmit_to_contact(
+            self,
+            stable_id,
+            crate::sim::radio::RadioMessage::Break,
+            Some(rules),
+        );
+        // 0x0073972C..0x007397C0: every live Techno targeting the unit, in
+        // TechnoClass::Array order, targets the building instead; a
+        // `VehicleThief=` infantryman drops the target when it is a
+        // Construction Yard. Each goes through its class's Assign_Target
+        // (vt+0x3C8).
+        let hijacker_drops = is_construction_yard;
+        let targeters: Vec<(u64, bool)> = self
+            .substrate
+            .entities
+            .iter_sorted()
+            .filter(|(id, entity)| {
+                *id != stable_id
+                    && *id != new_sid
+                    && entity.lifecycle.object_alive
+                    && entity
+                        .attack_target
+                        .as_ref()
+                        .is_some_and(|target| target.target == TargetKind::Entity(stable_id))
+            })
+            .map(|(id, entity)| {
+                let drops = hijacker_drops
+                    && entity.category == EntityCategory::Infantry
+                    && self
+                        .object_type(entity.type_ref(), rules)
+                        .is_some_and(|obj| obj.vehicle_thief);
+                (id, drops)
+            })
+            .collect();
+        for (targeter, drops) in targeters {
+            let target = (!drops).then_some(TargetKind::Entity(new_sid));
+            let _ = self.assign_target_represented(targeter, target, Some(rules));
+        }
+        // 0x007397D2..0x007397DE: the unit's veterancy (`+0x150`); the rank
+        // cache (`+0x13C`) stays the building's own.
+        if let Some(building) = self.substrate.entities.get_mut(new_sid) {
+            building.veterancy_raw = veterancy;
+            building.veterancy = crate::sim::combat::veterancy::rank_u16(veterancy);
         }
         // 0x007397E4..0x007397F4: a building deployed for a house other than
         // the local player's (`IsHumanPlayer`, here whether a human controls
@@ -1683,6 +1715,8 @@ impl Simulation {
         {
             building.ai_repairable = true;
         }
+        // 0x0073982C: the building takes the unit's target.
+        let _ = self.assign_target_represented(new_sid, source_target, Some(rules));
         self.initialize_cloak_after_unlimbo(new_sid, rules);
         self.add_unit_sensor_after_unlimbo(new_sid, rules);
         self.mission_spawned_entities = true;
@@ -2008,13 +2042,16 @@ impl Simulation {
 /// what a 4x4 with a one-cell step has to look like.
 ///
 /// Verified against gamemd 2026-08-05. See [`undeploy_unit_cell`] for the
-/// mirror; the two must stay inverses.
-fn deploy_origin_from_unit_cell(unit_rx: u16, unit_ry: u16, foundation: &str) -> (u16, u16) {
+/// mirror; the two must stay inverses. Deploy adds the `(-1, -1)` step in
+/// wrapping 16-bit words (`0x00739460..0x007394BA`), so a unit on row or
+/// column 0 tests an origin off the map.
+fn deploy_origin_from_unit_cell(unit_rx: u16, unit_ry: u16, foundation: &str) -> (i16, i16) {
     let (width, height) = foundation_dimensions(foundation);
+    let (x, y) = (unit_rx as i16, unit_ry as i16);
     if width > 2 || height > 2 {
-        (unit_rx.saturating_sub(1), unit_ry.saturating_sub(1))
+        (x.wrapping_sub(1), y.wrapping_sub(1))
     } else {
-        (unit_rx, unit_ry)
+        (x, y)
     }
 }
 

@@ -337,7 +337,7 @@ fn deployed_mcv_unlocks_building_options_for_named_skirmish_owner() {
     let mcv = sim
         .spawn_object("AMCV", "Commander", 20, 22, 64, &rules, &height_map)
         .expect("MCV should spawn");
-    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(sim.deploy_mcv(mcv, &rules, None));
 
     for _ in 0..30 {
         sim.advance_tick(&[], Some(&rules), &height_map, None, None, 33);

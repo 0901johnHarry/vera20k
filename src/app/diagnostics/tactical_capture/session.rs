@@ -825,7 +825,6 @@ impl TacticalCaptureSession {
                         u16::try_from(profile.capture.placement_radius)
                             .context("placement radius exceeds u16")?,
                         path_grid,
-                        &state.height_map(),
                         state.overlay_registry(),
                     )
                     .map_err(anyhow::Error::from)

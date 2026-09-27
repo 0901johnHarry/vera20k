@@ -10,7 +10,7 @@ use crate::rules::error::RulesError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
-use crate::rules::ruleset::PrismSupportRules;
+use crate::rules::ruleset::{PrismSupportRules, WallGateTypes};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
@@ -393,6 +393,14 @@ impl ProcessedRulesLayers {
             .as_deref()
     }
 
+    /// `[General]` gates and WallTower (Rules `+0x86C..+0x87C`), stored IDs.
+    pub(crate) fn wall_gate_types(&self) -> &WallGateTypes {
+        &self
+            .native_type_construction_trace
+            .registry_state()
+            .rules_wall_gate_types
+    }
+
     pub(crate) fn projectile_rule_controls(&self) -> (f64, i32, [u8; 3]) {
         let state = self.native_type_construction_trace.registry_state();
         (
@@ -568,6 +576,7 @@ pub(crate) struct NativeRulesRegistryState {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
+    rules_wall_gate_types: WallGateTypes,
     select_anim: SelectAnimRulesState,
 }
 
@@ -583,6 +592,7 @@ impl Default for NativeRulesRegistryState {
             rules_line_trail_override: [0; 3],
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
+            rules_wall_gate_types: WallGateTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -795,6 +805,7 @@ struct RulesPassProcessor {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
+    rules_wall_gate_types: WallGateTypes,
     select_anim: SelectAnimRulesState,
 }
 
@@ -817,6 +828,7 @@ impl Default for RulesPassProcessor {
                 .rules_line_trail_override,
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
+            rules_wall_gate_types: WallGateTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -833,6 +845,7 @@ impl RulesPassProcessor {
             rules_line_trail_override: registry_state.rules_line_trail_override,
             rules_prism_support: registry_state.rules_prism_support,
             rules_prism_type: registry_state.rules_prism_type,
+            rules_wall_gate_types: registry_state.rules_wall_gate_types,
             select_anim: registry_state.select_anim,
             ..Self::default()
         }
@@ -1168,12 +1181,21 @@ impl RulesPassProcessor {
                 }
             } else if matches!(
                 key,
-                "LightningWarhead" | "WeatherConBoltExplosion" | "WeaponNullifyAnim" | "PrismType"
+                "LightningWarhead"
+                    | "WeatherConBoltExplosion"
+                    | "WeaponNullifyAnim"
+                    | "PrismType"
+                    | "GDIGateOne"
+                    | "GDIGateTwo"
+                    | "NodGateOne"
+                    | "NodGateTwo"
+                    | "WallTower"
             ) {
                 // General671053/66DF19/66E2AF: empty ReadString128 retains the
                 // current pointer; exact none clears it through the factory.
                 // PrismType's reader (`0x0067BCE0`, called at `0x00671144`)
-                // does the same through BuildingType's FindOrAllocate.
+                // and the gate/WallTower reads (`0x0066F450..0x0066F583`) do
+                // the same through BuildingType's FindOrAllocate.
                 let incoming = section.read_string(key, "", 0x80);
                 if !incoming.is_empty() {
                     let resolved = self
@@ -1186,7 +1208,20 @@ impl RulesPassProcessor {
                             self.select_anim.weather_con_bolt_explosion = resolved;
                         }
                         "WeaponNullifyAnim" => self.select_anim.weapon_nullify_anim = resolved,
-                        _ => self.rules_prism_type = Some(resolved).filter(|id| !id.is_empty()),
+                        "PrismType" => {
+                            self.rules_prism_type = Some(resolved).filter(|id| !id.is_empty());
+                        }
+                        _ => {
+                            let gates = &mut self.rules_wall_gate_types;
+                            let slot = match key {
+                                "GDIGateOne" => &mut gates.gdi_gate_one,
+                                "GDIGateTwo" => &mut gates.gdi_gate_two,
+                                "NodGateOne" => &mut gates.nod_gate_one,
+                                "NodGateTwo" => &mut gates.nod_gate_two,
+                                _ => &mut gates.wall_tower,
+                            };
+                            *slot = Some(resolved).filter(|id| !id.is_empty());
+                        }
                     }
                 }
             } else if is_list {
@@ -1927,6 +1962,7 @@ impl RulesPassProcessor {
                     rules_line_trail_override: self.rules_line_trail_override,
                     rules_prism_support: self.rules_prism_support,
                     rules_prism_type: self.rules_prism_type,
+                    rules_wall_gate_types: self.rules_wall_gate_types,
                     select_anim: self.select_anim,
                 },
             },

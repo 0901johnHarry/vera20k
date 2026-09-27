@@ -1165,6 +1165,39 @@ fn unit_scatter_state_allows(blocker: &GameEntity, binary_frame: u32) -> bool {
     })
 }
 
+impl crate::sim::world::Simulation {
+    /// `TechnoClass::Scatter` (vt+0x174) with a null source coordinate
+    /// (Receive_Radio's scatter requests, TryToDeploy's `0x00739394`),
+    /// through the shared blocked-cell adapter below (its displacement and
+    /// RNG residuals apply; it reads no force byte).
+    pub(crate) fn scatter_null_source(&mut self, id: u64, rules: &crate::rules::ruleset::RuleSet) {
+        let Some(layer) = self
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|entity| entity.occupancy_list_layer())
+        else {
+            return;
+        };
+        let grid = self.path_grid_snapshot();
+        scatter_blocker(
+            &mut self.substrate.entities,
+            id,
+            grid.as_deref(),
+            self.resolved_terrain.as_ref(),
+            &self.substrate.occupancy,
+            layer,
+            &mut self.scenario_rng,
+            Some(rules),
+            &self.interner,
+            crate::sim::movement::DestinationTiming::from_rules(
+                self.session.binary_frame,
+                rules.into(),
+            ),
+        );
+    }
+}
+
 /// Try to scatter a blocker to an adjacent cell by issuing a movement command.
 ///
 /// Compatibility displacement for the blocked-cell caller: search eight

@@ -3088,7 +3088,7 @@ fn combat_test_rules() -> RuleSet {
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
          [SA]\nVerses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%\n\n\
-         [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
+         [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("combat test rules should parse")
 }
@@ -6308,6 +6308,7 @@ fn test_try_select_object_rejects_an_already_selected_object() {
 fn test_deploy_mcv_replaces_vehicle_with_conyard() {
     let mut sim = Simulation::new();
     let rules = combat_test_rules();
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let heights = empty_heights();
     let mcv = sim
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &heights)
@@ -7768,6 +7769,7 @@ fn test_undeploy_conyard_spawns_mcv() {
     let mut rules = combat_test_rules();
     // Retail GACNSTMK: 58 frames with shadows.
     rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     // A yard converts back only in a multiplayer game (`Sell 0x00449D08`).
     sim.session.game_mode_nonzero = true;
     let heights = empty_heights();

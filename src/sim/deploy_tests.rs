@@ -185,6 +185,9 @@ Name=Slave Miner Refinery
 Strength=1000
 Armor=wood
 Foundation=2x2
+
+[Clear]
+Buildable=yes
 ";
     let ini: IniFile = IniFile::from_str(text);
     RuleSet::from_ini(&ini).expect("MCV test ruleset parse")
@@ -217,7 +220,8 @@ fn make_recalc_mcv_rules(vector_values: &str) -> RuleSet {
          [GAWEAP]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nStrength=1000\nFoundation=3x2\n\
          [GAAIRC]\nOwner=Americans\nAIBuildThis=no\nStrength=600\nFoundation=2x2\n\
          [GATECH]\nOwner=Americans\nAIBuildThis=no\nStrength=500\nFoundation=2x2\n\
-         [YAREFN]\nOwner=Americans\nStrength=1000\nFoundation=2x2\n"
+         [YAREFN]\nOwner=Americans\nStrength=1000\nFoundation=2x2\n\
+         [Clear]\nBuildable=yes\n"
     );
     RuleSet::from_ini(&IniFile::from_str(&text)).expect("Recalc deploy fixture")
 }
@@ -324,7 +328,22 @@ pub(crate) fn mcv_deploy_terrain_with(
     ResolvedTerrainGrid::from_cells(width, height, cells)
 }
 
+/// A Simulation on the shared flat arena, whose ground a Construction Yard
+/// may stand on.
+fn deploy_sim(rules: &RuleSet) -> Simulation {
+    let mut sim = Simulation::new();
+    crate::sim::arena_fixture::flat_arena(&mut sim, rules);
+    sim
+}
+
 fn deploy_mcv_with_terrain(terrain: ResolvedTerrainGrid) -> (bool, bool, usize) {
+    deploy_mcv_on(terrain, |_| {})
+}
+
+fn deploy_mcv_on(
+    terrain: ResolvedTerrainGrid,
+    prepare: impl FnOnce(&mut Simulation),
+) -> (bool, bool, usize) {
     let rules = make_mcv_rules();
     let mut sim = Simulation::new();
     let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
@@ -332,8 +351,10 @@ fn deploy_mcv_with_terrain(terrain: ResolvedTerrainGrid) -> (bool, bool, usize) 
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &height_map)
         .expect("spawn MCV");
     sim.resolved_terrain = Some(terrain);
+    sim.playfield_bounds = Some(crate::sim::arena_fixture::OPEN_PLAYFIELD);
+    prepare(&mut sim);
 
-    let applied = sim.deploy_mcv(mcv, &rules, &height_map);
+    let applied = sim.deploy_mcv(mcv, &rules, None);
     let mcv_remains = sim.substrate.entities.get(mcv).is_some();
     (applied, mcv_remains, sim.sound_events.len())
 }
@@ -341,14 +362,14 @@ fn deploy_mcv_with_terrain(terrain: ResolvedTerrainGrid) -> (bool, bool, usize) 
 #[test]
 fn deploy_mcv_uses_gamemd_large_foundation_origin_offset() {
     let rules = make_mcv_rules();
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let mcv = sim
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &height_map)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, &height_map);
+    let applied = sim.deploy_mcv(mcv, &rules, None);
     assert!(applied, "clear ConYard footprint should deploy");
     // Deferred-delete: apply_command enqueues the consumed MCV; the end-of-tick P9
     // flush (here invoked directly) frees it. Until then it lingers resolvable-Dying.
@@ -384,7 +405,7 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
     // A yard needs its Buildup SHP to undeploy (`Sell_Back @ 0x00447110`)
     // and converts back only in a multiplayer game (`0x00449D08`).
     rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     sim.session.game_mode_nonzero = true;
     add_house(&mut sim, "Americans", true);
     let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
@@ -402,7 +423,7 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
         )
         .expect("spawn MCV");
     assert!(
-        sim.deploy_mcv(mcv, &rules, &height_map),
+        sim.deploy_mcv(mcv, &rules, None),
         "clear ConYard footprint should deploy"
     );
     sim.flush_pending_delete();
@@ -450,7 +471,7 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
 #[test]
 fn deploy_mcv_accepts_mixed_height_clear_foundation() {
     let rules = make_mcv_rules();
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     let mut height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     height_map.insert((20, 21), 1);
 
@@ -458,7 +479,7 @@ fn deploy_mcv_accepts_mixed_height_clear_foundation() {
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &height_map)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, &height_map);
+    let applied = sim.deploy_mcv(mcv, &rules, None);
     assert!(
         applied,
         "clear ConYard footprint should deploy even when foundation cells have mixed heights"
@@ -487,7 +508,7 @@ fn deploy_mcv_accepts_mixed_height_clear_foundation() {
 #[test]
 fn deploy_mcv_rejects_structure_in_rightmost_foundation_column() {
     let rules = make_mcv_rules();
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
     let mcv = sim
@@ -497,7 +518,7 @@ fn deploy_mcv_rejects_structure_in_rightmost_foundation_column() {
         .spawn_object("GAPOWR", "Soviets", 21, 22, 0, &rules, &height_map)
         .expect("spawn blocker");
 
-    let applied = sim.deploy_mcv(mcv, &rules, &height_map);
+    let applied = sim.deploy_mcv(mcv, &rules, None);
     assert!(
         !applied,
         "structure in the deployed foundation footprint must block MCV deploy"
@@ -532,7 +553,7 @@ fn deploy_mcv_rejects_structure_in_rightmost_foundation_column() {
 #[test]
 fn deploy_mcv_waits_for_target_building_deploy_facing() {
     let rules = make_mcv_rules();
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     add_house(&mut sim, "Americans", false);
     let owner = sim.interner.get("Americans").unwrap();
     sim.houses.get_mut(&owner).unwrap().ai_activation = SPLIT_AI_ACTIVATION;
@@ -542,7 +563,7 @@ fn deploy_mcv_waits_for_target_building_deploy_facing() {
         .spawn_object("AMCV", "Americans", 20, 22, 64, &rules, &height_map)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, &height_map);
+    let applied = sim.deploy_mcv(mcv, &rules, None);
     assert!(applied, "misfaced deploy starts the facing turn");
     let entity = sim
         .substrate
@@ -581,17 +602,19 @@ Strength=1000
 Foundation=4x3
 ConstructionYard=yes
 DeployFacing=2
+[Clear]
+Buildable=yes
 ",
     );
     let rules = RuleSet::from_ini(&ini).expect("rules");
     assert_eq!(rules.object("GACNST").unwrap().deploy_facing, 0x40);
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
     let mcv = sim
         .spawn_object("AMCV", "Americans", 20, 22, 0x80, &rules, &height_map)
         .expect("spawn MCV");
 
-    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(sim.deploy_mcv(mcv, &rules, None));
 
     let entity = sim
         .substrate
@@ -604,11 +627,13 @@ DeployFacing=2
 
 #[test]
 fn deploy_mcv_rejects_overlay_blocked_foundation_cell() {
-    let terrain = mcv_deploy_terrain_with(|cell| {
-        cell.overlay_blocks = true;
-    });
+    let terrain = mcv_deploy_terrain_with(|_| {});
 
-    let (applied, mcv_remains, sound_count) = deploy_mcv_with_terrain(terrain);
+    let (applied, mcv_remains, sound_count) = deploy_mcv_on(terrain, |sim| {
+        let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(32, 32);
+        overlays.place_overlay(20, 21, 1, 0);
+        sim.overlay_grid = Some(overlays);
+    });
 
     assert!(!applied);
     assert!(mcv_remains);
@@ -633,8 +658,6 @@ fn deploy_mcv_rejects_nonbuildable_land_type_foundation_cell() {
     let terrain = mcv_deploy_terrain_with(|cell| {
         cell.land_type = crate::sim::pathfinding::passability::LandType::Water.as_index();
         cell.yr_cell_land_type = cell.land_type;
-        cell.base_build_blocked = true;
-        cell.build_blocked = true;
         cell.is_water = true;
     });
 
@@ -693,7 +716,7 @@ fn deployed_type<'a>(sim: &'a Simulation, type_name: &str) -> &'a GameEntity {
 #[test]
 fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     let rules = make_recalc_mcv_rules("0,0,0");
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     add_house(&mut sim, "Americans", false);
     sim.session.game_mode_nonzero = true;
     sim.scenario_rng = crate::sim::rng::SimRng::new(0x1020_3040);
@@ -704,7 +727,7 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
 
-    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(sim.deploy_mcv(mcv, &rules, None));
 
     let yard = deployed_type(&sim, "GACNST");
     assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
@@ -738,7 +761,7 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
 fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
     let mut rules = make_recalc_mcv_rules("0,0,0");
     rules.set_buildup_control_for_test("GACNST", [0, 3, 2]);
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     sim.session.game_mode_nonzero = true;
     add_house(&mut sim, "Americans", false);
     let owner = sim.interner.get("Americans").unwrap();
@@ -749,7 +772,7 @@ fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
         .expect("spawn MCV");
     sim.substrate.entities.get_mut(mcv).unwrap().health.current = 225;
     let deployed_at = sim.session.binary_frame;
-    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(sim.deploy_mcv(mcv, &rules, None));
     sim.flush_pending_delete();
     let yard = deployed_type(&sim, "GACNST").stable_id;
     let mut frames = Vec::new();
@@ -784,7 +807,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
     let height_map = BTreeMap::new();
 
     for (is_human, game_mode_nonzero) in [(true, true), (false, false)] {
-        let mut sim = Simulation::new();
+        let mut sim = deploy_sim(&rules);
         add_house(&mut sim, "Americans", is_human);
         let owner = sim.interner.get("Americans").unwrap();
         sim.houses.get_mut(&owner).unwrap().ai_activation = SPLIT_AI_ACTIVATION;
@@ -796,7 +819,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         let mut expected_rng = sim.scenario_rng.clone();
         let _replacement_constructor_word = expected_rng.next_u32();
 
-        assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+        assert!(sim.deploy_mcv(mcv, &rules, None));
         assert!(deployed_type(&sim, "GACNST").building_up.is_some());
         // UnitClass::Deploy marks a computer's building AI-repairable in a
         // campaign too (`0x007397E4..0x007397F4`); Unlimbo does not there.
@@ -814,7 +837,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         assert!(sim.substrate.entities.get(mcv).is_none());
     }
 
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     add_house(&mut sim, "Americans", false);
     let owner = sim.interner.get("Americans").unwrap();
     sim.houses.get_mut(&owner).unwrap().ai_activation = SPLIT_AI_ACTIVATION;
@@ -825,7 +848,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         .expect("spawn deployable miner");
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
-    assert!(sim.deploy_mcv(miner, &rules, &height_map));
+    assert!(sim.deploy_mcv(miner, &rules, None));
     assert!(deployed_type(&sim, "YAREFN").building_up.is_some());
     assert!(deployed_type(&sim, "YAREFN").ai_repairable);
     assert_eq!(sim.houses[&owner].base_center, None);
@@ -843,7 +866,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
 #[test]
 fn base_plan_recalc_deploy_countryless_nonempty_plan_only_reanchors_node_zero() {
     let rules = make_recalc_mcv_rules("");
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     add_house(&mut sim, "Americans", false);
     sim.session.game_mode_nonzero = true;
     sim.scenario_rng = crate::sim::rng::SimRng::new(0x1357_2468);
@@ -864,7 +887,7 @@ fn base_plan_recalc_deploy_countryless_nonempty_plan_only_reanchors_node_zero() 
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
 
-    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(sim.deploy_mcv(mcv, &rules, None));
     assert!(deployed_type(&sim, "GACNST").building_up.is_some());
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, Some((19, 21)));
@@ -889,7 +912,7 @@ fn base_plan_recalc_deploy_countryless_nonempty_plan_only_reanchors_node_zero() 
 #[test]
 fn base_plan_recalc_deploy_countryless_empty_plan_fails_before_removal() {
     let rules = make_recalc_mcv_rules("0,0,0");
-    let mut sim = Simulation::new();
+    let mut sim = deploy_sim(&rules);
     add_house(&mut sim, "Americans", false);
     sim.session.game_mode_nonzero = true;
     sim.scenario_rng = crate::sim::rng::SimRng::new(0x2468_1357);
@@ -903,7 +926,7 @@ fn base_plan_recalc_deploy_countryless_empty_plan_fails_before_removal() {
         .expect("spawn MCV");
     let rng_before = sim.scenario_rng.state();
 
-    assert!(!sim.deploy_mcv(mcv, &rules, &height_map));
+    assert!(!sim.deploy_mcv(mcv, &rules, None));
 
     assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
     let house = &sim.houses[&owner];
@@ -921,7 +944,7 @@ fn base_plan_recalc_deploy_failures_preserve_source_rng_plan_and_centers() {
     let height_map = BTreeMap::new();
 
     for (rules, add_blocker) in [(&valid_rules, true), (&malformed_rules, false)] {
-        let mut sim = Simulation::new();
+        let mut sim = deploy_sim(rules);
         add_house(&mut sim, "Americans", false);
         let owner = sim.interner.get("Americans").unwrap();
         sim.houses.get_mut(&owner).unwrap().ai_activation = SPLIT_AI_ACTIVATION;
@@ -936,7 +959,7 @@ fn base_plan_recalc_deploy_failures_preserve_source_rng_plan_and_centers() {
         }
         let rng_before = sim.scenario_rng.state();
 
-        assert!(!sim.deploy_mcv(mcv, rules, &height_map));
+        assert!(!sim.deploy_mcv(mcv, rules, None));
         assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
@@ -945,53 +968,6 @@ fn base_plan_recalc_deploy_failures_preserve_source_rng_plan_and_centers() {
         assert_eq!(house.ai_activation, SPLIT_AI_ACTIVATION);
         assert_eq!(sim.scenario_rng.state(), rng_before);
     }
-}
-
-#[test]
-fn base_plan_recalc_deploy_late_yard_unlimbo_failure_preserves_source_and_plan() {
-    let rules = make_recalc_mcv_rules("0,0,0");
-    let mut sim = Simulation::new();
-    add_house(&mut sim, "Americans", false);
-    let owner = sim.interner.get("Americans").unwrap();
-    sim.houses.get_mut(&owner).unwrap().ai_activation = SPLIT_AI_ACTIVATION;
-    sim.session.game_mode_nonzero = true;
-    sim.scenario_rng = crate::sim::rng::SimRng::new(0xABCD_5750);
-    sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
-        base: 10,
-        off_fc: 0,
-        off_100: 0,
-        off_104: 10,
-        off_108: 10,
-    });
-    let height_map = BTreeMap::new();
-    let mcv = sim
-        .spawn_object("AMCV", "Americans", 5, 6, 128, &rules, &height_map)
-        .expect("MCV anchor is inside the playfield");
-    let mut expected_rng = sim.scenario_rng.clone();
-    let _failed_yard_constructor_word = expected_rng.next_u32();
-
-    assert!(!sim.deploy_mcv(mcv, &rules, &height_map));
-
-    let source = sim.substrate.entities.get(mcv).expect("source MCV remains");
-    assert!(!source.dying);
-    assert!(!source.lifecycle.in_limbo);
-    assert!(
-        sim.substrate
-            .entities
-            .values()
-            .all(|entity| { sim.interner.resolve(entity.type_ref) != "GACNST" || entity.dying }),
-        "the rejected yard constructor leaves no live target"
-    );
-    let house = &sim.houses[&owner];
-    assert_eq!(house.base_center, None);
-    assert_eq!(house.base_plan_center, (0, 0));
-    assert!(house.base_plan.nodes.is_empty());
-    assert_eq!(house.ai_activation, SPLIT_AI_ACTIVATION);
-    assert_eq!(
-        sim.scenario_rng.logical_state(),
-        expected_rng.logical_state(),
-        "the failed target spends only its verified constructor word, not Recalc draws"
-    );
 }
 
 #[test]

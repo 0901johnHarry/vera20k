@@ -1,4 +1,5 @@
-"""Bounded original MCV continuation branches and Drive turning.
+"""Bounded original MCV continuation branches, Drive turning and TryToDeploy's
+fallback site table.
 
 Run python -m tools.mcv_deploy_oracle --check (or explicit --write).
 Live Ghidra 2026-09-10: event9 4C77EA..4C7812 stops/clears target/queues
@@ -115,18 +116,41 @@ def turn_completion():
                               callback_zero=stop==0x4B08A4,stop_address=hex(stop)))
     return cases
 
+SITES = 0xB1D010
+SITES_END = 0xB1D0A0
+SITES_GUARD = 0xB1CF9D
+
+def try_to_deploy_sites():
+    """UnitClass::TryToDeploy's function-local static CellStruct[36]: run its
+    one-time initializer (0x738F9C..0x7392C2, guard bit clear) and stop before
+    the atexit registration call; the loop at 0x7392CA reads it in this order."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    load_image(uc)
+    uc.mem_map(STACK_BASE, STACK_SIZE)
+    uc.mem_write(SITES_GUARD, bytes([0]))
+    uc.reg_write(UC_X86_REG_EBX, 0)
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x100)
+    run_checked(uc, 0x738F9C, 0x7392C2, count=1000)
+    if uc.mem_read(SITES_GUARD, 1)[0] & 1 != 1:
+        raise RuntimeError('initializer did not set its guard bit')
+    raw = bytes(uc.mem_read(SITES, SITES_END - SITES))
+    return [list(struct.unpack_from('<hh', raw, i)) for i in range(0, len(raw), 4)]
+
 def generate():
-    return {'source':'unicorn/gamemd.exe','mission_branches':branches(),'turns':turns(),'turn_completion':turn_completion()}
+    return {'source':'unicorn/gamemd.exe','mission_branches':branches(),'turns':turns(),'turn_completion':turn_completion(),
+            'try_to_deploy_sites':try_to_deploy_sites()}
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='13 continuation interior branch cases, 322 complete native turn/current samples, and four turn-completion latch cases',
+        scope='13 continuation interior branch cases, 322 complete native turn/current samples, four turn-completion latch cases and the 36-entry TryToDeploy site table',
         assumptions=['Unit and FacingClass layouts from live Ghidra disassembly; fresh emulator per case',
                      'mission fixtures start after substituted Deploy return, or after state0 radio call',
                      'no mission timing, RNG, placement, successful conversion or visual parity claim',
                      'FacingClass timer padding ignored; global frame is explicitly initialized',
                      'same-target duplicate Do_Turn at frame101 must preserve entire FacingClass state',
-                     'turn completion executes original rotation predicate/latch branch, stopping before PerCellProcess call'],
+                     'turn completion executes original rotation predicate/latch branch, stopping before PerCellProcess call',
+                     'site table runs the one-time initializer with the guard bit clear, stopping before its atexit call'],
         substitutions=['mission blocks supply Deploy return and resulting unit alive/flag/NavCom inputs; stop before further calls'],
         entry_points={'state0':0x73DD8E,'initial_result':0x73DDCB,'retry_result':0x73DD62,
-                      'Drive_Do_Turn':0x4B0EF0,'Facing_Current':0x4C93D0,'Drive_turn_completion':0x4B0775}))
+                      'Drive_Do_Turn':0x4B0EF0,'Facing_Current':0x4C93D0,'Drive_turn_completion':0x4B0775,
+                      'TryToDeploy_site_init':0x738F9C}))

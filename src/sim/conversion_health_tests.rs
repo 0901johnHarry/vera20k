@@ -65,7 +65,7 @@ fn rules() -> RuleSet {
              [YARD]\nStrength=1000\nFoundation=1x1\nDeployFacing=0\nUndeploysInto=MCV\n\
              [SMIN]\nStrength=100\nSpeed=3\nDeploysInto=YAREFN\nEnslaves=SLAV\nSlavesNumber=1\n\
              [YAREFN]\nStrength=1000\nFoundation=1x1\nDeployFacing=0\nUndeploysInto=SMIN\nEnslaves=SLAV\nSlavesNumber=1\n\
-             [SLAV]\nStrength=125\nSpeed=3\nStorage=4\n",
+             [SLAV]\nStrength=125\nSpeed=3\nStorage=4\n[Clear]\nBuildable=yes\n",
         ))
         .unwrap(),
     )
@@ -95,11 +95,12 @@ fn assert_health(sim: &Simulation, id: u64, actual: i32) {
 fn mcv_conversion_uses_actual_and_type_strength_then_resets_estimate() {
     let rules = rules();
     let mut sim = Simulation::with_seed(123);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let source = sim
         .spawn_object_at_height("MCV", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 25);
-    assert!(sim.deploy_mcv(source, &rules, &BTreeMap::new()));
+    assert!(sim.deploy_mcv(source, &rules, None));
     sim.flush_pending_delete();
     assert!(sim.substrate.entities.get(source).is_none());
     let destination = sim
@@ -142,7 +143,7 @@ fn building_conversion_reads_health_when_animation_finishes() {
 /// UnitClass::Deploy (`deploy_mcv`) of `source`, answering the building it
 /// became.
 fn deploy(sim: &mut Simulation, rules: &RuleSet, source: u64, into: &str) -> u64 {
-    assert!(sim.deploy_mcv(source, rules, &BTreeMap::new()));
+    assert!(sim.deploy_mcv(source, rules, None));
     sim.substrate
         .entities
         .values()
@@ -183,6 +184,7 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
 fn slave_conversions_reset_master_health_but_preserve_retained_slave_state() {
     let rules = rules();
     let mut sim = Simulation::with_seed(123);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let source = sim
         .spawn_object_at_height("SMIN", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
@@ -221,14 +223,15 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
          [YARD]\nStrength=1000000\nFoundation=1x1\nDeployFacing=0\nUndeploysInto=MCV\n\
          [SMIN]\nStrength=100000\nSpeed=3\nDeploysInto=YAREFN\nEnslaves=SLAV\nSlavesNumber=1\n\
          [YAREFN]\nStrength=1000000\nFoundation=1x1\nDeployFacing=0\nUndeploysInto=SMIN\nEnslaves=SLAV\nSlavesNumber=1\n\
-         [SLAV]\nStrength=125\nSpeed=3\nStorage=4\n"
+         [SLAV]\nStrength=125\nSpeed=3\nStorage=4\n[Clear]\nBuildable=yes\n"
     )).unwrap());
     let mut sim = Simulation::with_seed(123);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let source = sim
         .spawn_object_at_height("MCV", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 75_000);
-    assert!(sim.deploy_mcv(source, &rules, &BTreeMap::new()));
+    assert!(sim.deploy_mcv(source, &rules, None));
     sim.flush_pending_delete();
     let yard = sim
         .substrate
@@ -267,6 +270,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
     assert_health(&sim, mcv, 75_000);
 
     let mut sim = Simulation::with_seed(123);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let source = sim
         .spawn_object_at_height("SMIN", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
@@ -280,7 +284,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
 #[test]
 fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     let rules_ini = IniFile::from_str(
-        "[VehicleTypes]\n0=MCV\n[BuildingTypes]\n0=YARD\n[Animations]\n0=N\n1=D\n[MCV]\nStrength=100\nSpeed=5\nDeploysInto=YARD\n[YARD]\nStrength=1000\nFoundation=1x1\nDeployFacing=0\n",
+        "[VehicleTypes]\n0=MCV\n[BuildingTypes]\n0=YARD\n[Animations]\n0=N\n1=D\n[MCV]\nStrength=100\nSpeed=5\nDeploysInto=YARD\n[YARD]\nStrength=1000\nFoundation=1x1\nDeployFacing=0\n[Clear]\nBuildable=yes\n",
     );
     let art_ini = IniFile::from_str(
         "[YARD]\nIdleAnim=N\nIdleAnimDamaged=D\n[N]\nLoopCount=-1\nRandomRate=900,180\n[D]\nLoopCount=-1\nRandomRate=900,180\n",
@@ -305,6 +309,7 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
         );
     }
     let mut sim = Simulation::with_seed(123);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let source = sim
         .spawn_object_at_height("MCV", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
@@ -315,7 +320,7 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     let constructor_word = expected_rng.next_u32() as u16;
     let before_rng = expected_rng.state();
     let destination_id = sim.substrate.next_stable_object_id;
-    assert!(sim.deploy_mcv(source, &rules, &BTreeMap::new()));
+    assert!(sim.deploy_mcv(source, &rules, None));
     let destination = sim.entities().get(destination_id).unwrap();
     assert_eq!(destination.health.current, 250);
     assert_eq!(destination.techno_ctor_random_word, constructor_word);

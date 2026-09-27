@@ -115,7 +115,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::map::actions::ActionMap;
-use crate::map::bridge_facts::{BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL};
 use crate::map::entities::EntityCategory;
 use crate::map::events::EventMap;
 use crate::map::houses::HouseAllianceMap;
@@ -131,7 +130,7 @@ use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::animation;
-use crate::sim::bridge_state::{BridgeRuntimeState, DamageState};
+use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::{AnimClassSpawnDescriptor, Position};
@@ -5018,31 +5017,6 @@ impl Simulation {
         Some(tail_path_grid)
     }
 
-    pub(crate) fn effective_build_blocked(&self, rx: u16, ry: u16) -> Option<bool> {
-        let terrain = self.resolved_terrain.as_ref()?;
-        let cell = terrain.cell(rx, ry)?;
-        if cell.bridge_facts.has_flag(BRIDGE_FLAG_STRUCTURAL)
-            || cell.bridge_facts.has_flag(BRIDGE_FLAG_DESTROYED_OR_RAMP)
-            || cell.overlay_blocks
-            || cell.terrain_object_blocks
-            || cell.slope_type != 0
-        {
-            return Some(true);
-        }
-        if let Some(bridge) = self
-            .bridge_state
-            .as_ref()
-            .and_then(|state| state.cell(rx, ry))
-        {
-            return Some(if matches!(bridge.damage_state, DamageState::Destroyed) {
-                cell.base_build_blocked
-            } else {
-                true
-            });
-        }
-        Some(cell.build_blocked)
-    }
-
     /// Apply combat-emitted wall damage events: drives the per-cell damage
     /// progression in `damage_wall_overlay`, runs the cardinal-neighbor cleanup
     /// for any cells the damage destroys.
@@ -5687,7 +5661,6 @@ impl Simulation {
                 &mut ai_state,
                 rules.expect("rules checked above"),
                 path_grid,
-                height_map,
                 overlay_registry,
             );
             #[cfg(test)]

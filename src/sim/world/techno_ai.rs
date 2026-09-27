@@ -1517,6 +1517,11 @@ fn unit_techno_bracket(
     }
     // The off-mission passive-target clear runs BEFORE the +0xC4 counter.
     clear_passive_target_off_mission(sim, id, rules);
+    // `UnitClass::AI`'s Hunt queue (`0x007363DE..0x0073645B`) comes right
+    // before its Ready→Commence, which this bracket runs after the pre-block.
+    if let Some(rules) = rules {
+        crate::sim::mcv_deploy::ai_queue_hunt(sim, id, rules);
+    }
     mission_common_step(sim, id, rules);
     // Mission_Dispatch position: the absorbed handler bodies run here,
     // timer-gated, ending with the verified post-handler epilogue write
@@ -3828,8 +3833,6 @@ mod tests {
             has_attack_target: false,
             has_destination: false,
             effective_mission: Some(MissionType::Attack),
-            unit_deploy_begin_active: false,
-            unit_deploy_reverse_active: false,
             infantry_deployed_do_type: false,
             infantry_deploy_fire_stance: false,
         };
@@ -3930,8 +3933,6 @@ mod tests {
             has_attack_target: false,
             has_destination: false,
             effective_mission: Some(MissionType::Attack),
-            unit_deploy_begin_active: false,
-            unit_deploy_reverse_active: false,
             infantry_deployed_do_type: false,
             infantry_deploy_fire_stance: false,
         };
@@ -4107,54 +4108,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn unit_guard_deploy_begin_queues_harvest_without_rng() {
-        let mut sim = Simulation::with_seed(0x6A2E);
-        let rules = representative_foot_handler_rules();
-        let mut unit = entity_of(1, EntityCategory::Unit);
-        unit.mission_leaf = MissionLeafState::unit_raw_for_test(1, 0, 0, 0);
-        update_mission_test_fixture(&mut unit.mission, |fixture| {
-            fixture.current = MissionId::from_known(MissionType::Guard);
-            fixture.dispatch_timer = MissionDispatchTimer::at_frame(0);
-        });
-        register_entity(&mut sim, unit);
-        let before_rng = sim.scenario_rng.logical_state();
-
-        sim.object_ai_visit_one(1, Some(&rules), ObjectAiCtx::default());
-
-        let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.mission.queued().known(), Some(MissionType::Harvest));
-        assert_eq!(
-            unit.mission.dispatch_timer(),
-            MissionDispatchTimer::from_raw(0, 1)
-        );
-        assert_eq!(sim.scenario_rng.logical_state(), before_rng);
-    }
-
-    #[test]
-    fn unit_guard_deploy_reverse_queues_unload_without_rng() {
-        let mut sim = Simulation::with_seed(0x6A2F);
-        let rules = representative_foot_handler_rules();
-        let mut unit = entity_of(1, EntityCategory::Unit);
-        unit.mission_leaf = MissionLeafState::unit_raw_for_test(0, 1, 0, 0);
-        update_mission_test_fixture(&mut unit.mission, |fixture| {
-            fixture.current = MissionId::from_known(MissionType::Guard);
-            fixture.dispatch_timer = MissionDispatchTimer::at_frame(0);
-        });
-        register_entity(&mut sim, unit);
-        let before_rng = sim.scenario_rng.logical_state();
-
-        sim.object_ai_visit_one(1, Some(&rules), ObjectAiCtx::default());
-
-        let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.mission.queued().known(), Some(MissionType::Unload));
-        assert_eq!(
-            unit.mission.dispatch_timer(),
-            MissionDispatchTimer::from_raw(0, 1)
-        );
-        assert_eq!(sim.scenario_rng.logical_state(), before_rng);
     }
 
     #[test]

@@ -24,6 +24,7 @@
 pub mod anim_class;
 #[cfg(test)]
 pub(crate) mod arena_fixture;
+pub(crate) mod build_site;
 pub(crate) mod building_art;
 pub(crate) mod building_construction;
 pub(crate) mod base_plan;

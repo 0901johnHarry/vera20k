@@ -1156,8 +1156,6 @@ pub(crate) fn update_building_placement_preview(state: &mut AppState) {
             type_id,
             rx,
             ry,
-            sim.path_grid(),
-            &state.height_map(),
             state.overlay_registry(),
         );
 }

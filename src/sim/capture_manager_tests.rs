@@ -131,6 +131,8 @@ Verses=100%,100%,100%,100%,100%,100%,0%,0%,0%,100%,100%
 Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
 [KILLWH]
 Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
+[Clear]
+Buildable=yes
 ";
 
 const ART: &str = "\
@@ -1198,15 +1200,12 @@ fn retail_rules_bind_the_stock_controllers() {
 fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
     let rules = rules();
     let mut sim = sim(27);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_options.mcv_redeploy = true;
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", 10, 10);
     let mcv = spawn(&mut sim, &rules, "AMCV", "Americans", 12, 10);
     let free = spawn(&mut sim, &rules, "AMCV", "Americans", 12, 30);
-    let heights = std::collections::BTreeMap::new();
-    assert!(
-        sim.deploy_mcv(free, &rules, &heights),
-        "an MCV deploys here"
-    );
+    assert!(sim.deploy_mcv(free, &rules, None), "an MCV deploys here");
     assert!(sim.capture_unit(yuri, mcv, &rules));
     sim.substrate
         .entities
@@ -1214,7 +1213,7 @@ fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
         .unwrap()
         .mcv_deploy_pending = true;
     sim.sound_events.clear();
-    assert!(!sim.deploy_mcv(mcv, &rules, &heights));
+    assert!(!sim.deploy_mcv(mcv, &rules, None));
     assert!(
         !sim.substrate.entities.get(mcv).unwrap().mcv_deploy_pending,
         "the refusal clears the pending deploy"

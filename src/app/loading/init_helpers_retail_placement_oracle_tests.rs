@@ -404,8 +404,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         POWER_PLANT,
         fixture.blocked.0,
         fixture.blocked.1,
-        Some(&path_grid),
-        &height_map,
     )
     .expect("stock GAPOWR preview");
     assert!(!preview.valid);
@@ -476,8 +474,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         POWER_PLANT,
         fixture.valid.0,
         fixture.valid.1,
-        Some(&path_grid),
-        &height_map,
     )
     .expect("stock GAPOWR valid preview");
     assert!(preview.valid);
