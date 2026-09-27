@@ -43,7 +43,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     saved.scenario_rng = crate::sim::rng::SimRng::new(0);
     let bytes = snapshot_bytes(&saved, &rules);
     let registry = OverlayTypeRegistry::empty();
-    let (mut restored, _) = PreparedLoad::prepare_candidate(
+    let mut restored = PreparedLoad::prepare_candidate(
         &bytes,
         Some(&saved),
         Some(LOAD_FIXTURE_MAP_HASH),
@@ -51,7 +51,8 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
         Some(&terrain),
         Some(&registry),
     )
-    .expect("retained terminal policy has a factory release owner");
+    .expect("retained terminal policy has a factory release owner")
+    .simulation;
     let object = restored.substrate.entities.get(held).unwrap();
     assert!(object.lifecycle.in_limbo && !object.in_logic_vector);
     assert_eq!(
@@ -212,7 +213,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
         SimSoundEvent::AnimationStarted { sound_id, .. } if saved.interner.resolve(*sound_id) == "DEATHREPORT")).count(), 1);
     saved.scenario_rng = crate::sim::rng::SimRng::new(0);
     let bytes = snapshot_bytes(&saved, &rules);
-    let (mut restored, _) = PreparedLoad::prepare_candidate(
+    let mut restored = PreparedLoad::prepare_candidate(
         &bytes,
         Some(&saved),
         Some(LOAD_FIXTURE_MAP_HASH),
@@ -220,7 +221,8 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
         Some(&terrain),
         Some(&registry),
     )
-    .unwrap();
+    .unwrap()
+    .simulation;
     assert_eq!(
         restored.substrate.pending_delete,
         saved.substrate.pending_delete
@@ -310,7 +312,7 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
         saved.scenario_rng = crate::sim::rng::SimRng::new(0);
         let bytes = snapshot_bytes(&saved, &rules);
         let registry = OverlayTypeRegistry::empty();
-        let (mut restored, _) = PreparedLoad::prepare_candidate(
+        let mut restored = PreparedLoad::prepare_candidate(
             &bytes,
             Some(&saved),
             Some(LOAD_FIXTURE_MAP_HASH),
@@ -318,7 +320,8 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
             Some(&terrain),
             Some(&registry),
         )
-        .expect("actual validate/deserialize/restore/rebuild preparation");
+        .expect("actual validate/deserialize/restore/rebuild preparation")
+        .simulation;
         assert_eq!(
             restored
                 .substrate

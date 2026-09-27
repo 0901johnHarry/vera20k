@@ -71,6 +71,7 @@ pub mod shell_text;
 pub mod shell_text_reveal;
 pub mod shell_transition_pass;
 pub mod shroud_buffer;
+pub(crate) mod sinking;
 pub mod sidebar_cameo_atlas;
 pub mod sidebar_chrome;
 pub mod sidebar_text;

@@ -6,10 +6,15 @@
 //! The compatibility `RuleSet` is a projection from those sources; it is never
 //! allowed to become a second registry owner.
 
+#[cfg(test)]
+#[path = "sinking_sound_tests.rs"]
+mod sinking_sound_tests;
+
 use crate::rules::error::RulesError;
 use crate::rules::ini_parser::{IniFile};
 use crate::rules::native_processing::{NativeRulesRegistryState, NativeTypeConstructionEvent, NativeTypeConstructionTrace, ProcessedRulesLayers, RulesLayerKind, RulesLayerStack, process_native_noncampaign_rules_prepass, process_native_rules_cold_start};
 use crate::rules::ruleset::RuleSet;
+use crate::rules::sound_ini::SoundRegistry;
 
 /// The startup-selected INI objects reused by every later native Process call.
 ///
@@ -21,6 +26,9 @@ struct NativeRulesSourceSnapshot {
     selected_rules_root: IniFile,
     langrule: Option<IniFile>,
     fixed_art: IniFile,
+    /// Immutable Voc catalog selected once by Init_Game52C763..52C796.
+    /// It is not a Rules layer and survives scenario Rules reconstruction.
+    fixed_sounds: SoundRegistry,
 }
 
 #[derive(Debug)]
@@ -142,9 +150,20 @@ impl NativeRulesProcessOwner {
                 selected_rules_root,
                 langrule,
                 fixed_art,
+                fixed_sounds: SoundRegistry::default(),
             },
             registry: Some(NativeRulesRegistryOwner::ColdStartup(cold_trace)),
         })
+    }
+
+    /// Select the process's fixed SOUNDMD catalog before producing gameplay
+    /// Rules. Fixture-only cold sources leave the native empty catalog.
+    pub(crate) fn select_fixed_sounds(&mut self, sounds: SoundRegistry) {
+        self.sources.fixed_sounds = sounds;
+    }
+
+    pub(crate) fn bind_sinking_sounds(&self, rules: &mut RuleSet, processed: &ProcessedRulesLayers) {
+        rules.bind_sinking_sounds(processed.ini(), &self.sources.fixed_sounds);
     }
 
     /// Build the shell-facing compatibility projection without changing the
@@ -200,7 +219,7 @@ impl NativeRulesProcessOwner {
             }
         };
 
-        let rules = match RuleSet::from_processed_rules(&processed) {
+        let mut rules = match RuleSet::from_processed_rules(&processed) {
             Ok(rules) => rules,
             Err(error) => {
                 let (_, post_reset_trace) =
@@ -210,6 +229,7 @@ impl NativeRulesProcessOwner {
                 return Err(error);
             }
         };
+        self.bind_sinking_sounds(&mut rules, &processed);
         debug_assert_eq!(rules.source_ini_hash(), processed.content_hash());
         let (processed_ini, post_reset_trace) =
             processed.into_ini_and_native_type_construction_trace();

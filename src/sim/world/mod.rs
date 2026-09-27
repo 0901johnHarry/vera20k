@@ -23,6 +23,8 @@ mod object_entry;
 #[cfg(test)]
 mod entry_test_fixture;
 mod crash;
+mod sinking;
+pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
 mod gap_generator;
 mod ground_move;
@@ -1779,13 +1781,13 @@ impl Simulation {
                 if !matches!(category, EntityCategory::Unit | EntityCategory::Structure) {
                     return;
                 }
-                // A crashing unit's receiver returns without the UnInit
-                // (`0x00738475`); its impact takes it.
+                // Unit's receiver retains crashes (738475) and sinking
+                // hulls (738493). Their own AI terminal calls UnInit.
                 if self
                     .substrate
                     .entities
                     .get(stable_id)
-                    .is_some_and(|entity| entity.crashing)
+                    .is_some_and(|entity| entity.crashing || entity.sinking.is_active())
                 {
                     return;
                 }
@@ -3329,9 +3331,11 @@ impl Simulation {
             y: i32::from(entity.position.ry)
                 .wrapping_mul(256)
                 .wrapping_add(entity.position.sub_y.to_num::<i32>()),
-            z: i32::from(entity.position.z)
-                .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
-                .wrapping_add(locomotor_z),
+            z: entity.position.exact_z_leptons.unwrap_or_else(|| {
+                i32::from(entity.position.z)
+                    .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
+                    .wrapping_add(locomotor_z)
+            }),
         }
     }
 
@@ -7021,6 +7025,11 @@ pub(crate) fn wake_anchor_for(
     terrain: Option<&ResolvedTerrainGrid>,
     binary_frame: u32,
 ) -> Option<(u16, u16, SimFixed, SimFixed, u8)> {
+    // Foot4DA81A bypasses the locomotor (and its movement-wake producer)
+    // while sinking. Unit AI owns that hull's separate jittered wake.
+    if entity.sinking.is_active() {
+        return None;
+    }
     if !crate::sim::movement::ready_producer::is_moving_now_for(entity, binary_frame) {
         return None;
     }

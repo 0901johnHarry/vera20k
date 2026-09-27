@@ -120,12 +120,13 @@ finish required migrations and remove obsolete code/state. Preserve intentional
 differences, validate affected paths and keep cleanup within task scope.
 
 Fix refactoring in the code your change touches. File a GitHub issue labeled `refactor`
-only for what would change behavior outside your chain or is too big for the change.
-Search open issues first and comment on a match instead of filing a duplicate. Say where
-it is, why it hurts and what work it slowed down, not how to fix it, and comment again
-each time it slows work down. Issues are leads: verify them before acting, and correct
-or close any that prove wrong. Pick refactoring work by that recorded cost. When your PR
-fixes or changes what an open issue says, close or correct it in that PR.
+only for what would change behavior outside your chain or is too big for the change;
+add `tooling` when it concerns tools, test infrastructure, CI or workflow. Search open
+issues first and comment on a match instead of filing a duplicate. Say where it is, why
+it hurts and what work it slowed down, not how to fix it, and comment again each time
+it slows work down. Issues are leads: verify them before acting, and correct or close
+any that prove wrong. Pick refactoring work by that recorded cost. When your PR fixes or
+changes what an open issue says, close or correct it in that PR.
 
 Simulation state and shared decisions have one authoritative owner. Before adding
 state or decision logic, find existing writers and name the owner in the PR. Extend

@@ -1,14 +1,13 @@
 //! Voxel unit instance builders — per-frame SpriteInstance generation for VXL entities.
 //!
 //! Handles turret/barrel separation, harvest overlays, and VXL animation frames.
-//! Split from `presentation::instances` to keep files under the 600-line limit.
 //!
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
 
 use super::helpers::{
     EntityDrawBand, compute_sprite_depth, entity_draw_band, ground_sort_row, in_view,
-    tactical_entity_render_admission,
+    projection_admitted, tactical_entity_render_admission,
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
@@ -36,6 +35,10 @@ use crate::sim::components::HarvestOverlay;
 use crate::sim::movement::slope_transition::SLOPE_TRANSITION_FRAMES;
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(test)]
+#[path = "naval_draw_tests.rs"]
+mod naval_draw_tests;
 
 /// One-shot tripwire: fires the first time a `slope_type >= 17` byte is
 /// observed at the render hand-off. Subsequent observations are silent
@@ -275,11 +278,20 @@ pub(crate) fn build_unit_instances(
         state.render_width() as f32 / z,
         state.render_height() as f32 / z,
     );
+    let (_, _, tactical_width, tactical_height) =
+        crate::app::input::camera::tactical_viewport_px(state);
+    let unit_viewport = [tactical_width as f32 / z, tactical_height as f32 / z];
     let local_owner = crate::app::input::commands::preferred_local_owner_name(state);
     let local_owner_id = local_owner.as_deref().and_then(|o| sim.interner.get(o));
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
         state.rules().map(|rules| &rules.art_registry);
+    state
+        .match_state
+        .match_presentation
+        .sinking_waterlines
+        .borrow_mut()
+        .retain(|id| sim.entities().contains(id));
 
     let encounter_order = super::helpers::tactical_entity_encounter_order(sim);
     for stable_id in encounter_order {
@@ -358,11 +370,15 @@ pub(crate) fn build_unit_instances(
         // slope during gamemd's 3-frame transition, then falls back to the
         // stable terrain slope path.
         let slope_state = unit_render_slope_state(state, entity, display_binary_frame, band);
-        let (sx, sy) = crate::render::locomotor_visual::screen_position(entity);
-        let interp_z = pos.z;
-        if !in_view(sx, sy, TILE_WIDTH, TILE_HEIGHT, cam_x, cam_y, sw, sh, 120.0) {
+        let viewport = if entity.category == EntityCategory::Unit {
+            unit_viewport
+        } else {
+            [sw, sh]
+        };
+        let Some([sx, sy]) = unit_draw_anchor(entity, [cam_x, cam_y], viewport) else {
             continue;
-        }
+        };
+        let interp_z = pos.z;
         let draw_state = draw_decision.state;
         let tint = vxl_body_tint(
             state.match_state.match_presentation.lighting.grid(),
@@ -528,11 +544,11 @@ pub(crate) fn build_unit_instances(
                         &mut pieces,
                     );
                 }
-                let (composite_rect, split) = composite_depth_rect(
-                    [(entry, [center_x, center_y])],
-                    super::foot_depth::unit_bridge_split(state, entity, true),
-                );
-                let body_draw_state = composite_draw_state(state, draw_state, split);
+                let bounds = composite_draw_bounds([(entry, [center_x, center_y])]);
+                let (composite_rect, split) =
+                    bounds.depth_rect(super::foot_depth::unit_bridge_split(state, entity, true));
+                let body_draw_state =
+                    unit_body_draw_state(state, entity, draw_state, split, bounds);
                 let sprite = SpriteInstance {
                     position: [center_x + entry.offset_x, center_y + entry.offset_y],
                     size: entry.pixel_size,
@@ -708,7 +724,8 @@ fn emit_crash_pose_sprite(
     let depth_y = center_y + entry.offset_y + entry.pixel_size[1];
     let depth = body_sort_depth(state, entity, EntityDrawBand::Top, depth_y, z);
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
-    let (composite_rect, split) = composite_depth_rect([(entry, [center_x, center_y])], false);
+    let bounds = composite_draw_bounds([(entry, [center_x, center_y])]);
+    let (composite_rect, split) = bounds.depth_rect(false);
     pieces.push(ObjectPieceInstance {
         target: ObjectTexture::UnitPose,
         render_z: RenderZPolicy::ReadOnly,
@@ -721,7 +738,7 @@ fn emit_crash_pose_sprite(
             tint,
             palette_light,
             alpha: 1.0,
-            draw_state: composite_draw_state(state, draw_state, split),
+            draw_state: unit_body_draw_state(state, entity, draw_state, split, bounds),
             z_adjust: voxel_adjust,
             z_gradient: pack_voxel_z_gradient(ZGradient::Vertical, split),
             zshape_origin: composite_rect,
@@ -922,6 +939,7 @@ fn native_shadow_caller_eligible(
     band: EntityDrawBand,
 ) -> bool {
     if entity.category != EntityCategory::Unit
+        || entity.sinking.is_active()
         || band != EntityDrawBand::Ground
         || !entity
             .locomotor
@@ -965,7 +983,11 @@ fn emit_unit_shadow_sprite(
     band: EntityDrawBand,
     pieces: &mut Vec<ObjectPieceInstance>,
 ) {
-    if entity.category != EntityCategory::Unit || band != EntityDrawBand::Ground {
+    // Original Unit73C1D2 returns before its shadow suffix while +3CD is set.
+    if entity.category != EntityCategory::Unit
+        || entity.sinking.is_active()
+        || band != EntityDrawBand::Ground
+    {
         return;
     }
     if draw_state.fx_flags & crate::render::draw_state::FX_CLOAK != 0 {
@@ -1018,14 +1040,71 @@ fn push_unit_sprite(
     });
 }
 
-/// Select the rectangle consumed by Unit's 0x73B140 split. Atlas padding is
-/// storage, not the native draw rectangle. Use only the requested parts at
-/// their actual facings; 0x70755D unions them in body/turret/barrel draw order.
-/// Unsplit draws retain the existing rectangle until that wider path is audited.
-fn composite_depth_rect(
+fn unit_draw_anchor(
+    entity: &crate::sim::game_entity::GameEntity,
+    camera: [f32; 2],
+    viewport: [f32; 2],
+) -> Option<[f32; 2]> {
+    let (x, y) = crate::render::locomotor_visual::screen_position(entity);
+    // Unit draw admission precedes stateful +3CA capture. A smaller visual
+    // cull delays that first capture and changes later visible clipping.
+    let admitted = if entity.category == EntityCategory::Unit {
+        projection_admitted([x, y], camera, viewport)
+    } else {
+        in_view(
+            x,
+            y,
+            TILE_WIDTH,
+            TILE_HEIGHT,
+            camera[0],
+            camera[1],
+            viewport[0],
+            viewport[1],
+            120.0,
+        )
+    };
+    admitted.then_some([x, y])
+}
+
+/// One parent raster has separate atlas storage and native drawing bounds.
+/// Unit73BEA4's waterline and 73B140's split both consume the native union;
+/// atlas padding must not move either boundary. Unsplit depth retains its
+/// existing storage rectangle until that wider depth path is audited.
+#[derive(Clone, Copy)]
+struct CompositeDrawBounds {
+    padded: [f32; 2],
+    native: Option<[i32; 4]>,
+}
+
+impl CompositeDrawBounds {
+    fn unit_waterline(
+        self,
+        cache: &mut crate::render::sinking::SinkingWaterlines,
+        id: u64,
+        sinking: bool,
+    ) -> Option<i16> {
+        if let Some([_, y, _, height]) = self.native {
+            cache.unit_draw(id, sinking, y.wrapping_add(height))
+        } else {
+            // Unsupported fallback geometry cannot establish a new native
+            // rectangle; an already retained +3CA still clips its body.
+            cache.retained_clip(id)
+        }
+    }
+
+    fn depth_rect(self, wants_split: bool) -> ([f32; 2], bool) {
+        if wants_split {
+            if let Some([_, y, _, height]) = self.native {
+                return ([y as f32, height as f32], true);
+            }
+        }
+        (self.padded, false)
+    }
+}
+
+fn composite_draw_bounds(
     parts: impl IntoIterator<Item = (UnitSpriteEntry, [f32; 2])>,
-    wants_split: bool,
-) -> ([f32; 2], bool) {
+) -> CompositeDrawBounds {
     let mut top = f32::INFINITY;
     let mut bottom = f32::NEG_INFINITY;
     let mut native = None;
@@ -1042,16 +1121,37 @@ fn composite_depth_rect(
             all_native = false;
         }
     }
-    if wants_split && all_native {
-        if let Some([_, y, _, height]) = native {
-            return ([y as f32, height as f32], true);
-        }
+    CompositeDrawBounds {
+        padded: if bottom > top {
+            [top, bottom - top]
+        } else {
+            [0.0, 0.0]
+        },
+        native: all_native.then_some(native).flatten(),
     }
-    if bottom > top {
-        ([top, bottom - top], false)
-    } else {
-        ([0.0, 0.0], false)
+}
+
+fn unit_body_draw_state(
+    state: &AppState,
+    entity: &crate::sim::game_entity::GameEntity,
+    draw_state: DrawState,
+    split: bool,
+    bounds: CompositeDrawBounds,
+) -> DrawState {
+    let mut draw_state = composite_draw_state(state, draw_state, split);
+    // The final parent rectangle is known only after all selected voxel parts
+    // have been admitted. Never capture from an intermediate/offscreen part.
+    if entity.category == EntityCategory::Unit {
+        let mut cache = state
+            .match_state
+            .match_presentation
+            .sinking_waterlines
+            .borrow_mut();
+        let clip =
+            bounds.unit_waterline(&mut cache, entity.stable_id(), entity.sinking.is_active());
+        crate::render::sinking::apply_waterline_clip(&mut draw_state, clip);
     }
+    draw_state
 }
 
 fn composite_draw_state(state: &AppState, mut draw_state: DrawState, split: bool) -> DrawState {
@@ -1184,7 +1284,7 @@ fn emit_turret_unit_sprites(
             pieces,
         );
     }
-    let (composite_rect, split) = composite_depth_rect(
+    let bounds = composite_draw_bounds(
         body_entry_opt
             .into_iter()
             .map(|(entry, _)| (entry, [center_x, center_y]))
@@ -1193,9 +1293,10 @@ fn emit_turret_unit_sprites(
                     .iter()
                     .map(|(entry, _)| (*entry, [center_x + tur_ox, center_y + tur_oy])),
             ),
-        super::foot_depth::unit_bridge_split(state, entity, true),
     );
-    let body_draw_state = composite_draw_state(state, draw_state, split);
+    let (composite_rect, split) =
+        bounds.depth_rect(super::foot_depth::unit_bridge_split(state, entity, true));
+    let body_draw_state = unit_body_draw_state(state, entity, draw_state, split, bounds);
     if let Some((entry, texture_source)) = body_entry_opt {
         let sprite = SpriteInstance {
             position: [center_x + entry.offset_x, center_y + entry.offset_y],
@@ -1803,16 +1904,20 @@ mod tests {
             ..body
         };
         let (rect, split) =
-            composite_depth_rect([(body, [0.0, 100.0]), (turret, [0.0, 100.0])], true);
+            composite_draw_bounds([(body, [0.0, 100.0]), (turret, [0.0, 100.0])]).depth_rect(true);
         assert!(split);
         assert_eq!(rect, [80.0, 30.0]);
-        let (rect, split) = composite_depth_rect([(body, [0.0, 100.0])], false);
+        let (rect, split) = composite_draw_bounds([(body, [0.0, 100.0])]).depth_rect(false);
         assert!(!split);
         assert_eq!(rect, [50.0, 100.0]);
         let unknown = UnitSpriteEntry {
             native_draw_bounds: None,
             ..body
         };
-        assert!(!composite_depth_rect([(body, [0.0, 0.0]), (unknown, [0.0, 0.0])], true).1);
+        assert!(
+            !composite_draw_bounds([(body, [0.0, 0.0]), (unknown, [0.0, 0.0])])
+                .depth_rect(true)
+                .1
+        );
     }
 }

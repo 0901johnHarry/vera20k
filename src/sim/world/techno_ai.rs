@@ -7023,3 +7023,11 @@ mod bridge_target_layer_tests;
 #[cfg(test)]
 #[path = "techno_ai/bridge_engineer_entry_tests.rs"]
 mod bridge_engineer_entry_tests;
+
+#[cfg(test)]
+#[path = "techno_ai/bridge_low_repair_tests.rs"]
+mod bridge_low_repair_tests;
+
+#[cfg(test)]
+#[path = "techno_ai/bridge_test_evidence.rs"]
+mod bridge_test_evidence;

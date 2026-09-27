@@ -535,6 +535,10 @@ pub struct ObjectType {
     /// latch edge, before `CrashingSound=`, for a human player's object only
     /// (`HouseClass::IsHumanPlayer @ 0x0050B6F0`, `0x004DAD10..0x004DAD59`).
     pub voice_crashing: Option<String>,
+    /// TechnoType+548/+554, read at712FF1/7130A5. Foot AI4DABC7 observes
+    /// the sinking edge, plays VoiceSinking, then the held SinkingSound.
+    pub sinking_sound: Option<String>,
+    pub voice_sinking: Option<String>,
     /// `ImpactWaterSound=` / `ImpactLandSound=` — `+0x53C` / `+0x540`, read at
     /// `0x00712EFC` / `0x00712F38`: the crash impact's cue by the impact cell's
     /// LandType (`FlyLocomotionClass::Process 0x004CD818..0x004CD891`), each
@@ -2028,6 +2032,10 @@ impl ObjectType {
             move_sound: section.get("MoveSound").map(|s| s.to_string()),
             crashing_sound: sound_key(section, "CrashingSound"),
             voice_crashing: sound_key(section, "VoiceCrashing"),
+            // Native constructors store -1; the process owner later binds
+            // these references against its fixed SOUNDMD catalog.
+            sinking_sound: None,
+            voice_sinking: None,
             impact_water_sound: sound_key(section, "ImpactWaterSound"),
             impact_land_sound: sound_key(section, "ImpactLandSound"),
             voice_feedback: section.get("VoiceFeedback").map(|s| s.to_string()),

@@ -207,6 +207,13 @@ struct FragOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragOutput {
+    // Unit73BEA4..73BF7B intersects the caller clip with the retained +3CA
+    // waterline. Keep full geometry/UV/depth inputs: only fragment admission
+    // changes. Discard suppresses both color and depth output (WGSL9.4.11:
+    // https://www.w3.org/TR/WGSL/#discard-statement).
+    if ((in.fx_flags & 128u) != 0u && in.world_pos.y >= in.effect_tint.w) {
+        discard;
+    }
     let atlas_size: vec2f = vec2f(textureDimensions(atlas));
     let atlas_coord: vec2i = vec2i(in.atlas_uv * atlas_size);
     let byte: u32 = textureLoad(atlas, atlas_coord, 0).r;
@@ -241,7 +248,10 @@ fn fs_main(in: VertexOutput) -> FragOutput {
         rgb = textureLoad(palette, palette_coord, 0).rgb;
     }
 
-    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, in.effect_tint.rgb, opaque_palette(in.palette_light, in.alpha, in.fx_flags), byte), in.alpha);
+    // The waterline changes geometry admission only. It must not opt an
+    // otherwise opaque body out of the native packed-palette conversion.
+    let color_flags = in.fx_flags & ~128u;
+    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, in.effect_tint.rgb, opaque_palette(in.palette_light, in.alpha, color_flags), byte), in.alpha);
     color = apply_fx(color, in.fx_flags, in.fx_params, in.effect_tint);
     out.color = color;
     if (camera.pad1 > 0.5) {

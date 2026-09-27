@@ -824,6 +824,9 @@ pub struct GeneralRules {
     /// Stock: `ExplosionWaterLarge` and empty (silence).
     pub impact_water_sound: Option<String>,
     pub impact_land_sound: Option<String>,
+    /// AudioVisual/SinkingSound -> Rules+208 (6699C8); constructor665940
+    /// stores -1. Used only when the sinking type has no resolved sound.
+    pub sinking_sound: Option<String>,
     /// `[AudioVisual] BombTickingSound=` (`RulesClass+0x20C`): the looping
     /// tick at a bombed object (`BombListClass::UpdateAll @ 0x00438BF0`).
     pub bomb_ticking_sound: Option<String>,
@@ -998,14 +1001,10 @@ pub struct GeneralRules {
     pub engineer_infantry: Option<String>,
     /// `CrewEscape=` (Rules `+0x5C0`, `ReadDouble`), the chance a crewed
     /// vehicle's crew escapes. Constructor default 0.5 (`0x00665E11..0x00665E17`).
-    /// `read_double` scales a `%` value by 0.01 in host binary64; native
-    /// `CCINIClass::ReadDouble @ 0x005283D0` FMULs under the chop control word,
-    /// so a mod percentage can differ in the last bit (stock "50%" is exact).
     pub crew_escape: crate::util::native_x87::NativeF64Bits,
     /// `RefundPercent=` (Rules `+0x1738`, `ReadDouble`), the human-owner refund
     /// share `TechnoTypeClass::GetRefund @ 0x00711F60` applies. Constructor
-    /// default 0.5 (`0x006675CE..0x006675D4`, ECX set at `0x00667190`). Same
-    /// `%` rounding note as `crew_escape`.
+    /// default 0.5 (`0x006675CE..0x006675D4`, ECX set at `0x00667190`).
     pub refund_percent: crate::util::native_x87::NativeF64Bits,
     /// `ShipSinkingWeight=` (Rules `+0x630`, `ReadDouble` at `0x0066F174`;
     /// constructor default 3.0 at `0x00665EE8`). A surface naval unit at
@@ -1335,16 +1334,8 @@ impl Default for PrismSupportRules {
 impl PrismSupportRules {
     /// One ReadGeneral pass over a `[General]` section. The modifier is
     /// `fmul qword 100.0` (`0x0067116E`) on the value ReadDouble returns, then
-    /// ftol (`0x007C5F00`), under the game's masked chop control word.
-    ///
-    /// RESIDUAL: ReadDouble's own percent product (`fmul qword 0.01`,
-    /// `0x0052857E`) is chopped under that control word too, while the shared
-    /// reader ([`crate::rules::ini_value`]) rounds it to nearest. Trigger: a
-    /// percent value whose product rounds differently (a modded `35%`; retail
-    /// `150%` is exact). Effect: the modifier reads one higher (`35%`: 35
-    /// against 34 in an unsaved native probe on `building_prism.py`'s group E
-    /// fixture). Later owner: the shared ReadDouble reader, whose other
-    /// percent keys it moves too.
+    /// ftol (`0x007C5F00`), under the game's masked chop control word, which
+    /// also chops ReadDouble's own percent product: a modded `35%` reads 34.
     pub(crate) fn read_pass(self, general: &crate::rules::ini_parser::IniSection) -> Self {
         use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
         let percent = general.read_double("PrismSupportModifier", f64::from(self.modifier));
@@ -1527,6 +1518,7 @@ impl Default for GeneralRules {
             chrono_out_sound: Some("ChronoMinerTeleport".to_string()),
             impact_water_sound: None,
             impact_land_sound: None,
+            sinking_sound: None,
             bomb_ticking_sound: None,
             bomb_attach_sound: None,
             damage_delay_minutes: 1.0,
@@ -2508,6 +2500,8 @@ impl GeneralRules {
                 .and_then(|s| s.get("ImpactLandSound"))
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            // Constructor -1 until the fixed SOUNDMD catalog resolves it.
+            sinking_sound: None,
             bomb_ticking_sound,
             bomb_attach_sound,
             warp_in: AnimRef {
@@ -3289,6 +3283,27 @@ impl RuleSet {
         }
         rules.source_ini_hash = processed.content_hash();
         Ok(rules)
+    }
+
+    /// Resolve the three sinking sound readers against the startup-selected
+    /// SOUNDMD registry. The processed projection retains only passes where
+    /// each type existed, including the native current-ID retention order.
+    /// Type defaults and Rules+208 start at -1; [AudioVisual] owns the latter.
+    pub(crate) fn bind_sinking_sounds(
+        &mut self,
+        ini: &IniFile,
+        sounds: &crate::rules::sound_ini::SoundRegistry,
+    ) {
+        self.general.sinking_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
+        for object in &mut self.object_list {
+            let section = ini.section(&object.id);
+            object.sinking_sound =
+                section.and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
+            object.voice_sinking =
+                section.and_then(|section| sounds.read_rules_reference(section, "VoiceSinking"));
+        }
     }
 
     /// Parse a complete RuleSet from a rules.ini IniFile.

@@ -371,8 +371,9 @@ pub(super) fn build_radar_object_update(
         || local_owner.is_none()
         || local_owner.is_some_and(|local_owner| {
             entity.owner() == local_owner
-                || interner
-                    .is_some_and(|interner| fog.is_friendly_id(local_owner, entity.owner(), interner))
+                || interner.is_some_and(|interner| {
+                    fog.is_friendly_id(local_owner, entity.owner(), interner)
+                })
         });
     let effective_type_invisible =
         object.is_some_and(|object| object.invisible || object.invisible_in_game);
@@ -404,9 +405,7 @@ pub(super) fn build_radar_object_update(
     } else {
         RadarRegistrationVisibilityFacts::Mobile(RadarMobileVisibilityFacts {
             type_invisible: effective_type_invisible,
-            // Techno+0x3CD's sinking producer is absent. Keep the input visible
-            // at this boundary instead of aliasing it to a movement state.
-            sinking: false,
+            sinking: entity.sinking.is_active(),
             object_alive: entity.lifecycle.object_alive,
             in_limbo: entity.lifecycle.in_limbo,
             owner_is_human_player,
@@ -592,6 +591,48 @@ mod tests {
             surface.surface_to_aperture_pixel(update.origin),
             surface.surface_to_aperture_pixel(local),
             "object and type-5 source receive one identical final copy transform"
+        );
+    }
+
+    #[test]
+    fn sinking_owner_clears_retained_radar_registration_before_hull_cleanup() {
+        let rules = RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+            "[VehicleTypes]\n0=TEST\n[TEST]\nNaval=yes\nStrength=800\n",
+        ))
+        .unwrap();
+        let mut sim = crate::sim::world::Simulation::new();
+        let id = sim.allocate_stable_id();
+        let mut entity =
+            crate::sim::game_entity::GameEntity::test_default(id, "TEST", "Americans", 4, 5);
+        entity.type_ref = sim.interner.intern("TEST");
+        entity.owner = sim.interner.intern("Americans");
+        entity.category = EntityCategory::Unit;
+        entity.lifecycle.in_limbo = false;
+        sim.substrate.entities.insert(entity);
+        let update = |sim: &crate::sim::world::Simulation| {
+            build_radar_object_update(
+                sim.entities().get(id).unwrap(),
+                &sim.houses,
+                None,
+                &sim.fog,
+                true,
+                false,
+                Some(&rules),
+                Some(&sim.interner),
+                visibility_projection(),
+                None,
+                None,
+            )
+        };
+        let mut tracker = super::super::radar_tracker::RetainedRadarTracker::default();
+        tracker.update_object(update(&sim), false);
+        assert!(tracker.is_registered(id));
+        sim.begin_ship_sinking(id, &rules);
+        assert!(sim.entities().get(id).unwrap().lifecycle.object_alive);
+        tracker.update_object(update(&sim), false);
+        assert!(
+            !tracker.is_registered(id),
+            "Techno70D1D0 reads +3CD before discovery/owner gates"
         );
     }
 
