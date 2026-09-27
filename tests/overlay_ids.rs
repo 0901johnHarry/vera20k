@@ -33,7 +33,7 @@ fn print_overlay_id_mapping_for_dustbowl() {
 
     let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
-    let map = map_file::load_mmx(&map_path).expect("load Dustbowl.mmx");
+    let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
 
     let (rules_bytes, source) = asset_manager
         .get_with_source("rulesmd.ini")
@@ -395,7 +395,7 @@ fn compare_overlay_index_modes() {
 
     let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
-    let map = map_file::load_mmx(&map_path).expect("load Dustbowl.mmx");
+    let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
     let (rules_bytes, _) = asset_manager
         .get_with_source("rulesmd.ini")
         .or_else(|| asset_manager.get_with_source("rules.ini"))
@@ -686,7 +686,7 @@ fn dustbowl_overlay_168_stays_non_resource() {
 
     let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
-    let map = map_file::load_mmx(&map_path).expect("load Dustbowl.mmx");
+    let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
     let (rules_bytes, _) = asset_manager
         .get_with_source("rulesmd.ini")
         .or_else(|| asset_manager.get_with_source("rules.ini"))
@@ -710,7 +710,7 @@ fn print_overlay_id_mapping_for_goldst() {
 
     let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
     let map_path = ra2_dir.join("GoldSt.mmx");
-    let map = match map_file::load_mmx(&map_path) {
+    let map = match map_file::load_from_path(&map_path) {
         Ok(map) => map,
         Err(err) => {
             println!("SKIP: could not load GoldSt.mmx: {err}");

@@ -163,7 +163,8 @@
     "rust_app_final": "951 passed, 24 ignored, 0 failed after scoped app fixes",
     "clippy_final": "passed after critic selector fix",
     "native_palette": "checked native run reproduces existing golden; no palette changes",
-    "independent_review": "One read-only critic; duplicated wrapped-map selection finding fixed and revalidated."
+    "independent_review": "One read-only critic; duplicated wrapped-map selection finding fixed and revalidated.",
+    "clippy_all_targets": "Library, binaries, integration tests and examples passed after migrating eight remaining load_mmx calls in four integration-test files; runtime code unchanged."
   },
   "limits": [
     "Production observation only; no native gameplay or pixel parity certification.",
