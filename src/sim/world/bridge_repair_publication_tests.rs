@@ -885,7 +885,7 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
     assert!(!pinned.is_walkable(13, 13));
     let gameplay = (sim.scenario_rng.state(), sim.main_rng.state());
     let mut mapgen = sim.mapgen_rng.clone();
-    mapgen.next_range_u32_inclusive_scaled(0, 3);
+    mapgen.next_high_two_bits();
     assert!(
         sim.run_completed_walk_step(
             engineer,
