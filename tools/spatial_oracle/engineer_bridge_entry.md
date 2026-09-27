@@ -56,6 +56,7 @@ Scalar bodies and caller fragments do not prove full native route equality.
 | [Walk Infantry entry](walk_capture_entry.py) | Original75B59C coordinate/height/query producer through concrete51BF90, stopping at head/refusal boundary |
 | [Walk response](walk_prehead_response.md) | Supplied result classes0..7, timers, actual cloak and obstacle callbacks, and bounded recursive continuations |
 | [Foot failure-sound byte](foot_scold_latch.md) | Original construction and raw-load retention, three Walk guards, thirty paid/idle tails and twelve Drive/Ship guard controls; sound requests stop before audio playback |
+| [Walk boundary prerequisites](walk_cell_486920_audit.md) | Original 250-entry overlay enumeration, eleven Cell effect gates, ENGINEER immunity and six EMP predicate controls; successful vein/EMP mechanisms remain outside this common path |
 | [Engineer admission](engineer_repair_admission.py) | Twenty-two original PerCell prefix controls; runtime object-iteration-disabled is separately labelled |
 | [Bridge family](engineer_family_selector.py) | Fourteen original selector controls, including exclusive wood bound, Y-major scan and shared Dummy behavior |
 | [Structural side cells](bridge_side_admission.md) | Original constructor25 topology through six Walk/Infantry controls and two radar branches; deck admission does not require an own overlay |
@@ -85,6 +86,8 @@ PYTHONPATH=. python -m tools.spatial_oracle.astar_structural_height --check
 PYTHONPATH=. python -m tools.spatial_oracle.astar_capture_neighbor --check
 PYTHONPATH=. python -m tools.spatial_oracle.walk_capture_entry --check
 PYTHONPATH=. python -m tools.spatial_oracle.walk_prehead_response --check
+PYTHONPATH=. python -m tools.spatial_oracle.foot_scold_latch --check
+PYTHONPATH=. python -m tools.spatial_oracle.walk_cell_486920_audit --check
 PYTHONPATH=. python -m tools.spatial_oracle.engineer_repair_admission --check
 PYTHONPATH=. python -m tools.spatial_oracle.engineer_family_selector --check
 PYTHONPATH=. python -m tools.spatial_oracle.bridge_side_admission --check
@@ -105,7 +108,7 @@ The initial integrated run passes: Engineer entry and repair occur 76 frames
 after dispatch (zero-based trace frame75); both restored continuations also
 pass. This is Rust production evidence, not native timing or full route parity.
 The saved receipt is `engineer-entry-followup/hills-side-consumers.log`.
-Release/render validation and final PR readiness remain pending.
+Release/render validation remains pending.
 
 After integrating `main` at `c5451c8992964fe465b852de3e6c3ccae0498222`,
 the legal Hills approach and both restore continuations pass again
@@ -123,6 +126,20 @@ constructor-side tests, including the six native admission answers through
 `constructor_side_admission_matches_original_foot_receiver`. Its SHA256 is
 `72a17ff359ebab7b88f9a2649f24beb0ff3846e8f47de48763803ad22dce3e03`;
 logs are `engineer-entry-followup/side-fixtures-{radar,constructor}.log`.
+
+The final candidate integrated with `main` at
+`945d16234f5fa1536c679dae7eee63bbc06140c3` passes the full retail-required
+library suite: **9,572 passed, zero failures, 177 ignored**. The retained binary
+SHA256 is `c7cda151f8a6c28e51b222545af46cc2ad02a17c5400bfb5d2cdccf37e9fa219`;
+the log is `engineer-entry-followup/engineer-main945-readiness.log`.
+Snapshot version222 rejects earlier movement continuations.
+
+Four structural-collapse tests previously mixed direct overlay0xDC with raw
+structural0x100. Original57D530 changes the overlay without the structural flag
+setter. These fixtures now use a real direction6 stamp and anchor25/state15,
+which selects576BA0 and47E040. Their original path/fallout assertions remain,
+with added raw flags, transition and synchronous publication checks. All150
+active world tests and the final full suite pass.
 
 Repair exposed an affected-consumer error: original bridge constructors leave
 structural side cells without their own overlay. PathGrid projection, common
@@ -155,6 +172,15 @@ adds only a nonzero tagged suffix; previous zero-state hashes stay unchanged.
 No ordinary gameplay arming writer has been established. The direct/alias
 scan is bounded and does not prove global unreachability; this remains an
 audit item. No speculative command-side arming behavior was introduced.
+
+Walk's boundary callback486920 requires overlay registry index126, DUMMYOLD
+in the executed physical RULESMD enumeration. The tested bridge overlays and
+overlayless side cells return before ground-list traversal. ENGINEER also
+reads `ImmuneToVeins=yes` in these physical layers. Its virtual+37C predicate
+reads signed EMP timer+504, which the actual constructor initializes to zero.
+These bounded facts explain the ordinary chain; the successful vein Anim
+branch and EMP lifecycle remain separate conditional mechanisms. See the
+linked prerequisite corpus for callback ordering and coverage limits.
 
 Ghidra corrections are saved and read back: PerCell519CA3/519B3E/51A010,
 AStar429E54/42A18B/42A4B6, InfantryType5236AA, and Cell483480 now named
