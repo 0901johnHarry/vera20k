@@ -477,9 +477,6 @@ pub enum Command {
         target_rx: u16,
         target_ry: u16,
         queue: bool,
-        /// When multiple units are ordered together, they share a group_id.
-        /// The movement system syncs their speed to the slowest member.
-        group_id: Option<u32>,
     },
     /// Stop movement/combat intent on one entity.
     Stop { entity_id: u64 },

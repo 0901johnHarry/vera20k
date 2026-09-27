@@ -560,7 +560,6 @@ mod tests {
                                 target_rx: 20,
                                 target_ry: 2,
                                 queue: false,
-                                group_id: None,
                             },
                         )]
                     } else {

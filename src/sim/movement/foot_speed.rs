@@ -3,14 +3,15 @@ use crate::rules::object_type::ObjectType;
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
-/// Resolve live type/veterancy speed; a grouped request may cap it for formation.
-/// An ungrouped MovementTarget speed is a path cache, not the type authority.
+/// Resolve live type/veterancy speed. A MovementTarget speed is a path cache,
+/// not the type authority. Like gamemd's getter (`0x004DB1A0`), nothing about
+/// the other units ordered with this one enters it.
 pub(super) fn adjusted_speed(
     entity: &GameEntity,
     object: Option<&ObjectType>,
     veteran_speed: f64,
 ) -> SimFixed {
-    let speed = object
+    object
         .map(|object| {
             crate::sim::combat::veterancy::entity_mover_speed_leptons_per_second(
                 entity,
@@ -20,12 +21,7 @@ pub(super) fn adjusted_speed(
             )
         })
         .or_else(|| entity.movement_target.as_ref().map(|target| target.speed))
-        .unwrap_or(SIM_ZERO);
-    entity
-        .movement_target
-        .as_ref()
-        .filter(|target| target.group_id.is_some())
-        .map_or(speed, |target| speed.min(target.speed))
+        .unwrap_or(SIM_ZERO)
 }
 
 /// Foot4DB1A0: truncate adjusted type speed, then apply Foot+578 and truncate.

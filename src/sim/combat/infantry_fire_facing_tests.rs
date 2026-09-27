@@ -577,7 +577,6 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             target_rx: 5,
             target_ry: 10,
             queue: false,
-            group_id: None,
         },
     );
     for _ in 0..50 {

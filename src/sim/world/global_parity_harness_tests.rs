@@ -957,7 +957,6 @@ fn harness_script() -> Vec<(u64, Command)> {
                 target_rx: 24,
                 target_ry: 8,
                 queue: false,
-                group_id: None,
             },
         ),
         (
@@ -976,7 +975,6 @@ fn harness_script() -> Vec<(u64, Command)> {
                 target_rx: 28,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
         (300, Command::Stop { entity_id: 4 }),
@@ -987,7 +985,6 @@ fn harness_script() -> Vec<(u64, Command)> {
                 target_rx: 8,
                 target_ry: 8,
                 queue: false,
-                group_id: None,
             },
         ),
     ]
@@ -1432,7 +1429,6 @@ fn dense_converging_setup() -> (
                 target_rx: 25,
                 target_ry: y,
                 queue: false,
-                group_id: None,
             },
         ));
         script.push((
@@ -1443,7 +1439,6 @@ fn dense_converging_setup() -> (
                 target_rx: 25,
                 target_ry: y,
                 queue: false,
-                group_id: None,
             },
         ));
     }
@@ -1577,7 +1572,6 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
                         target_rx: 25,
                         target_ry: 5,
                         queue: false,
-                        group_id: None,
                     },
                 )]
             } else {

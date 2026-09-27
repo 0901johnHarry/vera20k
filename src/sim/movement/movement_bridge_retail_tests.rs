@@ -709,7 +709,6 @@ fn diagnose_rejected_order(
             target_rx: span.approach_b.0,
             target_ry: span.approach_b.1,
             queue: false,
-            group_id: None,
         },
         Some(&resources.rules),
         Some(&grid),
@@ -754,7 +753,6 @@ fn issue_ordinary_move(
             target_rx: target.0,
             target_ry: target.1,
             queue: false,
-            group_id: None,
         },
         Some(&resources.rules),
         Some(&grid),
@@ -793,7 +791,6 @@ impl OrderSource {
                 target_rx: target.0,
                 target_ry: target.1,
                 queue: false,
-                group_id: None,
             },
             OrderSource::AttackMove => Command::AttackMove {
                 entity_id,
@@ -1677,7 +1674,6 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
             target_rx: span.approach_b.0,
             target_ry: span.approach_b.1,
             queue: false,
-            group_id: None,
         },
     );
     scenario
@@ -2808,7 +2804,6 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
                     target_rx: gap.far_stub.0,
                     target_ry: gap.far_stub.1,
                     queue: false,
-                    group_id: None,
                 },
             )],
             SIM_TICK_MS,
@@ -3030,7 +3025,6 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
                     target_rx: span.approach_b.0,
                     target_ry: span.approach_b.1,
                     queue: false,
-                    group_id: None,
                 },
             )],
             SIM_TICK_MS,
@@ -3813,7 +3807,6 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
                     target_rx: under_b.0,
                     target_ry: under_b.1,
                     queue: false,
-                    group_id: None,
                 },
             )],
             SIM_TICK_MS,
@@ -4563,7 +4556,6 @@ fn scale_benchmark_many_movers_on_hills() {
                     target_rx: rx.wrapping_add(30),
                     target_ry: ry,
                     queue: false,
-                    group_id: None,
                 },
             )
         })

@@ -984,7 +984,6 @@ impl Simulation {
                         target_rx,
                         target_ry,
                         queue: false,
-                        group_id: None,
                     },
                 ));
             }

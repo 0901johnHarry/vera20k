@@ -535,7 +535,6 @@ fn replay_hash_stable_through_slice6() {
                 target_rx: 10,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
         (
@@ -861,7 +860,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
             target_rx: 10,
             target_ry: 10,
             queue: false,
-            group_id: None,
         },
         Some(&rules),
         Some(&grid),

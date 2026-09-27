@@ -1269,7 +1269,6 @@ fn move_silently_ignored_on_deployed() {
             target_rx: 30,
             target_ry: 30,
             queue: false,
-            group_id: None,
         },
         &rules,
     );
@@ -1294,7 +1293,6 @@ fn move_silently_ignored_on_deploying() {
             target_rx: 30,
             target_ry: 30,
             queue: false,
-            group_id: None,
         },
         &rules,
     );
@@ -1317,7 +1315,6 @@ fn move_silently_ignored_on_undeploying() {
             target_rx: 30,
             target_ry: 30,
             queue: false,
-            group_id: None,
         },
         &rules,
     );
@@ -1419,7 +1416,6 @@ fn move_works_after_undeploy_completes() {
             target_rx: 12,
             target_ry: 12,
             queue: false,
-            group_id: None,
         },
         Some(&rules),
         None,
