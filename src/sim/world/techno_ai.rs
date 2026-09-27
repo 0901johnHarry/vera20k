@@ -14,6 +14,7 @@
 //! Dispatch is `match category` only — no trait object / dyn / vtable
 //! (invariant #2).
 
+mod building_missions;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
@@ -632,33 +633,22 @@ fn techno_ai_shell(
                 crate::sim::credit_income::produce_cash_step(sim, id, rules);
                 sim.update_building_absorb_anim(id, rules);
                 sim.update_building_storage_anims(id, rules);
-                if !techno_common_steps(sim, id, rules, ctx.overlay_registry) {
-                    return;
-                }
             }
-            // Buildings run the SAME common Techno AI body units do — it is the
-            // only acquisition path a base defence has. Same order: off-mission
-            // clear, then the counter/promotion, then the passive block. There
-            // is deliberately no Guard→Attack mission flip at the dispatch point
-            // between them — see the block comment above
-            // `clear_passive_target_off_mission`'s neighbours for why.
-            //
-            // A structure never carries a destination, a navigation goal or a
-            // standing order, so its committed mission reads as finished and
-            // the derived Guard reading wins — except a sale's Selling
-            // (`GameEntity::passive_acquire_mission`), one of the twelve
-            // missions that strip a scanner target. The passive block never
-            // admits it, and its fire error holds any other target while it
-            // sells.
+            // The ready check after UpdateAnimation (`0x0043FE27`).
+            building_missions::ready_commence(sim, id);
+            if let Some(rules) = rules
+                && !techno_common_steps(sim, id, rules, ctx.overlay_registry)
+            {
+                return;
+            }
+            // Buildings run the SAME common Techno AI body units do: the
+            // off-mission clear, the `+0xC4` count, the mission dispatch and
+            // then the passive block, which is how a defence on Guard picks
+            // its targets. A building commences a queued mission only at
+            // Update's ready checks, never here.
             clear_passive_target_off_mission(sim, id, rules);
-            // BuildingClass::Update consumes its ready latch via Ready→Commence
-            // (`0x0043FE43`/`0x0043FFA3`); with no latch writers live the
-            // promotion evaluates to not-ready (recorded residual).
-            mission_common_step(sim, id, rules);
-            // The Selling mission's handler, BuildingClass::Sell, from the
-            // mission dispatch in TechnoClass::Update (`0x0043FE56`). A sold
-            // or converted building has left the map.
-            sim.visit_building_down(id, rules, ctx.overlay_registry);
+            mission_counter_step(sim, id);
+            building_missions::dispatch(sim, id, rules, ctx);
             if sim
                 .substrate
                 .entities
@@ -672,6 +662,8 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            // The ready check after the Techno AI (`0x0043FF91`).
+            building_missions::ready_commence(sim, id);
             // BuildingClass::UpdateRepairAndPower (`0x004401B6`) follows the
             // Techno AI: the computer's low-credit sale or auto-repair start,
             // then the repair step.
@@ -683,6 +675,8 @@ fn techno_ai_shell(
             // LogicVector visit so nested death effects precede the next slot.
             if let Some(rules) = rules {
                 sim.tick_pending_building_detonation(id, rules, ctx.overlay_registry);
+                // The range drop that ends the Update (`0x00440378`).
+                building_missions::range_drop(sim, id, rules, ctx);
             }
         }
         // AircraftClass::AI reaches the shared Foot/mission work before its
@@ -723,7 +717,7 @@ fn techno_ai_shell(
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
                 if crate::sim::aircraft::dispatch_aircraft_mission(sim, rules, id, ctx.path_grid) {
-                    sim.aircraft_fire_requests.insert(id);
+                    sim.fire_requests.aircraft.insert(id);
                 }
             }
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
@@ -1622,34 +1616,6 @@ fn clear_passive_target_off_mission(sim: &mut Simulation, id: u64, rules: Option
         entity.passively_acquired_target = false;
     }
 }
-
-// ===== Why there is no building Guard->Attack mission flip here =====
-//
-// In the original, a Guard-mission building that holds a target commits
-// Mission_Attack, and that mission is NOT a latch: it re-derives an action from
-// the live target on every dispatch through an action jumptable, and when the
-// target pointer goes null it clears the target, re-assigns Guard and commences
-// — read out of the original's building Attack-mission handler this session,
-// whose null-target arm is exactly assign-target-null, assign-mission-Guard,
-// commence. The flip is safe there because the Attack mission owns the
-// re-evaluation.
-//
-// VERA has no building Mission_Attack handler, and firing here does not read
-// the mission at all: the fire gate and the attacker snapshot never look at it,
-// so a structure holding a target fires whatever mission it is on. So writing
-// Attack would buy exactly zero firing while costing the rescan — the passive
-// gate only admits {Move, Harvest, Guard}, and nothing in VERA would ever move
-// the building back off Attack, because combat deliberately does not clear a
-// target that has merely gone out of range and buildings are excluded from
-// pursuit. A Tesla Coil that acquired a scout at 6 cells would stay locked on it
-// after it backed off to 8 and stayed in vision — silent for the rest of the
-// match, for near-certain in the first minutes of any game.
-//
-// RESIDUAL: the flip is omitted, so a building stays on the bridged Guard
-// reading and the passive scan owns its target: it keeps a scanner target until
-// GetFireError answers ILLEGAL, CANT or RANGE, then picks again
-// (`target_scan`). Restoring the flip requires a real building Mission_Attack
-// handler first.
 
 // ===== P2 (factory substrate) — Structure-arm read-only shadow trace (FIT a) =====
 //
@@ -3275,6 +3241,13 @@ mod tests {
         let mut sim = Simulation::new();
         insert_scannable(&mut sim, 1, "Americans", "NASAM", EntityCategory::Structure);
         insert_scannable(&mut sim, 2, "Americans", "GARR", EntityCategory::Structure);
+        // Both guard, as a placed building does after its first Update.
+        for id in [1, 2] {
+            update_mission_test_fixture(
+                &mut sim.substrate.entities.get_mut(id).unwrap().mission,
+                |fixture| fixture.current = MissionId::from_known(MissionType::Guard),
+            );
+        }
         let owner = sim.interner.intern("Americans");
         sim.power_states.insert(
             owner,
@@ -3304,11 +3277,12 @@ mod tests {
 
     #[test]
     fn a_defence_releases_a_target_that_leaves_range_and_does_not_latch() {
-        // The base-defence loop must keep re-evaluating. Nothing in VERA ever
-        // moves a building off a mission, and combat deliberately keeps a target
-        // that has only gone out of range, so if the defence ever left the
-        // passive gate it would stay locked on one scout for the whole match and
-        // stay silent through everything that came after.
+        // The base-defence loop must keep re-evaluating. The defence takes
+        // Attack once its scan holds the scout, and must release the scout
+        // when it walks out of range (Mission_Attack's RANGE drop and the
+        // Update's range drop, `techno_ai::building_missions`) and go back to
+        // Guard and its scan; otherwise it would stay locked on one scout for
+        // the whole match and silent through everything that came after.
         //
         // The gap must be range-only, not vision: combat already drops a target
         // whose cell stops being visible, so a scout that ran off the map edge
@@ -3380,6 +3354,11 @@ mod tests {
         assert!(
             defence.attack_target.is_none(),
             "the defence must release a target that walked out of range, not latch onto it"
+        );
+        assert_eq!(
+            defence.mission.current(),
+            MissionId::from_known(MissionType::Guard),
+            "and go back to Guard"
         );
         assert!(
             defence.passive_scan_timer.is_armed(),

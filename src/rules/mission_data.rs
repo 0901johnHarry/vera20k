@@ -499,8 +499,9 @@ impl MissionControl {
     /// misses computed-base and indexed forms, and a scan that finds nothing
     /// certifies nothing.
     ///
-    /// No `sim/` caller reads this yet — VERA has no building mission-handler
-    /// cadence (recorded gap GSI-07.02 G2).
+    /// Its `sim/` reader is the building Guard handler,
+    /// `sim::world::techno_ai::building_missions`; `Mission_Attack`'s read is
+    /// its SAM arm, dormant with retail data.
     #[inline]
     pub fn aa_rate_frames(&self, mission: MissionType) -> u32 {
         self.entries.get(&mission).map_or(0, |e| e.aa_rate_frames)

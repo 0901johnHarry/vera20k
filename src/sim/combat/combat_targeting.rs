@@ -110,6 +110,10 @@ pub(crate) struct AttackerSnapshot {
     /// (Area Guard reaches roughly twice as far as plain Guard) and, for mask
     /// 0, the scan topology itself.
     pub scan_mission: ScanMission,
+    /// A building's Mission_Attack took its FireAt arm this frame
+    /// (`FireRequests::buildings`): its GetFireError already answered OK, and
+    /// a building fires no ordinary shot without it.
+    pub mission_fire_request: bool,
 }
 
 /// Acquire the best currently valid target for one attacker entity.

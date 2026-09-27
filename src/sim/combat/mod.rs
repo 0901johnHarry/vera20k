@@ -1176,9 +1176,11 @@ pub fn issue_attack_command(
     // gate refuses the shot for facing, and only while it is stationary.
     //
     // Infantry likewise snap only when their fire action starts (00520925),
-    // now owned by world_receiver::resolve_attacker_fire. The legacy body-only
-    // aircraft/structure order behavior remains for its class-specific audit.
-    if !has_turret && !matches!(category, EntityCategory::Unit | EntityCategory::Infantry) {
+    // now owned by world_receiver::resolve_attacker_fire, and a building's
+    // order takes BuildingClass::SetTarget (`world_commands`), which writes no
+    // facing. The legacy body-only aircraft order behavior remains for its
+    // class-specific audit.
+    if !has_turret && category == EntityCategory::Aircraft {
         let dx: i32 = trx as i32 - arx as i32;
         let dy: i32 = try_ as i32 - ary as i32;
         attacker.facing = crate::sim::movement::facing_from_delta(dx, dy);
@@ -1340,8 +1342,9 @@ pub fn issue_attack_cell_command(
         None => return false,
     };
 
-    // As with entity targets, Infantry/Unit facing belongs to Fire_At_Target.
-    if !has_turret && !matches!(category, EntityCategory::Unit | EntityCategory::Infantry) {
+    // As with entity targets, Infantry/Unit facing belongs to Fire_At_Target
+    // and a building's order takes BuildingClass::SetTarget.
+    if !has_turret && category == EntityCategory::Aircraft {
         let dx: i32 = trx as i32 - arx as i32;
         let dy: i32 = try_ as i32 - ary as i32;
         attacker.facing = crate::sim::movement::facing_from_delta(dx, dy);
@@ -1533,6 +1536,19 @@ pub struct TiberiumReductionRequest {
     pub rx: u16,
     pub ry: u16,
     pub amount: i32,
+}
+
+/// The shots an object's own mission asked the combat phase for this frame,
+/// where VERA's FireAt lives. Filled by the live object pass, drained by
+/// combat in the same frame; never a permission carried to a later frame.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct FireRequests {
+    /// Aircraft whose Mission_Attack strike state (4..9) asked for its visit.
+    pub aircraft: std::collections::BTreeSet<u64>,
+    /// Buildings whose Mission_Attack took its FireAt arm (`0x0044B6D0`):
+    /// GetFireError answered OK in that visit, so combat emits the shot
+    /// without asking again.
+    pub buildings: std::collections::BTreeSet<u64>,
 }
 
 /// Ordinary fire prelude plus one consuming deferred-consequence packet.
@@ -2861,6 +2877,7 @@ pub(crate) fn build_attacker_snapshot(
         in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
+        mission_fire_request: false,
     }
 }
 

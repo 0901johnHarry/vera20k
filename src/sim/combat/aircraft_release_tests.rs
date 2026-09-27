@@ -60,7 +60,10 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
 }
 
 fn dispatch(sim: &mut Simulation, rules: &RuleSet) -> CombatTickResult {
-    let requests = crate::sim::aircraft::tick_aircraft_missions(sim, rules, None);
+    let requests = crate::sim::combat::FireRequests {
+        aircraft: crate::sim::aircraft::tick_aircraft_missions(sim, rules, None),
+        ..Default::default()
+    };
     let mut run = ReceiverRun::default();
     tick_combat(
         sim,
