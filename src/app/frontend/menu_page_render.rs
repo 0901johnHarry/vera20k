@@ -319,8 +319,13 @@ pub(crate) fn render_menu_page(
         state,
         view.movie_owner,
     )?;
-    if state.frontend.main_menu_shell_failed || state.frontend.main_menu_shell_chrome.is_none() {
-        state.frontend.main_menu_shell_failed = true;
+    if state.frontend.main_menu_shell_error.is_some()
+        || state.frontend.main_menu_shell_chrome.is_none()
+    {
+        state
+            .frontend
+            .main_menu_shell_error
+            .get_or_insert_with(|| "Required game-menu resources could not be loaded.".to_owned());
         return Ok(MenuPageRenderResult::Fallback);
     }
 
@@ -349,7 +354,8 @@ pub(crate) fn render_menu_page(
                 "Failed to step RA2TS movie for dialog 0x{:X}: {err:#}",
                 view.spec.dialog.0
             );
-            state.frontend.main_menu_shell_failed = true;
+            state.frontend.main_menu_shell_error =
+                Some(format!("Could not play the menu movie: {err:#}"));
             return Ok(MenuPageRenderResult::Fallback);
         }
     }

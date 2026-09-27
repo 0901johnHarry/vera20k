@@ -2,8 +2,9 @@
 //!
 //! config.toml is machine-specific (contains the local RA2 install path)
 //! and is gitignored. A config.toml.example template is provided in the repo.
-//! When it is absent, the retail executable contract applies: assets are
-//! resolved relative to the directory containing the running executable.
+//! The working-directory override takes precedence over a config beside the
+//! executable. The latter lets packaged apps launch without a particular cwd.
+//! Without either config, assets are resolved beside the executable.
 //!
 //! ## Dependency rules
 //! - config.rs is part of util/ â€” no dependencies on game modules.
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-/// Optional host override â€” looked up in the current working directory.
+/// Optional host override, in the working or executable directory.
 const CONFIG_FILE_NAME: &str = "config.toml";
 
 /// Top-level game configuration, deserialized from config.toml.
@@ -175,30 +176,46 @@ impl GameConfig {
     /// Rust keeps the resolved directory explicit instead of mutating the
     /// process-wide current directory.
     pub fn load() -> Result<Self> {
-        let path = Path::new(CONFIG_FILE_NAME);
-        match std::fs::read_to_string(path) {
-            Ok(contents) => Self::parse_from(&contents, path),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                let executable = std::env::current_exe().context(
-                    "Failed to locate the running executable for retail asset discovery",
-                )?;
-                let root = retail_asset_root_from_executable(&executable)?;
-                log::info!(
-                    "No {}; using retail executable directory: {}",
-                    CONFIG_FILE_NAME,
-                    root.display()
-                );
-                Ok(Self::from_retail_asset_root(root))
-            }
-            Err(err) => {
-                Err(err).with_context(|| format!("Failed to read config file: {}", path.display()))
+        let working_dir =
+            std::env::current_dir().context("Failed to locate the working directory")?;
+        let executable = std::env::current_exe()
+            .context("Failed to locate the running executable for retail asset discovery")?;
+        Self::load_from(&working_dir, &executable)
+    }
+
+    fn load_from(working_dir: &Path, executable: &Path) -> Result<Self> {
+        let root = retail_asset_root_from_executable(executable)?;
+        for directory in [working_dir, root.as_path()] {
+            let path = directory.join(CONFIG_FILE_NAME);
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => return Self::parse_from(&contents, &path),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(err).with_context(|| {
+                        format!("Failed to read config file: {}", path.display())
+                    });
+                }
             }
         }
+        log::info!(
+            "No {}; using retail executable directory: {}",
+            CONFIG_FILE_NAME,
+            root.display()
+        );
+        Ok(Self::from_retail_asset_root(root))
     }
 
     fn parse_from(contents: &str, path: &Path) -> Result<Self> {
-        let config: GameConfig = toml::from_str(&contents)
+        let mut config: GameConfig = toml::from_str(contents)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+
+        // A packaged config must mean the same thing after Finder changes cwd.
+        if config.paths.ra2_dir.is_relative() {
+            config.paths.ra2_dir = path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(&config.paths.ra2_dir);
+        }
 
         log::info!("Loaded config from {}", path.display());
         log::info!("RA2 directory: {}", config.paths.ra2_dir.display());
@@ -233,6 +250,79 @@ fn retail_asset_root_from_executable(executable: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ConfigFixture(PathBuf);
+
+    impl ConfigFixture {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root =
+                std::env::temp_dir().join(format!("vera20k-config-{}-{id}", std::process::id()));
+            std::fs::create_dir(&root).expect("unique config fixture");
+            std::fs::create_dir(root.join("launch")).unwrap();
+            std::fs::create_dir(root.join("app")).unwrap();
+            Self(root)
+        }
+
+        fn load(&self) -> Result<GameConfig> {
+            GameConfig::load_from(&self.0.join("launch"), &self.0.join("app/vera20k"))
+        }
+    }
+
+    impl Drop for ConfigFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn packaged_config_loads_from_an_unrelated_working_directory() {
+        let fixture = ConfigFixture::new();
+        std::fs::write(
+            fixture.0.join("app/config.toml"),
+            "[paths]\nra2_dir = 'retail files'\n[profile]\nname = 'Packaged player'\n",
+        )
+        .unwrap();
+        let config = fixture.load().unwrap();
+        assert_eq!(config.paths.ra2_dir, fixture.0.join("app/retail files"));
+        assert_eq!(config.profile.player_name(), Some("Packaged player"));
+    }
+
+    #[test]
+    fn working_directory_config_overrides_packaged_config() {
+        let fixture = ConfigFixture::new();
+        std::fs::write(fixture.0.join("app/config.toml"), "invalid package config").unwrap();
+        std::fs::write(
+            fixture.0.join("launch/config.toml"),
+            "[paths]\nra2_dir = 'local retail'\n",
+        )
+        .unwrap();
+        assert_eq!(
+            fixture.load().unwrap().paths.ra2_dir,
+            fixture.0.join("launch/local retail")
+        );
+    }
+
+    #[test]
+    fn invalid_override_is_reported_instead_of_silently_using_packaged_assets() {
+        let fixture = ConfigFixture::new();
+        std::fs::write(fixture.0.join("launch/config.toml"), "[broken").unwrap();
+        std::fs::write(
+            fixture.0.join("app/config.toml"),
+            "[paths]\nra2_dir = '.'\n",
+        )
+        .unwrap();
+        let message = format!("{:#}", fixture.load().unwrap_err());
+        assert!(message.contains(fixture.0.join("launch/config.toml").to_str().unwrap()));
+        assert!(message.contains("Failed to parse config"));
+    }
+
+    #[test]
+    fn missing_configs_keep_retail_executable_directory_discovery() {
+        let fixture = ConfigFixture::new();
+        assert_eq!(fixture.load().unwrap().paths.ra2_dir, fixture.0.join("app"));
+    }
 
     #[test]
     fn test_minimal_config() {

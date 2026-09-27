@@ -209,13 +209,17 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
 
 /// A Slave Miner leaving its war factory starts its hunt
 /// (`UnitClass::PerCellProcess @ 0x0073A9CA..0x0073A9D9`, before the rally
-/// arm) instead of driving to the house's rally point, which a tank from the
+/// arm) instead of driving to the factory's rally point, which a tank from the
 /// same factory takes.
 #[test]
 fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
     for (unit_type, hunts) in [("SMIN", true), ("MTNK", false)] {
         let (mut sim, rules, owner) = world(0xfac7_0020);
-        sim.houses.get_mut(&owner).unwrap().rally_point = Some((30, 30));
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(30, 30)));
         assert!(enqueue_by_type(&mut sim, &rules, "Americans", unit_type));
         let produced = held_id(&sim, owner, ProductionCategory::Vehicle);
         assert!(
@@ -245,6 +249,67 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
             );
         }
     }
+}
+
+/// Each factory keeps its own rally point (its ArchiveTarget, `+0x218`), and
+/// `BuildingClass::ExitObject_Main @ 0x00443C60` hands the leaving object its
+/// own factory's: an infantryman walks to the barracks' rally although the
+/// owner's last rally click was on the war factory.
+#[test]
+fn a_produced_unit_takes_its_own_factorys_rally_point() {
+    let (mut sim, rules, owner) = world(0xfac7_0021);
+    for (factory, rally) in [(2, (30, 30)), (1, (40, 12))] {
+        let command = crate::sim::command::Command::SetRally {
+            rx: rally.0,
+            ry: rally.1,
+            producer_ids: vec![factory],
+        };
+        assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+    }
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    let produced = held_id(&sim, owner, ProductionCategory::Infantry);
+    assert!(
+        sim.production
+            .factory_shadow
+            .test_arm_ready(owner, ProductionCategory::Infantry)
+    );
+    let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
+    assert!(tick_production(
+        &mut sim,
+        &rules,
+        &BTreeMap::new(),
+        Some(&grid)
+    ));
+    let entity = sim.substrate.entities.get(produced).unwrap();
+    assert!(!entity.lifecycle.in_limbo, "E1 delivered");
+    assert_eq!(
+        entity
+            .movement_target
+            .as_ref()
+            .and_then(|target| target.path.last().copied()),
+        Some((30, 30)),
+        "the barracks' rally, not the war factory's"
+    );
+}
+
+/// `TechnoClass::ChangeOwner @ 0x007014A0` clears the ArchiveTarget
+/// (`0x0070151A`), so a captured factory loses its rally point.
+#[test]
+fn a_captured_factory_loses_its_rally_point() {
+    let (mut sim, rules, _) = world(0xfac7_0022);
+    let command = crate::sim::command::Command::SetRally {
+        rx: 40,
+        ry: 12,
+        producer_ids: vec![1],
+    };
+    assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().rally_cell(),
+        Some((40, 12))
+    );
+    let russians = sim.interner.intern("Russians");
+    sim.change_owner_with_rules(1, russians, &rules);
+    assert_eq!(sim.substrate.entities.get(1).unwrap().rally_cell(), None);
 }
 
 #[test]

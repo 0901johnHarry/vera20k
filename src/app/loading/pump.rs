@@ -286,6 +286,7 @@ impl LoadingRequest {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn generic_map_load(
         selected_map_file: impl Into<String>,
         fallback_skirmish_settings: SkirmishSettings,

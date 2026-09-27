@@ -783,7 +783,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         struct_owner_id,
                         execute_tick,
                         Command::SetRally {
-                            owner: struct_owner_id,
                             rx: target_rx,
                             ry: target_ry,
                             producer_ids,

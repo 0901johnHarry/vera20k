@@ -1,20 +1,7 @@
-//! Main menu screen for skirmish setup and loading.
-//!
-//! Uses egui for a pragmatic client shell rather than pixel-perfect RA2 chrome.
+//! Shared skirmish settings, startup errors and development loading presentation.
+//! Normal match setup belongs to the retail shell in `skirmish_shell`.
 
-use crate::map::scenario_menu::MapMenuEntry;
 use crate::ui::client_theme;
-
-/// Action returned by the main menu to the app orchestrator.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MenuAction {
-    /// No action this frame.
-    None,
-    /// User clicked "Start" for the selected map.
-    StartSelected,
-    /// User clicked "Exit".
-    Exit,
-}
 
 /// Player's chosen faction side for skirmish games.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -122,14 +109,6 @@ impl Default for StartPosition {
     }
 }
 
-/// Available starting credit amounts for the skirmish dropdown.
-pub const CREDITS_OPTIONS: [i32; 10] = [
-    100_000, 50_000, 30_000, 25_000, 20_000, 15_000, 10_000, 7_500, 5_000, 2_500,
-];
-
-/// Default starting credits index in `CREDITS_OPTIONS` (10,000).
-const DEFAULT_CREDITS_IDX: usize = 6;
-
 /// All configurable skirmish options, set in the main menu before launch.
 #[derive(Debug, Clone)]
 pub struct SkirmishSettings {
@@ -149,7 +128,7 @@ impl Default for SkirmishSettings {
             selected_map_idx: 0,
             player_country: SkirmishCountry::default(),
             ai_country: SkirmishCountry::Russia,
-            starting_credits: CREDITS_OPTIONS[DEFAULT_CREDITS_IDX],
+            starting_credits: 10_000,
             start_position: StartPosition::default(),
             short_game: true,
             zoom_enabled: true,
@@ -157,136 +136,36 @@ impl Default for SkirmishSettings {
     }
 }
 
-const BUTTON_WIDTH: f32 = 400.0;
-const BUTTON_HEIGHT: f32 = 54.0;
-
-/// Draw the main menu with map selector and credits.
-pub fn draw_main_menu_with_maps(
+/// Display an actionable startup failure. This surface cannot launch a match.
+/// Returns true when the player chooses to quit.
+pub(crate) fn draw_shell_error(
     ctx: &egui::Context,
-    maps: &[MapMenuEntry],
-    settings: &mut SkirmishSettings,
-) -> MenuAction {
+    error: &str,
+    asset_root: Option<&std::path::Path>,
+) -> bool {
     let palette = client_theme::apply_client_theme(ctx);
-    let mut action = MenuAction::None;
-    let button_size = egui::vec2(BUTTON_WIDTH, BUTTON_HEIGHT);
-    let has_maps = !maps.is_empty();
-
-    if has_maps && settings.selected_map_idx >= maps.len() {
-        settings.selected_map_idx = 0;
-    }
-
+    let mut quit = false;
     egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(palette.bg))
+        .frame(egui::Frame::new().fill(palette.bg).inner_margin(24.0))
         .show(ctx, |ui| {
-            client_theme::paint_background(ui, palette);
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.add_space(24.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(24.0);
-                        ui.vertical(|ui| {
-                            controls_panel(
-                                ui,
-                                maps,
-                                settings,
-                                button_size,
-                                has_maps,
-                                palette,
-                                &mut action,
-                            );
-                        });
-                        ui.add_space(24.0);
-                    });
-                    ui.add_space(24.0);
-                });
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Unable to load the game menu");
+                ui.add_space(12.0);
+                ui.label("VERA20k needs the original Red Alert 2: Yuri's Revenge game files.");
+                if let Some(root) = asset_root {
+                    ui.add_space(12.0);
+                    ui.strong("Game files searched in:");
+                    ui.label(root.display().to_string());
+                }
+                ui.add_space(12.0);
+                ui.label(error);
+                ui.add_space(12.0);
+                ui.label("Set [paths] ra2_dir in config.toml to your game installation, then restart. The configuration can be beside the executable or in the folder you launch from.");
+                ui.add_space(20.0);
+                quit = ui.button("Quit").clicked();
+            });
         });
-
-    action
-}
-
-fn controls_panel(
-    ui: &mut egui::Ui,
-    maps: &[MapMenuEntry],
-    settings: &mut SkirmishSettings,
-    button_size: egui::Vec2,
-    has_maps: bool,
-    palette: client_theme::ClientPalette,
-    action: &mut MenuAction,
-) {
-    client_theme::card_frame(palette.panel, palette.line).show(ui, |ui| {
-        ui.vertical(|ui| {
-            ui.add_space(4.0);
-            labeled_map_combo(ui, maps, settings, palette);
-            ui.add_space(6.0);
-            labeled_credits_combo(ui, settings, palette);
-
-            // The "Allow Zoom" checkbox is gone: stock YR has no world zoom and
-            // the mouse wheel is the sidebar strip scroll, so the setting no
-            // longer reaches anything. `SkirmishSettings::zoom_enabled` is kept
-            // for the settings round-trip until the zoom path finds a binding.
-
-            ui.add_space(18.0);
-            if ui
-                .add_enabled(
-                    has_maps,
-                    egui::Button::new(egui::RichText::new("Start Game").size(22.0).strong())
-                        .min_size(button_size),
-                )
-                .clicked()
-            {
-                *action = MenuAction::StartSelected;
-            }
-        });
-    });
-}
-
-fn labeled_map_combo(
-    ui: &mut egui::Ui,
-    maps: &[MapMenuEntry],
-    settings: &mut SkirmishSettings,
-    palette: client_theme::ClientPalette,
-) {
-    client_theme::section_label(ui, "MAP", palette);
-    let selected_label = maps
-        .get(settings.selected_map_idx)
-        .map(|map| map.display_name.as_str())
-        .unwrap_or("(no maps found)");
-
-    egui::ComboBox::from_id_salt("map_select")
-        .width(BUTTON_WIDTH)
-        .selected_text(selected_label)
-        .show_ui(ui, |ui| {
-            for (idx, map) in maps.iter().enumerate() {
-                let label = match map.author.as_deref() {
-                    Some(author) if !author.trim().is_empty() => {
-                        format!("{}  -  {}", map.display_name, author)
-                    }
-                    _ => map.display_name.clone(),
-                };
-                ui.selectable_value(&mut settings.selected_map_idx, idx, label);
-            }
-        });
-}
-
-fn labeled_credits_combo(
-    ui: &mut egui::Ui,
-    settings: &mut SkirmishSettings,
-    palette: client_theme::ClientPalette,
-) {
-    client_theme::section_label(ui, "STARTING CREDITS", palette);
-    egui::ComboBox::from_id_salt("credits_select")
-        .width(BUTTON_WIDTH)
-        .selected_text(format!("{}", settings.starting_credits))
-        .show_ui(ui, |ui| {
-            for &amount in &CREDITS_OPTIONS {
-                ui.selectable_value(
-                    &mut settings.starting_credits,
-                    amount,
-                    format!("{}", amount),
-                );
-            }
-        });
+    quit
 }
 
 /// Draw the loading screen shown while map data is being parsed.

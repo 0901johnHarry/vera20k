@@ -151,7 +151,7 @@ impl MoviesCapture {
             "movies capture left the shell"
         );
         ensure!(
-            !state.frontend.main_menu_shell_failed,
+            state.frontend.main_menu_shell_error.is_none(),
             "movies capture encountered the shell fallback"
         );
         match (self.phase, rendered) {
