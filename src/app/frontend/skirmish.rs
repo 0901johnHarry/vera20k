@@ -1,4 +1,4 @@
-//! Skirmish opening seeding, deployable building detection, and overlay atlas construction.
+//! Launch house colours, deployable building detection, and overlay atlas construction.
 //!
 //! Split from `loading::init_helpers` for file-size limits.
 

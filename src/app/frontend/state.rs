@@ -13,7 +13,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::ui::game_screen::GameScreen;
 
 pub(crate) struct FrontendState {
-    /// Opt-in research shell path. Defaults off so the egui Skirmish setup is visible.
+    /// The Skirmish setup dialog's state.
     pub(crate) skirmish_shell_state: crate::ui::skirmish_shell::SkirmishShellState,
     /// Choose Map's last clicked game-type row `[0x008316FC]`: starts at -1,
     /// written only by a game-type click and never reset, so it outlives

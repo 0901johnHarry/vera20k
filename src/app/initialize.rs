@@ -326,10 +326,6 @@ impl App {
             )
         });
         let version_txt = Self::load_version_txt();
-        let available_maps = list_maps::list_available_maps().unwrap_or_else(|err| {
-            log::warn!("Could not list maps for menu: {:#}", err);
-            Vec::new()
-        });
         let skirmish_scenario_records =
             match (startup_asset_manager.as_mut(), game_config.as_ref()) {
                 (Some(assets), Some(config)) => {
@@ -346,7 +342,11 @@ impl App {
                 Vec::new()
             });
         let skirmish_scenario_records = if skirmish_scenario_records.is_empty() {
-            available_maps
+            list_maps::list_available_maps()
+                .unwrap_or_else(|err| {
+                    log::warn!("Could not list fallback maps: {:#}", err);
+                    Vec::new()
+                })
                 .iter()
                 .enumerate()
                 .map(|(idx, map)| {

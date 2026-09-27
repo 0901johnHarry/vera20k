@@ -959,6 +959,9 @@ fn the_game_starts_with_the_credits_the_slider_reads_back() {
     };
     shell.starting_credits = 7549;
     assert_eq!(shell.credits(), 7500);
+    let maps = [test_map_entry("first.mmx")];
+    let session = launch_session(&shell, &maps, &stock_skirmish_modes()).expect("session");
+    assert_eq!(session.options.starting_credits, 7500);
 }
 
 #[test]

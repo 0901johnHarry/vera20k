@@ -13,6 +13,7 @@
 /// Transitions:
 /// - MainMenu → Loading (user clicks "Start Game")
 /// - Loading → InGame (the loaded scenario starts)
+/// - Loading → MissionResult (the load fails or its startup is rejected)
 /// - InGame → MainMenu (user presses Escape)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameScreen {
