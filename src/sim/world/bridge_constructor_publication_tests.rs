@@ -67,15 +67,8 @@ fn live_bridge_recalc_publishes_retained_attributes_before_connectivity() {
         crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(&prior_terrain);
     let prior_path = std::sync::Arc::new(PathGrid::from_resolved_terrain(&prior_terrain));
     sim.path_grid = Some(prior_path.clone());
-    sim.zone_grid = Some(ZoneGrid::build_with_terrain(
-        &path,
-        &BTreeMap::new(),
-        Some(terrain),
-        &[],
-        33,
-        33,
-    ));
-    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut().unwrap();
+    sim.zone_grid = Some(ZoneGrid::build_with_terrain(&path, terrain, &[], 33, 33));
+    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut();
     base.levels.fill(200);
     base.movement_classes.fill(6);
     let ids_before = base.zone_ids.clone();
@@ -94,7 +87,7 @@ fn live_bridge_recalc_publishes_retained_attributes_before_connectivity() {
     let mut expected_levels = vec![200; 33 * 33];
     expected_classes[16 * 33 + 16] = terrain_cell.zone_type;
     expected_levels[16 * 33 + 16] = terrain_cell.level;
-    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut().unwrap();
+    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut();
     assert_eq!(base.movement_classes, expected_classes);
     assert_eq!(base.levels, expected_levels);
     assert_eq!(base.zone_ids, ids_before);

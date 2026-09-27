@@ -75,7 +75,6 @@ pub(super) fn fixture_with_rules(
     let path = PathGrid::from_resolved_terrain(&terrain);
     let zones = ZoneGrid::build_with_native_map_context(
         &path,
-        &BTreeMap::new(),
         &terrain,
         bridges.endpoint_records(),
         Some((16, 16)),
@@ -469,13 +468,7 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
                 .level
         );
     }
-    assert!(
-        sim.zone_grid
-            .as_mut()
-            .unwrap()
-            .base_topology_mut()
-            .is_some()
-    );
+    assert!(sim.zone_grid.is_some());
     assert!(sim.terrain_costs.contains_key(&SpeedType::Foot));
     if with_aircraft {
         let id = aircraft.expect("fixture must install the landed Fly before PerCell");

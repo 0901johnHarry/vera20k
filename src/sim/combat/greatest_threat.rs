@@ -2036,14 +2036,7 @@ mod tests {
             .collect();
         let terrain = ResolvedTerrainGrid::from_cells(side, side, cells);
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&terrain);
-        ZoneGrid::build_with_terrain(
-            &path_grid,
-            &BTreeMap::new(),
-            Some(&terrain),
-            &[],
-            side,
-            side,
-        )
+        ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], side, side)
     }
 
     /// The mask-0 walk is movement-zone filtered, and the ring walk is not.

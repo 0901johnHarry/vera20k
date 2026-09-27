@@ -206,31 +206,19 @@ impl NavigationCaches<'_> {
             self.rebuild_zones_full(path_grid, terrain, bridges);
             return;
         }
-        if let (Some(prev), Some(zones)) = (self.path.as_deref(), self.zones.as_mut()) {
-            if let Some(changed) = prev.diff_cells(path_grid) {
-                if changed.is_empty() && zones.movement_classes_match(terrain) {
-                    // PathGrid does not carry CellClass reduced zone type.
-                    // Both path state and retained base classes must match.
-                    *self.path = Some(Arc::new(path_grid.clone()));
-                    return;
-                }
-                if !changed.is_empty()
-                    && crate::sim::pathfinding::zone_incremental::try_incremental_update(
-                        zones,
-                        &changed,
-                        path_grid,
-                        self.terrain_costs,
-                        Some(terrain),
-                        bridges
-                            .map(BridgeRuntimeState::endpoint_records)
-                            .unwrap_or(&[]),
-                    )
-                {
-                    log::trace!("zone: incremental update ({} cells changed)", changed.len());
-                    *self.path = Some(Arc::new(path_grid.clone()));
-                    return;
-                }
-            }
+        // Reuse the zones only when nothing changed: a changed batch carries no
+        // Assign-vs-Merge provenance, so it rebuilds in full (exact one-cell
+        // repairs go through `repair_zone_cell` at their mutation owners).
+        if let (Some(prev), Some(zones)) = (self.path.as_deref(), self.zones.as_ref())
+            && prev
+                .diff_cells(path_grid)
+                .is_some_and(|changed| changed.is_empty())
+            && zones.movement_classes_match(terrain)
+        {
+            // PathGrid does not carry CellClass reduced zone type.
+            // Both path state and retained base classes must match.
+            *self.path = Some(Arc::new(path_grid.clone()));
+            return;
         }
         self.rebuild_zones_full(path_grid, terrain, bridges);
     }
@@ -245,7 +233,6 @@ impl NavigationCaches<'_> {
     ) {
         *self.zones = Some(ZoneGrid::build_with_native_map_context(
             path_grid,
-            self.terrain_costs,
             terrain,
             bridges
                 .map(BridgeRuntimeState::endpoint_records)

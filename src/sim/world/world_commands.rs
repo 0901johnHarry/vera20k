@@ -3059,12 +3059,8 @@ mod tests {
         let mut sim = Simulation::new();
         spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
-        sim.zone_grid = Some(crate::sim::pathfinding::zone_map::ZoneGrid::build(
-            &grid,
-            &BTreeMap::new(),
-            5,
-            1,
-        ));
+        sim.zone_grid =
+            Some(crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&grid));
         crate::sim::movement::reset_path_search_used_zone_grid_marker();
 
         let applied = sim.apply_command(

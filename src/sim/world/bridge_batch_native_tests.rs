@@ -1,7 +1,5 @@
 // Actual LivePublication callbacks against original586990 +47D2B0 snapshots.
 // Supplied retained planes/Cells match the native corpus; no Recalc substitution.
-use std::collections::BTreeMap;
-
 use crate::sim::pathfinding::zone_build::{
     assert_native_hierarchy_graphs, build_zone_hierarchy_with_query, hierarchy_native_bounds,
     hierarchy_native_fixture,
@@ -85,13 +83,12 @@ fn bridge_batch_simulation(case: &serde_json::Value) -> Simulation {
     );
     let mut zones = ZoneGrid::build_with_native_map_context(
         &path,
-        &BTreeMap::new(),
         &terrain,
         &records,
         Some(size),
         Some(bounds),
     );
-    *zones.base_topology_mut().unwrap() = base.clone();
+    *zones.base_topology_mut() = base.clone();
     zones.replace_hierarchy(build_zone_hierarchy_with_query(
         &base,
         Some(&terrain),
@@ -197,7 +194,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                     terrain.test_set_native_allocated_cells(&allocated);
                 }
                 let zones = sim.zone_grid.as_mut().unwrap();
-                let base = zones.base_topology_mut().unwrap();
+                let base = zones.base_topology_mut();
                 if let Some(value) = change.get("class") {
                     base.movement_classes[i] = value.as_u64().unwrap() as u8;
                 }
@@ -208,7 +205,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                     base.zone_ids[i] = value.as_u64().unwrap() as u16;
                 }
                 if change["clear_level0"] == true {
-                    let (_, hierarchy) = zones.base_and_hierarchy_mut().unwrap();
+                    let (_, hierarchy) = zones.base_and_hierarchy_mut();
                     hierarchy.levels_mut()[0]
                         .set_native_zone_at(coord, Some(size), 0)
                         .unwrap();
@@ -258,7 +255,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                 expected,
                 label,
             );
-            let base = zones.base_topology_mut().unwrap();
+            let base = zones.base_topology_mut();
             assert_eq!(
                 serde_json::json!(base.movement_classes),
                 expected["classes"],
@@ -341,13 +338,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         SpeedType::Foot,
         TerrainCostGrid::from_resolved_terrain(&cost_input, SpeedType::Foot),
     );
-    let before = sim
-        .zone_grid
-        .as_mut()
-        .unwrap()
-        .base_topology_mut()
-        .unwrap()
-        .clone();
+    let before = sim.zone_grid.as_mut().unwrap().base_topology_mut().clone();
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let registry =
         crate::map::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
@@ -387,7 +378,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         &case["initial"],
         "raw height before batch",
     );
-    let base = zones.base_topology_mut().unwrap();
+    let base = zones.base_topology_mut();
     assert_eq!(base.levels, before.levels);
     assert_eq!(base.movement_classes, before.movement_classes);
     assert_eq!(base.zone_ids, before.zone_ids);
@@ -410,7 +401,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         "raw height after native batch",
     );
     assert_eq!(
-        serde_json::json!(zones.base_topology_mut().unwrap().levels),
+        serde_json::json!(zones.base_topology_mut().levels),
         expected["levels"]
     );
 }
@@ -500,8 +491,8 @@ fn live_bridge_batch_recovers_rust_append_capacity_without_replacing_base_connec
         .unwrap();
     let mut sim = bridge_batch_simulation(case);
     let zones = sim.zone_grid.as_mut().unwrap();
-    let before = zones.base_topology_mut().unwrap().clone();
-    let (_, hierarchy) = zones.base_and_hierarchy_mut().unwrap();
+    let before = zones.base_topology_mut().clone();
+    let (_, hierarchy) = zones.base_and_hierarchy_mut();
     let fine = &mut hierarchy.levels_mut()[0];
     while let Ok(id) = u16::try_from(fine.record_slot_count()) {
         assert!(fine.append_record(ZoneRecord::new(id, 0, 0)));
@@ -528,7 +519,7 @@ fn live_bridge_batch_recovers_rust_append_capacity_without_replacing_base_connec
         &case["initial"],
         "Rust capacity recovery",
     );
-    let after = zones.base_topology_mut().unwrap();
+    let after = zones.base_topology_mut();
     assert_eq!(after.zone_ids, before.zone_ids);
     assert_eq!(after.raw_zone_ids_by_row, before.raw_zone_ids_by_row);
     assert_eq!(after.movement_classes, before.movement_classes);

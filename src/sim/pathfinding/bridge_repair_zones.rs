@@ -82,9 +82,7 @@ impl ZoneGrid {
             .native_bridge_source_size
             .ok_or("repair bridge has no native Map Size")?;
         append_repaired_bridge_edges(
-            self.hierarchy
-                .as_mut()
-                .ok_or("repair bridge has no hierarchy")?,
+            &mut self.hierarchy,
             record,
             HIGH_BRIDGE_HIERARCHY_DIRECTIONS[offset] as u8,
             Some(size),

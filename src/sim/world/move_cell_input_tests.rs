@@ -123,14 +123,13 @@ fn native_fixture(row: &Value) -> (ResolvedTerrainGrid, ZoneGrid, RawCellOccupat
         .collect();
     let mut zones = ZoneGrid::build_with_native_bridge_geometry(
         &PathGrid::new(16, 16),
-        &BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         &records,
         16,
         16,
         Some((8, 8)),
     );
-    let base = zones.base_topology_mut().unwrap();
+    let base = zones.base_topology_mut();
     for y in 0..16 {
         for x in 0..16 {
             base.zone_ids[y * 16 + x] =
@@ -343,8 +342,7 @@ impl Simulation {
             }];
             sim.zone_grid = Some(ZoneGrid::build_with_native_bridge_geometry(
                 sim.path_grid().unwrap(),
-                &sim.terrain_costs,
-                sim.resolved_terrain.as_ref(),
+                sim.resolved_terrain.as_ref().unwrap(),
                 &records,
                 16,
                 16,

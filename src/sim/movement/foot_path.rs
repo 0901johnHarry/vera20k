@@ -412,9 +412,6 @@ impl Simulation {
             Err(MovePathFailure::Search(Search::CompatibilityZoneRejected)) => {
                 Ok(Err(CoreRefusal::VeraOnly("CompatibilityZoneRejected")))
             }
-            Err(MovePathFailure::Search(Search::CompatibilityCorridorExhausted)) => {
-                Ok(Err(CoreRefusal::VeraOnly("CompatibilityCorridorExhausted")))
-            }
             Err(MovePathFailure::BridgeOnlyGoal) => {
                 Ok(Err(CoreRefusal::VeraOnly("BridgeOnlyGoal")))
             }
