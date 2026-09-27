@@ -964,6 +964,27 @@ fn fixed_art_drives_constructors_without_entering_rules_content_or_bodies() {
     );
 }
 
+/// Retail `[KTSTLEXP]` is an Animation and the elite Kirov bomb's warhead.
+/// The AnimType reads only ART, so its empty Rules body must not replace the
+/// warhead's keys in the projection.
+#[test]
+fn an_animation_keeps_the_rules_body_of_a_warhead_of_the_same_name() {
+    use crate::rules::ruleset::RuleSet;
+    let processed = RulesLayerStack::new(IniFile::from_str(
+        "[Warheads]\n0=BOOM\n[Animations]\n0=BOOM\n\
+         [BOOM]\nCellSpread=2\nWall=yes\nProneDamage=70%\n",
+    ))
+    .process()
+    .unwrap();
+    let body = processed.ini().section("BOOM").expect("Rules body");
+    assert_eq!(body.get("CellSpread"), Some("2"));
+    let rules = RuleSet::from_processed_rules(&processed).unwrap();
+    let warhead = rules.warhead("BOOM").unwrap();
+    assert_eq!(warhead.cell_spread_f64, 2.0);
+    assert!(warhead.wall);
+    assert_eq!(warhead.prone_damage_f64.to_bits(), 0x3fe6_6666_6666_6666);
+}
+
 #[test]
 fn fixed_art_and_member_major_type_data_follow_live_native_order() {
     let rules = IniFile::from_str(
