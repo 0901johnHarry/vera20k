@@ -181,8 +181,6 @@ def _require_map_source(
             "loose_shadow_rejected",
             "logical_map_name",
             "loaded_source",
-            "post_load_resolve_entry_id",
-            "post_load_resolve_source_archive",
         ),
         field,
     )
@@ -195,8 +193,6 @@ def _require_map_source(
         "entry_digest_authority": fixture["entry_digest_authority"],
         "loose_shadow_rejected": True,
         "logical_map_name": fixture["logical_map_name"],
-        "post_load_resolve_entry_id": fixture["mix_entry_id"],
-        "post_load_resolve_source_archive": fixture["archive_name"],
     }
     for key, expected in expected_values.items():
         require_value(source[key], expected, f"{field}.{key}")
@@ -204,7 +200,7 @@ def _require_map_source(
 
     loaded = _exact_object(
         source["loaded_source"],
-        ("kind", "logical_name", "source_archive", "entry_id", "payload_len"),
+        ("kind", "logical_name", "source_archive", "entry_id", "payload_len", "source_sha256"),
         f"{field}.loaded_source",
     )
     mix_entry_id = require_int(fixture["mix_entry_id"], "fixture.mix_entry_id")
@@ -217,9 +213,11 @@ def _require_map_source(
         "source_archive": fixture["archive_name"],
         "entry_id": signed_entry_id,
         "payload_len": fixture["entry_payload_byte_length"],
+        "source_sha256": fixture["entry_payload_sha256"],
     }
     for key, expected in loaded_expected.items():
         require_value(loaded[key], expected, f"{field}.loaded_source.{key}")
+    require_sha256(loaded["source_sha256"], f"{field}.loaded_source.source_sha256")
 
 
 def _require_lifecycle(stable: Mapping[str, Any]) -> None:

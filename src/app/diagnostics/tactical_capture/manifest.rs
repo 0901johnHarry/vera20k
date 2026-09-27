@@ -401,9 +401,9 @@ pub(crate) enum PublishFault {
     SimulatedCrashAfterDirectorySync,
 }
 
-pub(crate) fn publish_transaction(
+pub(crate) fn publish_transaction<T: Serialize>(
     output_dir: &Path,
-    manifest: &TacticalCaptureManifest,
+    manifest: &T,
     frame: Option<&[u8]>,
     fault: PublishFault,
 ) -> Result<()> {

@@ -701,12 +701,14 @@ fn load_descriptor_source_family_format_matrix() {
         crate::app::frontend::list_maps::LoadedMapSource::Loose {
             path: std::path::PathBuf::from("mp01t4.map"),
             payload_len: 17,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
         crate::app::frontend::list_maps::LoadedMapSource::Mix {
             logical_name: "mp01t4.map".to_string(),
             source_archive: "mapsmd03.mix".to_string(),
             entry_id: 0x1234,
             payload_len: 19,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
     ] {
         for (format, expected_signed, expected_pack_gate) in signed_formats {
@@ -800,6 +802,7 @@ fn accepted_and_resolved_legacy_share_one_stock_cursor_shape() {
     let source = crate::app::frontend::list_maps::LoadedMapSource::Loose {
         path: std::path::PathBuf::from("mp01t4.map"),
         payload_len: 23,
+        source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
     };
     let mut map = prefix_test_map(&starts);
     map.basic.new_ini_format = Some(4);
@@ -895,6 +898,7 @@ fn generic_manual_and_unresolved_legacy_reject_before_receipt_or_staging() {
         crate::app::frontend::list_maps::LoadedMapSource::Loose {
             path: std::path::PathBuf::from("manual.map"),
             payload_len: 1,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
     );
     let mut manual_session = test_launch_session(LaunchCountry::America);
@@ -1096,12 +1100,14 @@ fn authored_prefix_rejects_random_map_staging_for_loose_and_mix_sources() {
         crate::app::frontend::list_maps::LoadedMapSource::Loose {
             path: std::path::PathBuf::from(selected),
             payload_len: 1,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
         crate::app::frontend::list_maps::LoadedMapSource::Mix {
             logical_name: selected.to_string(),
             source_archive: "mapsmd03.mix".to_string(),
             entry_id: 7,
             payload_len: 1,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
     ];
     for source in sources {
@@ -1342,6 +1348,7 @@ fn loading_request_moves_exact_startup_authority_once() {
         crate::app::frontend::list_maps::LoadedMapSource::Loose {
             path: PathBuf::from("mp01t4.map"),
             payload_len: 1,
+            source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
     );
     let loaded = request.prepare_initial(initial).unwrap();

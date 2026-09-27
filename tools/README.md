@@ -18,6 +18,8 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |
 | Capture and certify tactical routes | [tactical certification](tactical_certification/README.md) |
+| Load a chosen retail map, step, capture and exit | [map observation](map_observation.md), `python -m tools.map_observation` |
+| Run one bounded child with retained diagnostics | `tools.child_process.run_child` (shared by capture wrappers) |
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |
 | Synchronize authoritative skill sources | `python tools/skill_sync.py --write`, then `--check` |
 

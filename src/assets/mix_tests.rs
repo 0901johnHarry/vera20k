@@ -434,7 +434,7 @@ fn test_load_mmx_map_file() {
         if !path.exists() {
             continue;
         }
-        match map_file::load_mmx(&path) {
+        match map_file::load_from_path(&path) {
             Ok(map) => {
                 eprintln!(
                     "{}: theater={}, {}x{}, {} cells",

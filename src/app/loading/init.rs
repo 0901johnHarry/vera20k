@@ -2375,6 +2375,7 @@ pub(crate) fn load_map_initial_with_assets(
                 source: LoadedMapSource::Loose {
                     path: PathBuf::from("testmap1.map"),
                     payload_len: bytes.len(),
+                    source_sha256: crate::util::sha256::sha256_hex(&bytes),
                 },
             }
         } else {

@@ -4,6 +4,8 @@
 //! needs to create stock-offline houses and initial spawns without making `sim/`
 //! depend on UI, rendering, audio, or networking modules.
 
+use serde::{Deserialize, Serialize};
+
 use crate::sim::game_options::GameOptions;
 use crate::sim::rng::SimRng;
 use crate::skirmish_modes::SkirmishGameMode;
@@ -17,7 +19,8 @@ pub const HOUSE_COLOR_COUNT: usize = 8;
 /// Nodes are stably sorted by the signed priority byte. Observers still
 /// construct a House (and therefore consume the constructor timer draw), but
 /// do not increase Gather's required-start count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreFillHumanHouse {
     pub priority: i8,
     pub source_order: u8,
@@ -25,13 +28,15 @@ pub struct PreFillHumanHouse {
 }
 
 /// One native AI session slot before active opponents are compacted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreFillAiHouseSlot {
     pub slot_index: u8,
     pub valid: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum PreFillFixedHouse {
     Neutral,
     Special,
@@ -39,7 +44,8 @@ pub enum PreFillFixedHouse {
 
 /// Immutable House roster consumed identically by both noncampaign pre-Fill
 /// construction passes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreFillHouseRoster {
     human_nodes: Vec<PreFillHumanHouse>,
     ai_slots: Vec<PreFillAiHouseSlot>,
@@ -113,7 +119,8 @@ impl PreFillHouseRoster {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkirmishLaunchMode {
     pub id: i32,
     pub ui_name_key: String,
@@ -140,7 +147,8 @@ impl SkirmishLaunchMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum LaunchCountry {
     America,
     Korea,
@@ -197,13 +205,15 @@ impl LaunchCountry {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum LaunchStartPosition {
     Auto,
     Position(u8),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum LaunchTeam {
     None,
     Team(u8),
@@ -219,7 +229,8 @@ impl LaunchTeam {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum AiDifficulty {
     Easy,
     Normal,
@@ -242,7 +253,8 @@ impl Default for AiDifficulty {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkirmishLaunchOptions {
     pub starting_credits: i32,
     pub unit_count: i32,
@@ -349,7 +361,8 @@ impl SkirmishLaunchOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkirmishLocalSlot {
     pub country: LaunchCountry,
     /// When true, `country` is a placeholder to be replaced by a random draw
@@ -364,7 +377,8 @@ pub struct SkirmishLocalSlot {
     pub team: LaunchTeam,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkirmishAiSlot {
     pub country: LaunchCountry,
     /// When true, `country` is a placeholder to be replaced by a random draw
@@ -378,7 +392,8 @@ pub struct SkirmishAiSlot {
     pub difficulty: AiDifficulty,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkirmishLaunchSession {
     pub mode: SkirmishLaunchMode,
     pub selected_map_file: Option<String>,

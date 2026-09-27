@@ -21,7 +21,7 @@ use crate::app::diagnostics::tactical_capture::manifest::{
 };
 use crate::app::diagnostics::tactical_capture::placement::first_valid_placement;
 use crate::app::diagnostics::tactical_capture::profile::{
-    CONTRACT_SCHEMA, EMBEDDED_CONTRACT, TacticalCaptureProfile, sha256_file, sha256_hex,
+    CONTRACT_SCHEMA, EMBEDDED_CONTRACT, TacticalCaptureProfile, sha256_file,
 };
 use crate::app::diagnostics::tactical_capture::script::{
     BuildOptionObservation, DeploymentContract, ProductionQueueObservation,
@@ -39,6 +39,37 @@ use crate::sim::command::Command;
 use crate::sim::house_state::HouseDifficulty;
 use crate::sim::production;
 use crate::ui::game_screen::GameScreen;
+
+#[path = "map_observation.rs"]
+mod map_observation;
+pub(crate) use map_observation::MapCaptureProfile;
+use map_observation::MapObservation;
+
+enum CaptureController {
+    Radar(Option<Box<TacticalScript>>),
+    Map(MapObservation),
+}
+
+impl CaptureController {
+    fn script(&self) -> Option<&TacticalScript> {
+        match self {
+            Self::Radar(script) => script.as_deref(),
+            Self::Map(_) => None,
+        }
+    }
+    fn script_mut(&mut self) -> Option<&mut TacticalScript> {
+        match self {
+            Self::Radar(script) => script.as_deref_mut(),
+            Self::Map(_) => None,
+        }
+    }
+    fn initialized(&self) -> bool {
+        match self {
+            Self::Radar(script) => script.is_some(),
+            Self::Map(map) => map.initial.is_some(),
+        }
+    }
+}
 
 const PRODUCTION_PROGRESS_INTERVALS: u64 = 53;
 const CAPTURE_PUMP_INTERVAL: Duration = Duration::from_millis(1);
@@ -76,7 +107,7 @@ pub(crate) struct TacticalCaptureSession {
     inputs: Option<RuntimeInputs>,
     map_source_evidence: Option<Value>,
     startup_evidence: Option<Value>,
-    script: Option<TacticalScript>,
+    controller: CaptureController,
     exact_step_receipts: Vec<crate::app::match_runtime::sim_tick::ExactStepReceipt>,
     last_render_ready: bool,
     last_render_evidence: Option<Value>,
@@ -92,6 +123,11 @@ pub(crate) struct TacticalCaptureSession {
 
 impl TacticalCaptureSession {
     pub(crate) fn new(request: TacticalCaptureRequest) -> Self {
+        let controller = if request.map_profile().is_some() {
+            CaptureController::Map(MapObservation::default())
+        } else {
+            CaptureController::Radar(None)
+        };
         Self {
             request,
             started_at: Instant::now(),
@@ -99,7 +135,7 @@ impl TacticalCaptureSession {
             inputs: None,
             map_source_evidence: None,
             startup_evidence: None,
-            script: None,
+            controller,
             exact_step_receipts: Vec::new(),
             last_render_ready: false,
             last_render_evidence: None,
@@ -132,7 +168,13 @@ impl TacticalCaptureSession {
             "tactical capture window unexpectedly owns focus"
         );
 
-        let profile = self.request.profile();
+        if self.request.map_profile().is_some() {
+            self.prepare_map_observation(state)?;
+            self.begin_accepted_loading(state)?;
+            self.failure_stage = "loading".to_owned();
+            return Ok(());
+        }
+        let profile = self.request.profile()?;
         let capture = &profile.capture;
         ensure!(
             state.renderer.gpu.config.width == capture.output_width
@@ -152,25 +194,29 @@ impl TacticalCaptureSession {
         );
         ensure!(
             state
-                .renderer.gpu
+                .renderer
+                .gpu
                 .config
                 .usage
                 .contains(wgpu::TextureUsages::COPY_SRC),
             "tactical swapchain lacks COPY_SRC readback usage"
         );
         ensure!(
-            (state.match_state.match_presentation.ui_scale - capture.app_ui_scale as f32).abs() <= f32::EPSILON,
+            (state.match_state.match_presentation.ui_scale - capture.app_ui_scale as f32).abs()
+                <= f32::EPSILON,
             "app UI scale {} differs from sealed {}",
             state.match_state.match_presentation.ui_scale,
             capture.app_ui_scale
         );
         ensure!(
-            state.match_state.configured_input_delay_ticks == u64::from(profile.launch.input_delay_ticks),
+            state.match_state.configured_input_delay_ticks
+                == u64::from(profile.launch.input_delay_ticks),
             "configured input delay differs from sealed launch"
         );
 
         let config = state
-            .platform.game_config
+            .platform
+            .game_config
             .as_ref()
             .context("tactical capture requires a loaded config.toml")?;
         ensure!(
@@ -248,11 +294,11 @@ impl TacticalCaptureSession {
             &mut state.frontend.next_match_correlation,
         )
         .context("allocate tactical match correlation")?;
-        let mut clock = ControlledSeedClock(self.request.profile().launch.seed);
+        let mut clock = ControlledSeedClock(self.request.seed());
         let startup =
             crate::match_bootstrap::prepare_match_startup(correlation, accepted, &mut clock);
         ensure!(
-            startup.seed.value == self.request.profile().launch.seed
+            startup.seed.value == self.request.seed()
                 && startup.seed.source == MatchSeedSource::Controlled
                 && startup.seed.seed_authority_certifying,
             "controlled tactical seed did not survive startup preparation"
@@ -265,7 +311,10 @@ impl TacticalCaptureSession {
             "classification": "AcceptedExplicitFixedBattle",
         }));
 
-        state.frontend.skirmish_shell_state.pressed_owner_draw_button = None;
+        state
+            .frontend
+            .skirmish_shell_state
+            .pressed_owner_draw_button = None;
         state.frontend.skirmish_shell_last_painted_pressed_button = None;
         state.frontend.shell_route = crate::app::shell_route::ShellRoute::MainMenu;
         state.frontend.shell_first_paint_slide = None;
@@ -305,19 +354,26 @@ impl TacticalCaptureSession {
         match state.frontend.screen {
             GameScreen::Loading => return Ok(()),
             GameScreen::InGame => {}
-            _ if self.script.is_none() => {
+            GameScreen::MissionResult {
+                ref title,
+                ref detail,
+            } => bail!("{title}: {detail}"),
+            _ if !self.controller.initialized() => {
                 bail!("tactical startup left Loading before accepted InGame installation")
             }
             _ => bail!("tactical match left InGame before capture completion"),
         }
 
-        if self.script.is_none() {
+        if self.request.map_profile().is_some() {
+            return self.drive_map_observation(state);
+        }
+        if !self.controller.initialized() {
             self.initialize_script_at_rust_l0(state)?;
         }
         let observation = self.build_observation(state, false)?;
         let action = self
-            .script
-            .as_mut()
+            .controller
+            .script_mut()
             .context("tactical script missing after initialization")?
             .next_action(&observation);
 
@@ -345,7 +401,8 @@ impl TacticalCaptureSession {
             }) => {
                 let type_ref = {
                     let sim = state
-                        .match_state.sim_runtime
+                        .match_state
+                        .sim_runtime
                         .as_mut()
                         .map(|rt| &mut rt.simulation)
                         .context("queue action requires live simulation")?;
@@ -368,7 +425,8 @@ impl TacticalCaptureSession {
             }) => {
                 let type_ref = {
                     let sim = state
-                        .match_state.sim_runtime
+                        .match_state
+                        .sim_runtime
                         .as_mut()
                         .map(|rt| &mut rt.simulation)
                         .context("placement action requires live simulation")?;
@@ -407,7 +465,7 @@ impl TacticalCaptureSession {
                 )
             }
             None => {
-                let stage = self.script.as_ref().expect("script exists").stage();
+                let stage = self.controller.script().expect("script exists").stage();
                 if stage != TacticalScriptStage::CaptureRequested {
                     self.advance_exact_step(state)?;
                 }
@@ -425,7 +483,10 @@ impl TacticalCaptureSession {
         command: Command,
     ) -> Result<()> {
         let execute_tick = crate::app::input::commands::try_schedule_command(state, owner, command);
-        let script = self.script.as_mut().context("tactical script missing")?;
+        let script = self
+            .controller
+            .script_mut()
+            .context("tactical script missing")?;
         match execute_tick {
             Some(execute_tick) => script
                 .record_scheduled(action_id, scheduled_tick, execute_tick)
@@ -438,8 +499,9 @@ impl TacticalCaptureSession {
     }
 
     fn advance_exact_step(&mut self, state: &mut AppState) -> Result<()> {
-        let receipt = crate::app::match_runtime::sim_tick::advance_in_game_runtime_exact_step(state)
-            .context("advance hidden tactical production step")?;
+        let receipt =
+            crate::app::match_runtime::sim_tick::advance_in_game_runtime_exact_step(state)
+                .context("advance hidden tactical production step")?;
         self.exact_step_receipts.push(receipt);
         Ok(())
     }
@@ -447,14 +509,14 @@ impl TacticalCaptureSession {
     fn initialize_script_at_rust_l0(&mut self, state: &AppState) -> Result<()> {
         self.failure_stage = "rust-l0".to_owned();
         self.validate_rust_l0(state)?;
-        let profile = self.request.profile();
+        let profile = self.request.profile()?;
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("Rust L0 requires live simulation")?;
-        let rules = state.rules()
-            .context("Rust L0 requires live rules")?;
+        let rules = state.rules().context("Rust L0 requires live rules")?;
         let owner = &profile.launch.player_name;
 
         let deployers: Vec<_> = sim
@@ -578,21 +640,22 @@ impl TacticalCaptureSession {
                 yard_active_tick: ledger.yard_active,
             },
         };
-        self.script = Some(TacticalScript::new(config).context("build tactical script")?);
+        self.controller = CaptureController::Radar(Some(Box::new(
+            TacticalScript::new(config).context("build tactical script")?,
+        )));
         self.post_l0_started_at = Some(Instant::now());
         self.failure_stage = "production-script".to_owned();
         Ok(())
     }
 
     fn validate_rust_l0(&mut self, state: &AppState) -> Result<()> {
-        let profile = self.request.profile();
+        let profile = self.request.profile()?;
         ensure!(
             state.frontend.screen == GameScreen::InGame,
             "Rust L0 is not InGame"
         );
         ensure!(
-            state.match_state.local_player_owner()
-                == Some(profile.launch.player_name.as_str()),
+            state.match_state.local_player_owner() == Some(profile.launch.player_name.as_str()),
             "local owner differs from sealed tactical launch"
         );
         let startup = state
@@ -624,7 +687,8 @@ impl TacticalCaptureSession {
         );
 
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("Rust L0 simulation is absent")?;
@@ -659,28 +723,15 @@ impl TacticalCaptureSession {
                 && bounds.off_108 == profile.fixture.local_size.height as i32,
             "live raw map/playfield bounds differ from the sealed fixture"
         );
-        validate_game_options(sim, profile)?;
+        validate_game_options(sim, &self.request.launch_session())?;
         validate_houses_and_slots(sim, profile)?;
 
-        ensure!(
-            state.rules().is_some()
-                && state.match_state.match_presentation.tile_atlas.is_some()
-                && state.match_state.match_presentation.terrain_grid.is_some()
-                && state.terrain_template().is_some()
-                && state.match_state.match_presentation.unit_atlas.is_some()
-                && state.match_state.match_presentation.palette_set.is_some()
-                && state.match_state.match_presentation.sprite_atlas.is_some()
-                && state.match_state.match_presentation.overlay_atlas.is_some()
-                && state.match_state.match_presentation.minimap.is_some()
-                && state.match_state.match_presentation.sidebar_chrome.is_some()
-                && state.match_state.match_presentation.software_cursor.is_some()
-                && sim.path_grid().is_some()
-                && state.process_assets.is_available(),
-            "Rust L0 is missing one or more production render/simulation resources"
-        );
+        validate_loaded_resources(state)?;
         ensure!(
             state
-                .match_state.match_presentation.software_cursor
+                .match_state
+                .match_presentation
+                .software_cursor
                 .as_ref()
                 .and_then(|cursor| cursor.get(CursorId::Default))
                 .is_some(),
@@ -690,20 +741,29 @@ impl TacticalCaptureSession {
             state.match_state.input.cursor_x == profile.capture.post_load_cursor.x as f32
                 && state.match_state.input.cursor_y == profile.capture.post_load_cursor.y as f32,
             "post-load cursor differs from the sealed neutral point: ({}, {})",
-            state.match_state.input.cursor_x, state.match_state.input.cursor_y
+            state.match_state.input.cursor_x,
+            state.match_state.input.cursor_y
         );
 
         let loaded = state
-            .match_state.loaded_map_source
+            .match_state
+            .loaded_map_source
             .as_ref()
             .context("loaded map source evidence is absent")?;
-        let (logical_name, source_archive, entry_id, payload_len) = match loaded {
+        let (logical_name, source_archive, entry_id, payload_len, payload_sha256) = match loaded {
             crate::app::frontend::list_maps::LoadedMapSource::Mix {
                 logical_name,
                 source_archive,
                 entry_id,
                 payload_len,
-            } => (logical_name, source_archive, *entry_id as u32, *payload_len),
+                source_sha256,
+            } => (
+                logical_name,
+                source_archive,
+                *entry_id as u32,
+                *payload_len,
+                source_sha256,
+            ),
             other => bail!("tactical fixture was not loaded from MIX: {other:?}"),
         };
         ensure!(
@@ -713,20 +773,9 @@ impl TacticalCaptureSession {
                 && payload_len as u64 == profile.fixture.entry_payload_byte_length,
             "loaded map source differs from sealed MIX provenance"
         );
-        let resolved = state
-            .process_assets
-            .manager()
-            .and_then(|assets| assets.resolve_ref(&profile.fixture.logical_map_name))
-            .context("post-load production asset lookup cannot resolve fixture map")?;
-        let payload_sha256 = sha256_hex(resolved.bytes);
         ensure!(
-            resolved
-                .source_archive
-                .eq_ignore_ascii_case(&profile.fixture.archive_name)
-                && resolved.entry_id as u32 == profile.fixture.mix_entry_id
-                && resolved.bytes.len() as u64 == profile.fixture.entry_payload_byte_length
-                && payload_sha256 == profile.fixture.entry_payload_sha256,
-            "post-load production asset lookup differs from sealed fixture bytes"
+            payload_sha256 == &profile.fixture.entry_payload_sha256,
+            "consumed map bytes differ from sealed fixture digest"
         );
         self.map_source_evidence = Some(json!({
             "archive_name": profile.fixture.archive_name,
@@ -737,8 +786,6 @@ impl TacticalCaptureSession {
             "entry_digest_authority": profile.fixture.entry_digest_authority,
             "loose_shadow_rejected": true,
             "loaded_source": loaded,
-            "post_load_resolve_source_archive": resolved.source_archive,
-            "post_load_resolve_entry_id": resolved.entry_id as u32,
         }));
         Ok(())
     }
@@ -748,14 +795,16 @@ impl TacticalCaptureSession {
         state: &AppState,
         capture_complete: bool,
     ) -> Result<TacticalObservation> {
-        let profile = self.request.profile();
+        let profile = self.request.profile()?;
         let owner = profile.launch.player_name.clone();
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("tactical observation requires live simulation")?;
-        let rules = state.rules()
+        let rules = state
+            .rules()
             .context("tactical observation requires live rules")?;
         let entities = sim
             .entities()
@@ -807,8 +856,8 @@ impl TacticalCaptureSession {
                 .map(|ready| sim.interner.resolve(ready.type_id).to_owned())
                 .collect();
         let placement_choice = self
-            .script
-            .as_ref()
+            .controller
+            .script()
             .and_then(|script| script.structure_bindings().yard.as_ref())
             .and_then(|yard| {
                 ready_buildings.first().map(|ready| {
@@ -838,7 +887,9 @@ impl TacticalCaptureSession {
                 .is_some_and(|power| !power.is_low_power && power.power_blackout_remaining == 0);
         let radar_authority_active = crate::sim::radar::has_radar_for_owner(sim, rules, &owner);
         let radar_online = state
-            .match_state.match_presentation.radar_anim
+            .match_state
+            .match_presentation
+            .radar_anim
             .as_ref()
             .is_some_and(|radar| radar.phase() == RadarAnimPhase::Online);
         let match_ended = sim
@@ -886,14 +937,18 @@ impl TacticalCaptureSession {
         output: &GameRenderOutput,
     ) -> Result<bool> {
         self.render_frames = self.render_frames.saturating_add(1);
-        if self.script.is_none() {
+        if !self.controller.initialized() {
             return Ok(false);
         }
         ensure!(
             state.frontend.screen == GameScreen::InGame,
             "tactical render observation is not InGame"
         );
-        let (ready, render_evidence) = self.render_readiness(state, output)?;
+        let (ready, render_evidence) = if self.request.map_profile().is_some() {
+            self.map_render_readiness(state, output)?
+        } else {
+            self.render_readiness(state, output)?
+        };
         self.last_render_ready = ready;
         self.last_render_evidence = Some(render_evidence);
 
@@ -916,9 +971,10 @@ impl TacticalCaptureSession {
         state: &AppState,
         output: &GameRenderOutput,
     ) -> Result<(bool, Value)> {
-        let profile = self.request.profile();
+        let profile = self.request.profile()?;
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("render readiness requires live simulation")?;
@@ -934,17 +990,23 @@ impl TacticalCaptureSession {
         };
         let actual_theme = crate::app::presentation::sidebar_render::current_sidebar_theme(state);
         let radar_phase_online = state
-            .match_state.match_presentation.radar_anim
+            .match_state
+            .match_presentation
+            .radar_anim
             .as_ref()
             .is_some_and(|radar| radar.phase() == RadarAnimPhase::Online);
         let radar_source = state
-            .match_state.match_presentation.radar_animation_source
+            .match_state
+            .match_presentation
+            .radar_animation_source
             .as_ref()
             .context("radar animation lacks construction provenance")?;
         let source_evidence = SidebarSourceEvidence::from_identity(radar_source);
         let aperture = crate::app::presentation::sidebar_render::active_minimap_screen_rect(state);
         let insets = state
-            .match_state.match_presentation.radar_content_insets
+            .match_state
+            .match_presentation
+            .radar_content_insets
             .context("radar content insets are absent")?;
         let render_evidence = SidebarRenderEvidence::from_render_output(
             output,
@@ -973,7 +1035,8 @@ impl TacticalCaptureSession {
                 && !power.is_low_power
                 && power.power_blackout_remaining == 0
         });
-        let radar_authority = state.rules()
+        let radar_authority = state
+            .rules()
             .is_some_and(|rules| crate::sim::radar::has_radar_for_owner(sim, rules, owner));
         let bound_structures_ready = self.bound_structures_ready(state)?;
         let no_modal_or_debug = !state.match_state.paused()
@@ -986,8 +1049,16 @@ impl TacticalCaptureSession {
             && state.match_state.input.building_placement_preview.is_none()
             && state.match_state.input.keys_held.is_empty()
             && !state.match_state.input.minimap_dragging
-            && !state.match_state.match_presentation.sidebar_gadget_state.repair_mode_on
-            && !state.match_state.match_presentation.sidebar_gadget_state.sell_mode_on;
+            && !state
+                .match_state
+                .match_presentation
+                .sidebar_gadget_state
+                .repair_mode_on
+            && !state
+                .match_state
+                .match_presentation
+                .sidebar_gadget_state
+                .sell_mode_on;
         let counts_ready = output.instance_counts.minimap > 0
             && output.instance_counts.viewport_rect > 0
             && output.instance_counts.radar_animation > 0;
@@ -1062,9 +1133,13 @@ impl TacticalCaptureSession {
     }
 
     fn bound_structures_ready(&self, state: &AppState) -> Result<bool> {
-        let script = self.script.as_ref().context("tactical script missing")?;
+        let script = self
+            .controller
+            .script()
+            .context("tactical script missing")?;
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("structure readiness requires live simulation")?;
@@ -1085,7 +1160,8 @@ impl TacticalCaptureSession {
             if !entity.is_active()
                 || entity.dying
                 || entity.building_up.is_some()
-                || sim.interner.resolve(entity.owner()) != self.request.profile().launch.player_name
+                || sim.interner.resolve(entity.owner())
+                    != self.request.profile()?.launch.player_name
                 || !sim
                     .interner
                     .resolve(entity.type_ref())
@@ -1097,7 +1173,7 @@ impl TacticalCaptureSession {
         }
         if let Some(expected_harvester) = self
             .request
-            .profile()
+            .profile()?
             .capture
             .build_targets
             .refinery_spawned_harvester
@@ -1122,10 +1198,14 @@ impl TacticalCaptureSession {
     }
 
     fn build_fingerprint(&self, state: &AppState) -> Result<Value> {
-        let profile = self.request.profile();
+        if self.request.map_profile().is_some() {
+            return self.map_fingerprint(state);
+        }
+        let profile = self.request.profile()?;
         let owner = &profile.launch.player_name;
         let sim = state
-            .match_state.sim_runtime
+            .match_state
+            .sim_runtime
             .as_ref()
             .map(|rt| &rt.simulation)
             .context("fingerprint requires live simulation")?;
@@ -1139,8 +1219,8 @@ impl TacticalCaptureSession {
             .get(&owner_id)
             .context("fingerprint local power state is absent")?;
         let script = self
-            .script
-            .as_ref()
+            .controller
+            .script()
             .context("fingerprint script is absent")?;
         let render = self
             .last_render_evidence
@@ -1196,9 +1276,7 @@ impl TacticalCaptureSession {
             self.readback_started,
             "tactical readback timeout requested before arming"
         );
-        let timeout = Duration::from_secs(u64::from(
-            self.request.profile().budgets.child_timeout_seconds,
-        ));
+        let timeout = Duration::from_secs(u64::from(self.request.child_timeout_seconds()));
         let remaining = timeout
             .checked_sub(self.started_at.elapsed())
             .context("tactical child timeout expired before GPU readback")?;
@@ -1236,10 +1314,15 @@ impl TacticalCaptureSession {
             "tactical state changed between encode and readback completion"
         );
 
+        if self.request.map_profile().is_some() {
+            self.publish_map_observation(state, surface_format, pixels)?;
+            self.outcome = Some(Ok(()));
+            return Ok(());
+        }
         let completed_observation = self.build_observation(state, true)?;
         let action = self
-            .script
-            .as_mut()
+            .controller
+            .script_mut()
             .context("tactical script is absent at readback completion")?
             .next_action(&completed_observation);
         ensure!(
@@ -1255,7 +1338,7 @@ impl TacticalCaptureSession {
             pixels,
         )?;
         let manifest = TacticalCaptureManifest::complete(
-            self.request.sealed_profile(),
+            self.request.sealed_profile()?,
             self.request.sealed_contract(),
             frame,
             evidence,
@@ -1270,7 +1353,7 @@ impl TacticalCaptureSession {
             .inputs
             .as_ref()
             .context("manifest input identities are absent")?;
-        let profile = self.request.profile();
+        let profile = self.request.profile()?;
         let egui = state.capture_egui_observation();
         let graphics = GraphicsEvidence::from_observations(
             state.renderer.gpu.capture_adapter_observation(),
@@ -1283,7 +1366,10 @@ impl TacticalCaptureSession {
             state.match_state.match_presentation.ui_scale,
             inputs.font.clone(),
         )?;
-        let script = self.script.as_ref().context("manifest script is absent")?;
+        let script = self
+            .controller
+            .script()
+            .context("manifest script is absent")?;
         ensure!(
             script.stage() == TacticalScriptStage::Complete,
             "manifest script is not complete"
@@ -1341,18 +1427,15 @@ impl TacticalCaptureSession {
     }
 
     fn check_process_timeout(&self) -> Result<()> {
-        let child_timeout = Duration::from_secs(u64::from(
-            self.request.profile().budgets.child_timeout_seconds,
-        ));
+        let child_timeout = Duration::from_secs(u64::from(self.request.child_timeout_seconds()));
         ensure!(
             self.started_at.elapsed() <= child_timeout,
             "tactical child exceeded {} seconds",
             child_timeout.as_secs()
         );
         if let Some(post_l0) = self.post_l0_started_at {
-            let post_l0_timeout = Duration::from_secs(u64::from(
-                self.request.profile().budgets.post_l0_timeout_seconds,
-            ));
+            let post_l0_timeout =
+                Duration::from_secs(u64::from(self.request.post_l0_timeout_seconds()));
             ensure!(
                 post_l0.elapsed() <= post_l0_timeout,
                 "tactical post-L0 loop exceeded {} seconds",
@@ -1382,8 +1465,16 @@ impl TacticalCaptureSession {
         match self.outcome.take() {
             Some(Ok(())) => Ok(()),
             Some(Err(error)) => {
+                if self.request.map_profile().is_some() {
+                    return match self.publish_map_failure(&error) {
+                        Ok(()) => Err(anyhow::anyhow!(error)),
+                        Err(publish_error) => Err(anyhow::anyhow!(
+                            "{error}; failed to publish FAILED manifest: {publish_error:#}"
+                        )),
+                    };
+                }
                 let failed = TacticalCaptureManifest::failed(
-                    self.request.sealed_profile(),
+                    self.request.sealed_profile()?,
                     self.request.sealed_contract(),
                     self.failure_stage.clone(),
                     error.clone(),
@@ -1399,6 +1490,40 @@ impl TacticalCaptureSession {
             None => bail!("tactical capture event loop exited without a terminal outcome"),
         }
     }
+}
+
+fn validate_loaded_resources(state: &AppState) -> Result<()> {
+    let sim = &state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .context("simulation is absent")?
+        .simulation;
+    ensure!(
+        state.rules().is_some()
+            && state.match_state.match_presentation.tile_atlas.is_some()
+            && state.match_state.match_presentation.terrain_grid.is_some()
+            && state.terrain_template().is_some()
+            && state.match_state.match_presentation.unit_atlas.is_some()
+            && state.match_state.match_presentation.palette_set.is_some()
+            && state.match_state.match_presentation.sprite_atlas.is_some()
+            && state.match_state.match_presentation.overlay_atlas.is_some()
+            && state.match_state.match_presentation.minimap.is_some()
+            && state
+                .match_state
+                .match_presentation
+                .sidebar_chrome
+                .is_some()
+            && state
+                .match_state
+                .match_presentation
+                .software_cursor
+                .is_some()
+            && sim.path_grid().is_some()
+            && state.process_assets.is_available(),
+        "Rust L0 is missing one or more production render/simulation resources"
+    );
+    Ok(())
 }
 
 fn artifact(path: &Path, label: &str) -> Result<ArtifactEvidence> {
@@ -1454,31 +1579,13 @@ fn derive_rate(
 
 fn validate_game_options(
     sim: &crate::sim::world::Simulation,
-    profile: &TacticalCaptureProfile,
+    launch: &crate::skirmish_launch::SkirmishLaunchSession,
 ) -> Result<()> {
-    let actual = &sim.session.game_options;
-    let expected = &profile.launch.options;
     ensure!(
-        actual.starting_credits == expected.starting_credits
-            && actual.unit_count == expected.unit_count
-            && actual.tech_level == expected.tech_level
-            && actual.game_speed == expected.game_speed
-            && actual.ai_difficulty == expected.default_ai_difficulty
-            && actual.ai_players == profile.launch.opponents.len() as i32
-            && actual.short_game == expected.short_game
-            && actual.bases == expected.bases
-            && actual.bridges_destroyable == expected.bridges_destroyable
-            && actual.super_weapons == expected.super_weapons
-            && actual.build_off_ally == expected.build_off_ally
-            && actual.crates == expected.crates
-            && actual.mcv_redeploy == expected.mcv_redeploy
-            && actual.fog_of_war == expected.fog_of_war
-            && actual.shroud == expected.shroud
-            && actual.tiberium_grows == expected.tiberium_grows
-            && actual.multi_engineer == expected.multi_engineer
-            && actual.harvester_truce == expected.harvester_truce
-            && actual.ally_change_allowed == expected.ally_change_allowed,
-        "live GameOptions differ from the sealed tactical launch"
+        crate::skirmish_launch::SkirmishLaunchOptions::from_game_options(&sim.session.game_options)
+            == launch.options
+            && sim.session.game_options.ai_players == launch.opponents.len() as i32,
+        "live GameOptions differ from the requested tactical launch"
     );
     Ok(())
 }
@@ -1535,7 +1642,8 @@ fn validate_houses_and_slots(
             && ai.difficulty == HouseDifficulty::Easy
             && ai.economy.credits == profile.launch.options.starting_credits,
         "Computer1 HouseState differs from sealed slot: credits={}, difficulty={:?}",
-        ai.economy.credits, ai.difficulty
+        ai.economy.credits,
+        ai.difficulty
     );
     ensure!(
         sim.session.start_slot_houses.len() == 2
