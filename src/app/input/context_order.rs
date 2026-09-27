@@ -530,7 +530,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
 
         let mut selected_units: Vec<u64> = Vec::new();
         let mut selected_miner_ids: Vec<u64> = Vec::new();
-        let mut structure_owner: Option<String> = None;
+        let mut structure_selected = false;
         let mut mobile_count: usize = 0;
         let mut _structure_count: usize = 0;
 
@@ -540,9 +540,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             };
             if entity.category == EntityCategory::Structure {
                 _structure_count += 1;
-                if structure_owner.is_none() {
-                    structure_owner = Some(sim.interner.resolve(entity.owner()).to_string());
-                }
+                structure_selected = true;
             } else {
                 mobile_count += 1;
                 selected_units.push(sid);
@@ -689,7 +687,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     ));
                 }
             }
-        } else if let Some(struct_own) = structure_owner {
+        } else if structure_selected {
             let clicked_friendly = hover.as_ref().is_some_and(|target| {
                 matches!(
                     target.kind,
@@ -756,9 +754,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             {
                 // Set rally point for the structures.
                 {
-                    let struct_owner_id = sim.interner.get(&struct_own).unwrap_or(owner_id);
-                    let producer_ids =
-                        selected_rally_producer_ids(sim, &selected_ids, struct_owner_id);
+                    // The click is the local player's event: only their own
+                    // selected factories take the rally (another house's
+                    // selected building gives no order).
+                    let producer_ids = selected_rally_producer_ids(sim, &selected_ids, owner_id);
                     // `BuildingClass::SetRallyPoint 0x00443A2B..0x00443A69`,
                     // called per selected factory with announce = 1 by the
                     // map-click handlers `FUN_00443410` / `FUN_004436F0`:
@@ -769,18 +768,17 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     // a `ConstructionYard=` nor a `ResourceDestination=`.
                     // One `PlayEVA` per factory; VoxClass drops same-entry
                     // duplicates, so one request per click is equivalent.
-                    rally_announce = struct_owner_id == owner_id
-                        && producer_ids.iter().any(|id| {
-                            sim.entities().get(*id).is_some_and(|entity| {
-                                Some(&resources.rules)
+                    rally_announce = producer_ids.iter().any(|id| {
+                        sim.entities().get(*id).is_some_and(|entity| {
+                            Some(&resources.rules)
                                 .and_then(|r| r.object(sim.interner.resolve(entity.type_ref())))
                                 .is_some_and(
                                     crate::app::match_runtime::eva_producers::rally_point_announces,
                                 )
-                            })
-                        });
+                        })
+                    });
                     queued.push(CommandEnvelope::new(
-                        struct_owner_id,
+                        owner_id,
                         execute_tick,
                         Command::SetRally {
                             rx: target_rx,
