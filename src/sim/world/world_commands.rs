@@ -976,12 +976,10 @@ impl Simulation {
                     e.order_intent = None;
                     Self::clear_aircraft_dock_phase(e);
                 }
-                let issued = combat::issue_attack_command(
-                    &mut self.substrate.entities,
+                let issued = self.order_attack_target(
                     *attacker_id,
-                    *target_id,
+                    combat::TargetKind::Entity(*target_id),
                     rules,
-                    &self.interner,
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
@@ -1025,12 +1023,10 @@ impl Simulation {
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
-                let issued = combat::issue_attack_command(
-                    &mut self.substrate.entities,
+                let issued = self.order_attack_target(
                     *attacker_id,
-                    *target_id,
+                    combat::TargetKind::Entity(*target_id),
                     rules,
-                    &self.interner,
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
@@ -1071,13 +1067,10 @@ impl Simulation {
                     e.order_intent = None;
                     Self::clear_aircraft_dock_phase(e);
                 }
-                let issued = combat::issue_attack_cell_command(
-                    &mut self.substrate.entities,
+                let issued = self.order_attack_target(
                     *attacker_id,
-                    *target_rx,
-                    *target_ry,
+                    combat::TargetKind::Cell(*target_rx, *target_ry),
                     rules,
-                    &self.interner,
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
@@ -2844,6 +2837,53 @@ impl Simulation {
                 true
             }
         }
+    }
+
+    /// The target an Attack order hands its object. A building takes it
+    /// through BuildingClass::SetTarget (vt+0x3C8, `0x00443B90`), which
+    /// refuses one it cannot reach; its queued Attack stands either way and
+    /// Mission_Attack's null-target arm hands it back to Guard
+    /// (`techno_ai::building_missions`). Every other object takes it through
+    /// its fire and movement owners' setters.
+    fn order_attack_target(
+        &mut self,
+        attacker_id: u64,
+        target: combat::TargetKind,
+        rules: Option<&RuleSet>,
+    ) -> bool {
+        let Some(attacker) = self.substrate.entities.get(attacker_id) else {
+            return false;
+        };
+        if attacker.category != crate::map::entities::EntityCategory::Structure {
+            return match target {
+                combat::TargetKind::Entity(target_id) => combat::issue_attack_command(
+                    &mut self.substrate.entities,
+                    attacker_id,
+                    target_id,
+                    rules,
+                    &self.interner,
+                ),
+                combat::TargetKind::Cell(rx, ry) => combat::issue_attack_cell_command(
+                    &mut self.substrate.entities,
+                    attacker_id,
+                    rx,
+                    ry,
+                    rules,
+                    &self.interner,
+                ),
+            };
+        }
+        // The cell order's defensive refusal of an unarmed attacker
+        // (`issue_attack_cell_command`).
+        if matches!(target, combat::TargetKind::Cell(..))
+            && !rules
+                .and_then(|rules| rules.object(self.interner.resolve(attacker.type_ref())))
+                .is_some_and(|obj| combat::combat_weapon::is_armed(attacker, obj))
+        {
+            return false;
+        }
+        let _ = self.assign_target_represented(attacker_id, Some(target), rules);
+        true
     }
 }
 

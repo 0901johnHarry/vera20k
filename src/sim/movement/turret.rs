@@ -338,12 +338,13 @@ pub(crate) fn current_weapon_is_omni_fire(
 ///
 /// Dispatches on the class that actually owns the facing in gamemd:
 /// - **Unit** — `UnitClass::Facing_Update @ 0x00736990` ([`facing_update`]).
-/// - **Structure** — `BuildingClass::Mission_Attack @ 0x0044ACF0`, whose only
-///   facing traffic is `turret(+0x388).Set(GetTargetCoords(Target))` on the
-///   non-firing error arms (`0x0044B187`/`0x0044B1DE`/`0x0044B14E`). A LEA
-///   census over `BuildingClass::Update`, `Mission_Guard` and every idle path
-///   finds no other `Set`/`UpdateFacing` of `+0x388`, so **a building turret
-///   keeps its last aim** — it never swings back.
+/// - **Structure** — none: `BuildingClass::Mission_Attack @ 0x0044ACF0` sets
+///   its turret (`+0x388`) on the non-firing error arms (`0x0044B187`/
+///   `0x0044B1DE`/`0x0044B14E`) in the building's own visit
+///   (`world::techno_ai::building_missions`). A LEA census over
+///   `BuildingClass::Update`, `Mission_Guard` and every idle path finds no
+///   other `Set`/`UpdateFacing` of `+0x388`, so **a building turret keeps its
+///   last aim** — it never swings back.
 /// - **Aircraft** — its mission/locomotor owns its secondary-facing writes.
 /// - **Infantry** — legacy target-else-body rule.
 ///
@@ -367,19 +368,8 @@ pub(crate) fn desired_turret_facing(
         crate::map::entities::EntityCategory::Unit => {
             facing_update(entity, entities, rules, interner, binary_frame).turret_destination
         }
-        crate::map::entities::EntityCategory::Structure => entity
-            .attack_target
-            .as_ref()
-            .and_then(|attack| {
-                facing_toward_target(entity, &attack.target, entities, rules, interner)
-            })
-            .or_else(|| {
-                // A target that despawned this tick: native re-reads `+0x2B4`,
-                // which the death helper has already cleared, so `Mission_Attack`
-                // takes no facing action at all. Hold.
-                None
-            }),
-        crate::map::entities::EntityCategory::Aircraft => None,
+        crate::map::entities::EntityCategory::Structure
+        | crate::map::entities::EntityCategory::Aircraft => None,
         _ => Some(
             entity
                 .attack_target
@@ -392,20 +382,14 @@ pub(crate) fn desired_turret_facing(
     }
 }
 
-/// Per-binary-frame turret rotation for the classes this sweep still owns —
-/// Buildings and legacy Infantry. Unit turrets are driven per-object by the combat
-/// Phase-2 read window plus `unit_post::apply_unit_facing` while
-/// `L2_UNIT_POST_AUTHORITATIVE` holds.
+/// Per-binary-frame turret rotation for the class this sweep still owns —
+/// legacy Infantry. Unit turrets are driven per-object by the combat Phase-2
+/// read window plus `unit_post::apply_unit_facing` while
+/// `L2_UNIT_POST_AUTHORITATIVE` holds, and a building's by its Mission_Attack.
 ///
 /// Calls `FacingClass::set`, which is a no-op when the desired facing equals the
 /// current destination — so this function is idempotent. `None` from
-/// [`desired_turret_facing`] means "native calls no `Set` this frame", which is
-/// how a building turret holds its last aim.
-///
-/// gamemd-derived: `BuildingClass::Mission_Attack @ 0x0044ACF0` for structures
-/// (all four facing sites are on `+0x388`, `0x0044B14E`/`0x0044B187`/
-/// `0x0044B1DE` plus the voxel snap at `0x0044B0AC`); ROT comes from
-/// `BuildingType+0x71C`, the same `ROT=` key this reads.
+/// [`desired_turret_facing`] means "native calls no `Set` this frame".
 pub fn tick_turret_rotation(
     entities: &mut EntityStore,
     rules: &RuleSet,
@@ -425,8 +409,7 @@ pub fn tick_turret_rotation(
             Some(e) => e,
             None => continue,
         };
-        // Unit turrets are driven per-object by unit_post once authoritative; leave
-        // Aircraft/Building turrets on this sweep.
+        // Unit turrets are driven per-object by unit_post once authoritative.
         if crate::sim::world::unit_post::L2_UNIT_POST_AUTHORITATIVE
             && entity.category == crate::map::entities::EntityCategory::Unit
         {

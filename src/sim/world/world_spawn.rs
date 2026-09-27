@@ -624,12 +624,15 @@ impl Simulation {
     /// Dispatchable miners keep the Harvest their Unlimbo idle mode gave them —
     /// the native creation-mission family is its own recorded UNCHECKED and the
     /// harvest FSM needs a truthful `current` from birth.
+    ///
+    /// A building's `[Structures]` line has no mission column; it takes
+    /// [`Self::queue_placed_building_guard`].
     fn commit_map_placement_mission(
         &mut self,
         stable_id: u64,
         authored: Option<crate::sim::mission::MissionType>,
     ) {
-        if self.is_dispatchable_miner(stable_id) {
+        if self.is_dispatchable_miner(stable_id) || self.queue_placed_building_guard(stable_id) {
             return;
         }
         let Some(mission) = authored else {
@@ -641,6 +644,36 @@ impl Simulation {
             crate::sim::mission::MissionId::from_known(mission),
             now,
         );
+    }
+
+    /// The mission of a building placed without a build-up (a map building,
+    /// or one [`Self::spawn_object`] places): its Unlimbo arm (vt+0x484 =
+    /// `0x0044D6A0`: Guard at `0x0044D6DC..0x0044D6F1` unless the build-up
+    /// flag is set outside scenario init) queues Guard without commencing,
+    /// and the first opening its discovery runs (`0x0044D5D0` ->
+    /// Grand_Opening, `0x004467C9`) sets `+0x6DD`, so its first Update's
+    /// ready check commences Guard. Native execution:
+    /// `tools/spatial_oracle/building_guard_attack.json` (`unlimbo` rows).
+    /// Answers whether `stable_id` is a building.
+    ///
+    /// RESIDUAL: VERA opens every such building at once; native reaches a
+    /// campaign's human-owned building through its discovery
+    /// (DiscoveredBy(Player) needs its cell's `+0x12C & 0x10` when GameMode
+    /// is 0). Trigger: a campaign map's shrouded player building. Effect: it
+    /// guards before it is discovered. Frequency: campaign maps only;
+    /// skirmish and multiplayer open every building at Unlimbo.
+    fn queue_placed_building_guard(&mut self, stable_id: u64) -> bool {
+        let Some(entity) = self.substrate.entities.get_mut_if(stable_id, |entity| {
+            entity.category == EntityCategory::Structure
+        }) else {
+            return false;
+        };
+        crate::sim::mission::authority::queue_entity_mission_deferred(
+            entity,
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Guard),
+        );
+        entity.mission_leaf.set_building_ready_latch(1);
+        true
     }
 
     /// A miner the harvest dispatch drives (not a Slave Miner): Unlimbo's idle
@@ -791,6 +824,7 @@ impl Simulation {
         }
         self.initialize_cloak_after_unlimbo(stable_id, rules);
         self.add_unit_sensor_after_unlimbo(stable_id, rules);
+        self.queue_placed_building_guard(stable_id);
         Ok(Some(stable_id))
     }
 

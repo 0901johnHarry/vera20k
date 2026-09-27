@@ -422,6 +422,18 @@ pub(super) fn weapon_at_index<'r>(
         .attack_target
         .as_ref()
         .map(|attack| attack.target);
+    weapon_at_index_for(sim, rules, id, target, index)
+}
+
+/// [`weapon_at_index`] with `target` in place of the object's own: a
+/// garrison's occupant weapon is chosen for the target.
+pub(super) fn weapon_at_index_for<'r>(
+    sim: &Simulation,
+    rules: &'r RuleSet,
+    id: u64,
+    target: Option<TargetKind>,
+    index: i32,
+) -> Option<&'r WeaponType> {
     let subject = fire_subject(sim, rules, id, target, index)?;
     // `weapon_at` borrows the subject; re-resolve through the rules so the
     // weapon outlives it.
@@ -504,6 +516,25 @@ pub(super) fn fire_error_at(
 ) -> FireError {
     fire_subject(sim, rules, id, target, weapon_index).map_or(FireError::Illegal, |subject| {
         subject.fire_error(check_range)
+    })
+}
+
+/// GetFireError (vt+0x3C0) as a fire routine asks it, with the match's
+/// OverlayTypeClass table for InRange's line of fire.
+pub(super) fn fire_error_with_overlay(
+    sim: &Simulation,
+    rules: &RuleSet,
+    id: u64,
+    target: TargetKind,
+    weapon_index: i32,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) -> FireError {
+    fire_subject(sim, rules, id, Some(target), weapon_index).map_or(FireError::Illegal, |subject| {
+        FireSubject {
+            overlay_registry,
+            ..subject
+        }
+        .fire_error(true)
     })
 }
 

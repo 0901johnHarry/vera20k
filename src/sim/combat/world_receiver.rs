@@ -2641,9 +2641,12 @@ fn admit_attacker_fire<'r>(
     // the range check, asked where each class's fire routine asks it:
     // `UnitClass::Fire_At_Target @ 0x00736E3A`, `InfantryClass::
     // Fire_At_Target @ 0x005206F3` (`0x005209DE` on the fire frame),
-    // `BuildingClass::Mission_Attack @ 0x0044B00F` (`ProcessDelayedFire
-    // @ 0x00450476` for a delayed shot) and `AircraftClass::Mission_Attack
-    // @ 0x0041832E`. Each routine then acts on the code as below.
+    // `ProcessDelayedFire @ 0x00450476` for a building's delayed shot and
+    // `AircraftClass::Mission_Attack @ 0x0041832E`. Each routine then acts on
+    // the code as below. A building's ordinary shot is its Mission_Attack's
+    // FireAt arm, whose GetFireError (`0x0044B00F`) answered OK in the
+    // building's own visit this frame (`techno_ai::building_missions`), so it
+    // is not asked again.
     let garrison_fire = if is_garrison {
         let (Some(gs), Some(selected)) = (snap.garrison.as_ref(), selected.as_ref()) else {
             return None;
@@ -2669,9 +2672,13 @@ fn admit_attacker_fire<'r>(
             });
         }
     };
-    let mut code = None;
-    subject(&*world, &mut |s| code = Some(s.fire_error(true)));
-    let mut code = code?;
+    let code = if snap.category == EntityCategory::Structure && delayed_building_slot.is_none() {
+        fire_error::FireError::Ok
+    } else {
+        let mut code = None;
+        subject(&*world, &mut |s| code = Some(s.fire_error(true)));
+        code?
+    };
     let direction = crate::sim::movement::turret::facing_toward_lepton(
         snap.pos_rx,
         snap.pos_ry,
@@ -2772,52 +2779,8 @@ fn admit_attacker_fire<'r>(
                 }
             }
         }
-        // The table at `0x0044B728`. A delayed shot is dropped on any refusal
-        // (`0x004504D7`).
-        EntityCategory::Structure if delayed_building_slot.is_none() => match code {
-            // The voxel-turret retry (`0x0044B017..0x0044B0CC`): within one
-            // `ROT=` step (`abs(low-byte ROT << 8)` as signed16, without
-            // FacingClass SetROT's clamp; any miss at ROT 0) the turret snaps
-            // (`0x0044B0AC`) and GetFireError is asked again with the same
-            // weapon. Only its last test (B7, the facing) had failed, so the
-            // retry passes. Original decisions: building_fire_turn.json.
-            fire_error::FireError::Facing => {
-                if obj.turret_anim_is_voxel
-                    && let Some(barrel) = snap.barrel_facing
-                {
-                    let delta =
-                        i32::from(barrel.current(binary_frame).wrapping_sub(direction) as i16);
-                    let rot_step = i32::from(((obj.turret_rot as u8 as u16) << 8) as i16).abs();
-                    if obj.turret_rot == 0 || delta.abs() <= rot_step {
-                        if let Some(barrel) = world
-                            .substrate
-                            .entities
-                            .get_mut(snap.stable_id)
-                            .and_then(|entity| entity.barrel_facing.as_mut())
-                        {
-                            barrel.snap(direction, binary_frame);
-                        }
-                        code = fire_error::FireError::Ok;
-                    }
-                }
-            }
-            // Codes 1, 5, 6 and 8 (`0x0044B0DE`): the target is dropped.
-            // RESIDUAL: the rest of that arm (`+0x664 = 0`, the planning hook,
-            // Queue_Mission(Guard) and Commence, `0x0044B0DE..0x0044B148`, then
-            // the Gattling tail it falls into) and the `+0x148` count both
-            // tables bump on codes 0 and 3 (Unit `0x0073713A`, Building
-            // `0x0044B713`/`0x0044B23C`) are not ported; they belong with the
-            // Gattling and mission owners.
-            fire_error::FireError::Ammo
-            | fire_error::FireError::Illegal
-            | fire_error::FireError::Cant
-            | fire_error::FireError::Range => out.remove_attack.push(snap.stable_id),
-            // Code 9 (`0x0044B284`).
-            fire_error::FireError::Cloaked => {
-                uncloak_to_fire(world, rules, obj, snap.stable_id, sound_enabled);
-            }
-            _ => {}
-        },
+        // A delayed shot is dropped on any refusal (`0x004504D7`); an ordinary
+        // one's codes were acted on by Mission_Attack (`0x0044B728`).
         EntityCategory::Structure => {}
         // Mission_Attack's strike states act on their codes in
         // `aircraft_release`; an aircraft reaches this only outside such a
@@ -2834,40 +2797,6 @@ fn admit_attacker_fire<'r>(
     }
     // GetFireError passed T21, so the slot names a weapon.
     let selected = selected?;
-
-    if delayed_building_slot.is_none()
-        && snap.category == EntityCategory::Structure
-        && !rules
-            .general
-            .prism_type
-            .as_deref()
-            .is_some_and(|prism_type| obj.id.eq_ignore_ascii_case(prism_type))
-    {
-        let delayed_fire_delay = rules
-            .art_registry
-            .resolve_metadata_entry(&obj.id, &obj.image)
-            .filter(|art| art.is_anim_delayed_fire)
-            .map(|art| art.delayed_fire_delay);
-        if let Some(delay) = delayed_fire_delay {
-            // gamemd-derived: the non-Prism generic arm in
-            // BuildingClass::Mission_Attack @ 0x0044B630 saves the selected
-            // weapon slot and signed delay without firing/rearming. This same
-            // BuildingClass::Update visit then enters ProcessDelayedFire @
-            // 0x004503F0, so account for its pre-decrement immediately.
-            let pending = PendingBuildingFire {
-                remaining_ticks: delay.saturating_sub(1).max(0),
-                weapon_slot: selected.slot,
-            };
-            if pending.remaining_ticks != 0 {
-                if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
-                    entity.pending_building_fire = Some(pending);
-                }
-                // SpecialAnim presentation and its Report cue are app-layer
-                // residuals; they do not authorize early weapon emission.
-                return None;
-            }
-        }
-    }
 
     // InfantryClass::Fire_At_Target 00520904..00520925: after admission and
     // starting the fire action, snap body +388 through DirectionToTarget.
@@ -3066,6 +2995,21 @@ fn heal_weapon_drops_target(
         .object(world.interner.resolve(target.type_ref()))
         .map_or(0, |object| object.strength);
     fire_error::health_ratio_full(target.health.current, strength)
+}
+
+/// StartUncloaking (vt+0x45C) from a building's Mission_Attack CLOAKED arm
+/// (`0x0044B284`).
+pub(crate) fn start_uncloaking_to_fire(world: &mut Simulation, rules: &RuleSet, id: u64) {
+    let sound_enabled = sound_enabled(world);
+    let Some(obj) = world
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| rules.object(world.interner.resolve(entity.type_ref())))
+    else {
+        return;
+    };
+    uncloak_to_fire(world, rules, obj, id, sound_enabled);
 }
 
 /// `TechnoClass::Uncloak` (vt+0x45C, `0x007036C0`) with its sound, each
@@ -4326,7 +4270,7 @@ pub(crate) fn tick_combat(
     tick_ms: u32,
     live_order: &[u64],
     fire_suppressed: &BTreeSet<u64>,
-    aircraft_fire_requests: &BTreeSet<u64>,
+    fire_requests: &super::FireRequests,
     projectile_detonations: &[ProjectileDetonation],
     wave_damage_events: &[WaveDamageEvent],
 ) -> CombatTickResult {
@@ -4467,7 +4411,12 @@ pub(crate) fn tick_combat(
     }
 
     // Garrison auto-acquire: idle garrisoned buildings scan for hostile targets.
-    // Runs before Phase 1 so newly-targeted buildings are included in snapshots.
+    // RESIDUAL G22 (`greatest_threat.rs`): native acquires for an occupied
+    // building through the passive Greatest_Threat scan, whose ring bound
+    // (`0x006F917F..0x006F91A3`) and In_Range gate (`0x006F727E..0x006F729F`)
+    // each have an IsOccupied arm VERA's scan does not model yet. The target
+    // this writes reaches fire through the building's Guard -> Attack mission
+    // flip (`techno_ai::building_missions`), like a passive pick.
     for &id in &keys {
         let (is_candidate, owner, pos_rx, pos_ry, sub_x, sub_y, type_id, _barrel_facing) = {
             let entity = match world.substrate.entities.get(id) {
@@ -4527,8 +4476,12 @@ pub(crate) fn tick_combat(
             None => continue,
         };
 
-        // Scan range = half_foundation + 1 + OccupyWeaponRange (gamemd Greatest_Threat).
-        let scan_cells = half_foundation as i32 + 1 + rules.garrison_rules.occupy_weapon_range;
+        // Native In_Range's IsOccupied arm (`0x006F727E..0x006F729F`): the
+        // candidate must lie within `(HalfFoundation + OccupyWeaponRange) << 8`.
+        // The `+ 1` belongs to the ring walk's bound only; accepting that
+        // outer ring would hand Mission_Attack a target its GetFireError
+        // answers RANGE, and the building would churn Guard -> Attack -> Guard.
+        let scan_cells = half_foundation as i32 + rules.garrison_rules.occupy_weapon_range;
         let scan_range = SimFixed::from_num(scan_cells.max(1));
 
         // Scan for best hostile target using garrison weapon for Verses/projectile checks.
@@ -4579,10 +4532,9 @@ pub(crate) fn tick_combat(
             {
                 continue;
             }
-            // Garrison passive scan_range = half_foundation + 1 + OccupyWeaponRange,
-            // which never matches selected.weapon.range — same override-fallback
-            // case as the scan_range_override branch in acquire_best_target. Keep
-            // the 2D check until a future stage threads override-aware 3D.
+            // Flat distance, as GetFireError's garrison range check measures it
+            // (`fire_error_world::garrison_weapon`), so a pick here is one
+            // Mission_Attack does not refuse for RANGE.
             let dist_sq = lepton_distance_sq_raw(
                 pos_rx,
                 pos_ry,
@@ -4651,10 +4603,11 @@ pub(crate) fn tick_combat(
                 .attack_target
                 .as_ref()
                 .map(|attack| (attack.target, attack.pending_infantry_fire));
+            let structure = entity.category == EntityCategory::Structure;
             // Skip snapshot for entities blocked by locomotor state.
             // An aircraft's Mission_Attack visit runs whenever its dispatch asked
             // for it; the visit opens with its own prefix.
-            let requested = aircraft_fire_requests.contains(&id);
+            let requested = fire_requests.aircraft.contains(&id);
             let blocked = !requested
                 && (fire_blocked.contains(&id)
                     || entity
@@ -4698,6 +4651,14 @@ pub(crate) fn tick_combat(
                 continue;
             };
             if blocked {
+                continue;
+            }
+            // A building shoots from its Mission_Attack's FireAt arm, in its
+            // own visit this frame, or from ProcessDelayedFire's expiry above.
+            if structure
+                && pending_building_fire.is_none()
+                && !fire_requests.buildings.contains(&id)
+            {
                 continue;
             }
             (attack_target, pending_infantry_fire, pending_building_fire)
@@ -4860,7 +4821,7 @@ pub(crate) fn tick_combat(
 
         let n_remove = emit.remove_attack.len();
         let boundary = FireCommitBoundary::capture(&emit);
-        if aircraft_fire_requests.contains(&live_snap.stable_id) {
+        if fire_requests.aircraft.contains(&live_snap.stable_id) {
             aircraft_release::visit(
                 world,
                 run,

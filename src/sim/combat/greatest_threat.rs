@@ -68,9 +68,15 @@
 //!   longer has — so "the fog gate is gone" is true of passive acquisition and
 //!   not of the garrison path. It is a separate caller with its own
 //!   `OccupyWeapon` selection ladder; folding it into this walk is follow-up
-//!   work. Trigger: an occupied civilian building choosing among several
-//!   enemies, or one standing in unexplored ground. Frequency: garrison maps
-//!   only.
+//!   work. Native reaches an occupied building through this walk: the
+//!   IsOccupied arm at `0x006F917F..0x006F91A3` sets the ring bound to
+//!   `HalfFoundation + OccupyWeaponRange + 1` cells, the candidate gate is
+//!   In_Range's IsOccupied arm (`0x006F727E..0x006F729F`), and GetWeapon
+//!   (`0x004526F0`) answers the occupant's `OccupyWeapon`; this walk models
+//!   none of the three, so the passive scan an occupied building runs on
+//!   Guard finds nothing. Trigger: an occupied civilian building choosing
+//!   among several enemies, or one standing in unexplored ground. Frequency:
+//!   garrison maps only.
 //! - The `DistributedFire=` candidate/history assignment (`0x00709550`) is
 //!   not represented here. It is reachable for human-owned stock AEGIS;
 //!   its complete collection, firing-history and detach owners remain pending.
