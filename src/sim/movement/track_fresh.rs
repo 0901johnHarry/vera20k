@@ -41,7 +41,6 @@
 //!   returning a TerrainClass): VERA targets only objects and cells, so no
 //!   Override is issued for a tree. Unreachable today: VERA's A* never routes
 //!   through a terrain object (native prices a Wood route at 20).
-//! - The redraw calls (`0x483480`): presentation only; not represented.
 //! - Drive+64 (`0x4B400C`, the straight byte): Process_Drive_Track reads it
 //!   at `0x4B19AA`/`0x4B1A04` for the wall-crush tilt (+334 = -0.05) and the
 //!   CrusherAll Unit flag (+6B5, the speed ramp's crush clamp). Trigger: a
@@ -439,8 +438,9 @@ impl Simulation {
                 crush_overlay,
                 held,
             ),
-            FreshDispatch::Redraw { retry } => {
-                //4B394D..4B3984: the redraw, then the retry recursion.
+            FreshDispatch::UncloakContacts { retry } => {
+                //4B394D..4B3984: ground contact callbacks, then recursion.
+                self.uncloak_contacts_at_cell(cell, rules)?;
                 if retry.is_some() {
                     self.clear_path_head(id);
                     return self
@@ -808,8 +808,9 @@ impl Simulation {
                 }
                 self.track_second_refused(call)
             }
-            FreshDispatch::Redraw { retry } => {
-                //4B444A..4B4485: the redraw, then the retry recursion.
+            FreshDispatch::UncloakContacts { retry } => {
+                //4B444A..4B4485: ground contact callbacks, then recursion.
+                self.uncloak_contacts_at_cell(second_cell, rules)?;
                 if retry.is_some() {
                     self.clear_path_head(id);
                     return self
@@ -1169,13 +1170,10 @@ impl Simulation {
             return false;
         };
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-        let land = match cells.lookup_world(location.x, location.y) {
-            crate::map::cell_index::NativeCellIdentity::Real(index) => {
-                terrain.cells()[index].yr_cell_land_type
-            }
-            crate::map::cell_index::NativeCellIdentity::Dummy => 0,
-        };
-        land != LAND_TUNNEL
+        //Walk75B7D3..75B7DF consumes this same Cell+EC, including retained
+        //Dummy state. The response corpus pins missing-current Clear/Tunnel.
+        let current = cells.lookup_world(location.x, location.y);
+        cells.land_type(current) != i32::from(LAND_TUNNEL)
     }
 
     /// Scatter_Objects(Null, 1, 1, deck) on a refused `cell` (fresh
@@ -1201,10 +1199,10 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let deck = cells.flags(native) & 0x100 != 0
             && (location.z / GROUND_LEVEL_HEIGHT_LEPTONS - level).abs() > 2;
-        self.scatter_track_cell(cell, deck, true, rules, fallback);
+        self.scatter_cell_contacts(cell, deck, true, rules, fallback);
     }
 
-    fn scatter_track_cell(
+    pub(super) fn scatter_cell_contacts(
         &mut self,
         cell: (i16, i16),
         deck: bool,
@@ -1285,7 +1283,7 @@ impl Simulation {
         ) & 0x1F
             != 0;
         if infantry {
-            self.scatter_track_cell(cell, deck, false, call.rules, call.fallback);
+            self.scatter_cell_contacts(cell, deck, false, call.rules, call.fallback);
         }
     }
 
@@ -1338,13 +1336,17 @@ impl Simulation {
         ) {
             return;
         }
-        self.mission_override_track_blocker(call.id, target, call.rules);
+        self.mission_override_movement_blocker(call.id, target, call.rules);
     }
 
     /// `CellClass::Find_Blocking_Object 0x47C5A0` with the zero point: the
     /// first Aircraft of the ground list, else `Find_Nearest_Object`
     /// (0x47C3D0), else the first terrain object.
-    fn find_blocking_object(&self, cell: (u16, u16), rules: &RuleSet) -> Option<BlockingObject> {
+    pub(super) fn find_blocking_object(
+        &self,
+        cell: (u16, u16),
+        rules: &RuleSet,
+    ) -> Option<BlockingObject> {
         let list = self.substrate.occupancy.get(cell.0, cell.1);
         if let Some(aircraft) = list
             .into_iter()
@@ -1370,7 +1372,7 @@ impl Simulation {
 }
 
 /// What `Find_Blocking_Object` returned.
-enum BlockingObject {
+pub(super) enum BlockingObject {
     Entity(u64),
     Terrain,
 }

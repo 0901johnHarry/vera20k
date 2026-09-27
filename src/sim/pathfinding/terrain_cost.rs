@@ -234,6 +234,9 @@ fn classify_terrain_cost(
     _is_road: bool,
 ) -> u8 {
     match speed_type {
+        // Reduced fallback only: no native invalid-index terrain behavior is
+        // claimed. Live Foot entry reports an unavailable speed row instead.
+        SpeedType::Invalid => COST_BLOCKED,
         SpeedType::Foot => {
             if is_water || is_cliff {
                 COST_BLOCKED

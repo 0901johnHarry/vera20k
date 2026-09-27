@@ -312,15 +312,13 @@ example SHA256`43210b8692b2c0c11abda54ae418de5160dec77645e024b047bfafd02d0479e9`
 ## Required subsequent chains
 
 The supplied `0x100 → 0x400 → 0x100` target history establishes reaction to live
-flags; it does not establish Engineer rebuilding. A separate real-Hills extension
-found that CaptureBuilding accepts an Engineer beside CABHUT917 at `(68,74)`, but
-Foot's zone precheck rejects before A*. A legacy bridge adapter subsequently moves
-the Engineer inside with NavCom already cleared, so Infantry PerCell2 correctly
-refuses to consume it and the bridge remains destroyed. Exact failing sources,
-logs and a diagnostic test binary are preserved in the local evidence directory's
-`engineer-entry-followup/`. Fix the zone/admission producer, then trace Walk,
-PerCell2, repair effects and obsolete adapter removal as the next complete chain.
-This required mechanism remains open. No claim here closes all bridge types,
+flags; it does not establish Engineer rebuilding. The
+[ordinary Engineer entry chain](engineer_bridge_entry.md) owns that follow-up.
+It establishes that the initial diagnostic source `(69,74)` is a cliff rejected
+by native Foot/Map too, then uses the legal source `(66,76)` to trace AStar,
+Walk, PerCell2 and repair through the authored CABHUT at `(68,74)`. Exact
+captures and native comparison receipts are retained in the local evidence
+directory's `engineer-entry-followup/`. No claim here closes all bridge types,
 native map/lifecycle construction, bridge rendering or the whole-bridge goal.
 
 ## Single critic pass

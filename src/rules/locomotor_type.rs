@@ -12,7 +12,6 @@
 //! ## Dependency rules
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
-
 // ---------------------------------------------------------------------------
 // LocomotorKind
 // ---------------------------------------------------------------------------
@@ -81,13 +80,19 @@ pub const INSTALLED_CLSID_KIND_TABLE: [(&str, LocomotorKind); 8] = [
         "{4A582742-9839-11D1-B709-00A024DDAFD1}",
         LocomotorKind::Hover,
     ),
-    ("{4A582744-9839-11D1-B709-00A024DDAFD1}", LocomotorKind::Walk),
+    (
+        "{4A582744-9839-11D1-B709-00A024DDAFD1}",
+        LocomotorKind::Walk,
+    ),
     ("{4A582746-9839-11D1-B709-00A024DDAFD1}", LocomotorKind::Fly),
     (
         "{4A582747-9839-11D1-B709-00A024DDAFD1}",
         LocomotorKind::Teleport,
     ),
-    ("{2BEA74E1-7CCA-11D3-BE14-00104B62A16C}", LocomotorKind::Ship),
+    (
+        "{2BEA74E1-7CCA-11D3-BE14-00104B62A16C}",
+        LocomotorKind::Ship,
+    ),
     (
         "{92612C46-F71F-11D1-AC9F-006008055BB5}",
         LocomotorKind::Jumpjet,
@@ -129,7 +134,9 @@ pub const DEFAULT_INSTALLED_KIND: LocomotorKind = LocomotorKind::Teleport;
 /// Resolve the locomotor kind a type installs at spawn from its raw
 /// `Locomotor=` text (`None` when the key is absent).
 pub fn resolve_installed_kind(value: Option<&str>) -> LocomotorKind {
-    value.and_then(kind_from_clsid).unwrap_or(DEFAULT_INSTALLED_KIND)
+    value
+        .and_then(kind_from_clsid)
+        .unwrap_or(DEFAULT_INSTALLED_KIND)
 }
 
 // ---------------------------------------------------------------------------
@@ -138,8 +145,9 @@ pub fn resolve_installed_kind(value: Option<&str>) -> LocomotorKind {
 
 /// Determines which terrain cells are actually traversable for a unit.
 ///
-/// Parsed from rules.ini `SpeedType=` key. Controls terrain legality in the
-/// pathfinder — a cell is only enterable if the SpeedType allows it.
+/// Read from the exact `SpeedType` key in the scenario's layered rules.
+/// Controls terrain legality in the pathfinder: a cell is only enterable
+/// if the SpeedType allows it.
 ///
 /// Variant order matches the binary enum table at 0x81DA58 in gamemd.exe.
 #[derive(
@@ -147,7 +155,7 @@ pub fn resolve_installed_kind(value: Option<&str>) -> LocomotorKind {
 )]
 pub enum SpeedType {
     /// Infantry default. Can traverse most land terrain.
-    Foot,
+    Foot = 0,
     /// Most vehicles. Cannot cross water, limited on rough terrain.
     Track,
     /// Wheeled vehicles. Slower on rough terrain than Track.
@@ -162,6 +170,10 @@ pub enum SpeedType {
     Amphibious,
     /// Hover that can go on beaches (specific to certain hover units).
     FloatBeach,
+    /// Original48DFF0 returns -1 for a nonempty unknown name. Keep this
+    /// distinct from Track; native invalid-index gameplay is not established.
+    /// Last in declaration order to preserve existing serialized variant tags.
+    Invalid = -1,
 }
 
 impl Default for SpeedType {
@@ -183,9 +195,10 @@ impl SpeedType {
         SpeedType::FloatBeach,
     ];
 
-    /// Parse from a rules.ini SpeedType= value string (case-insensitive).
+    /// Original48DFF0 whole-name parser, after ReadString has trimmed input.
+    /// The field reader owns absent/empty defaults and its 128-byte buffer.
     pub fn from_ini(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
+        match value.to_ascii_lowercase().as_str() {
             "foot" => Self::Foot,
             "track" => Self::Track,
             "wheel" => Self::Wheel,
@@ -194,16 +207,14 @@ impl SpeedType {
             "winged" => Self::Winged,
             "floatbeach" => Self::FloatBeach,
             "hover" => Self::Hover,
-            _ => {
-                log::warn!("Unknown SpeedType '{}', defaulting to Track", value);
-                Self::Track
-            }
+            _ => Self::Invalid,
         }
     }
 
     /// Human-readable name for debug display.
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Invalid => "Invalid",
             Self::Foot => "Foot",
             Self::Track => "Track",
             Self::Wheel => "Wheel",
@@ -453,11 +464,7 @@ mod tests {
     #[test]
     fn absent_and_unparseable_values_take_the_constructor_seed() {
         assert_eq!(resolve_installed_kind(None), DEFAULT_INSTALLED_KIND);
-        for bad in [
-            "",
-            "not-a-guid",
-            "{00000000-0000-0000-0000-000000000000}",
-        ] {
+        for bad in ["", "not-a-guid", "{00000000-0000-0000-0000-000000000000}"] {
             assert_eq!(kind_from_clsid(bad), None);
             assert_eq!(resolve_installed_kind(Some(bad)), DEFAULT_INSTALLED_KIND);
         }
@@ -487,8 +494,8 @@ mod tests {
     }
 
     #[test]
-    fn test_speed_type_unknown_defaults_to_track() {
-        assert_eq!(SpeedType::from_ini("bogus"), SpeedType::Track);
+    fn test_speed_type_unknown_preserves_invalid() {
+        assert_eq!(SpeedType::from_ini("bogus"), SpeedType::Invalid);
     }
 
     #[test]

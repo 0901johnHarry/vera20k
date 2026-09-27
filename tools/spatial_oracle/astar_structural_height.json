@@ -1,0 +1,433 @@
+{
+  "cases": [
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 10,
+        "current_height": 10,
+        "name": "ordinary_ground_hills10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 10,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 5,
+        "current_height": 10,
+        "name": "structural_candidate_raw5_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 5,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 6,
+        "current_height": 10,
+        "name": "structural_candidate_raw6_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 10,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 7,
+        "current_height": 10,
+        "name": "structural_candidate_raw7_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 11,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 8,
+        "current_height": 10,
+        "name": "structural_candidate_raw8_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 12,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 9,
+        "current_height": 10,
+        "name": "structural_candidate_raw9_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 9,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 10,
+        "current_height": 10,
+        "name": "structural_candidate_raw10_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 10,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 11,
+        "current_height": 10,
+        "name": "structural_candidate_raw11_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 11,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 6,
+        "candidate_rust_bridge_walkable": true,
+        "current_height": 10,
+        "name": "candidate_walkable_only_raw6_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 6,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 6,
+        "candidate_rust_bridge_walkable": false,
+        "current_height": 10,
+        "name": "candidate_not_walkable_raw6_from_ground10",
+        "parent_flags": 0,
+        "parent_ground_raw": 10
+      },
+      "node_height": 6,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 2,
+        "current_height": 10,
+        "name": "structural_parent_on_deck_continues_structural_candidate",
+        "parent_flags": 256,
+        "parent_ground_raw": 6
+      },
+      "node_height": 6,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 2,
+        "current_height": 10,
+        "name": "walkable_only_parent_does_not_force_deck_continuation",
+        "parent_flags": 0,
+        "parent_ground_raw": 6,
+        "parent_rust_bridge_walkable": true
+      },
+      "node_height": 2,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 3,
+        "current_height": 6,
+        "name": "structural_parent_under_deck_keeps_candidate_ground",
+        "parent_flags": 256,
+        "parent_ground_raw": 6
+      },
+      "node_height": 3,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 3,
+        "current_height": 6,
+        "name": "walkable_only_parent_allows_ground_to_deck_transition",
+        "parent_flags": 0,
+        "parent_ground_raw": 6,
+        "parent_rust_bridge_walkable": true
+      },
+      "node_height": 7,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 6,
+        "candidate_rust_bridge_walkable": true,
+        "current_height": 10,
+        "name": "structural_parent_deck_to_candidate_walkable_only",
+        "parent_flags": 256,
+        "parent_ground_raw": 6
+      },
+      "node_height": 6,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 127,
+        "current_height": 131,
+        "name": "raw127_structural_deck_is131",
+        "parent_flags": 256,
+        "parent_ground_raw": 127
+      },
+      "node_height": 131,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 127,
+        "candidate_rust_bridge_walkable": true,
+        "current_height": 131,
+        "name": "raw127_walkable_only_candidate_stays127",
+        "parent_flags": 256,
+        "parent_ground_raw": 127
+      },
+      "node_height": 127,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 128,
+        "current_height": -124,
+        "name": "raw128_structural_deck_is_minus124",
+        "parent_flags": 256,
+        "parent_ground_raw": 128
+      },
+      "node_height": -124,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 252,
+        "current_height": -1,
+        "name": "raw255_ground_to_raw252_structural_deck_is0",
+        "parent_flags": 0,
+        "parent_ground_raw": 255
+      },
+      "node_height": 0,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 127,
+        "current_height": -128,
+        "name": "signed_minus128_to127_is_large_selected_deck",
+        "parent_flags": 0,
+        "parent_ground_raw": 128
+      },
+      "node_height": 127,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "deck",
+      "selected_list_native_local": 0
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 256,
+        "candidate_ground_raw": 0,
+        "current_height": -1,
+        "name": "signed_minus1_to0_is_adjacent_selected_ground",
+        "parent_flags": 0,
+        "parent_ground_raw": 255
+      },
+      "node_height": 0,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    },
+    {
+      "allocation_guards_intact": true,
+      "code_unchanged": true,
+      "input": {
+        "candidate_flags": 0,
+        "candidate_ground_raw": 127,
+        "current_height": 131,
+        "initial_node": true,
+        "name": "initial_node_preserves_supplied131",
+        "parent_flags": 0,
+        "parent_ground_raw": 127
+      },
+      "node_height": 131,
+      "pool_counters": [
+        1,
+        1
+      ],
+      "selected_list": "ground",
+      "selected_list_native_local": 1
+    }
+  ],
+  "harness_sha256": "0cc948d2ed84fb27c6fb2160dea446e16b3845849745a44cc679b7b059be3a05",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "schema_version": 1,
+  "scope": "Original AStar node-height prefix and selected-list fragment controls.\n\nExecute 42A460..42A523 and 429E54..429E7F on supplied scalar Cells, node\ndescriptors and current heights. No CanEnter, full route or loader reachability\nis claimed. Rust bridge_walkable is deliberately metadata only: native code\ntests Cell+140 structural0x100 and signed ground bytes.\n"
+}

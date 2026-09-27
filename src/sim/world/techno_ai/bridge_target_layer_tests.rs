@@ -464,7 +464,7 @@ fn move_retail_fv(
     );
 }
 
-fn restored_retail(
+pub(super) fn restored_retail(
     scenario: &crate::headless_scenario::HeadlessScenario,
     pristine: &ResolvedTerrainGrid,
     bytes: &[u8],
@@ -551,6 +551,15 @@ fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation,
 #[test]
 #[ignore = "requires physical retail Hills and production movement/restore; no native whole-scene claim"]
 fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
+    retail_hills_collapsed_scene(|_, _| {});
+}
+
+pub(super) fn retail_hills_collapsed_scene(
+    mut observe: impl FnMut(&Simulation, &str),
+) -> (
+    crate::headless_scenario::HeadlessScenario,
+    ResolvedTerrainGrid,
+) {
     use crate::sim::snapshot::GameSnapshot;
     let retail = std::env::var("RA2_DIR")
         .map(std::path::PathBuf::from)
@@ -562,6 +571,7 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
         });
     let mut scenario = crate::headless_scenario::load(&retail, "Hills.mmx", 0x0B21_D6E5).unwrap();
     let pristine = scenario.sim().resolved_terrain.as_ref().unwrap().clone();
+    observe(scenario.sim(), "initial_loaded");
     for xy in [(64, 69), (66, 69)] {
         let cell = pristine.cell(xy.0, xy.1).unwrap();
         assert_eq!(
@@ -577,6 +587,7 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
     // Initially same owner so movement preparation cannot cause combat. The
     // hostile House link is a supplied acquisition-entry boundary below.
     let target = move_retail_fv(&mut scenario, owner, (62, 69), (68, 69), (66, 69), false);
+    observe(scenario.sim(), "after_ordinary_fv_moves");
     let enemy = scenario.runtime.simulation.intern("Russians");
     scenario
         .runtime
@@ -711,7 +722,9 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
     println!(
         "retail Hills: legal opposite layers, busy/ready passive scans and two restored futures matched 40 frames"
     );
-    collapse_retail_scene(&mut scenario, &pristine, [source, target]);
+    observe(scenario.sim(), "before_collapse_after_restored_40_frames");
+    collapse_retail_scene(&mut scenario, &pristine, [source, target], &mut observe);
+    (scenario, pristine)
 }
 
 /// Continue the physical scene through existing world publication; damage is
@@ -720,6 +733,7 @@ fn collapse_retail_scene(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     pristine: &ResolvedTerrainGrid,
     actors: [u64; 2],
+    observe: &mut impl FnMut(&Simulation, &str),
 ) {
     use crate::sim::bridge_state::BridgeDamageEvent;
     use crate::sim::snapshot::GameSnapshot;
@@ -761,6 +775,7 @@ fn collapse_retail_scene(
             .bridge_facts
             .has_structural_bridge()
     );
+    observe(&runtime.simulation, "after_receiver_collapse_before_load");
     let bytes = GameSnapshot::save_validated(
         &runtime.simulation,
         scenario.map.ini.content_hash(),
@@ -810,4 +825,5 @@ fn collapse_retail_scene(
         std::mem::swap(&mut runtime.simulation, &mut first);
     }
     println!("retail Hills bridge receiver collapse and four restored continuation frames matched");
+    observe(scenario.sim(), "after_collapsed_restore_and_4_frames");
 }

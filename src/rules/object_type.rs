@@ -2151,11 +2151,16 @@ impl ObjectType {
             locomotor: crate::rules::locomotor_type::resolve_installed_kind(
                 section.get("Locomotor").as_deref(),
             ),
-            // BuildingTypeClass's constructor passes SpeedType 0 to its parent
-            // (0x45DD9D -> 0x710AF0, stored at 0x7110E0); other existing
-            // category defaults stay owned here.
-            speed_type: section.get("SpeedType").map(SpeedType::from_ini).unwrap_or(
-                if category == ObjectCategory::Building {
+            // InfantryType5236A0 and BuildingType45DD9D pass Foot0 to
+            // TechnoType710AF0, stored7110E0. Original Infantry constructor and
+            // ENGINEER retail-layer reads: rules_oracle/infantry_speed_type.
+            // Other category defaults remain with this existing owner.
+            speed_type: section.read_speed_type(
+                "SpeedType",
+                if matches!(
+                    category,
+                    ObjectCategory::Building | ObjectCategory::Infantry
+                ) {
                     SpeedType::Foot
                 } else {
                     SpeedType::default()
@@ -2723,6 +2728,10 @@ fn parse_exit_coord(value: Option<&str>) -> Option<(i32, i32, i32)> {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "infantry_speed_type_tests.rs"]
+mod infantry_speed_type_tests;
 
 #[cfg(test)]
 mod tests {

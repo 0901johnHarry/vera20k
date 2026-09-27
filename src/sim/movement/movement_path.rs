@@ -443,13 +443,14 @@ pub(super) fn find_move_path_with_marker(
         marker_overlay,
         facts,
         allow_zone_hierarchy,
+        None,
     )
     .ok()
 }
 
 /// Internal request failures retain the layer where the return originated.
 /// Option callers preserve their established API through the facade below.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum MovePathFailure {
     MissingGrid,
     BridgeOnlyGoal,
@@ -474,6 +475,7 @@ pub(super) fn find_move_path_with_marker_detailed(
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverPathFacts,
     allow_zone_hierarchy: bool,
+    foot_entry: Option<&dyn crate::sim::pathfinding::SearchFootEntry>,
 ) -> Result<(Vec<(u16, u16)>, Vec<MovementLayer>), MovePathFailure> {
     let grid = ctx.path_grid.ok_or(MovePathFailure::MissingGrid)?;
     let zone_grid = ctx.zone_grid;
@@ -576,6 +578,7 @@ pub(super) fn find_move_path_with_marker_detailed(
                 mover_is_crusher: facts.mover_is_crusher,
                 is_infantry: facts.is_infantry,
                 wall_cost,
+                foot_entry,
             },
             allow_zone_hierarchy,
             ctx.playfield_bounds,
@@ -653,6 +656,7 @@ pub(super) fn find_move_path_with_marker_detailed(
             mover_is_crusher: facts.mover_is_crusher,
             is_infantry: facts.is_infantry,
             wall_cost,
+            foot_entry,
         },
         allow_zone_hierarchy,
         ctx.playfield_bounds,
@@ -952,6 +956,7 @@ mod tests {
                 None,
                 super::MoverPathFacts::without_wall_arm(0, false, true),
                 false,
+                None,
             )
         }
         assert_eq!(search(None), Err(MovePathFailure::MissingGrid));

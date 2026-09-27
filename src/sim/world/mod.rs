@@ -6315,14 +6315,8 @@ impl Simulation {
             // are honored before tick_combat runs.
             // PRODUCES: damage, deaths, bridge damage, fire events. Ordered
             // ReceiveDamage retaliation is committed inline.
-            // Adjacent idle engineers receive an enter-cell order here.
             // Repair and consumption occur synchronously at Walk's completed
             // step in the object pass. The capture system excludes repair huts.
-            let bridge_repaired = self.tick_bridge_repair_orders_with_overlay_registry(
-                rules,
-                overlay_registry,
-                &tube_turn_owned_ids,
-            );
             spawned_entities |= self.tick_capture_orders(rules, &tube_turn_owned_ids);
             let c4_outcome = self.tick_c4_plants_with_overlay_registry(
                 rules,
@@ -6330,7 +6324,7 @@ impl Simulation {
                 &tube_turn_owned_ids,
             );
             destroyed_structure |= c4_outcome.destroyed_structure;
-            bridge_state_changed |= bridge_repaired | c4_outcome.bridge_state_changed;
+            bridge_state_changed |= c4_outcome.bridge_state_changed;
             self.tick_order_intents_pre_combat(rules, overlay_registry, &tube_turn_owned_ids);
             // Pursuit: walk units with out-of-range attack_target into range,
             // halt movement on range entry. Must run before combat so combat

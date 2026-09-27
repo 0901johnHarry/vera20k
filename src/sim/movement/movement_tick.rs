@@ -791,6 +791,61 @@ struct OrdinaryMoverVisit {
     snap: MoverSnapshot,
     walk_position_before_step: Option<crate::sim::components::Position>,
     prone_crawls: Option<bool>,
+    /// Walk75AEC0 argument1: the outer call may retry a refused head once.
+    walk_retry_allowed: bool,
+}
+
+/// Synchronous Walk75B690 request. The pending pass releases the mutable
+/// mover before its live Foot+1AC query and the class-specific response.
+/// A clear answer finishes fresh-head selection in that same Process; a
+/// recursive refusal reuses the retained visit through FootPathRequest.
+pub(crate) struct WalkAdmissionRequest {
+    pub(crate) entity_id: u64,
+    visit: OrdinaryMoverVisit,
+}
+
+impl WalkAdmissionRequest {
+    #[cfg(test)]
+    pub(super) fn for_response_test(
+        entities: &EntityStore,
+        entity_id: u64,
+        allow_retry: bool,
+        rules: &crate::rules::ruleset::RuleSet,
+    ) -> Option<Self> {
+        let mut request = FootPathRequest::track(
+            entities,
+            entity_id,
+            crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 },
+            0,
+            None,
+            None,
+            Some(rules),
+        )?;
+        request.visit.walk_retry_allowed = allow_retry;
+        Some(Self {
+            entity_id,
+            visit: request.visit,
+        })
+    }
+
+    pub(super) fn allows_retry(&self) -> bool {
+        self.visit.walk_retry_allowed
+    }
+
+    pub(super) fn into_path_request(
+        self,
+        destination: crate::sim::components::DriveCoord,
+        urgency: u8,
+    ) -> FootPathRequest {
+        let mut visit = self.visit;
+        visit.walk_retry_allowed = false;
+        FootPathRequest {
+            entity_id: self.entity_id,
+            destination,
+            urgency,
+            visit,
+        }
+    }
 }
 
 pub(crate) struct FootPathRequest {
@@ -840,6 +895,16 @@ fn no_queue_path_request(
 }
 
 impl FootPathRequest {
+    /// Resume the retained recursive visit in the decoder corpus after its
+    ///supplied Find_Path. Production resumes through PendingMovementPass.
+    #[cfg(test)]
+    pub(crate) fn into_walk_admission_for_test(self) -> WalkAdmissionRequest {
+        WalkAdmissionRequest {
+            entity_id: self.entity_id,
+            visit: self.visit,
+        }
+    }
+
     /// A Drive/Ship `Find_Path(cell, append, urgency)` issued inside
     /// Process_Movement (`track_fresh`): the no-queue arm, the code-2 ladder
     /// and the last-word extension.
@@ -862,6 +927,7 @@ impl FootPathRequest {
                 snap,
                 walk_position_before_step: None,
                 prone_crawls: None,
+                walk_retry_allowed: true,
             },
         })
     }
@@ -876,6 +942,7 @@ impl FootPathRequest {
         ctx: PathfindingContext<'_>,
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         blocks: &super::block_index::OwnerBlockSet,
+        foot_entry: Option<&dyn crate::sim::pathfinding::SearchFootEntry>,
     ) -> Result<(Vec<(u16, u16)>, Vec<MovementLayer>), super::movement_path::MovePathFailure> {
         let snap = &self.visit.snap;
         let actor = entities.get(self.entity_id).expect("live suspended mover");
@@ -911,6 +978,7 @@ impl FootPathRequest {
             // One crush authority for every search; see `CrushCapability::of`.
             super::MoverPathFacts::from_snapshot(snap, self.urgency),
             snap.allow_zone_hierarchy,
+            foot_entry,
         )
     }
 
@@ -970,6 +1038,7 @@ struct MovementPassEffects {
     walk_per_cell: Option<(u64, crate::sim::components::DriveCoord)>,
     walk_boundary: Option<(u64, crate::sim::components::DriveCoord)>,
     foot_path_request: Option<FootPathRequest>,
+    walk_admission_request: Option<WalkAdmissionRequest>,
     /// A Drive/Ship Unit's Process_Movement(&out, 1, 0), which the host runs
     /// at the Simulation (`track_fresh`).
     track_movement: Option<(u64, super::track_process::TrackFamily)>,
@@ -1053,6 +1122,7 @@ fn advance_ordinary_mover(
         walk_per_cell,
         walk_boundary,
         foot_path_request,
+        walk_admission_request,
         track_movement,
     } = effects;
     if matches!(entry, VisitEntry::Process) {
@@ -1137,6 +1207,7 @@ fn advance_ordinary_mover(
             snap,
             walk_position_before_step,
             prone_crawls,
+            walk_retry_allowed: true,
         }
     };
     // Without native map cells, native zone topology and playfield bounds
@@ -1178,6 +1249,7 @@ fn advance_ordinary_mover(
         snap,
         walk_position_before_step,
         prone_crawls,
+        walk_retry_allowed,
     } = visit;
     let entity_cost_grid: Option<&TerrainCostGrid> =
         snap.speed_type.and_then(|st| terrain_costs.get(&st));
@@ -1410,6 +1482,23 @@ fn advance_ordinary_mover(
                 l.kind == crate::rules::locomotor_type::LocomotorKind::Walk
                     && l.step_head().is_none()
             }) {
+                if native_path_inputs && !target.adapter_route {
+                    //75B690 requires the whole live Foot owner. Suspending
+                    //here releases this entity's mutable borrow before any
+                    //admission query. Canonical Clear goes straight to75C240,
+                    //never through the grid/cliff/occupancy adapters below.
+                    debug_assert!(walk_admission_request.is_none());
+                    *walk_admission_request = Some(WalkAdmissionRequest {
+                        entity_id,
+                        visit: OrdinaryMoverVisit {
+                            snap,
+                            walk_position_before_step,
+                            prone_crawls,
+                            walk_retry_allowed,
+                        },
+                    });
+                    return;
+                }
                 let before = entity.position.clone();
                 let admission_context =
                     deferred_marker.map(|marker| marker.reading(others, raw_cell_occupation));
@@ -2327,6 +2416,18 @@ struct BlockerPlaneKey {
 }
 
 impl MovementPassCache {
+    /// Read the plane after `blocker_plane` brought it current. Splitting the
+    /// refresh from this borrow lets the live Foot query read the Simulation
+    /// without cloning the plane or owning a second admission cache.
+    pub(crate) fn current_blocker_plane(&self) -> &crate::sim::pathfinding::BlockerNeighborCounts {
+        &self
+            .blocker
+            .entry
+            .as_ref()
+            .expect("blocker plane refreshed before search")
+            .plane
+    }
+
     /// How often the block index had to read every entity: once at the start,
     /// and again only when something hands out the whole store mutably.
     #[cfg(test)]
@@ -2936,6 +3037,15 @@ pub(crate) enum MoverReentry {
 impl PendingMovementPass {
     pub(crate) fn take_foot_path_request(&mut self) -> Option<FootPathRequest> {
         self.effects.foot_path_request.take()
+    }
+
+    pub(crate) fn take_walk_admission_request(&mut self) -> Option<WalkAdmissionRequest> {
+        self.effects.walk_admission_request.take()
+    }
+
+    pub(crate) fn request_foot_path(&mut self, request: FootPathRequest) {
+        debug_assert!(self.effects.foot_path_request.is_none());
+        self.effects.foot_path_request = Some(request);
     }
 
     pub(crate) fn take_track_movement(

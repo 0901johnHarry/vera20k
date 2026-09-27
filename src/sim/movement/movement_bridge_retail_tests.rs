@@ -386,13 +386,13 @@ fn diagnose_rejected_order(
         &AStarOptions::default(),
     );
     match &layered {
-        Some(steps) => {
+        Ok(steps) => {
             println!("layered A*: {} step(s)", steps.len());
             for step in steps.iter().take(30) {
                 println!("   ({:3},{:3}) layer={:?}", step.rx, step.ry, step.layer);
             }
         }
-        None => println!("layered A*: no path"),
+        Err(cause) => println!("layered A*: {cause:?}"),
     }
 
     // Ablation over the four production inputs the bare `astar_search` above did
@@ -3501,7 +3501,7 @@ fn retail_under_high_span_geometry() {
                         ..Default::default()
                     };
                     match astar_search(grid, a, MovementLayer::Ground, b, &options) {
-                        Some(steps) => {
+                        Ok(steps) => {
                             // Any structural cell, not just this transect's four:
                             // the band runs the whole length of the span, so a
                             // route that travels along it sideways touches
@@ -3533,7 +3533,9 @@ fn retail_under_high_span_geometry() {
                                     .collect::<Vec<_>>()
                             );
                         }
-                        None => println!("  ground-plane A* [{label}] {a:?} -> {b:?}: NO PATH"),
+                        Err(cause) => {
+                            println!("  ground-plane A* [{label}] {a:?} -> {b:?}: {cause:?}")
+                        }
                     }
                 }
             } else {

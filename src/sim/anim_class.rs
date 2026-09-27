@@ -713,11 +713,10 @@ impl Simulation {
                 ground_height_leptons(cell.level, cell.slope_type, world.x, world.y)
                     .ok()
                     .map(|ground_z| {
-                        let live_structural_bridge = cell.bridge_facts.has_structural_bridge()
-                            && self
-                                .bridge_state
-                                .as_ref()
-                                .is_some_and(|state| state.is_bridge_walkable(rx, ry));
+                        // Anim7441B0 reads live Cell+140 bit100. A stamped
+                        // side cell needs no own overlay (constructor5FC380,
+                        // bridge_constructor.json cases8..11).
+                        let live_structural_bridge = cell.bridge_facts.has_structural_bridge();
                         (ground_z, live_structural_bridge)
                     })
             })
@@ -3740,6 +3739,55 @@ mod tests {
             "height-only clear targets deck after a nonstructural ground mark"
         );
         assert_eq!(grid.deck_bits(7, 8), 0);
+    }
+
+    #[test]
+    fn make_infantry_occupation_reads_constructor_side_flags_without_sprite_state() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/spatial_oracle/bridge_constructor.json"
+        ))
+        .unwrap();
+        // Supply original5FC380's completed cell fields at the Anim reader
+        // boundary. The constructor's common TMP fixture has physical level6.
+        for case in &corpus["cases"].as_array().unwrap()[8..12] {
+            let native = case["cells"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|cell| cell["flags"].as_u64().unwrap() & 0x100 != 0 && cell["overlay"] == -1)
+                .unwrap();
+            let x = native["coord"][0].as_u64().unwrap() as u16;
+            let y = native["coord"][1].as_u64().unwrap() as u16;
+            let mut terrain = crate::map::resolved_terrain::bridge_constructor_terrain();
+            let cell = terrain.native_cell_identity((x as i16, y as i16));
+            let flags = native["flags"].as_u64().unwrap() as u32;
+            terrain.write_native_cell_flags(cell, flags);
+            terrain.write_native_cell_state(cell, native["state"].as_u64().unwrap() as u8);
+            assert_eq!(terrain.cell(x, y).unwrap().bridge_facts.overlay_id, None);
+            let mut sim = Simulation::new();
+            sim.resolved_terrain = Some(terrain);
+            assert!(sim.bridge_state.is_none());
+            let world = AnimWorldCoord {
+                x: i32::from(x) * 256 + 128,
+                y: i32::from(y) * 256 + 128,
+                z: 1040,
+            };
+            // Original Infantry5217C0's center (128,128) occupies slot0:
+            // walk_head_occupation.json raw[94]/[98], deck8 -> deck9.
+            sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Mark);
+            assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(x, y), 0);
+            assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0x01);
+
+            sim.resolved_terrain
+                .as_mut()
+                .unwrap()
+                .write_native_cell_flags(cell, flags & !0x100);
+            sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Clear);
+            assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0);
+            sim.apply_make_infantry_raw_occupation(world, AnimOccupationOperation::Mark);
+            assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(x, y), 0x01);
+            assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(x, y), 0);
+        }
     }
 
     /// `AnimClass::AnimClass @ 0x00421EA0`'s `RandomRate=` pick and `Bouncer=`

@@ -195,7 +195,7 @@ pub(super) fn evaluate_runtime_can_enter_cell_with_transition(
     let skip_traversal_check = args.height >= 0
         && resolved_parent.is_some_and(|(parent, _)| {
             !crate::sim::pathfinding::needs_bridge_traversal_for_edge(
-                args.height as u8,
+                args.height,
                 parent,
                 candidate,
             )

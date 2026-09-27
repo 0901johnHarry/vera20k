@@ -40,6 +40,20 @@ pub(crate) struct C4TickOutcome {
     pub bridge_state_changed: bool,
 }
 
+/// Interior PerCell519948..519B58 result, before Engineer/hut type checks.
+/// The one-cell Undeploy target enters a separate conversion receiver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfantryPerCellBuildingAdmission {
+    MissionNotAdmitted,
+    NoMatchingGroundBuilding,
+    UndeployBuilding,
+    GroundBuilding(u64),
+}
+
+#[cfg(test)]
+#[path = "bridge_engineer_admission_tests.rs"]
+mod bridge_engineer_admission_tests;
+
 impl Simulation {
     fn bridge_repair_notification_allowed(&self, owner: InternedId) -> bool {
         // House50B6F0: nonzero session mode compares exactly to LocalPlayer;
@@ -274,10 +288,9 @@ impl Simulation {
     /// has arrived adjacent to its target building. If so, transfer ownership and
     /// consume the engineer.
     ///
-    /// Engineers targeting `BridgeRepairHut=yes` buildings are skipped here —
-    /// they are consumed earlier in the tick by `tick_bridge_repair_orders`.
-    /// This skip is defense in depth in case ordering ever changes; the
-    /// original game never captures CABHUTs.
+    /// `BridgeRepairHut=yes` targets belong to the ordinary Walk/Infantry
+    /// PerCell2 receiver, which repairs and consumes the Engineer inside the
+    /// hut. This adjacent capture pass cannot capture or move toward a hut.
     /// Returns true if any capture occurred (triggers atlas rebuild for new owner color).
     pub(crate) fn tick_capture_orders(
         &mut self,
@@ -437,45 +450,62 @@ impl Simulation {
         });
     }
 
-    /// Legacy order-intent preparation: an adjacent idle engineer still needs
-    /// an ordinary move into the hut. Actual repair belongs exclusively to
-    /// Infantry PerCell2 inside the live object turn (519B58..519D12).
-    pub(crate) fn tick_bridge_repair_orders_with_overlay_registry(
-        &mut self,
+    /// Original519948 uses Mission+184 (5B3040), then Building+80, then the
+    /// first GROUND Building47C520, then NavCom/attack identity. This is the
+    /// ordinary active-frame prefix; native A8E9A0=false loading/termination
+    /// queries are not represented by OccupancyGrid. Native cases and bounds:
+    /// tools/spatial_oracle/engineer_repair_admission.{py,json,meta.json}.
+    fn infantry_per_cell_building_admission(
+        &self,
+        infantry: &crate::sim::game_entity::GameEntity,
         rules: &RuleSet,
-        _overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-        turn_suppressed: &BTreeSet<u64>,
-    ) -> bool {
-        for id in self.substrate.entities.keys_sorted() {
-            if turn_suppressed.contains(&id) {
-                continue;
-            }
-            let Some((target, cell)) = self.substrate.entities.get(id).and_then(|e| {
-                (!e.dying && !e.ai_frozen())
-                    .then_some((e.capture_target?, (e.position.rx, e.position.ry)))
-            }) else {
-                continue;
-            };
-            if !self
-                .substrate
-                .entities
-                .get(target)
-                .and_then(|b| self.object_type(b.type_ref(), rules))
-                .is_some_and(|t| t.bridge_repair_hut)
-            {
-                continue;
-            }
-            let Some(footprint) = self.building_entry_target_footprint(target, rules) else {
-                continue;
-            };
-            if !footprint.contains(&cell)
-                && self.adjacent_to_target_footprint(cell, &footprint)
-                && !self.infantry_has_active_movement(id)
-            {
-                self.issue_building_enter_target_cell(id, cell, &footprint, rules);
-            }
+    ) -> InfantryPerCellBuildingAdmission {
+        use crate::sim::components::NavTargetRef;
+        if !matches!(
+            infantry.mission.effective().known(),
+            Some(MissionType::Capture | MissionType::AreaGuard | MissionType::Patrol)
+        ) {
+            return InfantryPerCellBuildingAdmission::MissionNotAdmitted;
         }
-        false
+        let nav_object = match infantry.navigation.nav_com {
+            Some(
+                NavTargetRef::Entity { id }
+                | NavTargetRef::Object { id }
+                | NavTargetRef::Building { id },
+            ) => Some(id),
+            _ => None,
+        };
+        //519987 tests Techno RTTI bit1, not cell_marked. Building+80 is
+        //457620 ->465D40;5199B8 also requires Building RTTI6 before the
+        //separate5199A6 conversion/destination continuation can proceed,
+        //which must not be treated as ordinary bridge repair. Stock CABHUT
+        //has no UndeploysInto. Existing regular capture remains separately
+        //owned by tick_capture_orders; this does not port that native branch.
+        if let Some(target) = nav_object.and_then(|id| self.substrate.entities.get(id))
+            && target.category == EntityCategory::Structure
+            && self
+                .object_type(target.type_ref(), rules)
+                .is_some_and(|object| object.is_1x1_with_undeploy())
+        {
+            return InfantryPerCellBuildingAdmission::UndeployBuilding;
+        }
+        let cell = (infantry.position.rx, infantry.position.ry);
+        let Some(building_id) =
+            self.substrate
+                .occupancy
+                .first_building_on_layer(cell.0, cell.1, MovementLayer::Ground)
+        else {
+            return InfantryPerCellBuildingAdmission::NoMatchingGroundBuilding;
+        };
+        if nav_object == Some(building_id)
+            || infantry.attack_target.as_ref().is_some_and(|attack| {
+                matches!(attack.target, crate::sim::combat::TargetKind::Entity(id) if id == building_id)
+            })
+        {
+            InfantryPerCellBuildingAdmission::GroundBuilding(building_id)
+        } else {
+            InfantryPerCellBuildingAdmission::NoMatchingGroundBuilding
+        }
     }
 
     /// Ordinary Infantry PerCell2 engineer receiver. The active object cursor
@@ -486,39 +516,28 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, super::FrameAdvanceError> {
-        use crate::rules::mission_data::MissionType;
-        use crate::sim::components::NavTargetRef;
         let Some(engineer) = self.substrate.entities.get(engineer_id) else {
             return Ok(false);
         };
-        if engineer.category != EntityCategory::Infantry
-            || !matches!(
-                engineer.mission.current().known(),
-                Some(MissionType::Capture | MissionType::AreaGuard | MissionType::Patrol)
-            )
-            || !self
-                .object_type(engineer.type_ref(), rules)
-                .is_some_and(|t| t.engineer)
+        if engineer.category != EntityCategory::Infantry {
+            return Ok(false);
+        }
+        let InfantryPerCellBuildingAdmission::GroundBuilding(building_id) =
+            self.infantry_per_cell_building_admission(engineer, rules)
+        else {
+            return Ok(false);
+        };
+        //519B3E's optional hut Tag event1 precedes this type gate. The live
+        //Tag receiver remains a separate required chain; ordinary Hills has
+        //no attached hut/Engineer Tag.519B58 tests Engineer before hut type.
+        if !self
+            .object_type(engineer.type_ref(), rules)
+            .is_some_and(|t| t.engineer)
         {
             return Ok(false);
         }
         let cell = (engineer.position.rx, engineer.position.ry);
         let owner = engineer.owner();
-        let Some(building_id) = self.substrate.occupancy.first_building_on_layer(
-            cell.0,
-            cell.1,
-            crate::sim::movement::locomotor::MovementLayer::Ground,
-        ) else {
-            return Ok(false);
-        };
-        let targets = matches!(engineer.navigation.nav_com,
-            Some(NavTargetRef::Entity{id}|NavTargetRef::Object{id}|NavTargetRef::Building{id}) if id==building_id)
-            || engineer.attack_target.as_ref().is_some_and(|attack| {
-                matches!(attack.target, crate::sim::combat::TargetKind::Entity(id) if id == building_id)
-            });
-        if !targets {
-            return Ok(false);
-        }
         let Some(building) = self.substrate.entities.get(building_id) else {
             return Ok(false);
         };

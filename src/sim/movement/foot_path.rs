@@ -34,6 +34,40 @@ use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
 use crate::sim::world::Simulation;
 
+/// AStar429F54's live Infantry +1AC receiver. The fifth native argument is
+/// unused by Infantry51BF90; direction, signed path height and previous Cell
+/// reach the same decision owner used by Walk and bridge repair.
+struct InfantrySearchEntry<'a> {
+    sim: &'a Simulation,
+    id: u64,
+    rules: &'a RuleSet,
+    registry: Option<&'a OverlayTypeRegistry>,
+}
+
+impl crate::sim::pathfinding::SearchFootEntry for InfantrySearchEntry<'_> {
+    fn classify(&self, query: crate::sim::pathfinding::SearchEntryQuery) -> Result<u8, String> {
+        let terrain = self
+            .sim
+            .resolved_terrain
+            .as_ref()
+            .ok_or("Foot search requires map cells")?;
+        let previous = terrain.native_cell_identity((query.from.0 as i16, query.from.1 as i16));
+        let candidate =
+            terrain.native_cell_identity((query.candidate.0 as i16, query.candidate.1 as i16));
+        self.sim.foot_can_enter(
+            self.id,
+            candidate,
+            InfantryEntryArgs {
+                direction: query.direction,
+                height: query.path_height,
+                previous_cell: Some(previous),
+            },
+            self.rules,
+            self.registry,
+        )
+    }
+}
+
 /// Values retained by Foot4D3810 after its virtual+4C and+320 calls. Both
 /// packed coordinates are local copies; they do not alias CellClass Dummy.
 struct FootZoneQuery {
@@ -213,6 +247,7 @@ impl Simulation {
                 .navigation
                 .path_replay;
             match path {
+                SuppliedPath::FoundUnchanged => return Ok(FindPathResult::Route),
                 SuppliedPath::Found(words) => {
                     queue.directions = words;
                     queue.cursor = 0;
@@ -314,6 +349,8 @@ impl Simulation {
             return Err("Find_Path core requires PathGrid; no native failure inferred".into());
         }
         self.foot_mark_remove(id, Some(rules), fallback, registry);
+        #[cfg(test)]
+        self.export_bridge_engineer_entry_inputs(id, rules, "mark0");
         let owner = request.owner();
         //These occupancy-derived inputs must see Mark0, including the actor's
         //removal: the kept plane and owner sets follow it through the touch
@@ -341,7 +378,7 @@ impl Simulation {
         };
         let snapshot = self.path_grid_snapshot();
         let grid = snapshot.as_deref().or(fallback).expect("checked above");
-        let counts = self.movement_pass_cache.blocker_plane(
+        self.movement_pass_cache.blocker_plane(
             &mut self.substrate.entities,
             grid,
             self.resolved_terrain.as_ref(),
@@ -350,6 +387,18 @@ impl Simulation {
             &self.interner,
             Some(rules),
         );
+        let counts = self.movement_pass_cache.current_blocker_plane();
+        let entry = self
+            .substrate
+            .entities
+            .get(id)
+            .filter(|actor| actor.category == EntityCategory::Infantry)
+            .map(|_| InfantrySearchEntry {
+                sim: self,
+                id,
+                rules,
+                registry,
+            });
         let searched = request.search(
             goal,
             &self.substrate.entities,
@@ -368,6 +417,9 @@ impl Simulation {
             },
             &self.terrain_costs,
             &lent.sets,
+            entry
+                .as_ref()
+                .map(|entry| entry as &dyn crate::sim::pathfinding::SearchFootEntry),
         );
         if let Some(lent) = borrowed {
             self.movement_pass_cache.give_back(owner, lent);
@@ -382,6 +434,12 @@ impl Simulation {
         };
         //4D3EAC restores Mark1 before inspecting the core result.
         self.foot_mark_put(id, Some(rules), fallback, registry);
+        if let Err(super::movement_path::MovePathFailure::Search(
+            crate::sim::pathfinding::zone_search::PathSearchFailure::CellEntryUnavailable(cause),
+        )) = &searched
+        {
+            return Err(cause.clone());
+        }
         let actor = self
             .substrate
             .entities
@@ -421,6 +479,7 @@ impl Simulation {
             Err(MovePathFailure::MissingGrid) => {
                 Err("Find_Path core requires PathGrid; no native failure inferred".into())
             }
+            Err(MovePathFailure::Search(Search::CellEntryUnavailable(cause))) => Err(cause),
         }
     }
 
@@ -889,10 +948,30 @@ impl Simulation {
         if object.movement_zone == MovementZone::Invalid {
             return Ok(true);
         }
-        let destination = ((destination.x / 256) as i16, (destination.y / 256) as i16);
-        if destination == (0, 0) {
+        if coord_cell(destination) == (0, 0) {
             return Ok(false);
         }
+        self.foot_can_reach_navigation_cell(id, destination, rules)
+    }
+
+    /// Shared Foot navigation/layer producers followed by Map56D100. The
+    /// direct Walk75B163 caller has neither Foot4D3810's invalid-MZ bypass
+    /// nor its null-cell rejection; those remain in the wrapper above.
+    pub(super) fn foot_can_reach_navigation_cell(
+        &self,
+        id: u64,
+        destination: DriveCoord,
+        rules: &RuleSet,
+    ) -> Result<bool, String> {
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("missing Foot navigation reachability actor")?;
+        let object = rules
+            .object(self.interner.resolve(actor.type_ref()))
+            .ok_or("missing Foot navigation reachability type")?;
+        let destination = coord_cell(destination);
         let source = self.foot_navigation_coordinate(id)?;
         let allow_destination_fringe = self.foot_allows_outside_playfield(id)?;
         let terrain = self

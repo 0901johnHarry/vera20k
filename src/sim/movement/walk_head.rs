@@ -659,8 +659,6 @@ pub(super) fn prepare_step_head(
     interner: &crate::sim::intern::StringInterner,
     rng: &mut crate::sim::rng::SimRng,
 ) -> bool {
-    use super::locomotor::MovementLayer;
-    use crate::map::entities::EntityCategory;
     use crate::rules::locomotor_type::LocomotorKind;
     let Some(entity) = entities.get(id) else {
         return false;
@@ -682,13 +680,51 @@ pub(super) fn prepare_step_head(
         return true;
     };
     let is_walk = loco.kind == LocomotorKind::Walk;
-    let owner = entity.owner();
     let current = super::ground_pose::position_world_coord(&entity.position);
     let input = DriveCoord {
         x: i32::from(next.0) * 256 + if is_walk { current.x % 256 } else { 128 },
         y: i32::from(next.1) * 256 + if is_walk { current.y % 256 } else { 128 },
         z: current.z,
     };
+    prepare_step_head_at(
+        entities, id, occupancy, raw, terrain, grid, rules, interner, rng, input,
+    )
+}
+
+/// Walk75BC1A consumes the prospective coordinate already selected from the
+/// retained Foot path word. Its caller owns admission; this is the same
+/// priority/subcell/raw-occupation owner used by the adapter above.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_step_head_at(
+    entities: &mut crate::sim::entity_store::EntityStore,
+    id: u64,
+    occupancy: &crate::sim::occupancy::OccupancyGrid,
+    raw: &mut RawCellOccupationGrid,
+    terrain: Option<&ResolvedTerrainGrid>,
+    grid: Option<&PathGrid>,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    interner: &crate::sim::intern::StringInterner,
+    rng: &mut crate::sim::rng::SimRng,
+    input: DriveCoord,
+) -> bool {
+    use super::locomotor::MovementLayer;
+    use crate::map::entities::EntityCategory;
+    use crate::rules::locomotor_type::LocomotorKind;
+    let Some(entity) = entities.get(id) else {
+        return false;
+    };
+    let Some(loco) = entity.locomotor.as_ref() else {
+        return true;
+    };
+    if !matches!(loco.kind, LocomotorKind::Walk | LocomotorKind::Hover)
+        || loco.step_head().is_some()
+    {
+        return true;
+    }
+    let is_walk = loco.kind == LocomotorKind::Walk;
+    let owner = entity.owner();
+    let current = super::ground_pose::position_world_coord(&entity.position);
+    let next = ((input.x / 256) as u16, (input.y / 256) as u16);
     let (head, sub) = if is_walk {
         //75C2A0 first; even a failed chooser must restore current raw at75C62A.
         raw_at(raw, owner, current, false, terrain, grid);

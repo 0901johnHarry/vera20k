@@ -17,7 +17,41 @@ use crate::sim::{components::NavTargetRef, game_entity::GameEntity, intern::Inte
 #[path = "unit_entry_tests.rs"]
 mod unit_entry_tests;
 
-fn friendly(live: &LivePublication<'_>, a: InternedId, b: InternedId) -> bool {
+/// The +1AC decision reads live simulation state without borrowing the bridge
+/// publisher. Native Map lookups still stamp the canonical shared Dummy through
+/// its existing interior-mutable owner, in the same order as movement/repair.
+struct EntryReadContext<'a> {
+    sim: &'a Simulation,
+    rules: &'a RuleSet,
+    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+}
+
+impl EntryReadContext<'_> {
+    fn terrain(&self) -> &ResolvedTerrainGrid {
+        self.sim
+            .resolved_terrain
+            .as_ref()
+            .expect("live bridge terrain")
+    }
+
+    fn coord(&self, cell: Cell) -> CellCoord {
+        self.terrain().native_cell_coord(cell)
+    }
+
+    fn flags(&self, cell: Cell) -> u32 {
+        self.terrain().native_cell_flags(cell)
+    }
+
+    fn tile(&self, cell: Cell) -> i32 {
+        self.terrain().native_cell_tile_index(cell)
+    }
+
+    fn level(&self, cell: Cell) -> i8 {
+        self.terrain().native_cell_ground_fields(cell).0 as i8
+    }
+}
+
+fn friendly(live: &EntryReadContext<'_>, a: InternedId, b: InternedId) -> bool {
     crate::map::houses::are_houses_friendly(
         &live.sim.house_alliances,
         live.sim.interner.resolve(a),
@@ -27,7 +61,7 @@ fn friendly(live: &LivePublication<'_>, a: InternedId, b: InternedId) -> bool {
 /// Infantry5227F0 checks raw disguise first, then resolves the actual center
 /// Cell before testing owner alliance, detection and the disguised-as House.
 fn infantry_disguised_to(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     entity: &GameEntity,
     observer: InternedId,
 ) -> Result<bool, String> {
@@ -60,7 +94,7 @@ fn infantry_disguised_to(
         disguise.disguised_as_house.is_some(),
     ))
 }
-fn row_nonzero(live: &LivePublication<'_>, cell: Cell, speed: SpeedType) -> Result<bool, String> {
+fn row_nonzero(live: &EntryReadContext<'_>, cell: Cell, speed: SpeedType) -> Result<bool, String> {
     let Cell::Real(index) = cell else {
         return Ok(false);
     };
@@ -70,7 +104,7 @@ fn row_nonzero(live: &LivePublication<'_>, cell: Cell, speed: SpeedType) -> Resu
         .map(|speed| speed != 0)
         .ok_or("repair admission has no resolved speed row".into())
 }
-fn raw(live: &LivePublication<'_>, cell: Cell, layer: MovementLayer) -> (u8, Option<InternedId>) {
+fn raw(live: &EntryReadContext<'_>, cell: Cell, layer: MovementLayer) -> (u8, Option<InternedId>) {
     let key = crate::sim::occupancy::RawCellKey::from_native(live.terrain(), cell);
     let grid = &live.sim.substrate.raw_cell_occupation;
     (grid.bits_at(key, layer), grid.owner_at(key, layer))
@@ -88,7 +122,7 @@ enum InfantryTargetAdmission {
 }
 
 fn infantry_target_admission(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     mover: &GameEntity,
     obj: &ObjectType,
     blocker: &GameEntity,
@@ -211,11 +245,10 @@ mod tests {
             // A shared dummy cannot satisfy mode0's all-real projection proof.
             let probe = |sim: &mut Simulation| {
                 aircraft_effect_quotient(
-                    &LivePublication {
+                    &EntryReadContext {
                         sim,
                         rules: &rules,
                         registry: None,
-                        collapsed: false,
                     },
                     &entity,
                     Cell::Dummy,
@@ -268,11 +301,10 @@ mod tests {
                 crate::sim::movement::locomotor::LocomotorState::from_object_type(&object, 0)
             });
             let result = aircraft_effect_quotient(
-                &LivePublication {
-                    sim: &mut sim,
+                &EntryReadContext {
+                    sim: &sim,
                     rules: &rules,
                     registry: None,
-                    collapsed: false,
                 },
                 &entity,
                 Cell::Dummy,
@@ -584,11 +616,10 @@ mod tests {
     fn infantry_first_building_lookup_uses_center_then_attack_identity() {
         let (mut sim, rules, cell) = infantry_fallback_fixture();
         let probe = |sim: &mut Simulation, blocker| {
-            let live = LivePublication {
+            let live = EntryReadContext {
                 sim,
                 rules: &rules,
                 registry: None,
-                collapsed: false,
             };
             infantry_target_admission(
                 &live,
@@ -672,11 +703,10 @@ mod tests {
         sim.substrate.entities.get_mut(hut).unwrap().position.rx = 60;
         sim.substrate.entities.get_mut(hut).unwrap().position.ry = 60;
         let probe = |sim: &mut Simulation| {
-            let live = LivePublication {
+            let live = EntryReadContext {
                 sim,
                 rules: &rules,
                 registry: Some(&registry),
-                collapsed: false,
             };
             infantry_target_admission(
                 &live,
@@ -962,7 +992,7 @@ impl Simulation {
     /// Actual Infantry+1AC. The returned quotient preserves the distinct
     /// consumers in Foot4D3920, Infantry51DAF0 and the repair receiver487A10.
     pub(crate) fn infantry_can_enter(
-        &mut self,
+        &self,
         id: u64,
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
@@ -986,17 +1016,22 @@ impl Simulation {
     /// Foot4D3920's target query and the Drive/Ship Process continuations
     /// (0x4B2B17, 0x4B2FF9 and the Ship twins) consume the code directly.
     /// Native comparisons: tools/spatial_oracle/unit_entry* corpora.
+    /// Search and movement share this fallible read context. Canonical Map
+    /// queries can still stamp the shared off-map Dummy; they are not cloned.
     pub(crate) fn foot_can_enter(
-        &mut self,
+        &self,
         id: u64,
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         rules: &RuleSet,
         registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
-        if self.substrate.entities.get(id).is_none_or(|e| {
-            !matches!(e.category, EntityCategory::Infantry | EntityCategory::Unit)
-        }) {
+        if self
+            .substrate
+            .entities
+            .get(id)
+            .is_none_or(|e| !matches!(e.category, EntityCategory::Infantry | EntityCategory::Unit))
+        {
             return Err("Foot entry requires a live Infantry or Unit receiver".into());
         }
         if self.resolved_terrain.is_none() {
@@ -1013,18 +1048,35 @@ impl Simulation {
         ) {
             return Ok(code);
         }
-        let mut live = LivePublication {
+        let live = EntryReadContext {
             sim: self,
             rules,
             registry,
-            collapsed: false,
         };
-        foot_entry(&mut live, CellObjectMember::Entity(id), cell, args)
+        classify_entry(&live, CellObjectMember::Entity(id), cell, args)
     }
 }
 
 fn foot_entry(
     live: &mut LivePublication<'_>,
+    object: CellObjectMember,
+    cell: Cell,
+    args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
+) -> Result<u8, String> {
+    classify_entry(
+        &EntryReadContext {
+            sim: live.sim,
+            rules: live.rules,
+            registry: live.registry,
+        },
+        object,
+        cell,
+        args,
+    )
+}
+
+fn classify_entry(
+    live: &EntryReadContext<'_>,
     object: CellObjectMember,
     cell: Cell,
     args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
@@ -1592,7 +1644,7 @@ fn foot_entry(
 /// predicate outcomes have the same gameplay effects. Never stamp a dummy
 /// during this proof: a missing slot makes that quotient inadmissible.
 fn aircraft_effect_quotient(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     entity: &GameEntity,
     cell: Cell,
 ) -> Result<bool, String> {
@@ -1678,7 +1730,7 @@ fn aircraft_effect_quotient(
 }
 
 fn terrain_impassable(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     object: CellObjectMember,
     cell: Cell,
 ) -> Result<bool, String> {
@@ -1716,7 +1768,7 @@ fn terrain_impassable(
     Ok(false)
 }
 fn placement_cell(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     cell: Cell,
     speed: SpeedType,
     with_type: Option<&ObjectType>,
@@ -1784,7 +1836,7 @@ fn placement_cell(
     row_nonzero(live, cell, speed)
 }
 fn building_impassable(
-    live: &LivePublication<'_>,
+    live: &EntryReadContext<'_>,
     e: &GameEntity,
     obj: &ObjectType,
     cell: Cell,

@@ -64,6 +64,7 @@ impl Simulation {
                     .navigation
                     .path_runtime
                     .retries_left = super::PATH_STUCK_INIT;
+                self.walk_short_path_receiver(id, rules)?;
                 Ok(true)
             }
             FindPathResult::EmptyRoute => {
@@ -221,26 +222,121 @@ impl Simulation {
             .and_then(|l| l.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if !self.foot_path_zone_precheck(id, destination, rules)? {
-            self.set_walk_null_destination(id, Some(rules));
+            self.set_walk_class_null_destination(id, rules);
         } else {
-            //Only the nonhuman relocation (0x4D41C2) leaves a live destination
-            //after the receiver's Stop, and that arm stops earlier.
-            return Err(
-                "Walk failed-search retained-zone continuation awaits the nonhuman relocation owner"
-                    .into(),
-            );
+            //75AFEE..75B083: +4F4 precedes a fresh read of physical+48 and
+            //the live destination. CloseEnough is independent from code6's
+            //radio/height/land guards; this arm tests Techno+418 tether only.
+            self.walk_failed_path_receiver(id, rules)?;
+            let actor = self
+                .substrate
+                .entities
+                .get(id)
+                .ok_or("retired failed Walk actor")?;
+            let current = ground_pose::position_world_coord(&actor.position);
+            let destination = actor
+                .locomotor
+                .as_ref()
+                .and_then(|loco| loco.walk_destination())
+                .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
+            let close = crate::sim::cell_kernel::native_xyz_distance(
+                current.x.wrapping_sub(destination.x),
+                current.y.wrapping_sub(destination.y),
+                current.z.wrapping_sub(destination.z),
+            ) < rules.general.close_enough;
+            if close && actor.dock_entered_with.is_none() {
+                self.set_walk_class_null_destination(id, rules);
+            } else if actor.navigation.path_runtime.retries_left != 0 {
+                //The test is before the decrement: 1->0 does not run the
+                //exhaustion tail until a later failed Process invocation.
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .navigation
+                    .path_runtime
+                    .retries_left -= 1;
+            } else {
+                self.finish_exhausted_walk_retry(id, rules)?;
+            }
         }
         let actor = self
             .substrate
             .entities
             .get_mut(id)
             .ok_or("retired failed Walk actor")?;
+        //75B2BC..75B2DC: all failed-queue exits set speed0 then Stop;
+        //Stop does not itself clear NavCom or retire the paid head.
+        actor.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ZERO;
+        actor
+            .locomotor
+            .as_mut()
+            .ok_or("failed Walk requires locomotor")?
+            .stop_walk();
         if actor
             .locomotor
             .as_ref()
             .is_some_and(|l| l.walk_destination().is_none() && l.step_head().is_none())
         {
             actor.movement_target = None;
+        }
+        Ok(())
+    }
+
+    ///75B085..75B2BA, reached only with a preexisting zero retry count.
+    ///The two Map56D100 calls share the Foot navigation/bridge-layer query
+    ///owner but deliberately bypass+2CC's MZ/Cell0 early exits. No RNG draw.
+    ///Residual: Foot+68A ScoldSound is not represented (same absent latch as
+    ///Drive/Ship); its optional sound and latch clear precede these reads.
+    fn finish_exhausted_walk_retry(&mut self, id: u64, rules: &RuleSet) -> Result<(), String> {
+        let actor = self
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("retired exhausted Walk actor")?;
+        let destination = actor
+            .locomotor
+            .as_ref()
+            .and_then(|loco| loco.walk_destination())
+            .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
+        if actor.in_playfield && !self.foot_can_reach_navigation_cell(id, destination, rules)? {
+            self.set_walk_class_null_destination(id, rules);
+        }
+        //75B18A asks a nonnull target's+4C even when3D5 will then be false.
+        let target = self
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|e| e.attack_target.as_ref())
+            .map(|a| a.target);
+        if let Some(target) = target {
+            let target = match target {
+                crate::sim::combat::TargetKind::Entity(id) => {
+                    crate::sim::components::NavTargetRef::Object { id }
+                }
+                crate::sim::combat::TargetKind::Cell(rx, ry) => {
+                    crate::sim::components::NavTargetRef::Cell { rx, ry }
+                }
+            };
+            let coordinate = super::navcom::nav_target_coordinate(
+                target,
+                Some(id),
+                &self.substrate.entities,
+                self.resolved_terrain.as_ref(),
+                Some((rules, &self.interner)),
+            )?;
+            let actor = self
+                .substrate
+                .entities
+                .get(id)
+                .ok_or("retired exhausted Walk actor")?;
+            if actor.in_playfield
+                && actor.attack_target.is_some()
+                && !self.foot_can_reach_navigation_cell(id, coordinate, rules)?
+            {
+                self.assign_target_represented(id, None, Some(rules))
+                    .map_err(|error| format!("{error:?}"))?;
+            }
         }
         Ok(())
     }

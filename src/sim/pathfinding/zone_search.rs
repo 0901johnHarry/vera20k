@@ -104,8 +104,10 @@ use crate::sim::movement::locomotor::MovementLayer;
 
 /// Provenance of a returned path failure. The Foot wrapper must not turn
 /// unavailable caches or compatibility-only rejection into a native core NULL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PathSearchFailure {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathSearchFailure {
+    ///Required live Foot inputs are unavailable; never a native NULL route.
+    CellEntryUnavailable(String),
     ///42CB22 rejected unequal native raw labels before cell A*.
     NativeEntryRejected,
     ///A required hierarchy cell had no represented native topology.
@@ -322,6 +324,7 @@ pub(crate) fn find_path_zoned_marker(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -422,6 +425,7 @@ fn find_path_zoned_marker_inner(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         blocker_neighbor_counts,
     )
@@ -458,8 +462,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     }
 
     let Some(zg) = zone_grid else {
@@ -474,8 +477,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     };
 
     let Some(zone_map) = zg.map_for(mz) else {
@@ -490,8 +492,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     };
     let start_zone = zone_map.zone_at(start.0, start.1, MovementLayer::Ground);
     let goal_bridge = resolved_terrain
@@ -549,8 +550,7 @@ fn find_path_zoned_marker_inner_detailed(
                     entity_block_map,
                     marker_overlay,
                     facts,
-                )
-                .ok_or(PathSearchFailure::CellSearchExhausted);
+                );
             }
             ZonePrecheckOutcome::Failed if zones_match => {
                 return find_path_with_costs_marker(
@@ -564,8 +564,7 @@ fn find_path_zoned_marker_inner_detailed(
                     entity_block_map,
                     marker_overlay,
                     facts,
-                )
-                .ok_or(PathSearchFailure::CellSearchExhausted);
+                );
             }
             ZonePrecheckOutcome::Failed => {
                 return Err(PathSearchFailure::CompatibilityZoneRejected);
@@ -594,8 +593,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     }
 
     // Cross-zone precheck failure aborts without cell A*.
@@ -619,8 +617,7 @@ fn find_path_zoned_marker_inner_detailed(
                 entity_block_map,
                 marker_overlay,
                 facts,
-            )
-            .ok_or(PathSearchFailure::CellSearchExhausted);
+            );
         }
         log::trace!(
             "zone_search: unreachable {:?} ({:?}→{:?}), skipping A*",
@@ -643,8 +640,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     };
 
     let start_zone = zone_map.zone_at(start.0, start.1, MovementLayer::Ground);
@@ -663,8 +659,7 @@ fn find_path_zoned_marker_inner_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     }
 
     // Try corridor-restricted A* with retry on failure.
@@ -675,7 +670,7 @@ fn find_path_zoned_marker_inner_detailed(
         {
             // Expand corridor by one ring of neighbor zones for flexibility.
             let allowed = expand_corridor(&corridor_zones, adjacency);
-            if let Some(path) = find_path_with_costs_corridor_marker(
+            match find_path_with_costs_corridor_marker(
                 grid,
                 start,
                 goal,
@@ -689,7 +684,9 @@ fn find_path_zoned_marker_inner_detailed(
                 marker_overlay,
                 facts,
             ) {
-                return Ok(path);
+                Ok(path) => return Ok(path),
+                Err(PathSearchFailure::CellSearchExhausted) => {}
+                Err(error) => return Err(error),
             }
             // Corridor A* failed — exclude all corridor zones and retry.
             log::trace!(
@@ -751,6 +748,7 @@ pub(crate) fn find_layered_path_zoned_marker(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -821,8 +819,7 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
             entity_block_map,
             marker_overlay,
             facts,
-        )
-        .ok_or(PathSearchFailure::CellSearchExhausted);
+        );
     }
 
     if let Some(zg) = zone_grid {
@@ -872,8 +869,7 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
                         entity_block_map,
                         marker_overlay,
                         facts,
-                    )
-                    .ok_or(PathSearchFailure::CellSearchExhausted);
+                    );
                 }
                 ZonePrecheckOutcome::Failed if zones_match => {
                     return find_layered_path_marker(
@@ -889,8 +885,7 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
                         entity_block_map,
                         marker_overlay,
                         facts,
-                    )
-                    .ok_or(PathSearchFailure::CellSearchExhausted);
+                    );
                 }
                 ZonePrecheckOutcome::Failed => {
                     return Err(PathSearchFailure::CompatibilityZoneRejected);
@@ -913,8 +908,7 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
                     entity_block_map,
                     marker_overlay,
                     facts,
-                )
-                .ok_or(PathSearchFailure::CellSearchExhausted);
+                );
             }
             if can_reach_through_explicit_tube(zg, mz, start, start_layer, goal, resolved_terrain) {
                 return find_layered_path_marker(
@@ -930,8 +924,7 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
                     entity_block_map,
                     marker_overlay,
                     facts,
-                )
-                .ok_or(PathSearchFailure::CellSearchExhausted);
+                );
             }
             log::trace!(
                 "zone_search: layered unreachable {:?} ({:?} layer={:?} -> {:?}), skipping A*",
@@ -958,7 +951,6 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
         marker_overlay,
         facts,
     )
-    .ok_or(PathSearchFailure::CellSearchExhausted)
 }
 
 // ---------------------------------------------------------------------------

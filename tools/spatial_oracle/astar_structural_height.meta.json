@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original AStar node-height prefix and selected-list fragment controls.\n\nExecute 42A460..42A523 and 429E54..429E7F on supplied scalar Cells, node\ndescriptors and current heights. No CanEnter, full route or loader reachability\nis claimed. Rust bridge_walkable is deliberately metadata only: native code\ntests Cell+140 structural0x100 and signed ground bytes.\n",
+  "assumptions": [
+    "Supplied Cells and parent node/descriptor data. Arena provides distinct preallocated original-size node/descriptor pools; original first allocation counters and descriptor writes execute.",
+    "Node prefix stops before g/heuristic computation and node completion; selected-list fragment stops before hierarchy lookup. No concrete entry, closed-list admission, route reconstruction or full-search comparison.",
+    "Raw ground bytes cover native storage-domain sign extension and deck+4. These controls do not claim map-loader or legal gameplay reachability for all values.",
+    "Rust bridge_walkable hints are labels only and never appear in the native image. Structural Cell+140 bit0x100 alone changes the original branches."
+  ],
+  "substitutions": [],
+  "entry_points": {
+    "node_height_prefix_begin": "0x0042A460",
+    "node_height_prefix_stop": "0x0042A523",
+    "selected_list_begin": "0x00429E54",
+    "selected_list_stop": "0x00429E7F"
+  },
+  "payload_sha256": "5fe57ed62b87fa9d34344ff0e700108a5cead807f532feb4aba8d0c98af5ffee"
+}

@@ -24,6 +24,21 @@ pub(crate) fn repair_from_engineer(
         registry,
         collapsed: false,
     };
+    let (input, family) = engineer_repair_family(&mut live, engineer)?;
+    let mut host = LiveRepair {
+        live: &mut live,
+        changed: false,
+    };
+    ramp_repair::repair(&mut host, input, family)?;
+    Ok(host.changed)
+}
+
+/// Infantry519C07..519D12 selects the receiver from every cell in the 5x5
+/// neighborhood. Native goldens: tools/spatial_oracle/engineer_family_selector.
+fn engineer_repair_family(
+    live: &mut LivePublication<'_>,
+    engineer: u64,
+) -> Result<(CellCoord, Family), String> {
     let mut family = Family::High;
     //519C07 scans Y-major and visits every member, independently of the
     //family entry's subsequent X-major first-overlay scan.
@@ -43,12 +58,13 @@ pub(crate) fn repair_from_engineer(
             let tile = live.tile(cell);
             let cell = live.lookup(point);
             let overlay = LiveRepair {
-                live: &mut live,
+                live,
                 changed: false,
             }
             .overlay_identity(cell);
             let wood = live.terrain().wood_bridge_set_base();
-            if (wood..=wood.wrapping_add(16)).contains(&tile) || (74..=101).contains(&overlay) {
+            //519CA3..519CAC excludes wood+16, the following tile set.
+            if (wood..wood.wrapping_add(16)).contains(&tile) || (74..=101).contains(&overlay) {
                 family = Family::Low;
             }
         }
@@ -60,13 +76,12 @@ pub(crate) fn repair_from_engineer(
         .get(engineer)
         .ok_or("repair engineer disappeared before family entry")?;
     let input = (current.position.rx as i16, current.position.ry as i16);
-    let mut host = LiveRepair {
-        live: &mut live,
-        changed: false,
-    };
-    ramp_repair::repair(&mut host, input, family)?;
-    Ok(host.changed)
+    Ok((input, family))
 }
+
+#[cfg(test)]
+#[path = "bridge_engineer_family_tests.rs"]
+mod engineer_family_tests;
 
 struct LiveRepair<'a, 'world> {
     live: &'a mut LivePublication<'world>,
@@ -268,3 +283,7 @@ mod track_path_continuation_tests;
 #[cfg(test)]
 #[path = "walk_failed_path_tests.rs"]
 mod walk_failed_path_tests;
+
+#[cfg(test)]
+#[path = "walk_prehead_response_tests.rs"]
+mod walk_prehead_response_tests;
