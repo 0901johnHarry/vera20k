@@ -395,23 +395,27 @@ fn parse_read_bool(default: bool, raw: &str) -> bool {
 }
 
 /// The binary64 0.01 at `0x007E3808`: the percent scale of ReadDouble
-/// (`0x0052857E`) and of the Verses reader.
+/// (`0x0052857E`), ReadPowerups (`0x00673FAF`) and the Verses reader.
 pub(crate) const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
 
 pub(crate) fn parse_read_double(raw: &str) -> f64 {
-    use crate::util::native_x87::MaskedX87Chop53 as X87;
     let value = strtrim_ascii(raw);
     let widened = f64::from(parse_leading_f32(value));
     if !value.as_bytes().contains(&b'%') {
         return widened;
     }
-    // `fld qword; fmul qword [0x007E3808]; fstp qword` (`0x0052857A..0x00528584`)
-    // under the game's control word 0x0E7F, which Math__ftol (`0x007C5F00`)
-    // installs and never restores: the product is chopped at 53 bits, one ulp
-    // below the nearest-rounded product for values such as `70%` (0.7's own
-    // double) or `90%` (the double below 0.9).
+    // `fld qword; fmul qword [0x007E3808]; fstp qword` (`0x0052857A..0x00528584`).
+    scale_percent(widened)
+}
+
+/// A double times [`PERCENT_SCALE`] under the game's control word 0x0E7F,
+/// which Math__ftol (`0x007C5F00`) installs and never restores: the product is
+/// chopped at 53 bits, one ulp below the nearest-rounded product for values
+/// such as `70%` (0.7's own double) or `90%` (the double below 0.9).
+pub(crate) fn scale_percent(value: f64) -> f64 {
+    use crate::util::native_x87::MaskedX87Chop53 as X87;
     let scaled = X87::mul(
-        X87::load_f64(NativeF64Bits::from_bits(widened.to_bits())),
+        X87::load_f64(NativeF64Bits::from_bits(value.to_bits())),
         X87::load_f64(PERCENT_SCALE),
     );
     f64::from_bits(X87::store_f64_masked_chop(scaled).bits())
@@ -559,11 +563,14 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         .unwrap_or(0.0)
 }
 
-/// Decimal/exponent prefix used by Verses75DE39's CRT `atof7C9D66` route.
-/// Unlike ReadDouble's `%f` route, this retains binary64. Executed finite,
-/// malformed and exponent forms are pinned in bridge_landing_inputs.json;
-/// arbitrary extreme CRT rounding/range behavior is not certified here.
+/// CRT `atof` (`0x007C9D66`), the Verses (`0x0075DE39`) and ReadPowerups
+/// (`0x00673FAA`, `0x00673FC2`) route: leading `isspace` bytes skipped, then
+/// the decimal/exponent prefix. Unlike ReadDouble's `%f` route, this retains
+/// binary64. Executed finite, malformed and exponent forms are pinned in
+/// bridge_landing_inputs.json; arbitrary extreme CRT rounding/range behavior
+/// is not certified here.
 pub(crate) fn parse_leading_f64(s: &str) -> f64 {
+    let s = s.trim_start_matches(|c| matches!(c, '\t' | '\n' | '\x0b' | '\x0c' | '\r' | ' '));
     leading_float_token(s)
         .and_then(|token| token.parse::<f64>().ok())
         .unwrap_or(0.0)
