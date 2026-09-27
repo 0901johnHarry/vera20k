@@ -31,6 +31,8 @@ use crate::map::bridge_facts::{
 use crate::map::resolved_terrain::{BridgeDirection, ResolvedTerrainGrid};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
+use crate::sim::bridge_state::ordinary;
+use crate::sim::bridge_state::ramp_repair::Family as HutBridgeFamily;
 use crate::sim::bridge_state::{
     Axis, BridgeCellRole, BridgeDamageEvent, BridgeOverlayProjectionOp, BridgeRuntimeCell,
     BridgeRuntimeState, DamageState, DispatchPath, StateOutcome,
@@ -209,8 +211,8 @@ fn apply_one_bridge_damage_event(
 /// Bridge-collapse dispatch from a `BridgeRepairHut` death event (C4 timer
 /// expired, demo-truck explosion). Chooses low/high from hut-local evidence,
 /// finds an overlay entry directly or through a bounded bridge/ramp fallback,
-/// then runs the shared damage primitive. Concrete publishes its Recalc and
-/// occupant callbacks synchronously; wooden damage retains its outcome adapter.
+/// then runs the shared damage primitive. Both ordinary overlay families
+/// publish Recalc and occupant callbacks synchronously.
 ///
 /// Returns `true` if any bridge cell transitioned (caller ORs into
 /// `bridge_state_changed` so the app rebuilds the PathGrid).
@@ -257,7 +259,6 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
         rules,
         registry: overlay_registry,
         outcomes: Vec::new(),
-        anim_spawns: Vec::new(),
         published_collapse: false,
     };
     let fallback = if let Some((rx, ry, axis)) = seed_axis {
@@ -269,13 +270,9 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
     let HutDamage {
         sim,
         outcomes,
-        anim_spawns,
         published_collapse,
         ..
     } = host;
-    for spawn in anim_spawns {
-        construct_bridge_anim(sim, rules, spawn);
-    }
     apply_hut_bridge_execution(
         sim,
         rules,
@@ -383,9 +380,9 @@ fn hut_scan_last_overlay_seed(
         let Some(overlay) = overlay_at(rx, ry) else {
             continue;
         };
-        if let Some(axis) = BridgeRuntimeState::high_destroy_overlay_axis(overlay) {
+        if let Some(axis) = ordinary::axis(i32::from(overlay), HutBridgeFamily::High) {
             seed = Some(((rx, ry), axis, &HIGH_COLLAPSED_ANCHORS, true));
-        } else if let Some(axis) = BridgeRuntimeState::low_destroy_overlay_axis(overlay) {
+        } else if let Some(axis) = ordinary::axis(i32::from(overlay), HutBridgeFamily::Low) {
             seed = Some(((rx, ry), axis, &LOW_COLLAPSED_ANCHORS, false));
         }
     }
@@ -424,9 +421,9 @@ fn walk_span_for_collapsed_anchor(
             return false;
         };
         let in_band = if is_high {
-            BridgeRuntimeState::is_high_destroy_overlay(overlay)
+            ordinary::member(i32::from(overlay), HutBridgeFamily::High)
         } else {
-            BridgeRuntimeState::is_low_destroy_overlay(overlay)
+            ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
         };
         if !in_band {
             return false;
@@ -581,21 +578,6 @@ fn apply_hut_bridge_execution(
     !destroyed_set.is_empty() || extra_zones_dirty || extra_adjacent_dirty_anchor.is_some()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HutBridgeFamily {
-    Low,
-    High,
-}
-
-struct BridgePresentationContext<'a> {
-    rng: &'a mut SimRng,
-    /// `BridgeExplosions` constructor rows in draw order. The walker runs
-    /// inside the bridge-state and terrain borrows, so the owner constructs
-    /// them as soon as those end.
-    anim_spawns: &'a mut Vec<BridgeAnimSpawn>,
-    bridge_explosions: &'a [InternedId],
-}
-
 const HUT_FALLBACK_DIRS: [(i16, i16); 8] = [
     (0, -1),
     (1, -1),
@@ -665,7 +647,8 @@ fn choose_hut_bridge_family(sim: &Simulation, scan: &[(u16, u16)]) -> HutBridgeF
 }
 
 fn is_low_hut_scan_evidence(sim: &Simulation, rx: u16, ry: u16) -> bool {
-    bridge_overlay_at(sim, rx, ry).is_some_and(BridgeRuntimeState::is_low_destroy_overlay)
+    bridge_overlay_at(sim, rx, ry)
+        .is_some_and(|overlay| ordinary::member(i32::from(overlay), HutBridgeFamily::Low))
         || sim
             .resolved_terrain
             .as_ref()
@@ -679,12 +662,15 @@ fn bridge_overlay_at(sim: &Simulation, rx: u16, ry: u16) -> Option<u8> {
         .as_ref()
         .and_then(|terrain| terrain.cell(rx, ry))
         .and_then(|cell| cell.bridge_facts.overlay_id);
-    // Ground concrete has no structural/deck runtime entry. Its CellClass
-    // overlay is authoritative before, during and after synchronous publication.
-    if terrain_overlay.is_some_and(|overlay| (205..=232).contains(&overlay)) {
+    // Both ordinary families publish CellClass synchronously, even where no
+    // structural/deck runtime entry exists. Hut searches read that authority.
+    if terrain_overlay.is_some_and(|overlay| {
+        ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
+            || ordinary::member(i32::from(overlay), HutBridgeFamily::High)
+    }) {
         return terrain_overlay;
     }
-    // Wooden damage still owns deferred writes in the legacy state adapter.
+    // Structural controllers retain their deferred runtime projection.
     sim.bridge_state
         .as_ref()
         .and_then(|bs| bs.cell(rx, ry))
@@ -946,10 +932,7 @@ fn step_hut_dir(pos: (u16, u16), direction: usize) -> Option<(u16, u16)> {
 }
 
 fn physical_span_axis_for_destroy_overlay(family: HutBridgeFamily, overlay: u8) -> Option<Axis> {
-    let walker_axis = match family {
-        HutBridgeFamily::Low => BridgeRuntimeState::low_destroy_overlay_axis(overlay),
-        HutBridgeFamily::High => BridgeRuntimeState::high_destroy_overlay_axis(overlay),
-    }?;
+    let walker_axis = ordinary::axis(i32::from(overlay), family)?;
     match walker_axis {
         Axis::NS => Some(Axis::EW),
         Axis::EW => Some(Axis::NS),
@@ -1057,7 +1040,8 @@ fn spawn_hut_walker_pre_destroy_effects(
     };
     for delta in [-1, 0, 1] {
         if let Some((rx, ry)) = step_axis(center, perpendicular, delta) {
-            //5759EC/575D1E use ground Level*104, without a deck offset.
+            //57538A/5756AC (wood) and5759EC/575D1E (concrete) use
+            // ground Level*104, without a deck offset.
             let z = host
                 .sim
                 .resolved_terrain
@@ -1066,19 +1050,7 @@ fn spawn_hut_walker_pre_destroy_effects(
                 .cell(rx, ry)
                 .map(|c| c.level)
                 .unwrap_or(0);
-            let mut presentation = BridgePresentationContext {
-                rng: &mut host.sim.scenario_rng,
-                anim_spawns: &mut host.anim_spawns,
-                bridge_explosions: &host.sim.bridge_explosions,
-            };
-            queue_walker_bridge_explosion(&mut presentation, rx, ry, z);
-            if family == HutBridgeFamily::High {
-                // The concrete primitive now has live occupant callbacks.
-                // Finish this preceding constructor before any receiver RNG.
-                for spawn in std::mem::take(&mut host.anim_spawns) {
-                    construct_bridge_anim(host.sim, host.rules, spawn);
-                }
-            }
+            spawn_walker_bridge_explosion(host.sim, host.rules, rx, ry, z);
         }
     }
 }
@@ -1121,20 +1093,16 @@ fn measure_extent(
 }
 
 fn in_bridge_band(family: HutBridgeFamily, overlay: u8) -> bool {
-    match family {
-        HutBridgeFamily::High => (0xCD..=0xE8).contains(&overlay),
-        HutBridgeFamily::Low => (0x4A..=0x65).contains(&overlay),
-    }
+    ordinary::member(i32::from(overlay), family)
 }
 
-/// Existing hut caller context. Concrete calls share the synchronous57CCF0
-/// owner with area damage; unmigrated wood/ramp outcomes retain their adapter.
+/// Ordinary overlay calls share synchronous57BAA0/57CCF0 publication with
+/// area damage; structural ramp outcomes retain their existing adapter.
 struct HutDamage<'a> {
     sim: &'a mut Simulation,
     rules: &'a RuleSet,
     registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
     outcomes: Vec<StateOutcome>,
-    anim_spawns: Vec<BridgeAnimSpawn>,
     published_collapse: bool,
 }
 
@@ -1147,27 +1115,16 @@ impl HutDamage<'_> {
         success
     }
     fn destroy(&mut self, family: HutBridgeFamily, cell: (u16, u16)) -> bool {
-        match family {
-            HutBridgeFamily::High => {
-                let result = live_publication::damage_concrete(
-                    self.sim,
-                    self.rules,
-                    self.registry,
-                    (cell.0 as i16, cell.1 as i16),
-                )
-                .unwrap_or_else(|error| panic!("hut concrete publication at {cell:?}: {error}"));
-                self.published_collapse |= result.collapsed;
-                result.returned
-            }
-            HutBridgeFamily::Low => {
-                let outcome = self.sim.bridge_state.as_mut().unwrap().destroy_bridge_low(
-                    cell.0,
-                    cell.1,
-                    self.sim.resolved_terrain.as_ref().unwrap(),
-                );
-                self.retain(outcome)
-            }
-        }
+        let result = live_publication::damage_ordinary(
+            self.sim,
+            self.rules,
+            self.registry,
+            (cell.0 as i16, cell.1 as i16),
+            family,
+        )
+        .unwrap_or_else(|error| panic!("hut {family:?} publication at {cell:?}: {error}"));
+        self.published_collapse |= result.collapsed;
+        result.returned
     }
 }
 
@@ -1235,16 +1192,15 @@ fn hut_cell_is_low_bridge(
 ) -> bool {
     bridge_state
         .cell(rx, ry)
-        .is_some_and(|cell| BridgeRuntimeState::is_low_destroy_overlay(cell.overlay_byte))
+        .is_some_and(|cell| ordinary::member(i32::from(cell.overlay_byte), HutBridgeFamily::Low))
         || terrain.cell(rx, ry).is_some_and(|cell| {
             cell.is_wood_bridge_repair_tile
                 || cell.bridge_layer.as_ref().is_some_and(|layer| {
-                    BridgeRuntimeState::is_low_destroy_overlay(layer.overlay_id)
+                    ordinary::member(i32::from(layer.overlay_id), HutBridgeFamily::Low)
                 })
-                || cell
-                    .bridge_facts
-                    .overlay_id
-                    .is_some_and(BridgeRuntimeState::is_low_destroy_overlay)
+                || cell.bridge_facts.overlay_id.is_some_and(|overlay| {
+                    ordinary::member(i32::from(overlay), HutBridgeFamily::Low)
+                })
         })
 }
 
@@ -1602,37 +1558,28 @@ fn construct_bridge_anim(sim: &mut Simulation, rules: &RuleSet, spawn: BridgeAni
 /// One walker explosion: two jitter draws, the `RandomRanged(1, 5)` start
 /// delay, then the slot, in that order (`0x00575540`, `0x00575BA0`).
 ///
-/// RESIDUAL: the row is constructed when the walk's borrows end, not between
-/// these draws and the next cell's. No stock `BridgeExplosions=` type authors
-/// `RandomRate=`, so the constructor draws nothing and the scenario stream is
-/// unchanged; a modded one would take its rate draw after the walk's own draws.
-/// Stable ids follow the same order. Separately, and older than this producer,
-/// VERA runs every walker step's draws before the `BlowUpBridge` fallout draws,
-/// where native calls `DestroyBridge_*` inside each step; whether that body
-/// draws inline is UNCHECKED.
-fn queue_walker_bridge_explosion(
-    presentation: &mut BridgePresentationContext<'_>,
-    rx: u16,
-    ry: u16,
-    z: u8,
-) {
-    if presentation.bridge_explosions.is_empty() {
+/// Construct before the next cell's draws and before the live damage receiver:
+/// wood575481/5757A3 and the concrete575870/575BA0 walkers call421EA0
+/// inside the three-cell loop, ahead of57BAA0/57CCF0. Constructor draws and native IDs
+/// therefore precede those of any dying occupant.
+fn spawn_walker_bridge_explosion(sim: &mut Simulation, rules: &RuleSet, rx: u16, ry: u16, z: u8) {
+    if sim.bridge_explosions.is_empty() {
         return;
     }
     let coord = bridge_jittered_coord(
-        presentation.rng,
+        &mut sim.scenario_rng,
         (rx as i16, ry as i16),
         i32::from(z as i8) * LEPTONS_PER_LEVEL as i32,
     );
-    let delay = presentation.rng.next_range_u32_inclusive(1, 5) as u16;
-    let slot = presentation
-        .rng
-        .next_range_u32(presentation.bridge_explosions.len() as u32) as usize;
-    presentation.anim_spawns.push(bridge_anim_spawn(
-        presentation.bridge_explosions[slot],
-        coord,
-        delay,
-    ));
+    let delay = sim.scenario_rng.next_range_u32_inclusive(1, 5) as u16;
+    let slot = sim
+        .scenario_rng
+        .next_range_u32(sim.bridge_explosions.len() as u32) as usize;
+    construct_bridge_anim(
+        sim,
+        rules,
+        bridge_anim_spawn(sim.bridge_explosions[slot], coord, delay),
+    );
 }
 
 fn bridge_jittered_coord(rng: &mut SimRng, cell: (i16, i16), z: i32) -> AnimWorldCoord {
@@ -1979,12 +1926,11 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_13_stock_low_strip_recalc_collapse_and_cache_reconcile() {
+    fn gsi_04_13_stock_low_cache_reconcile_preserves_overlay_metadata() {
         use crate::rules::locomotor_type::SpeedType;
         use crate::rules::terrain_rules::LandType;
 
         let registry = gsi_04_13_stock_low_registry();
-        let rules = RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str("")).unwrap();
         let road_speed = registry
             .flags(0x4A)
             .and_then(|flags| flags.land_speed_costs)
@@ -2018,52 +1964,14 @@ mod tests {
         sim.overlay_grid = Some(overlay_grid);
         gsi_04_13_assert_ground_surface(&sim, LandType::Road.as_index());
 
-        let first = {
-            let terrain = sim.resolved_terrain.as_ref().expect("terrain");
-            sim.bridge_state
-                .as_mut()
-                .expect("bridge state")
-                .destroy_bridge_low(0, 1, terrain)
-        };
-        assert!(matches!(first, StateOutcome::Absorbed { .. }));
-        project_pending_low_bridge_overlay_writes(&mut sim, Some(&registry));
-        gsi_04_13_assert_ground_surface(&sim, LandType::Road.as_index());
+        // Supplied serialized terminal overlays. Ordinary damage is covered by
+        // the native controller corpus and physical Shrapnel chain; this test
+        // isolates rebuilding a pristine map cache from legacy saved state.
         for ry in 0..3 {
-            let overlay = sim.overlay_grid.as_ref().expect("overlay grid").cell(0, ry);
-            assert_eq!(overlay.overlay_id, Some(0x50));
-            assert_eq!(overlay.overlay_data, 0xA0 + ry as u8);
-            assert_eq!(overlay.wall_owner, Some(preserved_owner));
+            let cell = sim.bridge_state.as_mut().unwrap().cell_mut(0, ry).unwrap();
+            cell.overlay_byte = 100;
+            cell.damage_state = DamageState::Destroyed;
         }
-
-        let second = {
-            let terrain = sim.resolved_terrain.as_ref().expect("terrain");
-            sim.bridge_state
-                .as_mut()
-                .expect("bridge state")
-                .destroy_bridge_low(0, 1, terrain)
-        };
-        let StateOutcome::Collapsed { zones_dirty, .. } = second else {
-            panic!("second stock low hit must reach terminal collapse");
-        };
-        assert!(zones_dirty);
-        project_pending_low_bridge_overlay_writes(&mut sim, Some(&registry));
-        refresh_bridge_zones_if_dirty(&mut sim, &rules, zones_dirty);
-        gsi_04_13_assert_ground_surface(&sim, LandType::Rough.as_index());
-        assert_eq!(
-            sim.terrain_costs
-                .get(&SpeedType::Track)
-                .expect("Track costs")
-                .cost_at(0, 1),
-            100,
-            "terminal low bridge uses the restored TMP Rough speed"
-        );
-        for ry in 0..3 {
-            let overlay = sim.overlay_grid.as_ref().expect("overlay grid").cell(0, ry);
-            assert_eq!(overlay.overlay_id, Some(0x64));
-            assert_eq!(overlay.overlay_data, 0xA0 + ry as u8);
-            assert_eq!(overlay.wall_owner, Some(preserved_owner));
-        }
-
         // A loaded save receives the pristine map cache again. Reconcile the
         // serialized bridge owner before movement can observe stale Road.
         for ry in 0..3 {
@@ -2091,10 +1999,19 @@ mod tests {
         reconcile_low_bridge_surface_after_cache_load(&mut sim, &registry);
         gsi_04_13_assert_ground_surface(&sim, LandType::Rough.as_index());
 
-        // Ordinary repair's live Recalc/navigation and overlay metadata
-        // preservation are covered by world_orders_bridge_repair_tests using
-        // the shared resident-TMP fixture. This legacy strip retains only its
-        // wooden damage and cache-reconciliation coverage.
+        assert_eq!(
+            sim.terrain_costs
+                .get(&SpeedType::Track)
+                .unwrap()
+                .cost_at(0, 1),
+            100,
+        );
+        for ry in 0..3 {
+            let overlay = sim.overlay_grid.as_ref().unwrap().cell(0, ry);
+            assert_eq!(overlay.overlay_id, Some(100));
+            assert_eq!(overlay.overlay_data, 0xA0 + ry as u8);
+            assert_eq!(overlay.wall_owner, Some(preserved_owner));
+        }
     }
 
     /// Build a Drive locomotor on the Bridge layer (mimics `high=true` spawn).
@@ -2988,7 +2905,6 @@ mod tests {
                 rules: &rules,
                 registry: None,
                 outcomes: Vec::new(),
-                anim_spawns: Vec::new(),
                 published_collapse: false,
             };
             apply_hut_damage_retries(&mut host, (2, 4), &mut live_flags);

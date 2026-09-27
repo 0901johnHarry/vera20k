@@ -6,16 +6,8 @@ use crate::headless_scenario::{HeadlessScenario, SIM_TICK_MS};
 use crate::rules::terrain_rules::LandType;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::world::bridge_test_evidence::save_scene;
+use crate::sim::world::bridge_test_evidence::{load_shrapnel as loaded_shrapnel, save_scene};
 use serde_json::{Value, json};
-
-fn loaded_shrapnel() -> HeadlessScenario {
-    let retail = std::path::PathBuf::from(std::env::var_os("RA2_DIR").unwrap());
-    // Headless loading accepts a physical map path; the ordinary app first
-    // extracts packaged skirmish maps. Keep the fixture's source explicit.
-    let map = std::env::var("VERA20K_SHRAPNEL_MAP").unwrap_or_else(|_| "XShrapnel.MAP".to_owned());
-    crate::headless_scenario::load(&retail, &map, 0x0B21_D6E5).unwrap()
-}
 
 fn export_scene(scene: &HeadlessScenario, phase: &str) {
     let sim = scene.sim();

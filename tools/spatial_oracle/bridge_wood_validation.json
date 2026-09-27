@@ -1,0 +1,1997 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-09-27T23:01:02.026323+00:00",
+  "scope": "Ordinary stock Shrapnel wooden ground bridge: repair, MTNK force-fire damage/collapse, live occupants and death constructors, both hut entries, second repair, navigation, four restored futures and offscreen overlay rendering. One chain in an open whole-bridge goal.",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "native_text_sha256": "4cd5557a7490debc493ff965afc4483d8d2f1065f434f6b665cbb8fc4835b0cc",
+  "physical_map_sha256": "c32e412e938e1b9a0b29f89ff9bc0e6f410f75bc76701fb4acef6581fd19b438",
+  "local_evidence_directory": "/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927/engineer-entry-followup",
+  "builds": {
+    "bridge-wood-v5": {
+      "command": [
+        "cargo",
+        "test",
+        "--message-format=json-render-diagnostics",
+        "-p",
+        "vera20k",
+        "--lib",
+        "--no-run"
+      ],
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+      "build_environment": {},
+      "artifacts": [
+        {
+          "source": "/Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/debug/deps/vera20k-182f054d6e106fa6",
+          "file": "0/vera20k-182f054d6e106fa6",
+          "sha256": "784943639c3eb9d7c7c93381c4c77806bd14e4fb9b31b0cc0a155a276f50aeec"
+        }
+      ],
+      "source": {
+        "head": "d77f60318578f31bee757b3a645de267c2e45ef7",
+        "branch": "feature/bridge-wood-damage",
+        "source_sha256": "296f652a2296b4b28bed99bc0fb55eae3af78f93f158c7b76402100dec8a4afc"
+      }
+    },
+    "bridge-wood-release-final": {
+      "command": [
+        "cargo",
+        "build",
+        "--message-format=json-render-diagnostics",
+        "--locked",
+        "--release",
+        "-p",
+        "vera20k",
+        "--bin",
+        "vera20k",
+        "--bin",
+        "parity-digest"
+      ],
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+      "build_environment": {},
+      "artifacts": [
+        {
+          "source": "/Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/release/parity-digest",
+          "file": "0/parity-digest",
+          "sha256": "75c27a3bcf9d8498d1b30e2f9c43c499ae71c42bdfb0104656562286dfd79d6e"
+        },
+        {
+          "source": "/Users/halvor/.codex/worktrees/bridge-parity/vera20k/target/owned-worktrees/690943e027ac58d4/release/vera20k",
+          "file": "1/vera20k",
+          "sha256": "1a066b60229174ad0fa92910955783d517040e76032203a0ccbefeebf1289b0a"
+        }
+      ],
+      "source": {
+        "head": "d77f60318578f31bee757b3a645de267c2e45ef7",
+        "branch": "feature/bridge-wood-damage",
+        "source_sha256": "dbd2e9c8e42a0b79c864197bc60119be6ad4c7c351221ddd3c78eecb2eb44847"
+      }
+    }
+  },
+  "final_rust_source_manifest": {
+    "file": "wood-final-rust-source.json",
+    "sha256": "8b8cf5cc26fc1a1bb1b0bc5df0c470a4c8b7895f9723da3aa00dbf058b5092f4",
+    "paths": 1240,
+    "difference_from_v5": [
+      "src/sim/world/world_orders_bridge_repair_tests.rs"
+    ],
+    "difference_scope": "Only a test fixture migrated from deleted runtime-only wooden seed to the shared live Cell/TMP fixture; duplicate seed helper removed. No production code changed."
+  },
+  "cargo_validation": [
+    {
+      "step": "full",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "seconds": 106.40428887499729,
+      "log": "wood-full-final.log",
+      "sha256": "cfad440befceea0cb0dde75f8e0d7ddef48469445905a5ffd29aedfe69b5fccd",
+      "summary": [
+        "test result: ok. 9550 passed; 0 failed; 211 ignored; 0 measured; 0 filtered out; finished in 61.96s"
+      ]
+    },
+    {
+      "step": "clippy",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "clippy",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "seconds": 17.468749457999365,
+      "log": "wood-clippy-final.log",
+      "sha256": "2268b28b05c84b3cd6b529973a4cbf4c0c9c0c0d608a8582a58a463d933bcd88",
+      "summary": []
+    },
+    {
+      "step": "release",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--label",
+        "bridge-wood-release-final",
+        "--",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "vera20k",
+        "--bin",
+        "vera20k",
+        "--bin",
+        "parity-digest"
+      ],
+      "exit_code": 0,
+      "seconds": 61.16614662499342,
+      "log": "wood-release-final.log",
+      "sha256": "51b73bf08f14f6d4f579b88f7706a000714b2f4f30928b615b10902b6f49d945",
+      "summary": []
+    },
+    {
+      "step": "release_load",
+      "command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-release-final/0/parity-digest",
+        "--out",
+        "/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927/engineer-entry-followup/wood-release-load-final.jsonl",
+        "--ticks",
+        "10",
+        "--seed",
+        "0",
+        "--map",
+        "/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927/engineer-entry-followup/next-low-wood-assets/extract/XShrapnel.MAP",
+        "--ra2-dir",
+        "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5241657920050784,
+      "log": "wood-release-load-final.log",
+      "sha256": "542d2b2246100cbfafc4f8fa3f194a8d78ed1b0e10a057d2e9bf508a393606b3"
+    }
+  ],
+  "release_load_output": {
+    "file": "wood-release-load-final.jsonl",
+    "sha256": "497e9fa2f5ec26c9eb178adb2329d4f09422e39c11a2355653c36022d677a088",
+    "digests": 10
+  },
+  "rust_full_suite": {
+    "passed": 9550,
+    "failed": 0,
+    "ignored": 211
+  },
+  "production_tests": [
+    {
+      "step": "focused",
+      "command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/0/vera20k-182f054d6e106fa6",
+        "ordinary_damage::",
+        "bridge_orchestrator::tests::",
+        "gsi_04_13_stock_low_cache_reconcile",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "seconds": 1.884002375001728,
+      "log": "wood-focused-v5.log",
+      "sha256": "b2724a77e84ec7d6063cbfa97fa8eb3222129290d4a67b62cea751e286af3f8f",
+      "summary": [
+        "test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 9737 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "step": "occupants",
+      "command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/0/vera20k-182f054d6e106fa6",
+        "--ignored",
+        "wood_occupant_tests::",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 14.55566770900623,
+      "log": "wood-occupants-v5.log",
+      "sha256": "b12c5a7b970d3e5b80e95c1f5fc7416fb0ace149a8af26088fe1b887b974d548",
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9759 filtered out; finished in 14.55s"
+      ]
+    },
+    {
+      "step": "production",
+      "command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/0/vera20k-182f054d6e106fa6",
+        "--ignored",
+        "ordinary_bridge_gpu_tests::",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 6.190147291999892,
+      "log": "wood-production-v5.log",
+      "sha256": "7865df09585bd0182e16f12b84ac6457565770138158ff8316c31948716b9f4b",
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9759 filtered out; finished in 6.18s"
+      ]
+    },
+    {
+      "step": "wood_world",
+      "command": [
+        "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/bridge-wood-v5/0/vera20k-182f054d6e106fa6",
+        "--ignored",
+        "ordinary_publication::wood_tests::",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 148.45086287499726,
+      "log": "wood-wood_world-v5.log",
+      "sha256": "36d14abe10c45a7d0578e2ed26cc78e62de773af58576b9d479f069fb29d69b8",
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9759 filtered out; finished in 148.44s"
+      ]
+    }
+  ],
+  "native_case_counts": {
+    "scalar": 90,
+    "physical_retained_sequences": 3,
+    "joined_occupants": 7,
+    "joined_huts": 2,
+    "restored_navigation": 4
+  },
+  "native_comparisons": {
+    "live": {
+      "native_file": "navigation.json.gz",
+      "native_sha256": "5145c4fab77dcdef1d3bdc99c9b056c5afca11495a9c14deaf2573ed7e877674",
+      "production_prefix": "wood-v5",
+      "all_compared_equal": true,
+      "scope": "All class/level/base-ID planes,13 complete movement rows,zone count,three graph IDs/padding IDs/full ordered records; allocated live level/slope planes and every exported representative cell at each explicitly mapped stage. Runtime objects/occupancy and RNG are not compared across these different caller boundaries.",
+      "receipt": "shrapnel-native-initialization/production_wood_v5_compare.json",
+      "receipt_sha256": "3b2b3c7a774a08316df1eb7c5673db1eb486f642584db54b276905c1a50a8d14",
+      "states": [
+        {
+          "state": "loaded",
+          "production_file": "wood-v5.loaded.json",
+          "production_sha256": "68d5b882cb5bc2bf3de49a7e32ea9905b95b04aaffa100962874ee3305746344",
+          "frame": 0,
+          "all_compared_equal": true
+        },
+        {
+          "state": "healthy",
+          "production_file": "wood-v5.healthy.json",
+          "production_sha256": "0a8536ddf1aa825b534051485d14da980662053aca7c838e9821fb86e3f9ce00",
+          "frame": 30,
+          "all_compared_equal": true
+        },
+        {
+          "state": "damaged",
+          "production_file": "wood-v5.damaged.json",
+          "production_sha256": "1873616ecdddc769430a3ebd1f668218d773d7899d7b157df483dfc2c0bf32b7",
+          "frame": 30,
+          "all_compared_equal": true
+        },
+        {
+          "state": "collapsed",
+          "production_file": "wood-v5.collapsed.json",
+          "production_sha256": "2382f6dcc9648e47170ab5a5aa0cd1d6508d6e139e9dd725eb017648370ba8a3",
+          "frame": 30,
+          "all_compared_equal": true
+        },
+        {
+          "state": "repaired",
+          "production_file": "wood-v5.repaired.json",
+          "production_sha256": "4ba23c0fc99d8e86fa47ab7488bf0ca3db673973902ed06e15337e2fd5128230",
+          "frame": 60,
+          "all_compared_equal": true
+        }
+      ]
+    },
+    "restored": {
+      "schema": 1,
+      "native_file": "navigation_restore.json.gz",
+      "native_sha256": "f7256a8c96fb850f90845cca46ef81ed96ce90380d43ca6279c3047fe765c5db",
+      "native_payload_sha256": "6738d955e14fe244a99b8442338c1a4aa85b4ad72051e0516e88c4e8b05510c5",
+      "scope": "Complete class/height/base-ID planes,13 movement rows,base zone count,native map size and all ordered hierarchy IDs/padding/records/edges for 4 restored bridge states. No full native save/load or actor-world comparison.",
+      "all_compared_equal": true,
+      "receipt": "shrapnel-native-initialization/production_wood_v5_restored_compare.json",
+      "receipt_sha256": "31beab77015eb1674e1ec77b2912e9e41e88356554114c2c01221b03177a8ded",
+      "states": [
+        {
+          "stage": "healthy",
+          "production_file": "wood-v5.restored_healthy.json",
+          "production_sha256": "c1c805e3111555740fd13d20a8d3c569f94afec03f1b610378e4550936e188aa",
+          "native_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "production_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "all_compared_equal": true
+        },
+        {
+          "stage": "damaged",
+          "production_file": "wood-v5.restored_damaged.json",
+          "production_sha256": "905ceb98f175fe52c2a3ac36b8181cce1073612e3528376332623b054ba6de7c",
+          "native_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "production_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "all_compared_equal": true
+        },
+        {
+          "stage": "collapsed",
+          "production_file": "wood-v5.restored_collapsed.json",
+          "production_sha256": "c6c34daa1e8893d8b1a7e5cfee4bb28470b13e67214cd5c86883832a5f1a8994",
+          "native_graph_record_counts": [
+            3587,
+            1545,
+            857
+          ],
+          "production_graph_record_counts": [
+            3587,
+            1545,
+            857
+          ],
+          "all_compared_equal": true
+        },
+        {
+          "stage": "repaired",
+          "production_file": "wood-v5.restored_repaired.json",
+          "production_sha256": "3dd7dc6c5e7217da530334ff7c0bfbc9f373fbb73819c5b7e3f2c1def29315dc",
+          "native_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "production_graph_record_counts": [
+            3586,
+            1545,
+            857
+          ],
+          "all_compared_equal": true
+        }
+      ]
+    },
+    "ordinary_fire": {
+      "native_file": "navigation.json.gz",
+      "native_sha256": "5145c4fab77dcdef1d3bdc99c9b056c5afca11495a9c14deaf2573ed7e877674",
+      "production_prefix": "wood-v5",
+      "all_compared_equal": true,
+      "scope": "All class/level/base-ID planes,13 complete movement rows,zone count,three graph IDs/padding IDs/full ordered records; allocated live level/slope planes and every exported representative cell at each explicitly mapped stage. Runtime objects/occupancy and RNG are not compared across these different caller boundaries.",
+      "receipt": "shrapnel-native-initialization/production_wood_v5_attack_compare.json",
+      "receipt_sha256": "9b2bce259016207f1a712f33b4bef7842a0c2a635a4b047d2bdc4b86f8f7bcda",
+      "states": [
+        {
+          "state": "attack_before_command",
+          "production_file": "wood-v5.attack_before_command.json",
+          "production_sha256": "5e0f9e5848d454ce4e78ce82ed0d663ab42f0220a7e36395b555482ddc7cbc19",
+          "frame": 30,
+          "all_compared_equal": true
+        },
+        {
+          "state": "attack_healthy",
+          "production_file": "wood-v5.attack_healthy.json",
+          "production_sha256": "ff669fb6438f191b277c69eaf7c55f8ef7a36451acab3310c987452a478d2a4b",
+          "frame": 30,
+          "all_compared_equal": true
+        },
+        {
+          "state": "attack_damaged",
+          "production_file": "wood-v5.attack_damaged.json",
+          "production_sha256": "24bb318cf57af0445ecf1e247297e523dc0a7d5d0185381349dd8f6e347cc0be",
+          "frame": 1259,
+          "all_compared_equal": true
+        },
+        {
+          "state": "attack_collapsed",
+          "production_file": "wood-v5.attack_collapsed.json",
+          "production_sha256": "7148014f4d335d4081004fd316c58f948713d51f05d6995f96f7e7e786b91477",
+          "frame": 1626,
+          "all_compared_equal": true
+        },
+        {
+          "state": "attack_repaired",
+          "production_file": "wood-v5.attack_repaired.json",
+          "production_sha256": "3ae27c96a835a10836aeb3df48652a9aa33fcc40873e7168f53a894c0bccdc6a",
+          "frame": 1665,
+          "all_compared_equal": true
+        }
+      ]
+    }
+  },
+  "ordinary_rust_logic_frames": {
+    "first_damage": 1258,
+    "collapse": 1625,
+    "second_engineer_consumed": 1664,
+    "scope": "Rust whole-world regression only; no native scheduler golden claim."
+  },
+  "offscreen_render": {
+    "wood-render-v5": {
+      "camera": [
+        1552.0,
+        2530.0
+      ],
+      "center": [
+        115,
+        59
+      ],
+      "physical_inputs": {
+        "map_lighting": {
+          "ambient": 100,
+          "ground": 0,
+          "level": 28,
+          "rgb": [
+            75,
+            75,
+            100
+          ]
+        },
+        "palette": {
+          "archive": "ra2.mix -> cache.mix",
+          "file": "isosno.pal",
+          "sha256": "9f411f95251d7e62fbdef34b37a9b8361ea15941621a88010d4e2c06486e67aa"
+        },
+        "theater": "SNOW"
+      },
+      "scope": "Physical authored rows, real damage and ordinary Engineer repair, retained physical atlas, shared ordinary-overlay builder, upload/submission and every color/depth pixel. Rows drawn separately against clear targets. Revealed/hidden and camera-rejection controls. Ground level, TMP identity and live Road/Water publication checked; underlying terrain is not drawn. No original composited frame, native timing or full-scene rendering parity claim.",
+      "size": [
+        256,
+        160
+      ],
+      "stages": [
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                116,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            }
+          ],
+          "color_sha256": "4fd0a8f52ba7a0b97a0fb69aec958f708b4f47b007fa91d33672092954ba3171",
+          "depth_sha256": "225f6a3f89ca6b7d3d0342a8ed55effd1466abbe847ddf9d252a180e91ae7d7d",
+          "frame": 0,
+          "instances": 1,
+          "opaque_pixels": 3037,
+          "overlay": 90,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "loaded",
+          "row": 58,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3664,
+            "entry_id": "0x9B352E4A",
+            "file": "lobrdg17.sno",
+            "sha256": "234b13fb1e17b2a2c6405e43163a587b98c3ed8dfdeca5416e2f83aa3b28802c"
+          },
+          "source_bounds": [
+            26,
+            19,
+            124,
+            70
+          ],
+          "source_indices_sha256": "0f964a7275343e90bcd4fb9a4ae836bdb7822edae09fe62b51e83fbc13217d85"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "5639b95c2f8d2a2d92aa71f3c2414032aff8b9cbfa2f63e252461f70df35da84",
+          "depth_sha256": "a51fe8bd11bf6e54ab5dfec9abe219eb6b675c5a664e53496ee239b9d88d88a7",
+          "frame": 0,
+          "instances": 0,
+          "opaque_pixels": 0,
+          "overlay": 101,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "loaded",
+          "row": 59,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 152,
+            "entry_id": "0x9FF1CB35",
+            "file": "lobrdg28.sno",
+            "sha256": "56669cae31530c432f795e362e351d53cbd4e0491b49dae2ef81093ae3c2e8fa"
+          },
+          "source_bounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "source_indices_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 110
+            },
+            {
+              "coord": [
+                115,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 2,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "62f3124087cad9171ce04a51edef75335f1449082128e2978efb23d78be5fe3c",
+          "depth_sha256": "74c0c0432dc1e068e5325f6cdfddbcdfbecdc8a569d5bb096e1896b88767b7a5",
+          "frame": 0,
+          "instances": 1,
+          "opaque_pixels": 1824,
+          "overlay": 91,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "loaded",
+          "row": 60,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 2448,
+            "entry_id": "0x1965B99B",
+            "file": "lobrdg18.sno",
+            "sha256": "d59166f63cb32e2a16754c9341f1f245fc594cdf7d8a458410c3714597c82aaa"
+          },
+          "source_bounds": [
+            30,
+            23,
+            114,
+            66
+          ],
+          "source_indices_sha256": "c3faa2f4dab2c91eabf292ff640deb8989c228b9f12709ef60eea2980e135c85"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                116,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            }
+          ],
+          "color_sha256": "120fd8d064db7265beb0509a8243c05634a4aa18d950e74f0af2faf08a799d3f",
+          "depth_sha256": "dd3a4448598271ebf16567e1fe17dec5d741391b77b892467a4bb3c3c470a0cc",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3025,
+          "overlay": 84,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "healthy",
+          "row": 58,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3608,
+            "entry_id": "0x1475DBEA",
+            "file": "lobrdg11.sno",
+            "sha256": "759b26581495d1ffedbca6792386300666e8ba852b3a8531aca1746e3ba02164"
+          },
+          "source_bounds": [
+            32,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "dd69a53d4b7f5107c1c5ebbdaf4590923100b29d0e1ccaacac0232f249a85129"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "4d89468ae8b01a391f5a30fd9412312ad532ddd8b620d0ccde74b484185ce9f1",
+          "depth_sha256": "2f6f350b8ec7740a18b41162726605ad341235b74993e7a3f4773a64ffc1dde4",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3025,
+          "overlay": 84,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "healthy",
+          "row": 59,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3608,
+            "entry_id": "0x1475DBEA",
+            "file": "lobrdg11.sno",
+            "sha256": "759b26581495d1ffedbca6792386300666e8ba852b3a8531aca1746e3ba02164"
+          },
+          "source_bounds": [
+            32,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "dd69a53d4b7f5107c1c5ebbdaf4590923100b29d0e1ccaacac0232f249a85129"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 110
+            },
+            {
+              "coord": [
+                115,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 2,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "af4009042b6f54eaef669898eb416c2d026be5d6b7fdd866311f32d743439537",
+          "depth_sha256": "ea691f3923b54fd393b25b83ec23c3e60b25b3a9e14f1589148fb3a55d479ef2",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3013,
+          "overlay": 85,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "healthy",
+          "row": 60,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3584,
+            "entry_id": "0x53D5A13A",
+            "file": "lobrdg12.sno",
+            "sha256": "0be1913beb1e8809425868ec20b2c287a400179e11fa22d618265a2b4288a18c"
+          },
+          "source_bounds": [
+            32,
+            19,
+            118,
+            70
+          ],
+          "source_indices_sha256": "5d19fd641d03a43430092ccbd27bbf4efbf1d11c8b43ad453394649f3f61b305"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                116,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            }
+          ],
+          "color_sha256": "01135230b2b08c96520dbdd0c4a1c7701c4ab01613222b3d9ef43cc66ff6dc5c",
+          "depth_sha256": "51579987c550c8e4c0ff20de07be22d693bdff92e1e89f2ec97be254c1ba56a0",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3007,
+          "overlay": 87,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "damaged",
+          "row": 58,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3592,
+            "entry_id": "0xDC95549A",
+            "file": "lobrdg14.sno",
+            "sha256": "d339d2c61c0a9dfbaa520349c6a9c9d0528cf2f368f1cf909ecea188e8b30311"
+          },
+          "source_bounds": [
+            32,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "3065ab5e3be9887a7bdc9fe5a63374151d912a8ccb799b11a90fe0fc15fa6951"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "24b94b04efe2c4b1ff2c1f84f2aa0cafd889506d5a73da1acf05f4ada35f8dcd",
+          "depth_sha256": "1b1120b15a21f9b6bea3af35a753ec1f1698a09f9415a56f61b4e27df3dcd4b9",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3020,
+          "overlay": 89,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "damaged",
+          "row": 59,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3608,
+            "entry_id": "0xA65507FA",
+            "file": "lobrdg16.sno",
+            "sha256": "4ab03de98dbfd2f272d343c25b325bfebc59566b3f8462d3fec947eee0b3d54b"
+          },
+          "source_bounds": [
+            32,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "9b903d13068728fdd04f205f885360bc5947b782837e5039affe902f291bd725"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 110
+            },
+            {
+              "coord": [
+                115,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 2,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "854b1e30639da5290415b2bca342bd3e543c236f6b57101bcdf099383b00f85f",
+          "depth_sha256": "4005301188e16ed2cf36243e9dac225703a5519de91eb67bcc23788dd31c6a4c",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3003,
+          "overlay": 88,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "damaged",
+          "row": 60,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3576,
+            "entry_id": "0xE1F57D2A",
+            "file": "lobrdg15.sno",
+            "sha256": "275829fb555c672fc9394053b47ab8fa2403ae688e4588d942e08124401f148c"
+          },
+          "source_bounds": [
+            31,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "632b0e957f732827530ab2a4fdbd095a1da94b301c5ff8db376edbf59193c78b"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                116,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            }
+          ],
+          "color_sha256": "4fd0a8f52ba7a0b97a0fb69aec958f708b4f47b007fa91d33672092954ba3171",
+          "depth_sha256": "225f6a3f89ca6b7d3d0342a8ed55effd1466abbe847ddf9d252a180e91ae7d7d",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3037,
+          "overlay": 90,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "collapsed",
+          "row": 58,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3664,
+            "entry_id": "0x9B352E4A",
+            "file": "lobrdg17.sno",
+            "sha256": "234b13fb1e17b2a2c6405e43163a587b98c3ed8dfdeca5416e2f83aa3b28802c"
+          },
+          "source_bounds": [
+            26,
+            19,
+            124,
+            70
+          ],
+          "source_indices_sha256": "0f964a7275343e90bcd4fb9a4ae836bdb7822edae09fe62b51e83fbc13217d85"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                59
+              ],
+              "land": 2,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "5639b95c2f8d2a2d92aa71f3c2414032aff8b9cbfa2f63e252461f70df35da84",
+          "depth_sha256": "a51fe8bd11bf6e54ab5dfec9abe219eb6b675c5a664e53496ee239b9d88d88a7",
+          "frame": 30,
+          "instances": 0,
+          "opaque_pixels": 0,
+          "overlay": 101,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "collapsed",
+          "row": 59,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 152,
+            "entry_id": "0x9FF1CB35",
+            "file": "lobrdg28.sno",
+            "sha256": "56669cae31530c432f795e362e351d53cbd4e0491b49dae2ef81093ae3c2e8fa"
+          },
+          "source_bounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "source_indices_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 110
+            },
+            {
+              "coord": [
+                115,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 2,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "62f3124087cad9171ce04a51edef75335f1449082128e2978efb23d78be5fe3c",
+          "depth_sha256": "74c0c0432dc1e068e5325f6cdfddbcdfbecdc8a569d5bb096e1896b88767b7a5",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 1824,
+          "overlay": 91,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "collapsed",
+          "row": 60,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 2448,
+            "entry_id": "0x1965B99B",
+            "file": "lobrdg18.sno",
+            "sha256": "d59166f63cb32e2a16754c9341f1f245fc594cdf7d8a458410c3714597c82aaa"
+          },
+          "source_bounds": [
+            30,
+            23,
+            114,
+            66
+          ],
+          "source_indices_sha256": "c3faa2f4dab2c91eabf292ff640deb8989c228b9f12709ef60eea2980e135c85"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                116,
+                58
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            }
+          ],
+          "color_sha256": "85e71537dc9585d3214bc28d9e2d5db1517ac89d5987e5a40181e8f58378d24e",
+          "depth_sha256": "82d00c9d62e9b1bc3a824331a85c791889b59139f1c1887390233f79d28b350b",
+          "frame": 60,
+          "instances": 1,
+          "opaque_pixels": 3013,
+          "overlay": 85,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "repaired",
+          "row": 58,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3584,
+            "entry_id": "0x53D5A13A",
+            "file": "lobrdg12.sno",
+            "sha256": "0be1913beb1e8809425868ec20b2c287a400179e11fa22d618265a2b4288a18c"
+          },
+          "source_bounds": [
+            32,
+            19,
+            118,
+            70
+          ],
+          "source_indices_sha256": "5d19fd641d03a43430092ccbd27bbf4efbf1d11c8b43ad453394649f3f61b305"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 315
+            },
+            {
+              "coord": [
+                115,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                59
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "89b0bd8948e9369dacfb9742f7cfda5f2d710e7dadcebbd6883a30f52da70060",
+          "depth_sha256": "6ff473271e7d1692f5f4527af061a664e4ccd3eaf886a20fa330ffb8864bc62a",
+          "frame": 60,
+          "instances": 1,
+          "opaque_pixels": 3009,
+          "overlay": 83,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "repaired",
+          "row": 59,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3584,
+            "entry_id": "0x2915F25A",
+            "file": "lobrdg10.sno",
+            "sha256": "ae5603b45bc4096d64cb768dae410fd29972af639533c1b6cdd71e6fa95742aa"
+          },
+          "source_bounds": [
+            31,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "47a8da68c1e145e5bd79077e9dca3e650cf4a336c0966a6727cc3b41c5cd00e6"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1056,
+            "rgb_key": [
+              736,
+              736,
+              992
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                114,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 1,
+              "tile": 110
+            },
+            {
+              "coord": [
+                115,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 2,
+              "tile": 316
+            },
+            {
+              "coord": [
+                116,
+                60
+              ],
+              "land": 1,
+              "level": 2,
+              "raw_bridge_flags": 0,
+              "subtile": 3,
+              "tile": 316
+            }
+          ],
+          "color_sha256": "0dd10b323f14a98a608bb4a97bca601f9c3d01ff29c0264900153d2658f1d759",
+          "depth_sha256": "8949e532d1751569704d79462236d1c4dd3d388c55bd395a4b21764e23327f59",
+          "frame": 60,
+          "instances": 1,
+          "opaque_pixels": 3025,
+          "overlay": 84,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "repaired",
+          "row": 60,
+          "source": {
+            "archive": "ra2.mix -> isosnow.mix",
+            "bytes": 3608,
+            "entry_id": "0x1475DBEA",
+            "file": "lobrdg11.sno",
+            "sha256": "759b26581495d1ffedbca6792386300666e8ba852b3a8531aca1746e3ba02164"
+          },
+          "source_bounds": [
+            32,
+            19,
+            119,
+            70
+          ],
+          "source_indices_sha256": "dd69a53d4b7f5107c1c5ebbdaf4590923100b29d0e1ccaacac0232f249a85129"
+        }
+      ]
+    },
+    "wood-concrete-render-v5": {
+      "camera": [
+        862.0,
+        2005.0
+      ],
+      "center": [
+        87,
+        54
+      ],
+      "physical_inputs": {
+        "map_lighting": {
+          "ambient": 100,
+          "ground": 0,
+          "level": 28,
+          "rgb": [
+            100,
+            100,
+            87
+          ]
+        },
+        "palette": {
+          "archive": "ra2.mix -> cache.mix",
+          "file": "isotem.pal",
+          "sha256": "5d6e40fcd11a592a31494c635d93c21796cfe86a2743f0258b1f7d0aff850795"
+        },
+        "theater": "TEMPERATE"
+      },
+      "scope": "Physical authored rows, real damage and ordinary Engineer repair, retained physical atlas, shared ordinary-overlay builder, upload/submission and every color/depth pixel. Rows drawn separately against clear targets. Revealed/hidden and camera-rejection controls. Ground level, TMP identity and live Road/Water publication checked; underlying terrain is not drawn. No original composited frame, native timing or full-scene rendering parity claim.",
+      "size": [
+        256,
+        160
+      ],
+      "stages": [
+        {
+          "cell_light": {
+            "common_scalar": 1112,
+            "rgb_key": [
+              992,
+              992,
+              864
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                86,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            },
+            {
+              "coord": [
+                87,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                88,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 325
+            }
+          ],
+          "color_sha256": "431302d2a072ce2841f39c23aaea64bce0c4f88678be84b087614abfb259a4ed",
+          "depth_sha256": "cc58f1871ba4df9142ada46eff6dbc44033b72e886776f9df885f93753265777",
+          "frame": 0,
+          "instances": 1,
+          "opaque_pixels": 3028,
+          "overlay": 216,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "loaded",
+          "row": 54,
+          "source": {
+            "archive": "ra2.mix -> temperat.mix",
+            "bytes": 3584,
+            "entry_id": "0x095820FF",
+            "file": "lobrdb12.tem",
+            "sha256": "570bb93a9abcc6fac5501d38a407ec2751a17140651baa64418fd08aac058ce6"
+          },
+          "source_bounds": [
+            30,
+            19,
+            120,
+            70
+          ],
+          "source_indices_sha256": "ab5386e3714ee66305822de4f09dc1d400495f35ed0c081f24eea8fb2e76c07b"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1112,
+            "rgb_key": [
+              992,
+              992,
+              864
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                86,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            },
+            {
+              "coord": [
+                87,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                88,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 325
+            }
+          ],
+          "color_sha256": "44beea4bf90575f53e52fdc828fa5fd397e2010099ffb4ec0c5434b74b6c5f1b",
+          "depth_sha256": "1a315dfcdd6d2b613b22e23381950e0ddbd0d0e8029a81fe702b3d6e8bc93f18",
+          "frame": 0,
+          "instances": 1,
+          "opaque_pixels": 3030,
+          "overlay": 220,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "damaged",
+          "row": 54,
+          "source": {
+            "archive": "ra2.mix -> temperat.mix",
+            "bytes": 3576,
+            "entry_id": "0xFCD8863F",
+            "file": "lobrdb16.tem",
+            "sha256": "51641371a756f5515f7dabc98de43bd9afd49131bef36334b96573aa2b2cbec7"
+          },
+          "source_bounds": [
+            30,
+            19,
+            120,
+            70
+          ],
+          "source_indices_sha256": "0130325d9bc309c37c08769eb6cb351a7c617de254c9f4c77d8163a203b0ecdb"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1112,
+            "rgb_key": [
+              992,
+              992,
+              864
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                86,
+                54
+              ],
+              "land": 2,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            },
+            {
+              "coord": [
+                87,
+                54
+              ],
+              "land": 2,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                88,
+                54
+              ],
+              "land": 2,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 325
+            }
+          ],
+          "color_sha256": "5639b95c2f8d2a2d92aa71f3c2414032aff8b9cbfa2f63e252461f70df35da84",
+          "depth_sha256": "a51fe8bd11bf6e54ab5dfec9abe219eb6b675c5a664e53496ee239b9d88d88a7",
+          "frame": 0,
+          "instances": 0,
+          "opaque_pixels": 0,
+          "overlay": 232,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "collapsed",
+          "row": 54,
+          "source": {
+            "archive": "ra2.mix -> temperat.mix",
+            "bytes": 152,
+            "entry_id": "0xC57C4AF0",
+            "file": "lobrdb28.tem",
+            "sha256": "ee848b5efa30984f928828c38488f0577c858bd9ff8b16285a61544ba95c4346"
+          },
+          "source_bounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "source_indices_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "cell_light": {
+            "common_scalar": 1112,
+            "rgb_key": [
+              992,
+              992,
+              864
+            ]
+          },
+          "cells": [
+            {
+              "coord": [
+                86,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 323
+            },
+            {
+              "coord": [
+                87,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 324
+            },
+            {
+              "coord": [
+                88,
+                54
+              ],
+              "land": 1,
+              "level": 4,
+              "raw_bridge_flags": 0,
+              "subtile": 0,
+              "tile": 325
+            }
+          ],
+          "color_sha256": "b6933085c11842d1fe2cdfd4d7ce68e901943207b44e0448eb77f32c816a7924",
+          "depth_sha256": "a9121661a07fead6da511a0975ec65dbe5972da396017aa98833e8a25bb97709",
+          "frame": 30,
+          "instances": 1,
+          "opaque_pixels": 3027,
+          "overlay": 215,
+          "overlay_data": [
+            0,
+            1,
+            2
+          ],
+          "phase": "repaired",
+          "row": 54,
+          "source": {
+            "archive": "ra2.mix -> temperat.mix",
+            "bytes": 3584,
+            "entry_id": "0x4EF85A2F",
+            "file": "lobrdb11.tem",
+            "sha256": "e4e2c4fac91461583f058ec80a59d8999790d4be5fd6c7da16210a402e09aa50"
+          },
+          "source_bounds": [
+            30,
+            19,
+            120,
+            70
+          ],
+          "source_indices_sha256": "24ff3c08393b6baab37323fdffc83689a869789fc5564730770983a448b2117e"
+        }
+      ]
+    }
+  },
+  "native_packets": {
+    "shrapnel_damage/__init__.py": "cc79e2127e970719bdcc2a53a005730d11e5b3a98452489955b02511adef9024",
+    "shrapnel_damage/hut_joined.json.gz": "c566fb02a57652f11c26d71e4ed1b1bc8a093b81250efcfcd7f4e21a2eb8e517",
+    "shrapnel_damage/hut_joined.md": "8bc619e7ec04888222d21252a4569fb6a28ee14721dbdcfcd17de230da0e045a",
+    "shrapnel_damage/hut_joined.meta.json": "f5ebb4efbee939e32defbf0d2515f94ba5d2408e533253e8787770f923ca7e02",
+    "shrapnel_damage/hut_joined.py": "9491a13e93abc03af3b7a338ea933f9d362b74f910275cb6496017a28ae43d76",
+    "shrapnel_damage/hut_joined_promotion.json": "d5664bfa4608ad8072c3d47f3184727033a242120edc42a94a64fb4548f876e6",
+    "shrapnel_damage/hut_joined_receipt.json": "6773f79f0251e5cfd1a457994f39fb74d63b41fb7a9069b516e397c14cff1fcb",
+    "shrapnel_damage/hut_joined_test_vectors.json": "1d1bd22fcd06106eaace641d30a454c02ec7288fd3329c0b901bd228e9b40d2a",
+    "shrapnel_damage/hut_joined_test_vectors.meta.json": "e5ebafb02a96da1268e9e3e423e0d5028cf7536edc92deef5de49786b082acb6",
+    "shrapnel_damage/hut_joined_test_vectors.py": "e310c0ebde7f02788a2e7d4821d7f7af8953a62e706a1568145f0517500e619a",
+    "shrapnel_damage/navigation.json.gz": "5145c4fab77dcdef1d3bdc99c9b056c5afca11495a9c14deaf2573ed7e877674",
+    "shrapnel_damage/navigation.md": "295f9a5d809bbf86161fd8950d2fc465145195a956ec1f02f4965b770baeabb5",
+    "shrapnel_damage/navigation.meta.json": "6848f6197cb6e71e2cdd7e35e374379f78c45974302dec79451ac6158315571c",
+    "shrapnel_damage/navigation.py": "c27c82592fe681cee2e9f599751fb1aca0b9bd62bd0c5acd90ef48ce6e5335c2",
+    "shrapnel_damage/navigation_compare.py": "b41d31cf575286437b16c248be0f5e47dd1c6536de875f8c6e60df0593a4427d",
+    "shrapnel_damage/navigation_promotion.json": "51365fd104d30062e72f4a7e77824562268548597ee5234b7985a3f96ee66a8b",
+    "shrapnel_damage/navigation_receipt.json": "6bb843aa6ea9a4ba42e7f9426518849179484a31a9ace683605662769feb9bf3",
+    "shrapnel_damage/navigation_restore.json.gz": "f7256a8c96fb850f90845cca46ef81ed96ce90380d43ca6279c3047fe765c5db",
+    "shrapnel_damage/navigation_restore.meta.json": "24caeef1a12d81dc592fe363f14dda599bd4487788454fd67e40e9cb2abffa09",
+    "shrapnel_damage/navigation_restore.py": "5df2335a7e1adff7d6e06c8c35320d2372dc8c238e5424c625d663b533ce7023",
+    "shrapnel_damage/navigation_restore_promotion.json": "ea7a6daa0cfd36e584b7994ea7a4b065e6df72e1b040c76b61c87b69d5967272",
+    "shrapnel_damage/occupants.json.gz": "dae34d6ac6325a51ea22d7658eac9061042fc09807ab59f5216e7d0d1e3b5f66",
+    "shrapnel_damage/occupants.md": "840a27dcbfc91457b6bbc1ded93e93692a14083823a7167bf36cab1bd52404a1",
+    "shrapnel_damage/occupants.meta.json": "1b8e5527a4ef15e5479307f7c2eb921b808f178c985f1e3c50f454e41b5c30bc",
+    "shrapnel_damage/occupants.py": "031c1a01698f314f4f9398ebc715cb354caeb4e8e96ff0da93f5b3d330000864",
+    "shrapnel_damage/occupants_joined.json.gz": "b3f72c9d9f6b6f47bd937c47609489f89b72aec8bed9a9c9400435c42ac8a3b3",
+    "shrapnel_damage/occupants_joined.meta.json": "e4689b2e64e38f087c50321e8de590b0ea053011fd9e8b29a44eeec78f8df704",
+    "shrapnel_damage/occupants_joined.py": "222666742e93a87573c621336f4c3b18a2ca30a6ff0b74c4877344ba1b570261",
+    "shrapnel_damage/occupants_joined_promotion.json": "b6469e803fd0f7bf9b7f659e2c9583fe6199084fe9def63e1e50860747013056",
+    "shrapnel_damage/occupants_joined_test_vectors.json": "2d709c8f60986c6ddf1c4507a39719056829faf07265bb3adc160496edf56d84",
+    "shrapnel_damage/occupants_joined_test_vectors.meta.json": "ecd5a8dc501c28cdd1b4ff5049f98eff87012025e609aa22f7fd8ba7fa0eb55e",
+    "shrapnel_damage/occupants_joined_test_vectors.py": "1b5e51b661295eb0cd00882919cf43843c8a7d99e849be1d02eda174101d0ec2",
+    "shrapnel_damage/occupants_promotion.json": "f6310661ca8d30bd288d939ec49b1925fd6a984c6fc086f60d931e1140a8922e",
+    "shrapnel_damage/occupants_receipt.json": "4f377af5f29f4589c68fe2bddd64087f77abdfe534d3b1e58e65b99d6494d67f",
+    "shrapnel_damage/occupants_test_vectors.json": "71519e46bd5569a552c3a8ccdc97472dd8f186654be1666534ea0a1f272754b8",
+    "shrapnel_damage/occupants_test_vectors.meta.json": "b20a61133fdf07bde48074ddd9b5b13440baf833f0542c284afbce4e9c457067",
+    "shrapnel_damage/occupants_test_vectors.py": "dba865474bcfc3fe0d89585357e1bcacbf5c457bebdd832214958cb55507553a",
+    "shrapnel_damage/occupants_timer.json": "5822123e0c30aa6cbf2b53ee6db4a8bd7419e58086320a7f91cbac47e1f740a2",
+    "shrapnel_damage/occupants_timer.meta.json": "0bbcfc2cdaafb91096f0e6ba12d335141ae009743d72a0d469cf8b23253e561b",
+    "shrapnel_damage/occupants_timer.py": "7b11fe8ebb1e25da981d517dae93bc8c3ee9ec4f9cca258264e93e408efdfa66",
+    "shrapnel_damage/scalar.json.gz": "6415036158cb47aa67e4451e392ea5b858c468ceed3766630b899d9708788333",
+    "shrapnel_damage/scalar.md": "c45e2e7924b6fecdb273471b52cb212b73cc685874577471d52844e0edaa8a1d",
+    "shrapnel_damage/scalar.meta.json": "5778bb9c298f24f4f82616d910331df54afa7889e41422f55edcd1431244346f",
+    "shrapnel_damage/scalar.py": "5bd901a7b40593e276e8f80d39e496092117ec98d74a8d61a3f77f2e6e69eafa",
+    "shrapnel_damage/scalar_promotion.json": "d0cf4587d92a63f9babc875480666dcb0ea78036b896b943a03d247f42584ec0",
+    "shrapnel_damage/scalar_test_vectors.json": "fc2f4cfb232e9c0e82fa0976b4a3a6782a91ccb956e9b0afb86fd3f1d082b277",
+    "shrapnel_damage/scalar_test_vectors.meta.json": "b6d5e67a50754fba8b729051f70e10db113e04c0f658e7559b09e9c9d11190ab",
+    "shrapnel_damage/scalar_test_vectors.py": "7769bf67453bc0e573b54ba9e9643f6cf32b4873f4f06042c2a1e44ae3246e9a",
+    "anytown_damage/receipt.json": "2666622f367c9d83555060d21b1f9daeaf83b420d78d0b291e68f522180b8013",
+    "anytown_damage/validation.json": "ae017dc6a4e91e06733a7d61f5884d9e9bb9613d2523ffdfbb51b8d7bb158759",
+    "anytown_damage/navigation_receipt.json": "e4d4c275944311b1c7c21163ba51ac5d972c551c8713a068539551db4045d757",
+    "anytown_navigation_restore.meta.json": "8cce21fa5cf22632f017b2fe58be04fa75253ccc4bcc6e60df5d4eb2c2e77fb2",
+    "shrapnel_repair/receipt.json": "d95b9e1351a77e04582be37870ddec71fd08631c28d4f6f5301014573e484d0c"
+  },
+  "ghidra_saved_and_exact_readback": {
+    "ghidra-wood-before.json": "d9865d76577b2a82e8fbca75b38534a5e0351677667bdc959becf288786c28b4",
+    "ghidra-wood-byte-identity.json": "4f6d0f80c7903d79b39bbd749c79f81b938240cb16e559b923ef4bd22411420f",
+    "ghidra-wood-hut-before.json": "2cacc5c92b9860ff4aaf5e4ff80b151c3c680080d7a47f7c09f533763c631160",
+    "ghidra-wood-hut-bytes.json": "87e9db595d0f39f38e9bc538ebf33cf0f01b6b92b075a946953cefb15e74a584",
+    "ghidra-wood-hut-readback.json": "2f3c3696d8fb1271227a6f32c25f96b2c3b34f1864129d81f65d273948687d8a",
+    "ghidra-wood-readback.json": "6710325d621ecd7a23d76b749ec78d50f68d4c1b793b565a8a685e9f8f1beaa2"
+  },
+  "limits": [
+    "Scalar controller substitutes Recalc/occupant/graph sinks; separate joined physical packets execute those native owners.",
+    "Joined actor placement, Drive heads, suspended mission, RNG seeds, frame1000 and game speed4 are supplied boundaries. Native constructors, receivers and cleanup execute; whole native world scheduling and subsequent animation AI/playback are excluded.",
+    "House active units use HouseTracking, not stored EntityStore objects. Original dead RadarCombatFlash writes are retained; read-watch coverage ends at the measured callback return and does not prove global trigger/radar consumers unreachable.",
+    "Hut packet begins at574C20 after the Bomb/Building prefix; Rust C4 route has an integration regression, not new native Bomb-prefix execution.",
+    "Same-frame DieSound/Anim-report order and existing Bounce axis/angle versus quaternion representation remain presentation residuals; no audio-playback equivalence claim.",
+    "Rendering compares production GPU color/depth to retail art; no original full-screen composite. Save/restore compares retained state and native hierarchy rebuild, not original save format/pointer swizzling.",
+    "Both axes have scalar coverage; one physical wooden orientation joins these production consumers."
+  ],
+  "whole_bridge_required_followups": [
+    "FV/HoverMissile Cell target range and pursuit must use retained Cell/WaterSet/raw100 coordinates and the existing native approximate distance owner.",
+    "Tagged event31 needs shared live Tag/Trigger identity, dispatch, timers, actions, detach and persistence.",
+    "Structural BridgeRecord/tileset-priority hut/cursor/fallback branches, raised wood237/238, other physical arrangements and all remaining affected consumers."
+  ],
+  "earlier_failed_attempts": [
+    {
+      "step": "full",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--label",
+        "bridge-wood-final",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 2,
+      "seconds": 0.09836129099858226,
+      "log": "wood-full-invocation-rejected.log",
+      "sha256": "e83529c19c4131ad538ba0a95e42e7c27413a9b1c86d052ca8ca8b3536cc4511",
+      "summary": [],
+      "note": "Wrapper rejected unsupported --label before Cargo started; corrected invocation follows."
+    },
+    {
+      "step": "full",
+      "command": [
+        "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+        "-m",
+        "tools.cargo_run",
+        "--",
+        "test",
+        "-p",
+        "vera20k",
+        "--lib"
+      ],
+      "exit_code": 101,
+      "seconds": 86.07806145799987,
+      "log": "wood-full-v5-failed.log",
+      "sha256": "d664344845a3baf9cafdf48835785047473fa42b96014015850813c932eb82a4",
+      "summary": [
+        "test result: FAILED. 9549 passed; 1 failed; 211 ignored; 0 measured; 0 filtered out; finished in 61.53s"
+      ],
+      "note": "One obsolete runtime-only C4 fixture failed; migrated to existing live Cell/TMP fixture, no production change."
+    }
+  ],
+  "review": {
+    "status": "one_fresh_read_only_critic_completed",
+    "critic": "/root/critic_wood_ground_chain",
+    "base": "d77f60318578f31bee757b3a645de267c2e45ef7",
+    "report": "wood-critic-review.md",
+    "report_sha256": "996b40946fa80d3a2289fc7c5a7fa0f3fff432e787286effa974c548b3558c36",
+    "actionable_findings": 0,
+    "scope": "Frozen pre-main-integration candidate; no wider whole-bridge closure claim."
+  }
+}

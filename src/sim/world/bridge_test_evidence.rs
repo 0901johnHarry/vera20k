@@ -146,14 +146,28 @@ pub(super) fn load_anytown_concrete() -> HeadlessScenario {
     crate::headless_scenario::load(&retail, &map, 0).unwrap()
 }
 
+pub(super) fn load_shrapnel() -> HeadlessScenario {
+    let retail = std::path::PathBuf::from(std::env::var_os("RA2_DIR").unwrap());
+    let map = std::env::var("VERA20K_SHRAPNEL_MAP").unwrap_or_else(|_| "XShrapnel.MAP".to_owned());
+    crate::headless_scenario::load(&retail, &map, 0x0B21_D6E5).unwrap()
+}
+
 pub(super) fn damage_anytown_concrete(scene: &mut HeadlessScenario) -> bool {
+    damage_ordinary_bridge(scene, (87, 54), 416)
+}
+
+pub(super) fn damage_shrapnel_wood(scene: &mut HeadlessScenario) -> bool {
+    damage_ordinary_bridge(scene, (115, 59), 208)
+}
+
+fn damage_ordinary_bridge(scene: &mut HeadlessScenario, point: (u16, u16), z: i32) -> bool {
     let runtime = &mut scene.runtime;
     let event = crate::sim::bridge_state::BridgeDamageEvent {
-        rx: 87,
-        ry: 54,
+        rx: point.0,
+        ry: point.1,
         damage: 1501,
         warhead_ref: runtime.simulation.intern("AP"),
-        impact_z_leptons: 416,
+        impact_z_leptons: z,
         is_ion_cannon: false,
     };
     super::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(
@@ -179,12 +193,35 @@ pub(crate) fn visit_anytown_concrete_stages(mut visit: impl FnMut(&str, &Headles
 }
 
 pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
+    repair_ordinary_bridge(scene, (89, 51), (89, 50));
+    assert_repaired_ground_row(scene, 86..=88, 54, 214..=217);
+}
+
+pub(super) fn repair_shrapnel_wood(scene: &mut HeadlessScenario) {
+    repair_ordinary_bridge(scene, (117, 56), (117, 55));
+    assert_repaired_ground_row(scene, 114..=116, 59, 83..=86);
+}
+
+pub(crate) fn visit_shrapnel_wood_stages(mut visit: impl FnMut(&str, &HeadlessScenario)) {
+    let mut scene = load_shrapnel();
+    visit("loaded", &scene);
+    repair_shrapnel_wood(&mut scene);
+    visit("healthy", &scene);
+    assert!(!damage_shrapnel_wood(&mut scene));
+    visit("damaged", &scene);
+    assert!(damage_shrapnel_wood(&mut scene));
+    visit("collapsed", &scene);
+    repair_shrapnel_wood(&mut scene);
+    visit("repaired", &scene);
+}
+
+fn repair_ordinary_bridge(scene: &mut HeadlessScenario, hut_coord: (u16, u16), start: (u16, u16)) {
     let owner = scene.sim().session.current_house.unwrap();
     let owner_name = scene.sim().resolve(owner).to_owned();
     assert!(
         crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
             scene.sim(),
-            (89, 51)
+            hut_coord
         )
     );
     let runtime = &mut scene.runtime;
@@ -194,7 +231,7 @@ pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
         .values()
         .find_map(|e| {
             (runtime.simulation.resolve(e.type_ref()) == "CABHUT"
-                && (e.position.rx, e.position.ry) == (89, 51))
+                && (e.position.rx, e.position.ry) == hut_coord)
                 .then_some(e.stable_id())
         })
         .unwrap();
@@ -203,8 +240,8 @@ pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
         .spawn_object(
             "ENGINEER",
             &owner_name,
-            89,
-            50,
+            start.0,
+            start.1,
             0,
             &runtime.resources.rules,
             &runtime.resources.height_map,
@@ -239,7 +276,7 @@ pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
         {
             consumed = true;
             eprintln!(
-                "ANYTOWN_ENGINEER consumed frame{}",
+                "BRIDGE_ENGINEER hut{hut_coord:?} consumed frame{}",
                 scene.sim().session.binary_frame - 1
             );
             break;
@@ -252,23 +289,66 @@ pub(super) fn repair_anytown_concrete(scene: &mut HeadlessScenario) {
     assert!(
         !crate::sim::world::bridge_orchestrator::bridge_hut_has_collapsed_span(
             scene.sim(),
-            (89, 51)
+            hut_coord
         )
     );
-    for x in 86..=88 {
+}
+
+fn assert_repaired_ground_row(
+    scene: &HeadlessScenario,
+    width: std::ops::RangeInclusive<u16>,
+    y: u16,
+    overlays: std::ops::RangeInclusive<u8>,
+) {
+    for x in width {
         let c = scene
             .sim()
             .resolved_terrain
             .as_ref()
             .unwrap()
-            .cell(x, 54)
+            .cell(x, y)
             .unwrap();
         assert!(
             c.bridge_facts
                 .overlay_id
-                .is_some_and(|id| (214..=217).contains(&id))
+                .is_some_and(|id| overlays.contains(&id))
         );
         assert_eq!(c.yr_cell_land_type, LandType::Road.as_index());
         assert!(!c.bridge_facts.has_structural_bridge());
     }
+}
+
+pub(super) fn assert_navigation_fields_equal(actual: &Value, expected: &Value, phase: &str) {
+    let mismatched: Vec<_> = expected
+        .as_object()
+        .unwrap()
+        .keys()
+        .filter(|key| actual[*key] != expected[*key])
+        .collect();
+    assert!(
+        mismatched.is_empty(),
+        "{phase} retained navigation fields differ: {mismatched:?}"
+    );
+}
+
+pub(super) fn rebuilt_graphs(sim: &Simulation) -> Value {
+    crate::sim::world::bridge_test_evidence::navigation_snapshot(sim, "restored", [])["graphs"]
+        .take()
+}
+
+pub(super) fn navigation_authority(
+    sim: &Simulation,
+    points: impl IntoIterator<Item = (u16, u16)>,
+) -> Value {
+    let mut result =
+        crate::sim::world::bridge_test_evidence::navigation_snapshot(sim, "saved", points);
+    // Map resize reconstructs the shared dummy; it isn't saved cell authority.
+    result.as_object_mut().unwrap().remove("dummy");
+    result.as_object_mut().unwrap().remove("origin");
+    // Native successful Load_Game_Content67E8CD calls581F50: it clears all
+    // three graph record vectors and rebuilds via581F90 (IDs reset58200F).
+    // Live incremental graph IDs/history do not survive load; retained Cell
+    // and base-zone facts above do. Compare separately rebuilt graphs/futures.
+    result.as_object_mut().unwrap().remove("graphs");
+    result
 }

@@ -108,9 +108,9 @@ outside that path keep the whole-bridge goal open:
 - Cursor tileset precedence and the structural BridgeRecord branch still need
   their complete owner. Huts beside structural or mixed tile/overlay families
   can choose the wrong cursor or repair admission.
-- The structural hut fallback and remaining deferred wooden damage paths are
-  separate mechanisms. Their map geometry, collapse and lifecycle effects need
-  their own native comparisons and production closure.
+- The structural hut fallback remains a separate required mechanism. Ordinary
+  wooden damage now shares the synchronous owner; its evidence and remaining
+  boundaries are in [the wooden chain](bridge-wood-ground-damage.md).
 - The physical witness covers one concrete orientation. Both scalar axes are
   executed, but physical loading, geometry and connected consumers of the other
   authored bridge arrangements remain part of the whole-bridge audit.

@@ -74,7 +74,7 @@
     "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
     "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
     "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
-    "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "5f510f31b235acd1749aee6da2f512fbf3381892355b45fd7c5b9bccd472d347",
+    "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
     "tools/spatial_oracle/shrapnel_repair/validate_packet.py": "52ec7ec8d9b126b5d4bde9055b18618165240c39d27420c56d458fc7cc5260d4"
   },
   "inputs": "Existing retail_manifest roots; separate RA2_DIR archive_roots belong to navigation and are not added to the hut payload.",
@@ -89,7 +89,7 @@
   "owned": {
     "hut.json.gz": "624dface5dfb18ce8f517879c0dd1ced7b5cb24881cdbb2702b31899aa62b06f",
     "hut.md": "114367c3c27e04fb79a2f12dbbbeef4292aef76fcb3264df8b8b18b24c4fa23c",
-    "hut.meta.json": "218f7bdd8d1491062fc9bdc8d5610334857d7b9cd6e1c6c346b8b127f33b56fb",
+    "hut.meta.json": "278f1c24c69b977765a0b007e50c167dbc01e2a0b1eae3509b0cf56b786f4eeb",
     "hut.py": "000950121c307d77867148f5dd1f023b7dcc0236022d142117c82fe923f98435",
     "hut_callsite_bytes.json": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
     "hut_promotion.json": "8519a2f8335746a09d83bfdf11a35d80cd80d7d0d824d6551f44c864feb7a98f",
@@ -100,6 +100,40 @@
     "hut_test_vectors.py": "d4bf8a42414b011a27ab778af251bf00b21b1ed80c29ea868cfc6a835db23cf5"
   },
   "published_payload_sha256": "b6a0af36a3d5b945b380e3bb60f805aa632097f70267d56eb711e10970ad9765",
+  "resident_selection_compatibility_refresh": {
+    "all_31_frozen_payload_inputs_and_evidence_byte_identical": true,
+    "change": "ResidentRepair accepts an optional physical resident_cells selection for the joined Shrapnel hut witness. Omission preserves the original nine cells and native binding/Recalc order. No Anytown owner or gameplay body changed.",
+    "historical_bridge_concrete_validation_unchanged": true,
+    "native_replays": [
+      {
+        "check_log_sha256": "6c90ea7ca1d29926b4c91b2918cd3d2cac6656bfbdb00697676539e42383275a",
+        "module": "tools.spatial_oracle.anytown_damage.hut",
+        "native_gzip_byte_identical": true,
+        "native_gzip_sha256": "624dface5dfb18ce8f517879c0dd1ced7b5cb24881cdbb2702b31899aa62b06f",
+        "write_and_independent_check_exit_codes": [
+          0,
+          0
+        ],
+        "write_log_sha256": "b125f196cf8547a11821627325c6490d3fc2743aa65b8b9d9a016e44a172382c"
+      },
+      {
+        "check_log_sha256": "4c667b5efceb4d801adcf69486e73b2bdee14a894be62e94368d5d56fd1a8c4d",
+        "module": "tools.spatial_oracle.anytown_damage.hut_cursor",
+        "native_gzip_byte_identical": true,
+        "native_gzip_sha256": "6b98261d5685e82bdd103cbfcd1b000dda37cf534bf172d0620fe96fa31d9aa4",
+        "write_and_independent_check_exit_codes": [
+          0,
+          0
+        ],
+        "write_log_sha256": "fb33ff574009231b18ca204066357906dd4d0755876d7d94f99dd3aed19caebf"
+      }
+    ],
+    "new_sha256": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
+    "old_sha256": "5f510f31b235acd1749aee6da2f512fbf3381892355b45fd7c5b9bccd472d347",
+    "other_import_pins": "Navigation and mission import the changed module but do not call the extended ResidentRepair constructor. Their import hashes are a compatibility refresh; this record claims no new navigation or mission execution.",
+    "path": "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py",
+    "recorded_at_utc": "2026-09-27T22:44:37.139783+00:00"
+  },
   "rust_projection": {
     "canonical_payload_sha256": "964f5f63d29d890cb985eb89faebf59adfb153e3ee2b09473078f7191d1ffb92",
     "file": "hut_test_vectors.json",

@@ -3,6 +3,7 @@
 use super::*;
 use crate::map::cell_index::NativeCellIdentity;
 use crate::sim::bridge_state::damage_dispatch::{self, CellFields, DamageHost};
+use crate::sim::bridge_state::ramp_repair::Family;
 
 struct LiveDamage<'a> {
     sim: &'a mut Simulation,
@@ -30,17 +31,29 @@ impl DamageHost for LiveDamage<'_> {
 
     fn fields(&self, cell: Self::Cell) -> CellFields {
         let terrain = self.terrain();
-        // Until the remaining direct/head writers migrate to scalar CellClass
-        // publication, BridgeRuntimeState owns their live overlay identity.
+        // Ordinary overlay writes are live CellClass authority. Structural
+        // head/state-machine writers still publish their retained runtime state
+        // through the existing adapter after returning.
         let overlay = match cell {
             NativeCellIdentity::Real(index) => {
                 let cell = &terrain.cells()[index];
-                self.sim
-                    .bridge_state
-                    .as_ref()
-                    .and_then(|state| state.cell(cell.rx, cell.ry))
-                    .map(|cell| cell.overlay_byte)
-                    .or(cell.bridge_facts.overlay_id)
+                let overlay = cell.bridge_facts.overlay_id;
+                if overlay.is_some_and(|overlay| {
+                    crate::sim::bridge_state::ordinary::member(i32::from(overlay), Family::Low)
+                        || crate::sim::bridge_state::ordinary::member(
+                            i32::from(overlay),
+                            Family::High,
+                        )
+                }) {
+                    overlay
+                } else {
+                    self.sim
+                        .bridge_state
+                        .as_ref()
+                        .and_then(|state| state.cell(cell.rx, cell.ry))
+                        .map(|cell| cell.overlay_byte)
+                        .or(overlay)
+                }
             }
             NativeCellIdentity::Dummy => terrain.shared_cell_dummy().overlay_fields().0,
         };
@@ -95,13 +108,19 @@ impl DamageHost for LiveDamage<'_> {
         } else {
             path
         };
-        if matches!(path, DispatchPath::HighDirect)
+        if matches!(path, DispatchPath::LowDirect | DispatchPath::HighDirect)
             && let Some((rules, registry)) = self.publication
         {
-            let result = live_publication::damage_concrete(self.sim, rules, registry, input)
-                .unwrap_or_else(|error| {
-                    panic!("concrete bridge publication at {input:?}: {error}")
-                });
+            let family = if path == DispatchPath::LowDirect {
+                Family::Low
+            } else {
+                Family::High
+            };
+            let result =
+                live_publication::damage_ordinary(self.sim, rules, registry, input, family)
+                    .unwrap_or_else(|error| {
+                        panic!("ordinary {family:?} bridge publication at {input:?}: {error}")
+                    });
             self.collapsed |= result.collapsed;
             return result.returned;
         }
@@ -126,11 +145,8 @@ impl DamageHost for LiveDamage<'_> {
                 DispatchPath::LowStateMachine => {
                     state.advance_damage_state(self.event.rx, self.event.ry, false, terrain)
                 }
-                DispatchPath::LowDirect => {
-                    state.destroy_bridge_low(self.event.rx, self.event.ry, terrain)
-                }
-                DispatchPath::HighDirect => {
-                    panic!("concrete bridge damage requires the live rules/publication context")
+                DispatchPath::LowDirect | DispatchPath::HighDirect => {
+                    panic!("ordinary bridge damage requires the live rules/publication context")
                 }
             }
         };
