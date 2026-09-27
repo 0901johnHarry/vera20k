@@ -69,10 +69,7 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             40 => vec![env(
                 owner,
                 tick,
-                Command::CancelProductionByType {
-                    owner,
-                    type_id: tank,
-                },
+                Command::CancelProductionByType { type_id: tank },
             )],
             _ => Vec::new(),
         };
@@ -146,7 +143,6 @@ fn queue(owner: InternedId, type_id: InternedId, tick: u64) -> CommandEnvelope {
         owner,
         tick,
         Command::QueueProduction {
-            owner,
             type_id,
             mode: QueueMode::Append,
         },
@@ -182,7 +178,6 @@ fn rich_command_stream(sim: &Simulation) -> Vec<CommandEnvelope> {
             am,
             8,
             Command::TogglePauseProduction {
-                owner: am,
                 category: ProductionCategory::Vehicle,
             },
         ),
@@ -190,19 +185,11 @@ fn rich_command_stream(sim: &Simulation) -> Vec<CommandEnvelope> {
             am,
             25,
             Command::TogglePauseProduction {
-                owner: am,
                 category: ProductionCategory::Vehicle,
             },
         ),
         // Alliance cancels its active infantry mid-build (partial refund).
-        env(
-            al,
-            12,
-            Command::CancelProductionByType {
-                owner: al,
-                type_id: e1,
-            },
-        ),
+        env(al, 12, Command::CancelProductionByType { type_id: e1 }),
     ]
 }
 
@@ -446,10 +433,7 @@ fn economy_conservation_through_cancel_refund() {
         env(
             am,
             CANCEL_TICK,
-            Command::CancelProductionByType {
-                owner: am,
-                type_id: mtnk,
-            },
+            Command::CancelProductionByType { type_id: mtnk },
         ),
     ]);
 

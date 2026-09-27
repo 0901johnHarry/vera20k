@@ -176,7 +176,7 @@ pub(super) enum HashFeature {
     /// Prism forwarding: a building's support count (`BuildingClass+0x664`),
     /// a bullet's damage multiplier (`BulletClass+0x150`) and each House's
     /// building list (House+0x68). Earlier schemas fold none of them.
-    PrismSupport = 222,
+    PrismSupport = 223,
 }
 
 impl HashSchema {

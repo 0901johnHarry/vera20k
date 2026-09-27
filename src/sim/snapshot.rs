@@ -640,10 +640,12 @@ use crate::sim::world::Simulation;
 // `+0x6DD` set, and combat serves a building's Mission_Attack request instead
 // of deciding its shot. Layout is unchanged, but a 220 save's buildings hold
 // no mission and would idle on a MissionClass stub, so reject it.
-// 221 -> 222: Prism forwarding. A building's delayed fire carries a support
+// 221 -> 222: pending production commands carry no house of their own; they
+// act on their envelope's house. Dropping the fields changes the bincode schema.
+// 222 -> 223: Prism forwarding. A building's delayed fire carries a support
 // beam mode, buildings keep a support count, bullets a damage multiplier and
-// houses their building list (House+0x68), which a 221 save never filled.
-const SNAPSHOT_VERSION: u32 = 222;
+// houses their building list (House+0x68), which a 222 save never filled.
+const SNAPSHOT_VERSION: u32 = 223;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3589,8 +3591,9 @@ mod tests {
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
         // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
         // 220 -> 221: buildings' Guard and Attack missions.
-        // 221 -> 222: Prism forwarding.
-        assert_eq!(super::SNAPSHOT_VERSION, 222);
+        // 221 -> 222: production commands take their envelope's house.
+        // 222 -> 223: Prism forwarding.
+        assert_eq!(super::SNAPSHOT_VERSION, 223);
     }
 
     #[test]

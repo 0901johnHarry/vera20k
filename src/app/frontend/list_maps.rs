@@ -56,7 +56,8 @@ pub(crate) struct LoadedMap {
     pub source: LoadedMapSource,
 }
 
-/// List available maps in the RA2 directory for the main-menu map selector.
+/// List the maps in the RA2 directory: the Skirmish scenario records' fallback
+/// when the asset-backed scan finds none.
 ///
 /// Includes `.mmx`, `.map`, and `.mpr` files (case-insensitive), with light
 /// metadata extracted from `[Basic]` when available.

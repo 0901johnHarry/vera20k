@@ -119,6 +119,12 @@ Trace their use before changes. Untangle affected ownership, consolidate duplica
 finish required migrations and remove obsolete code/state. Preserve intentional
 differences, validate affected paths and keep cleanup within task scope.
 
+Refactoring you find but cannot finish in the current change goes to a GitHub issue
+labeled `refactor`. Search open issues first and comment on a match instead of filing
+a duplicate. Say where it is, why it hurts and what work it slowed down, and comment
+again each time it slows work down. Pick refactoring work by that recorded cost and
+close the issue from the PR that fixes it.
+
 Simulation state and shared decisions have one authoritative owner. Before adding
 state or decision logic, find existing writers and name the owner in the PR. Extend
 or fix that owner instead of introducing competing state or duplicated decision
@@ -168,7 +174,7 @@ and validation, before opening the PR. The critic is free to inspect original ev
 and challenge scope/design. It identifies implementation defects and useful refactoring
 opportunities, explaining their impact and risks. The owner fixes confirmed defects,
 rejects false positives with evidence and may implement worthwhile in-scope refactors,
-validating all changes. Unrelated opportunities become follow-ups. Each validated,
+validating all changes. Unrelated opportunities become `refactor` issues. Each validated,
 dependency-coherent mechanism gets its own PR and its own single critic pass; do not
 hold validated mechanisms back to batch them into one review. Do not run critics per
 implementation increment within a mechanism or repeat reviews after fixes or revisions

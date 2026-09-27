@@ -959,7 +959,9 @@ fn the_game_starts_with_the_credits_the_slider_reads_back() {
     };
     shell.starting_credits = 7549;
     assert_eq!(shell.credits(), 7500);
-    assert_eq!(launch_settings(&shell).starting_credits, 7500);
+    let maps = [test_map_entry("first.mmx")];
+    let session = launch_session(&shell, &maps, &stock_skirmish_modes()).expect("session");
+    assert_eq!(session.options.starting_credits, 7500);
 }
 
 #[test]
@@ -1062,15 +1064,6 @@ fn trackbar_repeated_drag_same_value_is_silent() {
 fn game_speed_visual_position_inverts_stored_value() {
     assert_eq!(game_speed_visual_position(1), 5);
     assert_eq!(game_speed_from_visual_position(5), 1);
-}
-
-#[test]
-fn launch_settings_preserves_current_load_contract() {
-    let shell = SkirmishShellState::default();
-    let settings = launch_settings(&shell);
-    assert_eq!(settings.selected_map_idx, shell.selected_map_idx);
-    assert_eq!(settings.starting_credits, shell.starting_credits);
-    assert_eq!(settings.short_game, shell.short_game);
 }
 
 #[test]

@@ -459,12 +459,7 @@ fn place_ready_buildings(
             commands.push(CommandEnvelope::new(
                 owner_id,
                 execute_tick,
-                Command::PlaceReadyBuilding {
-                    owner: owner_id,
-                    type_id,
-                    rx,
-                    ry,
-                },
+                Command::PlaceReadyBuilding { type_id, rx, ry },
             ));
         }
     }
@@ -791,7 +786,6 @@ fn make_queue_cmd(owner: InternedId, type_id: InternedId, execute_tick: u64) -> 
         owner,
         execute_tick,
         Command::QueueProduction {
-            owner,
             type_id,
             mode: QueueMode::Append,
         },
@@ -1100,13 +1094,8 @@ mod tests {
         let (rx, ry) = match commands.as_slice() {
             [
                 CommandEnvelope {
-                    payload:
-                        Command::PlaceReadyBuilding {
-                            owner: command_owner,
-                            type_id,
-                            rx,
-                            ry,
-                        },
+                    owner: command_owner,
+                    payload: Command::PlaceReadyBuilding { type_id, rx, ry },
                     ..
                 },
             ] => {
@@ -1212,10 +1201,9 @@ mod tests {
         assert!(matches!(
             cmd.payload,
             Command::QueueProduction {
-                owner: cmd_owner,
                 type_id: cmd_type,
                 ..
-            } if cmd_owner == owner_id && cmd_type == type_id
+            } if cmd_type == type_id
         ));
     }
 

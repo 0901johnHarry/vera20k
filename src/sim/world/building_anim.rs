@@ -390,7 +390,6 @@ mod tests {
             owner,
             1,
             Command::PlaceReadyBuilding {
-                owner,
                 type_id: refinery,
                 rx: 4,
                 ry: 5,
@@ -400,7 +399,6 @@ mod tests {
             owner,
             2,
             Command::PlaceReadyBuilding {
-                owner,
                 type_id: wall,
                 rx: 6,
                 ry: 5,

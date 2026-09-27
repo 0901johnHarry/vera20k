@@ -24,7 +24,7 @@ pub use hit_test::{
     hovered_choose_map_modal_control, hovered_shell_control, status_help_key_for_choose_map_hover,
     status_help_key_for_hover, status_help_key_for_random_map_setup,
 };
-pub use launch::{launch_session, launch_settings, pack_launch_session_without_start_validation};
+pub use launch::{launch_session, pack_launch_session_without_start_validation};
 
 pub use choose_map::{
     ChooseMapListPress, ChooseMapModalState, ChooseMapSelection, EjectPrompt, EjectPromptButton,

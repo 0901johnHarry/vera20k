@@ -651,7 +651,7 @@ mod tests {
         let mut authority = MatchStartup::default();
         authority.begin(Some(correlation));
         authority
-            .acknowledge(startup, Some(&initial_simulation), true, false)
+            .acknowledge(startup, Some(&initial_simulation), true)
             .unwrap();
         authority
     }

@@ -557,23 +557,6 @@ impl App {
                     );
                 }
             }
-            GameScreen::SpawnPick => {
-                crate::app::presentation::spawn_pick::render_spawn_pick(
-                    state,
-                    &mut encoder,
-                    &output.texture,
-                    &view,
-                )?;
-                state.renderer.egui.begin_frame(&state.platform.window);
-                crate::app::presentation::spawn_pick::draw_spawn_pick_overlay(&state.renderer.egui.ctx.clone(), state);
-                state.renderer.egui.end_frame_and_render(
-                    &state.renderer.gpu,
-                    &mut encoder,
-                    &view,
-                    &state.platform.window,
-                    state.use_software_cursor(),
-                );
-            }
         }
 
         let entry_sequence_identity = match shell_capture.as_deref_mut() {

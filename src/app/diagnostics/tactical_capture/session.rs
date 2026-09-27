@@ -270,10 +270,7 @@ impl TacticalCaptureSession {
         state.frontend.shell_route = crate::app::shell_route::ShellRoute::MainMenu;
         state.frontend.shell_first_paint_slide = None;
         state.frontend.skirmish_preview_texture = None;
-        let request = crate::app::loading::pump::LoadingRequest::accepted_skirmish(
-            startup,
-            state.frontend.skirmish_settings.clone(),
-        );
+        let request = crate::app::loading::pump::LoadingRequest::accepted_skirmish(startup);
         crate::app::loading::pump::begin_loading(state, request);
         state.match_state.input.zoom_level = 1.0;
         state.match_state.input.zoom_target = 1.0;
@@ -346,13 +343,13 @@ impl TacticalCaptureSession {
                 type_id,
                 ..
             }) => {
-                let (owner_id, type_ref) = {
+                let type_ref = {
                     let sim = state
                         .match_state.sim_runtime
                         .as_mut()
                         .map(|rt| &mut rt.simulation)
                         .context("queue action requires live simulation")?;
-                    (sim.interner.intern(&owner), sim.interner.intern(&type_id))
+                    sim.interner.intern(&type_id)
                 };
                 self.schedule_action(
                     state,
@@ -360,7 +357,6 @@ impl TacticalCaptureSession {
                     observation.tick,
                     &owner,
                     Command::QueueProduction {
-                        owner: owner_id,
                         type_id: type_ref,
                         mode: QueueMode::Append,
                     },
@@ -373,16 +369,13 @@ impl TacticalCaptureSession {
                 choice,
                 ..
             }) => {
-                let (owner_id, type_ref) = {
+                let type_ref = {
                     let sim = state
                         .match_state.sim_runtime
                         .as_mut()
                         .map(|rt| &mut rt.simulation)
                         .context("placement action requires live simulation")?;
-                    (
-                        sim.interner.intern(&owner),
-                        sim.interner.intern(&choice.type_id),
-                    )
+                    sim.interner.intern(&choice.type_id)
                 };
                 self.schedule_action(
                     state,
@@ -390,7 +383,6 @@ impl TacticalCaptureSession {
                     observation.tick,
                     &owner,
                     Command::PlaceReadyBuilding {
-                        owner: owner_id,
                         type_id: type_ref,
                         rx: choice.cell.0,
                         ry: choice.cell.1,

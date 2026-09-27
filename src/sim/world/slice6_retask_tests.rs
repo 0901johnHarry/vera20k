@@ -502,14 +502,14 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD7C6_B3FA_0CBC_464
 // composition only, as no rally is set here. Before(220) folds their empty
 // values and reproduces the prior current pin; every earlier projection,
 // per-tick replay and the RNG receipts are unchanged.
-// Schema222 adds Prism forwarding's state: each building's support count
+// Schema223 adds Prism forwarding's state: each building's support count
 // (`+0x664`, zero here), each live bullet's damage multiplier (`+0x150`,
 // Construct's 256 here) and each House's building list (House+0x68, now
 // appended at Unlimbo; only the Prism walk reads it, and this fixture has no
-// Prism tower). Before(222) reproduces the prior current pin and every earlier
+// Prism tower). Before(223) reproduces the prior current pin and every earlier
 // projection, per-tick replay and RNG receipt is unchanged: composition only.
 const SLICE6_BASELINE_HASH: u64 = 0x5D95_D299_C9C6_2D16;
-const SLICE6_BASELINE_HASH_PRE_PRISM_SUPPORT_V221: u64 = 0x498E_F189_907F_B2F2;
+const SLICE6_BASELINE_HASH_PRE_PRISM_SUPPORT_V223: u64 = 0x498E_F189_907F_B2F2;
 const SLICE6_BASELINE_HASH_PRE_RETIRED_RALLY_V220: u64 = 0xE8CC_96D3_473B_D3FB;
 const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xBC54_5E9B_173C_AEC2;
 const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2A32_AF12_7767_94D1;
@@ -830,9 +830,9 @@ fn replay_hash_stable_through_slice6() {
         "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
-        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(222)),
-        SLICE6_BASELINE_HASH_PRE_PRISM_SUPPORT_V221,
-        "schema222 only adds the Prism support folds to this fixture's hash"
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(223)),
+        SLICE6_BASELINE_HASH_PRE_PRISM_SUPPORT_V223,
+        "schema223 only adds the Prism support folds to this fixture's hash"
     );
     assert_eq!(
         hash, SLICE6_BASELINE_HASH,
