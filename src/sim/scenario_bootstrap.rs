@@ -2459,48 +2459,6 @@ impl Simulation {
     }
 }
 
-impl Simulation {
-    /// Register an AI player for every playable roster house except the local
-    /// owner (F10 boundary method: the app names the local owner, sim owns
-    /// the writes). Neutral/civilian/special houses never receive AI.
-    pub(crate) fn register_ai_players_from_roster(
-        &mut self,
-        house_roster: &HouseRoster,
-        local_owner: &str,
-    ) {
-        use crate::sim::ai::AiPlayerState;
-
-        for house in &house_roster.houses {
-            let up = house.name.to_ascii_uppercase();
-            if matches!(
-                up.as_str(),
-                "NEUTRAL" | "SPECIAL" | "CIVILIAN" | "GOODGUY" | "BADGUY" | "JP"
-            ) {
-                continue;
-            }
-            if house.name.eq_ignore_ascii_case(local_owner) {
-                continue;
-            }
-            self.ai_players
-                .push(AiPlayerState::new(self.interner.intern(&house.name)));
-            log::info!("AI player registered: {}", house.name);
-        }
-    }
-
-    /// Mark the named house human-controlled (F10 boundary method). Returns
-    /// false when the owner is not interned or owns no house.
-    pub(crate) fn mark_house_human(&mut self, owner: &str) -> bool {
-        let Some(owner_id) = self.interner.get(owner) else {
-            return false;
-        };
-        let Some(house) = self.houses.get_mut(&owner_id) else {
-            return false;
-        };
-        house.is_human = true;
-        true
-    }
-}
-
 /// Campaign68ACAA chooses Basic.Player with a 20-byte ReadString buffer,
 /// byte-exact House name lookup50C170, and index0 fallback on a miss.
 /// Evidence: docs/research/PHASE3_CURRENT_HOUSE_IDENTITY_GHIDRA_REPORT.md.

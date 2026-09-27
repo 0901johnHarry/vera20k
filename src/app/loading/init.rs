@@ -1457,9 +1457,6 @@ pub struct ScenarioLoadInputs {
     pub initial_local_owner: Option<String>,
     /// Keep full map visibility for the empty-map sandbox opening.
     pub sandbox_full_visibility: bool,
-    /// True when MCV seeding was deferred for spawn-pick phase.
-    /// The map has 2+ multiplayer start waypoints and the player should pick one.
-    pub spawn_pick_pending: bool,
     /// World point the camera should be centred on, in the frame
     /// `terrain::iso_to_screen` produces. Converted to a camera top-left by the
     /// transition, which knows the scaled sidebar width and the live zoom.
@@ -2432,7 +2429,6 @@ pub(crate) fn load_map_from_initial(
     initial: MapLoadInitial,
     startup: LoadingStartup,
     fresh_scenario_context: FreshScenarioLoadContextDescriptor,
-    _skirmish_settings: &crate::ui::main_menu::SkirmishSettings,
     theater_cache_mismatch: bool,
     runtime_color_scheme_count: usize,
     native_rules_owner: &mut crate::rules::process_owner::NativeRulesProcessOwner,
@@ -3128,45 +3124,40 @@ pub(crate) fn load_map_from_initial(
         }
     }
 
-    // SpawnPick phase is disabled — MCV always spawns directly at the chosen position.
-    let spawn_pick_pending: bool = false;
-
     let mut initial_local_owner: Option<String> = None;
-    if !spawn_pick_pending {
-        if let (Some(sim), Some(ruleset)) = (&mut simulation, rules.as_ref()) {
-            let result = apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
-                sim,
-                &map_data,
-                &house_roster,
-                ruleset,
-                &height_map,
-                &resolved_terrain,
-                &match_launch_descriptor,
-                &overlay_registry,
-                &scenario_prefix_projection,
-            );
-            initial_local_owner = result.local_owner;
-            let should_rebuild_entity_atlases = result.spawned_mcvs > 0;
+    if let (Some(sim), Some(ruleset)) = (&mut simulation, rules.as_ref()) {
+        let result = apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
+            sim,
+            &map_data,
+            &house_roster,
+            ruleset,
+            &height_map,
+            &resolved_terrain,
+            &match_launch_descriptor,
+            &overlay_registry,
+            &scenario_prefix_projection,
+        );
+        initial_local_owner = result.local_owner;
+        let should_rebuild_entity_atlases = result.spawned_mcvs > 0;
 
-            if should_rebuild_entity_atlases {
-                let (new_unit_atlas, new_sprite_atlas, new_palette_set) = build_entity_atlases(
-                    sim,
-                    &asset_manager,
-                    gpu,
-                    batch,
-                    theater_ext,
-                    &map_data.header.theater,
-                    rules.as_ref(),
-                    art.as_ref(),
-                    &overlay_registry,
-                    &house_color_map,
-                    unit_palette.as_ref(),
-                    overlay_iso_palette.as_ref(),
-                );
-                unit_atlas = new_unit_atlas;
-                sprite_atlas = new_sprite_atlas;
-                palette_set = new_palette_set;
-            }
+        if should_rebuild_entity_atlases {
+            let (new_unit_atlas, new_sprite_atlas, new_palette_set) = build_entity_atlases(
+                sim,
+                &asset_manager,
+                gpu,
+                batch,
+                theater_ext,
+                &map_data.header.theater,
+                rules.as_ref(),
+                art.as_ref(),
+                &overlay_registry,
+                &house_color_map,
+                unit_palette.as_ref(),
+                overlay_iso_palette.as_ref(),
+            );
+            unit_atlas = new_unit_atlas;
+            sprite_atlas = new_sprite_atlas;
+            palette_set = new_palette_set;
         }
     }
 
@@ -3461,7 +3452,6 @@ pub(crate) fn load_map_from_initial(
             theater_name,
             theater_ext: theater_ext.to_string(),
             sandbox_full_visibility: false,
-            spawn_pick_pending,
             initial_local_owner,
             camera_anchor_x,
             camera_anchor_y,

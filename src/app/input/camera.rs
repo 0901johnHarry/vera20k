@@ -425,8 +425,8 @@ pub(crate) fn recall_view_bookmark(state: &mut AppState, slot: usize) {
 }
 
 /// Seed all four bookmarks with the cell the view is currently centred on.
-/// Called from the map-load and spawn-pick paths, which are where gamemd's
-/// scenario reader fills the four slots with the opening view.
+/// Called from the map-load path, which is where gamemd's scenario reader
+/// fills the four slots with the opening view.
 pub(crate) fn seed_view_bookmarks_from_current_view(state: &mut AppState) {
     let (rx, ry) = tactical_centre_cell(state);
     state.match_state.input.view_bookmarks.seed_all(rx, ry);

@@ -19,9 +19,7 @@ pub(super) fn render_dimensions(
 ) -> (u32, u32) {
     match screen {
         GameScreen::MainMenu | GameScreen::MissionResult { .. } => window,
-        GameScreen::Loading | GameScreen::SpawnPick | GameScreen::InGame => {
-            tactical_source.unwrap_or(window)
-        }
+        GameScreen::Loading | GameScreen::InGame => tactical_source.unwrap_or(window),
     }
 }
 
@@ -42,11 +40,7 @@ mod tests {
         ] {
             assert_eq!(render_dimensions(&screen, window, Some(source)), window);
         }
-        for screen in [
-            GameScreen::Loading,
-            GameScreen::SpawnPick,
-            GameScreen::InGame,
-        ] {
+        for screen in [GameScreen::Loading, GameScreen::InGame] {
             assert_eq!(render_dimensions(&screen, window, Some(source)), source);
             assert_eq!(render_dimensions(&screen, window, None), window);
         }

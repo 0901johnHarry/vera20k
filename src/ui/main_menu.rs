@@ -1,26 +1,8 @@
-//! Shared skirmish settings, startup errors and development loading presentation.
+//! Shared skirmish country and start choices, startup errors and development
+//! loading presentation.
 //! Normal match setup belongs to the retail shell in `skirmish_shell`.
 
 use crate::ui::client_theme;
-
-/// Player's chosen faction side for skirmish games.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SkirmishSide {
-    #[default]
-    Allied,
-    Soviet,
-}
-
-impl SkirmishSide {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Allied => "Allied",
-            Self::Soviet => "Soviet",
-        }
-    }
-
-    pub const ALL: [SkirmishSide; 2] = [Self::Allied, Self::Soviet];
-}
 
 /// Individual country selection for skirmish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,17 +49,6 @@ impl SkirmishCountry {
         }
     }
 
-    pub fn side(self) -> SkirmishSide {
-        match self {
-            Self::America | Self::Korea | Self::France | Self::Germany | Self::GreatBritain => {
-                SkirmishSide::Allied
-            }
-            Self::Libya | Self::Iraq | Self::Cuba | Self::Russia | Self::Yuri => {
-                SkirmishSide::Soviet
-            }
-        }
-    }
-
     pub fn country_name(self) -> &'static str {
         match self {
             Self::America => "Americans",
@@ -97,43 +68,10 @@ impl SkirmishCountry {
 /// Player's chosen start position on the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartPosition {
-    /// Automatic; let the game route through spawn picking.
+    /// No start reserved; the launch assigns one (the shell's Random entry).
     Auto,
     /// Specific waypoint index.
     Position(u8),
-}
-
-impl Default for StartPosition {
-    fn default() -> Self {
-        StartPosition::Position(0)
-    }
-}
-
-/// All configurable skirmish options, set in the main menu before launch.
-#[derive(Debug, Clone)]
-pub struct SkirmishSettings {
-    pub selected_map_idx: usize,
-    pub player_country: SkirmishCountry,
-    pub ai_country: SkirmishCountry,
-    pub starting_credits: i32,
-    pub start_position: StartPosition,
-    pub short_game: bool,
-    /// Allow mouse-wheel zoom in-game (zoom in/out the battlefield).
-    pub zoom_enabled: bool,
-}
-
-impl Default for SkirmishSettings {
-    fn default() -> Self {
-        Self {
-            selected_map_idx: 0,
-            player_country: SkirmishCountry::default(),
-            ai_country: SkirmishCountry::Russia,
-            starting_credits: 10_000,
-            start_position: StartPosition::default(),
-            short_game: true,
-            zoom_enabled: true,
-        }
-    }
 }
 
 /// Display an actionable startup failure. This surface cannot launch a match.

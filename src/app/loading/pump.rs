@@ -43,7 +43,6 @@ use crate::rules::house_colors::{HouseColorIndex, HouseColorRamps};
 use crate::sim::scenario_bootstrap::StockOfflinePrefixProjection;
 use crate::skirmish_launch::{LaunchCountry, SkirmishLaunchSession};
 use crate::ui::game_screen::GameScreen;
-use crate::ui::main_menu::SkirmishSettings;
 use std::path::{Path, PathBuf};
 
 const STANDARD_SKIRMISH_PROGRESS_MAX: f64 = 100.0;
@@ -254,26 +253,20 @@ pub(crate) struct LoadingRequest {
     /// Setup-generated preview retained only as a loading-composition fallback.
     /// It never supplies gameplay map data, RNG continuation, or constructors.
     random_map_preview: Option<crate::map::rmg::GeneratedMap>,
-    fallback_skirmish_settings: SkirmishSettings,
 }
 
 impl LoadingRequest {
-    pub(crate) fn accepted_skirmish(
-        startup: PreparedMatchStartup,
-        fallback_skirmish_settings: SkirmishSettings,
-    ) -> Self {
+    pub(crate) fn accepted_skirmish(startup: PreparedMatchStartup) -> Self {
         Self {
             startup: LoadingStartup::Accepted(startup),
             accepted_rmg_start_staging: None,
             random_map_preview: None,
-            fallback_skirmish_settings,
         }
     }
 
     pub(crate) fn unverified_legacy_skirmish(
         skirmish_launch_session: SkirmishLaunchSession,
         seed: crate::match_bootstrap::MatchSeed,
-        fallback_skirmish_settings: SkirmishSettings,
     ) -> Self {
         Self {
             startup: LoadingStartup::UnverifiedLegacy {
@@ -282,22 +275,17 @@ impl LoadingRequest {
             },
             accepted_rmg_start_staging: None,
             random_map_preview: None,
-            fallback_skirmish_settings,
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn generic_map_load(
-        selected_map_file: impl Into<String>,
-        fallback_skirmish_settings: SkirmishSettings,
-    ) -> Self {
+    pub(crate) fn generic_map_load(selected_map_file: impl Into<String>) -> Self {
         Self {
             startup: LoadingStartup::Generic {
                 selected_map_file: selected_map_file.into(),
             },
             accepted_rmg_start_staging: None,
             random_map_preview: None,
-            fallback_skirmish_settings,
         }
     }
 
@@ -886,7 +874,6 @@ fn pump_loading_after_present(state: &mut AppState) -> LoadingPump {
                 initial,
                 startup,
                 fresh_scenario_context,
-                &request.fallback_skirmish_settings,
                 progress.native_theater_cache_mismatch,
                 progress.runtime_color_scheme_count,
                 native_rules_owner,
