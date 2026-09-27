@@ -88,19 +88,16 @@ use super::production_tech::foundation_dimensions;
 /// ```
 ///
 /// A sale credits it with `full` clear (`TechnoClass vt+0x2BC` =
-/// `0x0070ADA0`, `0x0044A215`).
-///
-/// RESIDUAL: VERA does not parse the country `Cost*Mult=` keys; no stock
-/// country authors them, so `m1` is the HouseType constructor's 1.0f
-/// (`0x00511481..0x005114CC`) for every stock house.
+/// `0x0070ADA0`, `0x0044A215`). `factors` are the House's
+/// ([`Simulation::house_cost_factors`]).
 pub(crate) fn building_type_refund(
     rules: &RuleSet,
     object: &crate::rules::object_type::ObjectType,
     house: &crate::sim::house_state::HouseState,
+    factors: &crate::rules::ruleset::HouseCostFactors,
     game_mode_nonzero: bool,
     full: bool,
 ) -> i32 {
-    use crate::rules::object_type::BuildCategory;
     use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF32Bits};
 
     let pct = if full {
@@ -108,10 +105,8 @@ pub(crate) fn building_type_refund(
     } else {
         X87::store_f32_masked_chop(X87::load_f64(rules.general.refund_percent))
     };
-    let m1 = NativeF32Bits::ONE;
-    let m2 = house
-        .base_projection
-        .building_cost_factor(object.build_cat == Some(BuildCategory::Combat));
+    let slot = object.cost_factor_slot();
+    let (m1, m2) = (factors.country[slot], factors.factory_plant[slot]);
     if object.soylent != 0 {
         return X87::ftol_i32_low_masked(X87::mul(
             X87::load_i32(object.soylent),
@@ -524,6 +519,7 @@ pub(crate) fn sell_complete(
             rules,
             object,
             house,
+            &sim.house_cost_factors(owner, rules)?,
             sim.session.game_mode_nonzero,
             false,
         ))

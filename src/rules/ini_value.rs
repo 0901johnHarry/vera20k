@@ -15,6 +15,7 @@
 
 use crate::rules::ini_parser::IniSection;
 use crate::rules::locomotor_type::SpeedType;
+use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 
 /// 0x20 = ASCII space; gamemd `strtrim` strips bytes <= 0x20 (space + all ASCII
 /// control) at BOTH ends — NOT Unicode whitespace.
@@ -58,6 +59,24 @@ impl IniSection {
     /// returns zero rather than importing that non-portable accident.
     pub fn read_double(&self, key: &str, default: f64) -> f64 {
         self.fold_rules_values(key, default, |_current, raw| parse_read_double(raw))
+    }
+
+    /// ReadDouble into a double field, keeping the stored bits.
+    pub fn read_double_bits(&self, key: &str, current: NativeF64Bits) -> NativeF64Bits {
+        NativeF64Bits::from_bits(
+            self.read_double(key, f64::from_bits(current.bits()))
+                .to_bits(),
+        )
+    }
+
+    /// ReadDouble into a float field: `FLD dword` widens the field into the
+    /// default and `FSTP dword` stores the result back under the process's
+    /// chop control word.
+    pub fn read_double_to_float(&self, key: &str, current: NativeF32Bits) -> NativeF32Bits {
+        MaskedX87Chop53::store_f32_masked_chop(MaskedX87Chop53::load_f64(self.read_double_bits(
+            key,
+            NativeF64Bits::from_bits(f64::from(f32::from_bits(current.bits())).to_bits()),
+        )))
     }
 
     /// ReadString (P5, P18): copy at most `capacity - 1` bytes, force the final

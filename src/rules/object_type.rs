@@ -252,9 +252,15 @@ pub struct ObjectType {
     /// `Soylent=` (TechnoType `+0x614`): when nonzero, the refund
     /// `TechnoTypeClass::GetRefund @ 0x00711F60` returns instead of the cost.
     pub soylent: i32,
-    /// BuildingType+16CD/16D0..16E0, read by House50BF60. The five
-    /// cost bonuses are Infantry, Units, Aircraft, Buildings, Defenses.
+    /// `FactoryPlant=` (BuildingType `+0x16CD`): Unlimbo and ChangeOwner add
+    /// the building to its House's FactoryPlant list (House `+0x140`).
     pub factory_plant: bool,
+    /// `InfantryCostBonus=`, `UnitsCostBonus=`, `AircraftCostBonus=`,
+    /// `BuildingsCostBonus=` and `DefensesCostBonus=` (BuildingType
+    /// `+0x16D0..+0x16E0`, in [`Self::cost_factor_slot`] order): ReadDouble
+    /// into floats (`0x00460686..0x00460718`), the constructor's 1.0
+    /// (`0x0045E199..0x0045E1BC`) as default. `HouseClass::CalculateCostMultipliers
+    /// @ 0x0050BF60` multiplies each FactoryPlant's bonuses into the House.
     pub cost_bonuses: [crate::util::native_x87::NativeF32Bits; 5],
     /// `Explosion=` — the type's OWN death animations, one chosen at random.
     ///
@@ -1671,6 +1677,21 @@ impl ObjectType {
             && crate::rules::foundation::foundation_dimensions(&self.foundation) == (1, 1)
     }
 
+    /// The cost slot the House factor getters select by the type's RTTI:
+    /// InfantryType 0, UnitType 1, AircraftType 2, BuildingType 3, or 4 for a
+    /// `BuildCat=Combat` BuildingType (`+0xE08 == 5`)
+    /// (`HouseClass::GetCostBonus @ 0x0050BDF0`,
+    /// `HouseClass::GetAccumulatedBonus @ 0x0050BEB0`).
+    pub fn cost_factor_slot(&self) -> usize {
+        match self.category {
+            ObjectCategory::Infantry => 0,
+            ObjectCategory::Vehicle => 1,
+            ObjectCategory::Aircraft => 2,
+            ObjectCategory::Building if self.build_cat == Some(BuildCategory::Combat) => 4,
+            ObjectCategory::Building => 3,
+        }
+    }
+
     /// BuildingType gate used by the native base-reservation setter.
     pub fn base_reservation_writer_eligible(&self) -> bool {
         self.category == ObjectCategory::Building
@@ -1868,9 +1889,7 @@ impl ObjectType {
                 "DefensesCostBonus",
             ]
             .map(|key| {
-                crate::util::native_x87::NativeF32Bits::from_bits(
-                    section.get_f32(key).unwrap_or(1.0).to_bits(),
-                )
+                section.read_double_to_float(key, crate::util::native_x87::NativeF32Bits::ONE)
             }),
             explosion_anims: section
                 .get_list("Explosion")

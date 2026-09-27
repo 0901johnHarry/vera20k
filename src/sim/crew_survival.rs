@@ -328,10 +328,14 @@ impl Simulation {
         } else {
             divisor
         };
+        let Some(factors) = self.house_cost_factors(entity.owner(), rules) else {
+            return 0;
+        };
         let refund = crate::sim::production::building_type_refund(
             rules,
             object,
             house,
+            &factors,
             self.session.game_mode_nonzero,
             false,
         );

@@ -4536,6 +4536,9 @@ impl Simulation {
             stable_id,
             crate::sim::house_tracking::HouseTracking::add_tracking,
         );
+        if category == EntityCategory::Structure {
+            self.move_house_base_tracking(stable_id, old_owner, new_owner);
+        }
         // `BuildingClass::ChangeOwner @ 0x00448723` marks every transferred
         // building HasBeenCaptured (+0x6E3); survivors read it at death. Its
         // repair stops without a sound (`+0x6E8 = 0`, `0x00448CE8`).

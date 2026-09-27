@@ -1,35 +1,32 @@
-//! Historical House base projection and its building lifecycle inputs.
+//! The House's building lists and the cost factors its FactoryPlants set.
 //!
-//! House4FD150 reads a list whose membership differs from EntityStore's owner
-//! index during Unlimbo, Limbo, pointer expiry and ChangeOwner. Keep those
-//! membership changes separate from constructor/destructor tracking4FF700/550.
+//! House+68 (buildings) and House+140 (FactoryPlants) change membership at
+//! Unlimbo, pointer expiry and ChangeOwner, which differs from EntityStore's
+//! owner index; constructor/destructor tracking (`0x004FF700`/`0x004FF550`)
+//! registers the rule inputs separately.
 use super::*;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
-use crate::rules::object_type::BuildCategory;
+use crate::rules::ruleset::HouseCostFactors;
 use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
     map_owned_radius_cap,
 };
 use crate::sim::pathfinding::zone_map::ZoneId;
-use crate::util::native_x87::{NativeF32Bits, NativeX87Error, X87Chop53};
+use crate::util::native_x87::NativeF32Bits;
 
-// Consumer pending: House 0x4FD150 base centre / nonhuman failed-path
-// relocation 0x500200 (AI-deferred); the projection is kept current so that
-// owner starts from live inputs.
 type CostFactors = [NativeF32Bits; 5];
 const UNIT_FACTORS: CostFactors = [NativeF32Bits::ONE; 5];
 
 /// Immutable rule projections retained beside the House registration. This
-/// lets pointer expiry and finalization use the same inputs without a borrowed
-/// RuleSet or per-tick string lookup. Registration order is not list order.
+/// lets Unlimbo, ChangeOwner and pointer expiry use the same inputs without a
+/// borrowed RuleSet or per-tick string lookup. Registration order is not list
+/// order.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 struct RegisteredBuilding {
     id: u64,
     tracks_base: bool,
-    actual_cost: i32,
-    free_unit_cost: Option<i32>,
-    defense: bool,
+    /// The type's cost bonuses when it is a `FactoryPlant=` type.
     plant: Option<CostFactors>,
 }
 
@@ -77,39 +74,18 @@ impl RegisteredBuilding {
                 && !object.dont_score
                 && !object.is_1x1_with_undeploy()
                 && !undeploys_to_gatherer,
-            actual_cost: rules.building_actual_cost(object),
-            free_unit_cost: object
-                .free_unit
-                .as_deref()
-                .and_then(|name| rules.object(name))
-                .map(|free| free.cost),
-            defense: object.build_cat == Some(BuildCategory::Combat),
             plant: object.factory_plant.then_some(object.cost_bonuses),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn cost(&self, factors: CostFactors) -> i32 {
-        // BuildingType45EDD0 calls shared711F00 for adjusted +AC, then adds
-        // FreeUnit's +84 cost. Current retail country Cost*Mult values are1;
-        // House factors are live50BF60 outputs, never raw Building Cost.
-        let cost = scaled_cost(self.actual_cost, factors[if self.defense { 4 } else { 3 }]);
-        //45EE47..55 clamps only the FreeUnit arm;45EE58 returns an
-        // unbundled cost unchanged, including a negative adjusted cost.
-        match self.free_unit_cost {
-            Some(free) => cost.wrapping_add(scaled_cost(free, factors[1])).max(0),
-            None => cost,
         }
     }
 }
 
 impl HouseBaseState {
-    /// The FactoryPlant product `0x0050BEB0` returns for a BuildingType: the
-    /// Defenses factor (House `+0x53A0`) for `BuildCat=Combat`, else the
-    /// Buildings factor (`+0x539C`), as `CalculateCostMultipliers @ 0x0050BF60`
-    /// left them.
-    pub(crate) fn building_cost_factor(&self, defense: bool) -> NativeF32Bits {
-        self.factors[if defense { 4 } else { 3 }]
+    /// The FactoryPlant products (House `+0x5390..+0x53A0`, in
+    /// [`ObjectType::cost_factor_slot`] order) `CalculateCostMultipliers @
+    /// 0x0050BF60` last left; `HouseClass::GetAccumulatedBonus @ 0x0050BEB0`
+    /// returns one slot.
+    pub(crate) fn factory_plant_factors(&self) -> CostFactors {
+        self.factors
     }
 
     /// House+68 in vector order.
@@ -122,44 +98,6 @@ impl HouseBaseState {
     #[cfg(test)]
     pub(crate) fn replace_buildings_for_test(&mut self, buildings: Vec<u64>) {
         self.buildings = buildings;
-    }
-
-    #[allow(dead_code)]
-    fn weighted_center(
-        &self,
-        entities: &crate::sim::entity_store::EntityStore,
-    ) -> (i32, (i16, i16)) {
-        let (mut weight, mut x, mut y) = (0_i32, 0_i32, 0_i32);
-        for &id in &self.buildings {
-            let Some(entity) = entities.get(id) else {
-                continue;
-            };
-            if entity.lifecycle.in_limbo || entity.health.current == 0 {
-                continue;
-            }
-            let Some(entry) = self.registration(id) else {
-                continue;
-            };
-            let count = (entry.cost(self.factors) / 1000).wrapping_add(1);
-            if count <= 0 {
-                continue;
-            }
-            let center = crate::sim::movement::ground_pose::object_center_coord_with_foundation(
-                entity,
-                &entity.foundation,
-            );
-            //4FD203..22D repeats a pure447AC0 getter and wrapping addition.
-            // Multiplication preserves that modular sum without O(Cost) work.
-            weight = weight.wrapping_add(count);
-            x = x.wrapping_add(center.x.wrapping_mul(count));
-            y = y.wrapping_add(center.y.wrapping_mul(count));
-        }
-        let seed = if weight > 0 {
-            (((x / weight) / 256) as i16, ((y / weight) / 256) as i16)
-        } else {
-            (0, 0)
-        };
-        (weight, seed)
     }
 
     fn registration(&self, id: u64) -> Option<&RegisteredBuilding> {
@@ -203,9 +141,12 @@ impl HouseBaseState {
         self.refresh_factors();
     }
 
-    #[cfg(test)]
+    /// The appends Unlimbo (`0x004414F1..0x00441594`) and ChangeOwner's new
+    /// House (`0x00449139..0x004491D2`) make: a `FactoryPlant=` type joins
+    /// House+140 and the factors are recomputed (`0x0050BF60`), then the
+    /// building joins the House+68 tail. The two vectors have independent
+    /// lives.
     fn append_membership(&mut self, id: u64) {
-        //441545/44154E precede441594. These vectors have independent lives.
         if self
             .registration(id)
             .is_some_and(|entry| entry.plant.is_some())
@@ -213,21 +154,6 @@ impl HouseBaseState {
             self.plants.push(id);
             self.refresh_factors();
         }
-        self.buildings.push(id);
-    }
-
-    /// The House+68 tail append Unlimbo (`0x00441553..0x00441594`) and
-    /// ChangeOwner (`0x00449197..0x004491D2`) make after their FactoryPlant
-    /// append.
-    ///
-    /// RESIDUAL: VERA makes neither FactoryPlant append (House+140,
-    /// `0x00441501..0x0044154E`, `0x00449155..0x00449192`), so `plants` stays
-    /// empty in play. Trigger: an Industrial Plant (`FactoryPlant=`). Effect:
-    /// the house's cost factors stay 1.0, so a sale refunds the unreduced
-    /// cost; the production price never read them. Frequency: every game
-    /// with an Industrial Plant. Later owner: the FactoryPlant cost factors of
-    /// production and refunds together.
-    fn append_building(&mut self, id: u64) {
         self.buildings.push(id);
     }
 
@@ -250,34 +176,17 @@ fn remove_first(ids: &mut Vec<u64>, id: u64) {
     }
 }
 
-///50BF60 multiplies two f32 operands exactly in x87, then stores toward zero.
-/// The shared arithmetic owner includes gradual underflow after many stock
-/// NAINDP plants. This receiver retains its masked-overflow result policy.
+/// `0x0050BF60` multiplies two floats in x87 and stores the product with
+/// exceptions masked under the chop control word: gradual underflow, signed
+/// zero and saturation at the largest finite float.
+/// Native comparison: tools/spatial_oracle/factory_plant_factors.
 fn multiply_factor(lhs: NativeF32Bits, rhs: NativeF32Bits) -> NativeF32Bits {
-    let product = X87Chop53::mul(
-        X87Chop53::load_f32(lhs).expect("retail cost factors are finite"),
-        X87Chop53::load_f32(rhs).expect("retail cost bonuses are finite"),
-    );
-    match X87Chop53::store_f32(product) {
-        Ok(bits) => bits,
-        // House50BF60 stores with exceptions masked and rounding toward zero.
-        // Keep that receiver policy explicit; other users retain checked stores.
-        // Native comparison: tools/spatial_oracle/factory_plant_factors.
-        Err(NativeX87Error::StoreOverflow { format: "f32" }) => {
-            NativeF32Bits::from_bits(((lhs.bits() ^ rhs.bits()) & 0x8000_0000) | 0x7f7f_ffff)
-        }
-        Err(error) => panic!("finite cost factor store failed: {error}"),
-    }
+    use crate::util::native_x87::MaskedX87Chop53 as X87;
+    X87::store_f32_masked_chop(X87::mul(X87::load_f32(lhs), X87::load_f32(rhs)))
 }
 
-#[allow(dead_code)]
-fn scaled_cost(cost: i32, factor: NativeF32Bits) -> i32 {
-    let product = X87Chop53::mul(
-        X87Chop53::load_i32(cost),
-        X87Chop53::load_f32(factor).expect("retail cost factors are finite"),
-    );
-    X87Chop53::ftol_i64(product).expect("retail cost products fit native ftol") as i32
-}
+// Consumer pending: House 0x4FD150 base centre / nonhuman failed-path
+// relocation 0x500200 (AI-deferred).
 
 /// Map586E50: correct the diagonal first, sample its Cell once, then walk
 /// along the other diagonal until578460(mode1) admits the packed coordinate.
@@ -390,6 +299,27 @@ impl Simulation {
         .filter(|cell| *cell != (0, 0))
     }
 
+    /// The House factors TechnoType `Cost_Of` (`0x00711F00`) reads for
+    /// `owner`: its country's `Cost*Mult=` and its FactoryPlant products.
+    /// `None` without a House, which takes Cost_Of's null-House arm
+    /// (`0x00711F4E`, the raw cost).
+    pub(crate) fn house_cost_factors(
+        &self,
+        owner: InternedId,
+        rules: &RuleSet,
+    ) -> Option<HouseCostFactors> {
+        let house = self.houses.get(&owner)?;
+        Some(HouseCostFactors {
+            country: rules.country_cost_mults(self.interner.resolve(house.house_type_id())),
+            factory_plant: house.base_projection.factory_plant_factors(),
+        })
+    }
+
+    /// TechnoType virtual `+0x84` for `owner`'s House ([`RuleSet::cost_of`]).
+    pub(crate) fn cost_of(&self, owner: InternedId, object: &ObjectType, rules: &RuleSet) -> i32 {
+        rules.cost_of(object, self.house_cost_factors(owner, rules).as_ref())
+    }
+
     pub(super) fn register_house_base_building(&mut self, id: u64, rules: &RuleSet) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -421,7 +351,7 @@ impl Simulation {
             return;
         };
         if let Some(house) = self.houses.get_mut(&owner) {
-            house.base_projection.append_building(id);
+            house.base_projection.append_membership(id);
         }
     }
 
@@ -438,7 +368,28 @@ impl Simulation {
 
     pub(super) fn join_house_base_lists(&mut self, id: u64, owner: InternedId) {
         if let Some(house) = self.houses.get_mut(&owner) {
-            house.base_projection.append_building(id);
+            house.base_projection.append_membership(id);
+        }
+    }
+
+    /// `TechnoClass::ChangeOwner`'s Remove_Tracking on the old House and
+    /// Add_Tracking on the new (`0x007015DE`, `0x007015E6`) move the
+    /// building's registration with it.
+    pub(super) fn move_house_base_tracking(
+        &mut self,
+        id: u64,
+        old_owner: InternedId,
+        new_owner: InternedId,
+    ) {
+        let Some(entry) = self
+            .houses
+            .get_mut(&old_owner)
+            .and_then(|house| house.base_projection.unregister(id))
+        else {
+            return;
+        };
+        if let Some(house) = self.houses.get_mut(&new_owner) {
+            house.base_projection.register(entry);
         }
     }
 
@@ -470,7 +421,6 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::ini_parser::IniFile;
 
     #[test]
     fn original_factory_plant_f32_fold_including_gradual_underflow() {
@@ -492,9 +442,6 @@ mod tests {
                 state.register(RegisteredBuilding {
                     id,
                     tracks_base: true,
-                    actual_cost: 2500,
-                    free_unit_cost: None,
-                    defense: false,
                     plant: Some(bonus),
                 });
                 state.append_membership(id);
@@ -516,34 +463,47 @@ mod tests {
         }
     }
 
+    /// An Industrial Plant discounts its House from Unlimbo on, the discount
+    /// moves with a capture and ends at the plant's pointer expiry; the
+    /// country's `CostUnitsMult=` multiplies in throughout.
     #[test]
-    fn original_building_weight_cost_uses_free_unit_and_live_house_factors() {
-        let rows: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tools/spatial_oracle/building_weight_cost.json"
+    fn factory_plant_discount_follows_unlimbo_capture_and_expiry() {
+        use crate::map::resolved_terrain::test_flat_ground_grid;
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::house_state::HouseState;
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[Countries]\n0=Americans\n1=Russians\n\
+             [Russians]\nCostUnitsMult=.5\n\
+             [BuildingTypes]\n0=NAINDP\n[VehicleTypes]\n0=HTNK\n\
+             [NAINDP]\nStrength=1000\nFoundation=1x1\nFactoryPlant=yes\n\
+             UnitsCostBonus=0.75\n\
+             [HTNK]\nCost=900\n",
         ))
         .unwrap();
-        for row in rows.as_array().unwrap() {
-            let input = &row["input"];
-            let free = input["free"].as_i64().unwrap();
-            let ini = format!(
-                "[BuildingTypes]\n0=BUILDING\n[VehicleTypes]\n0=FREE\n\
-                [BUILDING]\nCost={}\n{}\n[FREE]\nCost={free}\n",
-                input["cost"].as_i64().unwrap(),
-                if free == 0 { "" } else { "FreeUnit=FREE" }
-            );
-            let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
-            let building =
-                RegisteredBuilding::from_rules(1, rules.object("BUILDING").unwrap(), &rules);
-            let mut factors = UNIT_FACTORS;
-            factors[1] =
-                NativeF32Bits::from_bits((input["unit"].as_f64().unwrap() as f32).to_bits());
-            factors[3] =
-                NativeF32Bits::from_bits((input["building"].as_f64().unwrap() as f32).to_bits());
-            assert_eq!(
-                building.cost(factors),
-                row["cost84"].as_i64().unwrap() as i32,
-                "native cost row{input}"
-            );
+        let mut sim = Simulation::new();
+        sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(32));
+        let [allies, soviets] = ["Americans", "Russians"].map(|name| sim.interner.intern(name));
+        for house in [allies, soviets] {
+            sim.houses
+                .insert(house, HouseState::new(house, 0, None, false, 0, 10));
         }
+        let tank = rules.object("HTNK").unwrap();
+        let costs = |sim: &Simulation| {
+            (
+                sim.cost_of(allies, tank, &rules),
+                sim.cost_of(soviets, tank, &rules),
+            )
+        };
+        assert_eq!(costs(&sim), (900, 450));
+        let plant = sim
+            .spawn_object("NAINDP", "Russians", 5, 5, 0, &rules, &BTreeMap::new())
+            .unwrap();
+        // ftol(900 * 0.75 * 0.5) = ftol(337.5)
+        assert_eq!(costs(&sim), (900, 337));
+        sim.change_owner_with_rules(plant, allies, &rules);
+        assert_eq!(costs(&sim), (675, 450));
+        sim.uninit_with_rules(plant, &rules);
+        assert_eq!(costs(&sim), (900, 450));
     }
 }
