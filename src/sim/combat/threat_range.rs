@@ -288,9 +288,11 @@ pub(crate) fn scan_range(
             let base =
                 guard_range.unwrap_or_else(|| max_weapon_range(rules, obj, veterancy, cargo_range));
             let doubled = base.saturating_mul(SimFixed::from_num(AREA_GUARD_RANGE_MULTIPLIER));
-            // `0x00707F33..0x00707F46`: every mode but Patrol's clamps to
-            // [0, 0x1000], and `Greatest_Threat` reads a zero radius the way
-            // it reads plain Guard's.
+            // `0x00707F33..0x00707F46`: mode 1 clamps the doubled radius to
+            // [0, 0x1000] (Patrol's mode 2 to [0x700, 0x1000] at
+            // `0x00707F0A..0x00707F30`; mode 0 returns `GuardRange=` unclamped
+            // at `0x00707E98..0x00707EB9`), and `Greatest_Threat` reads a zero
+            // radius the way it reads plain Guard's.
             let radius = doubled.clamp(
                 SimFixed::ZERO,
                 SimFixed::from_num(AREA_GUARD_MAX_SCAN_CELLS),

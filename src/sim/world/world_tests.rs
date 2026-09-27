@@ -1740,8 +1740,10 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
                 EntityCategory::Infantry,
             );
         passenger.is_voxel = false;
-        passenger.passenger_role =
-            crate::sim::passenger::PassengerRole::Inside { transport_id: 10, open_topped: false };
+        passenger.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 10,
+            open_topped: false,
+        };
         sim.substrate.entities.insert(passenger);
 
         let mut listener = GameEntity::test_default(30, "LISTENER", "Americans", 8, 5);

@@ -2520,4 +2520,62 @@ ConditionYellow=50%
         assert!(!pax.passenger_role.is_inside_transport());
         assert!(pax.lifecycle.cell_marked && pax.in_logic_vector);
     }
+
+    /// A failed unload re-attaches an open-topped rider at the head it left,
+    /// with its recorded size and `+0x82` still set: only a successful unload
+    /// clears the flag (`ClearInOpenTransport`, `0x0073DB98`), whatever the
+    /// attempt did to the rider's role before it failed.
+    #[test]
+    fn a_failed_departure_keeps_the_riders_open_topped_flag() {
+        let rules = garrison_test_rules();
+        let mut sim = Simulation::new();
+        let transport_id = sim.allocate_stable_id();
+        let (front, back) = (sim.allocate_stable_id(), sim.allocate_stable_id());
+        let mut cargo = PassengerCargo::new(5, 2);
+        cargo.board_forced(back, 1);
+        cargo.board_forced(front, 2);
+        let mut transport = GameEntity::test_default(transport_id, "BFRT", "Americans", 10, 10);
+        transport.passenger_role = PassengerRole::Transport { cargo };
+        sim.substrate.entities.insert(transport);
+        for id in [front, back] {
+            let mut rider = GameEntity::test_default(id, "E1", "Americans", 10, 10);
+            rider.passenger_role = PassengerRole::Inside {
+                transport_id,
+                open_topped: true,
+            };
+            sim.substrate.entities.insert(rider);
+        }
+        // `test_default` interns its names in the shared test interner.
+        sim.interner = crate::sim::intern::test_interner();
+        let held = serde_json::to_value(
+            sim.substrate
+                .entities
+                .get(transport_id)
+                .unwrap()
+                .passenger_role
+                .cargo(),
+        )
+        .unwrap();
+        let result = departure::depart_cargo_head(
+            &mut sim,
+            &rules,
+            transport_id,
+            departure::DepartureRoute::Vehicle,
+            |sim, id| {
+                assert_eq!(id, front, "the head departs");
+                sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::None;
+                Err(departure::DepartureFailure::Placement)
+            },
+        );
+        assert_eq!(result, Err(departure::DepartureFailure::Placement));
+        let transport = sim.substrate.entities.get(transport_id).unwrap();
+        assert_eq!(
+            serde_json::to_value(transport.passenger_role.cargo()).unwrap(),
+            held
+        );
+        for id in [front, back] {
+            let rider = sim.substrate.entities.get(id).unwrap();
+            assert_eq!(rider.passenger_role.open_transport_id(), Some(transport_id));
+        }
+    }
 }

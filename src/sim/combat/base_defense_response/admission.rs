@@ -247,7 +247,6 @@ pub(super) fn primary_range_leptons(
 ///   arises.
 pub(crate) fn responder_peek_fire_error(
     candidate: &GameEntity,
-    in_open_transport: bool,
     target: &GameEntity,
     candidate_object: &ObjectType,
     target_object: &ObjectType,
@@ -271,7 +270,7 @@ pub(crate) fn responder_peek_fire_error(
     };
     // T32 `0x006FC57D`: an open-topped passenger (`+0x82`) cannot fire a
     // `FireInTransport=no` weapon.
-    if in_open_transport && !weapon.fire_in_transport {
+    if candidate.passenger_role.in_open_transport() && !weapon.fire_in_transport {
         return ResponderPeekFireError::Illegal;
     }
     let Some(warhead) = weapon.warhead.as_deref().and_then(|id| rules.warhead(id)) else {
@@ -336,7 +335,6 @@ pub(super) fn candidate_admitted(
                 .is_some_and(|entry| entry.recruitable))
         || responder_peek_fire_error(
             candidate,
-            candidate.passenger_role.in_open_transport(),
             context
                 .entities
                 .get(attacker_id)

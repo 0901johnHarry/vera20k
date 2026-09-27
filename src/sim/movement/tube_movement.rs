@@ -1307,7 +1307,10 @@ mod tests {
         let coord = |p: &Position| (position_world_x(p), position_world_y(p), p.exact_z_leptons);
         // With the retail sine table loaded (another test may have), the
         // leftover budget then steps on towards the next target as well.
-        assert!(position_world_x(transport) >= 384, "the step reached its target");
+        assert!(
+            position_world_x(transport) >= 384,
+            "the step reached its target"
+        );
         assert_eq!(coord(rider), coord(transport), "the rider came along");
     }
 }

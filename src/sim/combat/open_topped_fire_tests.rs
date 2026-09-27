@@ -296,6 +296,8 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
         "ftol(25 * 1.2f) a shot at SSA 100%"
     );
     let sim = fortress.scenario.sim();
+    let first_frame = shots.first().map(|&(frame, ..)| frame);
+    let mut first_ports = std::collections::BTreeSet::new();
     for &(frame, rider, coord) in &shots {
         let cargo = sim
             .substrate
@@ -306,6 +308,9 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
             .cargo()
             .unwrap();
         let port = cargo.passengers.iter().position(|&id| id == rider).unwrap();
+        if Some(frame) == first_frame {
+            first_ports.insert(port);
+        }
         let flh = ports[port];
         let gi = sim.substrate.entities.get(rider).unwrap();
         let own = crate::sim::movement::ground_pose::position_world_coord(&gi.position);
@@ -317,6 +322,11 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
             "port {port} is off-centre"
         );
     }
+    assert_eq!(
+        first_ports,
+        (0..5).collect(),
+        "the first volley leaves from all five ports"
+    );
     assert!(
         sim.substrate
             .entities
@@ -427,6 +437,24 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
         (1024 - 256..1024).contains(&at),
         "stops at the riders' M60 range: {at}"
     );
+
+    // In reach, each rider's own Guard scan takes the Apocalypse again
+    // (`+0x50C`, `0x006FA6EE`), so the Stop below has targets to clear.
+    let passive = |fortress: &Fortress| {
+        gis.iter().all(|&id| {
+            let gi = fortress.scenario.sim().substrate.entities.get(id).unwrap();
+            gi.passively_acquired_target
+                && gi.attack_target.as_ref().map(|attack| attack.target)
+                    == Some(TargetKind::Entity(apocalypse))
+        })
+    };
+    for _ in 0..120 {
+        if passive(&fortress) {
+            break;
+        }
+        retail_frame(&mut fortress.scenario, Vec::new());
+    }
+    assert!(passive(&fortress), "the riders re-acquire it in reach");
 
     let stop_order = order(&fortress, Command::Stop { entity_id: bfrt });
     retail_frame(&mut fortress.scenario, vec![stop_order]);
@@ -543,7 +571,14 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
     retail_frame(&mut fortress.scenario, vec![enter]);
     let inside = |fortress: &Fortress| {
         matches!(
-            fortress.scenario.sim().substrate.entities.get(gi).unwrap().passenger_role,
+            fortress
+                .scenario
+                .sim()
+                .substrate
+                .entities
+                .get(gi)
+                .unwrap()
+                .passenger_role,
             PassengerRole::Inside {
                 open_topped: true,
                 ..

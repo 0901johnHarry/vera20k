@@ -1080,6 +1080,23 @@ fn illegal_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// Hunt (computer) runs (`0x004D57EA..`) is not ported; nothing but a Guard
 /// rider is known to reach this block.
 ///
+/// RESIDUAL: a unit rider runs `UnitClass::Approach_Target @ 0x007414E0`
+/// before the Foot body. Its three crush arms can steer toward the target
+/// and return early without Foot's Set_Destination(NULL):
+/// - a computer's `Crusher=` (`+0xD28`, or the CRUSHER ability) near a
+///   crushable techno;
+/// - a `BalloonHover=` type (`+0xD6A`);
+/// - an `OmniCrusher=` type (`+0xD29`).
+/// VERA runs the Foot arm for every rider.
+/// - Trigger: a modded unit rider with one of those flags. Retail's only
+///   unit riders are the Terror and Chaos Drones (`Size=2`), which have none.
+/// - Effect: none in retail. A modded rider calls
+///   `UnitClass::Set_Destination @ 0x00741970` with the target, whose arms
+///   ahead of the Foot refusal are not reviewed. It skips Foot's
+///   Set_Destination(NULL). The block's CanFireAt test still drops the target
+///   in the same frame.
+/// - Frequency and risk: modded data only.
+///
 /// RESIDUAL: the unreachable-target arm for every other object (vt+0x2C4
 /// false). Trigger: a Foot object without NavCom holding a target its
 /// movement zone cannot reach, e.g. a tank with a target across water.
