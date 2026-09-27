@@ -167,6 +167,12 @@ pub(super) enum HashFeature {
     /// guided Bullet phase independently of Rust handles. This schema also
     /// introduces retained fallback-cell Land for impact animation selection.
     NativeRuntimeIdentity = 217,
+    /// Removes the two VERA copies of a factory's rally point: the house's
+    /// last rally click and the per-building rally cell. The rally is the
+    /// building's ArchiveTarget (`Techno+0x218`), folded with the
+    /// base-defence state. Earlier schemas fold the empty copies in their
+    /// place; no pinned fixture sets a rally point.
+    RetiredRallyCopies = 220,
 }
 
 impl HashSchema {
@@ -207,6 +213,7 @@ impl HashSchema {
                     | HashFeature::AiSellable
                     | HashFeature::BuildingRepair
                     | HashFeature::NativeRuntimeIdentity
+                    | HashFeature::RetiredRallyCopies
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

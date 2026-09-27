@@ -21,21 +21,6 @@ use super::production_tech::{
 };
 use super::production_types::*;
 
-/// Set rally point for an owner's production output.
-pub fn set_rally_point_for_owner(sim: &mut Simulation, owner: &InternedId, rx: u16, ry: u16) {
-    if let Some(house) = sim.houses.get_mut(owner) {
-        house.rally_point = Some((rx, ry));
-    }
-}
-
-/// Return current rally point for owner, if one has been set.
-pub fn rally_point_for_owner(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
-    sim.interner
-        .get(owner)
-        .and_then(|id| sim.houses.get(&id))
-        .and_then(|h| h.rally_point)
-}
-
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
     sim.interner
         .get(owner)
@@ -482,9 +467,13 @@ fn tick_production_impl(
             // Auto-move newly produced unit to rally point (if set).
             // Skip for aircraft docked on helipad — they wait for orders.
             if helipad_airfield.is_none() && !hunting {
+                // `ExitObject_Main @ 0x00443C60` hands the leaving object
+                // its own factory's ArchiveTarget (`+0x218`, the rally point).
                 let rally = match spawn_delivery {
                     ProductionDeliveryKind::NavalUnit { producer_rally, .. } => producer_rally,
-                    ProductionDeliveryKind::Standard => rally_point_for_owner(sim, &owner_str),
+                    ProductionDeliveryKind::Standard => spawn_producer_id
+                        .and_then(|producer_id| sim.substrate.entities.get(producer_id))
+                        .and_then(|producer| producer.rally_cell()),
                 };
                 let naval_rally =
                     matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit { .. })

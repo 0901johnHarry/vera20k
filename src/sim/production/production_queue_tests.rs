@@ -522,7 +522,11 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Float),
     );
     spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
-    sim.substrate.entities.get_mut(1).unwrap().rally_target = Some((26, 21));
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(26, 21)));
     let americans_key = sim.interner.intern("AMERICANS");
     let americans_display = sim.interner.intern("Americans");
     sim.houses.insert(
@@ -536,9 +540,6 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
             10,
         ),
     );
-    if let Some(h) = sim.houses.get_mut(&americans_key) {
-        h.rally_point = Some((26, 21));
-    }
     // Arm the native Ship-slot factory directly in the registry, then force it
     // ready so `tick_production` spawns the destroyer this tick.
     arm_build_via(

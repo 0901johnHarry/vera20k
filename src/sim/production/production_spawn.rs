@@ -164,7 +164,7 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
                 .substrate
                 .entities
                 .get(*producer_id)
-                .and_then(|producer| producer.rally_target);
+                .and_then(|producer| producer.rally_cell());
             let (cell, _) = find_naval_unit_delivery_cell(
                 *producer_id,
                 *bx,

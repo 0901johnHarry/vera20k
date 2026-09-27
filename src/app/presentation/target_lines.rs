@@ -175,7 +175,7 @@ pub(crate) fn build_factory_rally_line_instances(
         if owner != local_owner {
             continue;
         }
-        let Some((rx, ry)) = entity.rally_target else {
+        let Some((rx, ry)) = entity.rally_cell() else {
             continue;
         };
         let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
@@ -464,12 +464,12 @@ mod tests {
             false,
         );
         factory.selected = true;
-        factory.rally_target = Some((16, 10));
+        factory.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(16, 10)));
         let mut power = factory.clone();
         power.stable_id = 11;
         power.type_ref = power_type;
         power.position.rx = 12;
-        power.rally_target = Some((16, 10));
+        power.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(16, 10)));
         sim.entities_mut().insert(factory);
         sim.entities_mut().insert(power);
         sim

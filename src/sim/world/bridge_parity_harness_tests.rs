@@ -276,7 +276,13 @@ const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 34445618767192306
 // repair diagnostic reproduced the prior current pin with Before(217), and
 // all earlier projections, replay/behavior checks and RNG receipts still passed.
 // These Rust regression receipts do not establish native gameplay parity.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x742C_838B_7E43_EECF;
+// Schema220 retires the two VERA rally copies (the house's `rally_point` and
+// each building's `rally_target`; the rally is the factory's ArchiveTarget):
+// composition only, as no rally is set here. Before(220) folds their empty
+// values and reproduces the prior current pin; every earlier projection,
+// per-tick replay and the RNG receipts are unchanged.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x9031_CA98_D595_398B;
+const BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x742C_838B_7E43_EECF;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB586_50E0_619A_A412;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xD647_5869_EE05_41D7;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_REARM_TIMER_V202: u64 = 0xF2A5_29CE_BDD0_47F6;
@@ -908,6 +914,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
         BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
         "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
+        BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
+        "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,
