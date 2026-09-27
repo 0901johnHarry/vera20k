@@ -281,14 +281,14 @@ const BRIDGE_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 34445618767192306
 // composition only, as no rally is set here. Before(220) folds their empty
 // values and reproduces the prior current pin; every earlier projection,
 // per-tick replay and the RNG receipts are unchanged.
-// Schema223 adds Prism forwarding's state: each building's support count
+// Schema224 adds Prism forwarding's state: each building's support count
 // (`+0x664`, zero here), each live bullet's damage multiplier (`+0x150`,
 // Construct's 256 here) and each House's building list (House+0x68, now
 // appended at Unlimbo; only the Prism walk reads it, and this fixture has no
-// Prism tower). Before(223) reproduces the prior current pin and every earlier
+// Prism tower). Before(224) reproduces the prior current pin and every earlier
 // projection, per-tick replay and RNG receipt is unchanged: composition only.
 const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x87FB_DC55_CE2B_7908;
-const BRIDGE_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V223: u64 = 0x9031_CA98_D595_398B;
+const BRIDGE_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V224: u64 = 0x9031_CA98_D595_398B;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x742C_838B_7E43_EECF;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB586_50E0_619A_A412;
 const BRIDGE_HARNESS_FINAL_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0xD647_5869_EE05_41D7;
@@ -592,7 +592,6 @@ fn bridge_script() -> Vec<(u64, Command)> {
             target_rx: APPROACH_B_X,
             target_ry: SPAN_Y,
             queue: false,
-            group_id: None,
         },
     )]
 }
@@ -928,9 +927,9 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
-        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(223)),
-        BRIDGE_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V223,
-        "schema223 only adds the Prism support folds to this fixture's hash"
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(224)),
+        BRIDGE_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V224,
+        "schema224 only adds the Prism support folds to this fixture's hash"
     );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,

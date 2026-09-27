@@ -1002,7 +1002,6 @@ fn retail_defence_guards_attacks_and_returns(
                 target_rx: x + 17,
                 target_ry: y,
                 queue: false,
-                group_id: None,
             },
         )],
     );

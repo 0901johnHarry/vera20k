@@ -806,7 +806,6 @@ mod item83_click_route_tests {
                     target_rx: 14,
                     target_ry: 15,
                     queue: false,
-                    group_id: None,
                 })
             },
         );

@@ -394,7 +394,6 @@ fn a_move_order_takes_the_slave_miner_off_its_hunt() {
             target_rx: 10,
             target_ry: 20,
             queue: false,
-            group_id: None,
         },
     ));
     for _ in 0..3 {
@@ -554,7 +553,6 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
             target_rx: 18,
             target_ry: 17,
             queue: false,
-            group_id: None,
         },
     ));
     let doing = |s: &SlaveScene, id: u64| {

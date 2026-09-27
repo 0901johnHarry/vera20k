@@ -5577,7 +5577,6 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
             target_rx: 3,
             target_ry: 1,
             queue: false,
-            group_id: None,
         },
     );
 
@@ -5658,7 +5657,6 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
             target_rx: 3,
             target_ry: 1,
             queue: false,
-            group_id: None,
         },
     );
 
@@ -5738,7 +5736,6 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
             target_rx: 4,
             target_ry: 1,
             queue: false,
-            group_id: None,
         },
     );
 
@@ -5850,7 +5847,6 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
             target_rx: 7,
             target_ry: 3,
             queue: false,
-            group_id: None,
         },
     );
     // The order dispatches at this frame's EventClass tail; the Ship accepts
@@ -6344,7 +6340,6 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 target_rx: 7,
                 target_ry: 3,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             Some(&grid),
@@ -6426,7 +6421,6 @@ fn test_execute_tick_delay_blocks_early_execution() {
             target_ry: 2,
 
             queue: false,
-            group_id: None,
         },
     );
 
@@ -6508,7 +6502,6 @@ fn test_move_queue_command_appends_waypoint() {
                 target_rx: 8,
                 target_ry: 2,
                 queue: false,
-                group_id: None,
             },
         ),
         cmd_envelope(
@@ -6520,7 +6513,6 @@ fn test_move_queue_command_appends_waypoint() {
                 target_rx: 12,
                 target_ry: 2,
                 queue: true,
-                group_id: None,
             },
         ),
     ];
@@ -7006,7 +6998,6 @@ fn test_move_command_rejects_non_owned_entity() {
             target_ry: 2,
 
             queue: false,
-            group_id: None,
         },
     );
 
@@ -7037,7 +7028,6 @@ fn test_move_command_chrono_miner_uses_ground_path() {
             target_rx: 8,
             target_ry: 2,
             queue: false,
-            group_id: None,
         },
     );
 
@@ -7078,7 +7068,6 @@ fn test_move_command_non_harvester_teleporter_uses_teleport() {
             target_rx: 8,
             target_ry: 2,
             queue: false,
-            group_id: None,
         },
     );
 
@@ -8486,7 +8475,6 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
                 target_rx: 16,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         );
         let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
@@ -8602,7 +8590,6 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
             target_rx: 10,
             target_ry: 4,
             queue: false,
-            group_id: None,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
@@ -8691,7 +8678,6 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
             target_rx: DESTINATION.0,
             target_ry: DESTINATION.1,
             queue: false,
-            group_id: None,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
@@ -9146,7 +9132,6 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
             target_rx: 12,
             target_ry: 8,
             queue: false,
-            group_id: None,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
@@ -9215,7 +9200,6 @@ fn drive_path_requests_inside_a_pass_bring_the_held_owner_sets_current() {
             target_rx: 12,
             target_ry: 8,
             queue: false,
-            group_id: None,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, Some(&grid), None, 100);
@@ -9339,7 +9323,6 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
                     target_rx: target.0,
                     target_ry: target.1,
                     queue: false,
-                    group_id: None,
                 },
             )
         })
@@ -9514,7 +9497,6 @@ fn repro_group_move_short_range_traces_every_tick() {
                     target_rx: target.0,
                     target_ry: target.1,
                     queue: false,
-                    group_id: None,
                 },
             )
         })
@@ -9678,7 +9660,6 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
                 target_rx: 16,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
         cmd_envelope(
@@ -9690,7 +9671,6 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
                 target_rx: 4,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
     ];
@@ -9892,7 +9872,6 @@ fn repro_two_moving_vehicles_reservation_trace() {
                 target_rx: 16,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
         cmd_envelope(
@@ -9904,7 +9883,6 @@ fn repro_two_moving_vehicles_reservation_trace() {
                 target_rx: 4,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
     ];
@@ -10030,7 +10008,6 @@ fn head_on_pair_resolves_without_deadlock() {
                 target_rx: 16,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
         cmd_envelope(
@@ -10042,7 +10019,6 @@ fn head_on_pair_resolves_without_deadlock() {
                 target_rx: 4,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
         ),
     ];
@@ -10121,7 +10097,6 @@ fn column_of_vehicles_all_arrive_without_stacking() {
                     target_rx: gx,
                     target_ry: gy,
                     queue: false,
-                    group_id: None,
                 },
             )
         })
@@ -10198,7 +10173,6 @@ fn diag_column_reservation_trace() {
                     target_rx: gx,
                     target_ry: gy,
                     queue: false,
-                    group_id: None,
                 },
             )
         })
@@ -10281,7 +10255,6 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
                     target_rx: 16,
                     target_ry: 16,
                     queue: false,
-                    group_id: None,
                 },
             )
         })
@@ -10375,7 +10348,6 @@ fn diag_short_range_group_reservation_trace() {
                     target_rx: 16,
                     target_ry: 16,
                     queue: false,
-                    group_id: None,
                 },
             )
         })

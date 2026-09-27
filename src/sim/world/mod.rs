@@ -6189,7 +6189,6 @@ impl Simulation {
             self.pending_rocket_detonations.clear();
             self.pending_missile_detonations.clear();
         }
-        movement::sync_formation_speeds_after_live_pass(&mut self.substrate.entities);
         if let Some(rules) = rules {
             crate::sim::gate_runtime::tick_gate_runtimes(
                 &mut self.substrate.entities,

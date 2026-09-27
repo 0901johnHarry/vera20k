@@ -495,7 +495,6 @@ fn move_order_cancels_a_running_unload() {
         target_rx: 30,
         target_ry: 30,
         queue: false,
-        group_id: None,
     }));
     for _ in 0..80 {
         fx.tick();
