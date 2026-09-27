@@ -1503,7 +1503,6 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
     {
         let cell = terrain.cell_mut(2, 1).expect("bridge body cell");
         cell.ground_walk_blocked = true;
-        cell.build_blocked = true;
         cell.base_build_blocked = true;
         cell.is_water = true;
         cell.bridge_walkable = true;
@@ -2334,7 +2333,6 @@ fn gsi_04_10_clear_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
         cell.base_yr_cell_land_type = LandType::Clear.as_index();
         cell.base_terrain_class = TerrainClass::Clear;
         cell.base_speed_costs = speed_costs;
-        cell.build_blocked = false;
     }
     terrain
 }
@@ -2736,7 +2734,6 @@ fn water_terrain_with_land_type(
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: speed_costs,
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -2800,7 +2797,6 @@ fn single_bridge_cell(rx: u16, ry: u16, deck_level: u8) -> ResolvedTerrainGrid {
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: Default::default(),
-                build_blocked: false,
                 has_bridge_deck: x == rx && y == ry,
                 bridge_walkable: x == rx && y == ry,
                 bridge_transition: x == rx && y == ry,
@@ -2846,7 +2842,6 @@ fn bridge_cell_with_ground_block(
     cell.ground_walk_blocked = ground_walk_blocked;
     cell.is_water = ground_walk_blocked;
     cell.base_build_blocked = ground_walk_blocked;
-    cell.build_blocked = true;
     terrain
 }
 
@@ -2988,7 +2983,7 @@ fn combat_test_rules() -> RuleSet {
          [M60]\nDamage=25\nROF=20\nRange=5\nWarhead=SA\n\n\
          [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\n\
          [SA]\nVerses=100%,100%,100%,90%,70%,25%,100%,25%,25%,0%,0%\n\n\
-         [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n",
+         [AP]\nVerses=100%,100%,90%,75%,75%,75%,60%,30%,20%,0%,0%\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("combat test rules should parse")
 }
@@ -4259,7 +4254,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
                         base_yr_cell_land_type: 0,
                         base_terrain_class: Default::default(),
                         base_speed_costs: Default::default(),
-                        build_blocked: false,
                         has_bridge_deck: false,
                         bridge_walkable: false,
                         bridge_transition: false,
@@ -5363,7 +5357,6 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     resolved.cells[idx].bridge_transition = true;
     resolved.cells[idx].bridge_deck_level = 3;
     resolved.cells[idx].ground_walk_blocked = true;
-    resolved.cells[idx].build_blocked = true;
     install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
@@ -6183,6 +6176,7 @@ fn test_try_select_object_rejects_an_already_selected_object() {
 fn test_deploy_mcv_replaces_vehicle_with_conyard() {
     let mut sim = Simulation::new();
     let rules = combat_test_rules();
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let heights = empty_heights();
     let mcv = sim
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &heights)
@@ -7643,6 +7637,7 @@ fn test_undeploy_conyard_spawns_mcv() {
     let mut rules = combat_test_rules();
     // Retail GACNSTMK: 58 frames with shadows.
     rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     // A yard converts back only in a multiplayer game (`Sell 0x00449D08`).
     sim.session.game_mode_nonzero = true;
     let heights = empty_heights();
@@ -7789,7 +7784,6 @@ fn level_has_single_source_of_truth_for_vision_height_derivation() {
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: Default::default(),
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -7849,7 +7843,6 @@ fn make_realistic_bridgehead_terrain() -> ResolvedTerrainGrid {
         },
         ResolvedTerrainCell {
             ground_walk_blocked: true,
-            build_blocked: true,
             base_build_blocked: true,
             base_land_type: 0,
             base_yr_cell_land_type: 0,
@@ -7931,7 +7924,6 @@ fn bridgehead_base_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::Resol
         base_yr_cell_land_type: 0,
         base_terrain_class: Default::default(),
         base_speed_costs: speed_costs,
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,

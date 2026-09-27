@@ -633,7 +633,7 @@ fn an_infected_unit_cannot_load_bunker_or_deploy() {
         .get_mut(mcv)
         .unwrap()
         .mcv_deploy_pending = true;
-    assert!(!arena.sim.deploy_mcv(mcv, &rules, &BTreeMap::new()));
+    assert!(!arena.sim.deploy_mcv(mcv, &rules, None));
     assert!(
         !arena
             .sim

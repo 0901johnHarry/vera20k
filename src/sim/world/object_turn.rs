@@ -230,7 +230,7 @@ impl Simulation {
                 sim.session.binary_frame,
             );
         }
-        if !sim.process_track_turn(stable_id, rules, path_grid) {
+        if !sim.process_track_turn(stable_id, rules, overlay_registry) {
             return Ok(outcome);
         }
         let mut pending_movement = {
@@ -746,7 +746,7 @@ impl Simulation {
             if unit_warp_arrival {
                 // 0x0071971C: vt+0x18C(2) is UnitClass::Per_Cell_Process
                 // (0x00739EC0), with the Foot body and its playfield tail.
-                sim.unit_per_cell_process_arrival(stable_id, rules);
+                sim.unit_per_cell_process_arrival(stable_id, rules, overlay_registry);
                 // 0x00719725 Stop_Moving: the tick retired the request.
                 // 0x0071972E CellClass::PickupCrate (`0x00481A00`): the crate
                 // receiver every mover still lacks (`movement::track_fresh`

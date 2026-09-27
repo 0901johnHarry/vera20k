@@ -732,7 +732,7 @@ impl Simulation {
                 // 30 frames.
                 if !unit {
                     self.set_manager_state(master, ManagerState::Ready, now);
-                } else if !driving && !self.slave_master_deploys(master, rules) {
+                } else if !driving && !self.slave_master_deploys(master, rules, registry) {
                     self.set_manager_state(master, ManagerState::Deploying, i32::MAX);
                     if let Some(manager) = self.slave_manager_mut(master) {
                         manager.ai_timer.start(now, 30);
@@ -744,7 +744,7 @@ impl Simulation {
                 // refusal hunts again.
                 if !unit {
                     self.set_manager_state(master, ManagerState::Ready, now);
-                } else if !self.slave_master_deploys(master, rules) {
+                } else if !self.slave_master_deploys(master, rules, registry) {
                     self.set_manager_state(master, ManagerState::Scanning, i32::MAX);
                 }
             }
@@ -798,9 +798,14 @@ impl Simulation {
     /// same manager afterwards; VERA's manager travels with the conversion,
     /// so state 4 is written first and a refusal overwrites it. The
     /// hand-off inside acts only on state 0, so it sees no difference.
-    fn slave_master_deploys(&mut self, master: u64, rules: &RuleSet) -> bool {
+    fn slave_master_deploys(
+        &mut self,
+        master: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
         self.set_manager_state(master, ManagerState::Deployed, i32::MAX);
-        self.deploy_mcv(master, rules, &Default::default())
+        self.deploy_mcv(master, rules, registry)
     }
 
     /// State 5's relocation test (`0x006B00B2..0x006B01BF`), once no ore

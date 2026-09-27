@@ -471,7 +471,7 @@ impl Simulation {
     /// `CellClass::Find_Nearest_Object 0x47C3D0` with the (0,0) sub-point over
     /// `layer`'s list of `cell`: ranked by each object's vt+0x48 coordinate (a
     /// building's centre), the first in list order on a tie.
-    pub(super) fn nearest_cell_object(
+    pub(crate) fn nearest_cell_object(
         &self,
         cell: (u16, u16),
         layer: MovementLayer,

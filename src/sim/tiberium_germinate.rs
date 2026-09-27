@@ -252,7 +252,6 @@ mod tests {
             base_yr_cell_land_type: land_type,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

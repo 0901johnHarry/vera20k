@@ -1152,7 +1152,6 @@ pub(super) fn test_terrain_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
             amphibious: Some(100),
             ..SpeedCostProfile::default()
         },
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,

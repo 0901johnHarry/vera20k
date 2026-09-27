@@ -1,13 +1,15 @@
 //! Minimal AI opponent — produces deterministic commands via the same Command API as players.
 //!
 //! The AI uses a simple priority-based decision loop each tick:
-//! 1. Deploy MCV if one exists but no construction yard
-//! 2. Build power when low or missing
-//! 3. Build refinery for economy
-//! 4. Build barracks and war factory for unit production
-//! 5. Queue infantry and vehicles continuously
-//! 6. Place ready buildings near existing base
-//! 7. Send attack waves toward the nearest enemy base periodically
+//! 1. Build power when low or missing
+//! 2. Build refinery for economy
+//! 3. Build barracks and war factory for unit production
+//! 4. Queue infantry and vehicles continuously
+//! 5. Place ready buildings near existing base
+//! 6. Send attack waves toward the nearest enemy base periodically
+//!
+//! A computer house's Construction Yard maker deploys through its own
+//! missions (`sim::mcv_deploy`), not through this loop.
 //!
 //! All decisions are deterministic (uses SimRng). AI commands are injected
 //! into the same command stream as player commands, so replays stay valid.
@@ -15,8 +17,6 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/
-
-use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -48,8 +48,6 @@ pub struct AiPlayerState {
     pub owner: InternedId,
     /// Native frame when the last attack wave was sent.
     pub last_attack_frame: u32,
-    /// Whether MCV deploy has been attempted.
-    pub mcv_deployed: bool,
 }
 
 impl AiPlayerState {
@@ -57,7 +55,6 @@ impl AiPlayerState {
         Self {
             owner,
             last_attack_frame: 0,
-            mcv_deployed: false,
         }
     }
 }
@@ -68,7 +65,6 @@ pub fn tick_ai(
     ai_players: &mut [AiPlayerState],
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Vec<CommandEnvelope> {
     let mut commands: Vec<CommandEnvelope> = Vec::new();
@@ -95,7 +91,6 @@ pub fn tick_ai(
                 ai,
                 rules,
                 path_grid,
-                height_map,
                 overlay_registry,
                 execute_tick,
                 &mut commands,
@@ -103,16 +98,7 @@ pub fn tick_ai(
             continue;
         }
 
-        // 1. Deploy MCV if needed.
-        if !ai.mcv_deployed {
-            if let Some(cmd) = try_deploy_mcv(sim, owner_str, rules, execute_tick) {
-                commands.push(cmd);
-                ai.mcv_deployed = true;
-                continue; // Wait for next think cycle.
-            }
-        }
-
-        // 2. Build structures in priority order.
+        // 1. Build structures in priority order.
         // A ConYard is any structure with UndeploysInto= set (data-driven from rules.ini).
         let has_conyard = has_conyard_dynamic(sim, owner_str, rules);
         if !has_conyard {
@@ -126,22 +112,21 @@ pub fn tick_ai(
             }
         }
 
-        // 3. Queue units from barracks and war factory.
+        // 2. Queue units from barracks and war factory.
         queue_units(sim, owner_str, rules, execute_tick, &mut commands);
 
-        // 4. Place ready buildings.
+        // 3. Place ready buildings.
         place_ready_buildings(
             sim,
             ai,
             rules,
             path_grid,
-            height_map,
             overlay_registry,
             execute_tick,
             &mut commands,
         );
 
-        // 5. Send attack waves.
+        // 4. Send attack waves.
         if current_frame >= AI_FIRST_ATTACK_FRAME
             && current_frame.wrapping_sub(ai.last_attack_frame) >= AI_ATTACK_INTERVAL_FRAMES
         {
@@ -154,43 +139,6 @@ pub fn tick_ai(
     }
 
     commands
-}
-
-/// Try to find an undeployed MCV and issue a deploy command.
-///
-/// An MCV is any unit with `DeploysInto=` set in rules.ini (data-driven).
-fn try_deploy_mcv(
-    sim: &Simulation,
-    owner: &str,
-    rules: &RuleSet,
-    execute_tick: u64,
-) -> Option<CommandEnvelope> {
-    for entity in sim.substrate.entities.values() {
-        if !sim
-            .interner
-            .resolve(entity.owner())
-            .eq_ignore_ascii_case(owner)
-        {
-            continue;
-        }
-        if entity.dying || entity.lifecycle.in_limbo {
-            continue;
-        }
-        let is_deployable: bool = sim
-            .object_type(entity.type_ref(), rules)
-            .is_some_and(|obj| obj.deploys_into.is_some());
-        if is_deployable {
-            let owner_id = sim.interner.get(owner)?;
-            return Some(CommandEnvelope::new(
-                owner_id,
-                execute_tick,
-                Command::DeployMcv {
-                    entity_id: entity.stable_id(),
-                },
-            ));
-        }
-    }
-    None
 }
 
 /// Check if the owner has any ConYard-class structure (one with UndeploysInto= set).
@@ -423,7 +371,6 @@ fn place_ready_buildings(
     _ai: &AiPlayerState,
     rules: &RuleSet,
     path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     execute_tick: u64,
     commands: &mut Vec<CommandEnvelope>,
@@ -464,8 +411,6 @@ fn place_ready_buildings(
                     center_ry,
                     fw,
                     fh,
-                    path_grid,
-                    height_map,
                     overlay_registry,
                 )
             })
@@ -513,7 +458,16 @@ fn send_attack_wave(
         ) {
             continue;
         }
-        if production::is_harvester_type(rules, sim.interner.resolve(entity.type_ref())) {
+        let type_id = sim.interner.resolve(entity.type_ref());
+        if production::is_harvester_type(rules, type_id) {
+            continue;
+        }
+        // A unit that deploys into a building (the MCV) is on its own
+        // missions (`sim::mcv_deploy`), not an attacker.
+        if rules
+            .object(type_id)
+            .is_some_and(|object| object.deploys_into.is_some())
+        {
             continue;
         }
         // Check if unit has no movement target (idle).
@@ -628,8 +582,6 @@ fn find_placement_cell(
     center_ry: u16,
     fw: u16,
     fh: u16,
-    path_grid: Option<&PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Option<(u16, u16)> {
     // Standard overlay walls get their candidates from the AI base-perimeter
@@ -660,8 +612,6 @@ fn find_placement_cell(
                     type_id,
                     x as u16,
                     y as u16,
-                    path_grid,
-                    height_map,
                     overlay_registry,
                 );
                 if preview.as_ref().is_some_and(|p| p.valid) {
@@ -683,8 +633,6 @@ fn find_placement_cell(
                     type_id,
                     x as u16,
                     y as u16,
-                    path_grid,
-                    height_map,
                     overlay_registry,
                 );
                 if preview.as_ref().is_some_and(|p| p.valid) {
@@ -928,19 +876,20 @@ mod tests {
         let state = AiPlayerState::new(owner_id);
         assert_eq!(state.owner, owner_id);
         assert_eq!(state.last_attack_frame, 0);
-        assert!(!state.mcv_deployed);
     }
 
     #[test]
     fn tick_ai_skips_defeated_house() {
         // A house flagged is_defeated must issue NO command (the Phase-8 defeat
-        // gate). Baseline: an undeployed MCV makes a live house emit DeployMcv,
-        // so the empty result for the defeated house proves the gate fired.
+        // gate). Baseline: a live house with a Construction Yard sends its idle
+        // tank at the enemy base on an attack frame, so the empty result for the
+        // defeated house proves the gate fired.
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[InfantryTypes]\n\
              [AircraftTypes]\n\
              [VehicleTypes]\n\
              0=TSTMCV\n\
+             1=TSTTNK\n\
              [BuildingTypes]\n\
              0=TSTCYRD\n\
              [TSTMCV]\n\
@@ -948,6 +897,11 @@ mod tests {
              DeploysInto=TSTCYRD\n\
              Speed=6\n\
              Strength=1000\n\
+             TechLevel=1\n\
+             Owner=Americans\n\
+             [TSTTNK]\n\
+             Speed=6\n\
+             Strength=400\n\
              TechLevel=1\n\
              Owner=Americans\n\
              [TSTCYRD]\n\
@@ -959,13 +913,16 @@ mod tests {
              Owner=Americans\n",
         ))
         .expect("rules parse");
-        let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
 
-        // Build a sim holding one undeployed MCV for "Americans".
+        // Build a sim holding one idle tank and a Construction Yard for
+        // "Americans", and a Soviet structure to attack.
         let build_sim = || {
             let mut sim = Simulation::new();
+            sim.session.binary_frame = 232;
+            spawn_structure(&mut sim, 2, "Americans", "TSTCYRD", 8, 8);
+            spawn_structure(&mut sim, 3, "Soviets", "TSTCYRD", 30, 30);
             let owner_id = sim.interner.intern("Americans");
-            let mcv_type = sim.interner.intern("TSTMCV");
+            let tank_type = sim.interner.intern("TSTTNK");
             let mut ge = crate::sim::game_entity::GameEntity::new_at_frame_zero_for_test(
                 1,
                 5,
@@ -973,8 +930,8 @@ mod tests {
                 0,
                 0,
                 owner_id,
-                Health { current: 1000 },
-                mcv_type,
+                Health { current: 400 },
+                tank_type,
                 EntityCategory::Unit,
                 0,
                 5,
@@ -985,12 +942,12 @@ mod tests {
             (sim, owner_id)
         };
 
-        // No house registered -> not defeated -> the MCV is deployed.
+        // No house registered -> not defeated -> the tank attacks.
         let (sim, owner_id) = build_sim();
         let mut ai = vec![AiPlayerState::new(owner_id)];
-        let live = tick_ai(&sim, &mut ai, &rules, None, &height_map, None);
-        assert_eq!(live.len(), 1, "a live AI house deploys its MCV");
-        assert!(matches!(live[0].payload, Command::DeployMcv { .. }));
+        let live = tick_ai(&sim, &mut ai, &rules, None, None);
+        assert_eq!(live.len(), 1, "a live AI house sends its attack wave");
+        assert!(matches!(live[0].payload, Command::AttackMove { .. }));
 
         // Defeated house -> the gate skips it -> no commands.
         let (mut sim, owner_id) = build_sim();
@@ -999,7 +956,7 @@ mod tests {
         house.is_defeated = true;
         sim.houses.insert(owner_id, house);
         let mut ai = vec![AiPlayerState::new(owner_id)];
-        let defeated = tick_ai(&sim, &mut ai, &rules, None, &height_map, None);
+        let defeated = tick_ai(&sim, &mut ai, &rules, None, None);
         assert!(
             defeated.is_empty(),
             "a defeated AI house must issue no command"
@@ -1037,7 +994,7 @@ mod tests {
              TechLevel=1\n\
              Foundation=1x1\n\
              Adjacent=0\n\
-             GuardRange=5\n",
+             GuardRange=5\n[Clear]\nBuildable=yes\n",
         );
         let mut rules = RuleSet::from_ini(&ini).expect("AI wall rules");
         let art = ArtRegistry::from_ini(&IniFile::from_str("[GAWALL]\nToOverlay=GAWALL\n"));
@@ -1046,9 +1003,8 @@ mod tests {
         let path_grid = PathGrid::new(32, 32);
         let height_map = BTreeMap::new();
         let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         sim.session.binary_frame = 1;
-        sim.session.map_width = 32;
-        sim.session.map_height = 32;
         sim.overlay_grid = Some(OverlayGrid::new(32, 32));
         spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
         let owner = sim.interner.intern("Americans");
@@ -1091,14 +1047,7 @@ mod tests {
         );
 
         let mut ai = vec![AiPlayerState::new(owner)];
-        let commands = tick_ai(
-            &sim,
-            &mut ai,
-            &rules,
-            Some(&path_grid),
-            &height_map,
-            Some(&registry),
-        );
+        let commands = tick_ai(&sim, &mut ai, &rules, Some(&path_grid), Some(&registry));
         let (rx, ry) = match commands.as_slice() {
             [
                 CommandEnvelope {
@@ -1514,8 +1463,7 @@ mod tests {
             "MODPROC",
             14,
             10,
-            Some(&grid),
-            &height_map,
+            &height_map
         ));
 
         let refinery_sid = sim

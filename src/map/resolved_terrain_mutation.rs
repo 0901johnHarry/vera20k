@@ -65,7 +65,6 @@ impl ResolvedTerrainGrid {
             terrain_cell.is_rough,
             terrain_cell.is_road,
             terrain_cell.ground_walk_blocked,
-            terrain_cell.build_blocked,
         );
 
         restore_pristine_land(terrain_cell);
@@ -91,10 +90,6 @@ impl ResolvedTerrainGrid {
         terrain_cell.overlay_zone_type = overlay_zone;
         terrain_cell.ground_walk_blocked =
             land_ground_blocked || terrain_cell.terrain_object_blocks || new_blocks;
-        terrain_cell.build_blocked = terrain_cell.base_build_blocked
-            || terrain_cell.terrain_object_blocks
-            || new_blocks
-            || terrain_cell.has_bridge_deck;
         terrain_cell.zone_type = recalc_zone_type(
             terrain_cell.outside_playfield,
             terrain_cell.overlay_zone_type,
@@ -115,7 +110,6 @@ impl ResolvedTerrainGrid {
             terrain_cell.is_rough,
             terrain_cell.is_road,
             terrain_cell.ground_walk_blocked,
-            terrain_cell.build_blocked,
         );
         old_overlay_zone_type != terrain_cell.overlay_zone_type || old != new
     }
@@ -136,10 +130,6 @@ impl ResolvedTerrainGrid {
         terrain_cell.terrain_object_blocks = blocked;
         terrain_cell.ground_walk_blocked =
             terrain_cell.base_ground_walk_blocked || terrain_cell.overlay_blocks || blocked;
-        terrain_cell.build_blocked = terrain_cell.base_build_blocked
-            || terrain_cell.overlay_blocks
-            || terrain_cell.has_bridge_deck
-            || blocked;
         terrain_cell.zone_type = recalc_zone_type(
             terrain_cell.outside_playfield,
             terrain_cell.overlay_zone_type,

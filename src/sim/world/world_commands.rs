@@ -1340,7 +1340,6 @@ impl Simulation {
                     &type_s,
                     *rx,
                     *ry,
-                    path_grid,
                     height_map,
                     overlay_registry,
                 );

@@ -5,10 +5,28 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
-/// Install the arena on `sim` and return its path grid.
+/// The arena's playfield, wide enough to hold every arena cell (and the shared
+/// dummy just past its edge).
+pub(crate) const OPEN_PLAYFIELD: crate::sim::cell_rect::PlayfieldBounds =
+    crate::sim::cell_rect::PlayfieldBounds {
+        base: 20,
+        off_fc: -128,
+        off_100: -128,
+        off_104: 256,
+        off_108: 256,
+    };
+
+/// Install the arena on `sim`, with commands executing on the next tick, and
+/// return its path grid.
 pub(crate) fn flat_arena(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
-    const SIZE: u16 = 32;
     sim.input_delay_ticks = 0;
+    flat_ground(sim, rules)
+}
+
+/// Install the arena's ground, playfield and navigation on `sim` and return
+/// its path grid.
+pub(crate) fn flat_ground(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
+    const SIZE: u16 = 32;
     sim.session.map_width = SIZE;
     sim.session.map_height = SIZE;
     let clear = crate::rules::terrain_rules::SpeedCostProfile {
@@ -35,13 +53,7 @@ pub(crate) fn flat_arena(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
                 .collect(),
         ),
     );
-    sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
-        base: 20,
-        off_fc: -128,
-        off_100: -128,
-        off_104: 256,
-        off_108: 256,
-    });
+    sim.playfield_bounds = Some(OPEN_PLAYFIELD);
     sim.playfield_size_height = Some(20);
     assert!(sim.rebuild_dynamic_navigation(rules));
     sim.path_grid_snapshot()

@@ -967,13 +967,11 @@ fn test_from_resolved_terrain_uses_resolved_blocking_flags() {
             ResolvedTerrainCell {
                 terrain_object_blocks: true,
                 terrain_object_occupation: Some(1),
-                build_blocked: true,
                 ..make_resolved_cell(0, 1)
             },
             ResolvedTerrainCell {
                 overlay_blocks: true,
                 overlay_zone_type: Some(crate::map::resolved_terrain::zone_class::IMPASSABLE),
-                build_blocked: true,
                 ..make_resolved_cell(1, 1)
             },
         ],
@@ -1019,7 +1017,6 @@ fn test_layered_path_transitions_onto_bridge_and_stays_on_deck() {
             },
             ResolvedTerrainCell {
                 ground_walk_blocked: true,
-                build_blocked: true,
                 bridge_walkable: true,
                 bridge_transition: true,
                 bridge_deck_level: 4,
@@ -1115,7 +1112,6 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
             },
             ResolvedTerrainCell {
                 ground_walk_blocked: true,
-                build_blocked: true,
                 base_build_blocked: true,
                 base_land_type: 0,
                 base_yr_cell_land_type: 0,
@@ -1215,7 +1211,6 @@ fn test_pathcell_bridge_walkable_preserved_for_bridgeheads_across_rebuild() {
             },
             ResolvedTerrainCell {
                 ground_walk_blocked: true,
-                build_blocked: true,
                 base_build_blocked: true,
                 base_land_type: 0,
                 base_yr_cell_land_type: 0,
@@ -1360,7 +1355,6 @@ fn make_resolved_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         base_yr_cell_land_type: 0,
         base_terrain_class: Default::default(),
         base_speed_costs: Default::default(),
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,
