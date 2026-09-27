@@ -628,7 +628,7 @@ pub(crate) fn current_shell_slide_target(state: &AppState) -> Option<ShellSlideK
         .then_some(ShellSlideKind::Options);
     }
     let candidate =
-        if state.frontend.shell_route.skirmish() || state.frontend.dev_skirmish_shell_enabled {
+        if state.frontend.shell_route.skirmish() {
             skirmish_slide_target(&state.frontend.skirmish_shell_state)?
         } else if state.frontend.shell_route.single_player() {
             ShellSlideKind::SinglePlayer
@@ -651,7 +651,7 @@ pub(crate) fn current_shell_slide_target(state: &AppState) -> Option<ShellSlideK
                 return None;
             }
             ShellSlideKind::WolWelcome
-        } else if !state.frontend.main_menu_shell_failed {
+        } else if state.frontend.main_menu_shell_error.is_none() {
             ShellSlideKind::MainMenu
         } else {
             return None;

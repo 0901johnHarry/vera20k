@@ -448,6 +448,28 @@ impl ApplicationHandler for App {
         // Always let egui see the event first for input handling.
         let egui_response: egui_winit::EventResponse =
             state.renderer.egui.on_window_event(&state.platform.window, &event);
+        if state.frontend.screen == GameScreen::MainMenu
+            && state.frontend.main_menu_shell_error.is_some()
+        {
+            match &event {
+                WindowEvent::KeyboardInput { event, .. } => {
+                    if event.state.is_pressed()
+                        && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+                    {
+                        event_loop.exit();
+                    }
+                    state.platform.window.request_redraw();
+                    return;
+                }
+                WindowEvent::MouseInput { .. }
+                | WindowEvent::MouseWheel { .. }
+                | WindowEvent::CursorMoved { .. } => {
+                    state.platform.window.request_redraw();
+                    return;
+                }
+                _ => {}
+            }
+        }
         if crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(state) {
             state.renderer.egui.discard_pending_input(&state.platform.window);
         }
@@ -670,7 +692,6 @@ impl ApplicationHandler for App {
                         Self::handle_skirmish_shell_action(
                             state,
                             crate::ui::skirmish_shell::SkirmishShellAction::BackOrExit,
-                            event_loop,
                         );
                         state.platform.window.request_redraw();
                         return;
@@ -864,7 +885,7 @@ impl ApplicationHandler for App {
                 }
                 if !egui_consumed
                     && state.frontend.screen == GameScreen::MainMenu
-                    && !state.frontend.main_menu_shell_failed
+                    && state.frontend.main_menu_shell_error.is_none()
                     && !Self::menu_page_active(state)
                     && !Self::movie_list_active(state)
                     && !Self::campaign_active(state)
@@ -964,7 +985,7 @@ impl ApplicationHandler for App {
                     }
                     if state.frontend.exit_confirm_modal.is_some()
                         && state.frontend.screen == GameScreen::MainMenu
-                        && !state.frontend.main_menu_shell_failed
+                        && state.frontend.main_menu_shell_error.is_none()
                         && button == MouseButton::Left
                     {
                         if btn_state.is_pressed() {
@@ -988,7 +1009,7 @@ impl ApplicationHandler for App {
                         if btn_state.is_pressed() {
                             Self::handle_skirmish_shell_mouse_down(state);
                         } else {
-                            Self::handle_skirmish_shell_mouse_up(state, event_loop);
+                            Self::handle_skirmish_shell_mouse_up(state);
                         }
                     }
                 } else if Self::menu_page_active(state) {
@@ -1000,7 +1021,7 @@ impl ApplicationHandler for App {
                         }
                     }
                 } else if state.frontend.screen == GameScreen::MainMenu
-                    && !state.frontend.main_menu_shell_failed
+                    && state.frontend.main_menu_shell_error.is_none()
                     && !egui_consumed
                 {
                     if button == MouseButton::Left {

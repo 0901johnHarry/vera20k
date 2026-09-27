@@ -1,17 +1,11 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ConfirmedQuitOwner {
-    ShellController,
-    EguiFallback,
-}
-
-/// Private operation seam shared by both confirmed main-menu quit owners.
+/// Private operation seam for the retail shell's confirmed quit transaction.
 /// Keeping the ordering here lets unit tests observe persistence dispatch
 /// without constructing the window, renderer, or audio-backed `AppState`.
 trait ConfirmedQuitOperations {
     fn persist_settings(&mut self);
-    fn dismiss_confirmation(&mut self, owner: ConfirmedQuitOwner);
+    fn dismiss_confirmation(&mut self);
     fn start_cascade(&mut self);
 }
 
@@ -24,15 +18,8 @@ impl ConfirmedQuitOperations for AppStateConfirmedQuitOperations<'_> {
         App::persist_settings_on_quit(self.state);
     }
 
-    fn dismiss_confirmation(&mut self, owner: ConfirmedQuitOwner) {
-        match owner {
-            ConfirmedQuitOwner::ShellController => {
-                App::close_exit_confirm_modal_from_controller(self.state);
-            }
-            ConfirmedQuitOwner::EguiFallback => {
-                self.state.frontend.exit_confirm_modal = None;
-            }
-        }
+    fn dismiss_confirmation(&mut self) {
+        App::close_exit_confirm_modal_from_controller(self.state);
     }
 
     fn start_cascade(&mut self) {
@@ -40,21 +27,10 @@ impl ConfirmedQuitOperations for AppStateConfirmedQuitOperations<'_> {
     }
 }
 
-fn dispatch_confirmed_quit(
-    operations: &mut impl ConfirmedQuitOperations,
-    owner: ConfirmedQuitOwner,
-) {
-    operations.dismiss_confirmation(owner);
+fn dispatch_shell_controller_confirmed_quit(operations: &mut impl ConfirmedQuitOperations) {
+    operations.dismiss_confirmation();
     operations.persist_settings();
     operations.start_cascade();
-}
-
-fn dispatch_shell_controller_confirmed_quit(operations: &mut impl ConfirmedQuitOperations) {
-    dispatch_confirmed_quit(operations, ConfirmedQuitOwner::ShellController);
-}
-
-fn dispatch_egui_fallback_confirmed_quit(operations: &mut impl ConfirmedQuitOperations) {
-    dispatch_confirmed_quit(operations, ConfirmedQuitOwner::EguiFallback);
 }
 
 impl crate::app::persistence::options::launcher::LauncherPreviewOperations for AppState {
@@ -217,7 +193,10 @@ impl crate::app::persistence::options::launcher::LauncherParentOperations
     }
 
     fn route_keyboard(&mut self) {
-        crate::app::input::keyboard::open(self.state, crate::ui::shell::keyboard::KeyboardParent::Launcher);
+        crate::app::input::keyboard::open(
+            self.state,
+            crate::ui::shell::keyboard::KeyboardParent::Launcher,
+        );
     }
 
     fn reopen_parent(&mut self) {
@@ -469,63 +448,27 @@ impl App {
         Self::open_single_player_shell(state);
     }
 
-    fn draw_skirmish_shell_dev_toggle(ctx: &egui::Context, enabled: &mut bool) -> bool {
-        let mut changed = false;
-        egui::Window::new("Developer")
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-18.0, -18.0))
-            .collapsible(true)
-            .resizable(false)
-            .show(ctx, |ui| {
-                changed = ui
-                    .checkbox(enabled, "Experimental Skirmish Shell")
-                    .on_hover_text("Switches the setup screen to the research shell renderer.")
-                    .changed();
-            });
-        changed
-    }
-
-    pub(super) fn render_egui_main_menu_fallback(
+    pub(super) fn render_shell_error(
         state: &mut AppState,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         event_loop: &ActiveEventLoop,
     ) -> Result<()> {
+        let error = state
+            .frontend
+            .main_menu_shell_error
+            .get_or_insert_with(|| "Required game-menu resources could not be loaded.".to_owned());
         transitions::clear_screen(encoder, view);
         state.renderer.egui.begin_frame(&state.platform.window);
-        let action = main_menu::draw_main_menu_with_maps(
+        let quit = main_menu::draw_shell_error(
             &state.renderer.egui.ctx,
-            &state.frontend.available_maps,
-            &mut state.frontend.skirmish_settings,
+            error,
+            state
+                .platform
+                .game_config
+                .as_ref()
+                .map(|config| config.paths.ra2_dir.as_path()),
         );
-        let mut dev_shell_enabled = state.frontend.dev_skirmish_shell_enabled;
-        let dev_shell_changed =
-            Self::draw_skirmish_shell_dev_toggle(&state.renderer.egui.ctx, &mut dev_shell_enabled);
-        if dev_shell_changed {
-            Self::enter_shell_window_mode(state);
-            if dev_shell_enabled {
-                if Self::ensure_skirmish_shell_chrome(state) {
-                    state.frontend.dev_skirmish_shell_enabled = true;
-                } else {
-                    state.frontend.dev_skirmish_shell_enabled = false;
-                    log::warn!(
-                        "Development Skirmish shell unavailable; retaining the current shell"
-                    );
-                }
-            } else {
-                state.frontend.dev_skirmish_shell_enabled = false;
-                state
-                    .frontend
-                    .skirmish_shell_state
-                    .pressed_owner_draw_button = None;
-            }
-        }
-        // Confirm modal can be open over the legacy egui menu too; draw it in
-        // the same frame so its buttons receive input. This degraded egui path has
-        // no SHP shell, so the quit-confirm renders as the egui card here.
-        let confirm = Self::draw_main_menu_dialogs(state, true);
-        // Degraded fallback (shell chrome failed to load) has no SHP cursor of
-        // its own, so keep the OS cursor visible here rather than hiding it and
-        // leaving the egui menu with no pointer at all.
         state.renderer.egui.end_frame_and_render(
             &state.renderer.gpu,
             encoder,
@@ -533,27 +476,11 @@ impl App {
             &state.platform.window,
             false,
         );
-        if confirm {
+        if quit {
+            // A failed startup must not write default settings over the retail profile.
             event_loop.exit();
-            return Ok(());
         }
-        Self::handle_main_menu_action(state, action, event_loop);
         Ok(())
-    }
-
-    fn handle_main_menu_action(
-        state: &mut AppState,
-        action: main_menu::MenuAction,
-        event_loop: &ActiveEventLoop,
-    ) {
-        let _ = event_loop;
-        match action {
-            main_menu::MenuAction::StartSelected => Self::start_selected_skirmish(state),
-            // Route through the same confirm message box for consistency with
-            // the native shell; the game does not quit on the first click.
-            main_menu::MenuAction::Exit => Self::open_exit_confirm_modal(state),
-            main_menu::MenuAction::None => {}
-        }
     }
 
     /// Resolve a CSF string key to display text, falling back to the supplied
@@ -696,8 +623,13 @@ impl App {
             // Every hover message repaints the status line (0x00615EF7).
             state.frontend.shell_status_line.repaint();
         }
-        let Some(mut dialog) = state.frontend.options_dialog.take() else { return; };
-        let (x, y) = (state.match_state.input.cursor_x as i32, state.match_state.input.cursor_y as i32);
+        let Some(mut dialog) = state.frontend.options_dialog.take() else {
+            return;
+        };
+        let (x, y) = (
+            state.match_state.input.cursor_x as i32,
+            state.match_state.input.cursor_y as i32,
+        );
         let (w, h) = (state.render_width() as i32, state.render_height() as i32);
         match down {
             Some(true) => dialog.shell_mouse_down(x, y, w, h),
@@ -1296,41 +1228,9 @@ impl App {
         true
     }
 
-    /// Draw whichever main-menu modal dialog is open in the current egui frame
-    /// and apply its outcome. Returns `true` when the player has confirmed
-    /// quitting, so the caller should exit the event loop.
-    /// Draw whichever egui main-menu modal dialog is open. `render_exit_confirm_egui`
-    /// is true only on the degraded egui fallback path (where the SHP shell — and
-    /// thus the SHP quit-confirm modal — is unavailable); the normal SHP shell path
-    /// passes false and renders the quit-confirm as an SHP overlay instead.
-    pub(super) fn draw_main_menu_dialogs(
-        state: &mut AppState,
-        render_exit_confirm_egui: bool,
-    ) -> bool {
+    /// Draw retained launcher Options overlays; quit confirmation is owned by the retail shell.
+    pub(super) fn draw_main_menu_dialogs(state: &mut AppState) {
         use crate::ui::main_menu_dialogs as dialogs;
-
-        if render_exit_confirm_egui {
-            if let Some(modal) = state.frontend.exit_confirm_modal.clone() {
-                match dialogs::draw_exit_confirm_modal(&state.renderer.egui.ctx, &modal) {
-                    dialogs::ExitConfirmAction::Confirm => {
-                        // Dismiss the confirmation first, persist settings, then
-                        // start the graceful cascade. Return false (not true) so
-                        // exit is owned by the cascade; this degraded egui-fallback
-                        // path runs the audio phases (the SHP fade overlay is
-                        // unavailable here).
-                        let mut operations = AppStateConfirmedQuitOperations { state };
-                        dispatch_egui_fallback_confirmed_quit(&mut operations);
-                        return false;
-                    }
-                    dialogs::ExitConfirmAction::Cancel => {
-                        state.frontend.exit_confirm_modal = None;
-                    }
-                    dialogs::ExitConfirmAction::None => {}
-                }
-                return false;
-            }
-        }
-
         if let Some(mut dialog) = state.frontend.options_dialog.take() {
             debug_assert_eq!(
                 dialog.launcher_audio_available(),
@@ -1341,10 +1241,7 @@ impl App {
                 &mut dialog,
             );
             Self::dispatch_launcher_options_output(state, dialog, output);
-            return false;
         }
-
-        false
     }
 
     pub(super) fn invalidate_main_menu_movie_if_base_changed(state: &mut AppState) {
@@ -1368,7 +1265,7 @@ mod confirmed_quit_transaction_tests {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum QuitEvent {
         Persist,
-        Dismiss(ConfirmedQuitOwner),
+        Dismiss,
         Cascade,
     }
 
@@ -1386,9 +1283,9 @@ mod confirmed_quit_transaction_tests {
             self.events.push(QuitEvent::Persist);
         }
 
-        fn dismiss_confirmation(&mut self, owner: ConfirmedQuitOwner) {
+        fn dismiss_confirmation(&mut self) {
             self.dismissals += 1;
-            self.events.push(QuitEvent::Dismiss(owner));
+            self.events.push(QuitEvent::Dismiss);
         }
 
         fn start_cascade(&mut self) {
@@ -1397,17 +1294,13 @@ mod confirmed_quit_transaction_tests {
         }
     }
 
-    fn assert_single_dispatch(operations: &RecordingQuitOperations, owner: ConfirmedQuitOwner) {
+    fn assert_single_dispatch(operations: &RecordingQuitOperations) {
         assert_eq!(operations.persists, 1);
         assert_eq!(operations.dismissals, 1);
         assert_eq!(operations.cascades, 1);
         assert_eq!(
             operations.events,
-            [
-                QuitEvent::Dismiss(owner),
-                QuitEvent::Persist,
-                QuitEvent::Cascade,
-            ]
+            [QuitEvent::Dismiss, QuitEvent::Persist, QuitEvent::Cascade,]
         );
     }
 
@@ -1417,15 +1310,6 @@ mod confirmed_quit_transaction_tests {
 
         dispatch_shell_controller_confirmed_quit(&mut operations);
 
-        assert_single_dispatch(&operations, ConfirmedQuitOwner::ShellController);
-    }
-
-    #[test]
-    fn egui_fallback_confirmed_quit_dispatches_one_profile_write() {
-        let mut operations = RecordingQuitOperations::default();
-
-        dispatch_egui_fallback_confirmed_quit(&mut operations);
-
-        assert_single_dispatch(&operations, ConfirmedQuitOwner::EguiFallback);
+        assert_single_dispatch(&operations);
     }
 }

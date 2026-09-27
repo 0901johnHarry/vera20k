@@ -75,8 +75,6 @@ pub(crate) use shell_random_map::{
 };
 pub(crate) use state::{AppState, PlatformState, reset_scenario_exit_runtime};
 
-const DEV_SKIRMISH_SHELL_ENV: &str = "RA2_DEV_SKIRMISH_SHELL";
-
 /// Top-level application. Implements winit's ApplicationHandler.
 pub struct App {
     state: Option<AppState>,
