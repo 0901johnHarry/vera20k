@@ -821,7 +821,8 @@ pub(super) fn building_weapon0_aims(
 
 /// The voxel-turret retry (`0x0044B017..0x0044B0CC`): a building with a turret
 /// whose `TurretAnimIsVoxel=` is set, within one `ROT=` step of the target's
-/// direction (`abs(low-byte ROT << 8)` as signed16, without FacingClass
+/// direction (vt+0x4E8 at `0x0044B056`, [`fire_coord::building_direction_to`];
+/// `abs(low-byte ROT << 8)` as signed16, without FacingClass
 /// SetROT's clamp; any miss at ROT 0), snaps its turret (`0x0044B0AC`) and
 /// asks GetFireError again. Original decisions: building_fire_turn.json.
 fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) -> bool {
@@ -838,13 +839,7 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     ) else {
         return false;
     };
-    let Some(direction) = crate::sim::movement::turret::facing_toward_target(
-        entity,
-        &target,
-        &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
-    ) else {
+    let Some(direction) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return false;
     };
     let delta = i32::from(barrel.current(now).wrapping_sub(direction) as i16);
@@ -863,9 +858,9 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     true
 }
 
-/// `+0x388.Set_Desired(DirectionTo(Target))` (`0x0044B16F`, `0x0044B1A8`,
-/// `0x0044B1FF`), at the type's `ROT=`: the turret of a `Turret=yes` type,
-/// the body of any other.
+/// `+0x388.Set_Desired(vt+0x4E8(Target))` (`0x0044B16F`, `0x0044B1A8`,
+/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the type's `ROT=`:
+/// the turret of a `Turret=yes` type, the body of any other.
 fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
@@ -877,13 +872,7 @@ fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind
     else {
         return;
     };
-    let Some(desired) = crate::sim::movement::turret::facing_toward_target(
-        entity,
-        &target,
-        &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
-    ) else {
+    let Some(desired) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return;
     };
     if let Some(barrel) = sim

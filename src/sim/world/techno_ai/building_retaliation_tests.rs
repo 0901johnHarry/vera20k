@@ -241,13 +241,17 @@ fn the_block_matches_the_original() {
         );
 
         let after = sim.substrate.entities.get(building).unwrap();
+        // NotifyUnderAttack's cell is GetCoords': a 2x2's foundation centre
+        // lies 128 leptons past its anchor cell's centre on both axes, in the
+        // next cell (native GetCoords rows in building_fire_facing.json).
+        let centre = u16::from(input["foundation"].as_i64().unwrap_or(3) != 0);
         assert_eq!(
             ping.map(|event| (event.structure, event.owner, event.rx, event.ry)),
             (row["ping"] == serde_json::json!([true])).then_some((
                 true,
                 before.owner(),
-                BUILDING.0,
-                BUILDING.1
+                BUILDING.0 + centre,
+                BUILDING.1 + centre
             )),
             "{name} ping"
         );

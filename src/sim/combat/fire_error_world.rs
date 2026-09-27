@@ -843,10 +843,22 @@ impl WorldQuery<'_, '_> {
         )
     }
 
-    /// DirectionToTarget from the firer's position to the target's point.
+    /// DirectionToTarget from the firer's position to the target's point; a
+    /// building's is vt+0x4E8 ([`super::fire_coord::building_direction_to`]).
     fn direction(&self) -> u16 {
         let subject = self.subject;
         let firer = subject.firer;
+        if firer.category == EntityCategory::Structure {
+            return subject.target.map_or(0, |target| {
+                super::fire_coord::building_direction_to(
+                    subject.world,
+                    subject.rules,
+                    firer,
+                    target,
+                )
+                .unwrap_or(0)
+            });
+        }
         subject.target_point().map_or(0, |(rx, ry, sub_x, sub_y)| {
             crate::sim::movement::turret::facing_toward_lepton(
                 firer.position.rx,

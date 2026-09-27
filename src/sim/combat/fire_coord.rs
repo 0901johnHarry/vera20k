@@ -14,10 +14,13 @@ use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtEntry;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::combat::TargetKind;
 use crate::sim::combat::combat_targeting::AttackerSnapshot;
 use crate::sim::combat::combat_weapon::WeaponSlot;
+use crate::sim::game_entity::GameEntity;
 use crate::sim::projectile::ProjectileCoord;
 use crate::sim::world::Simulation;
+use crate::util::direction_tables::{facing16_between, step32_from_facing16};
 use crate::util::lepton::LEPTONS_PER_LEVEL;
 use crate::util::pixel_conversion::PixelConversionBounds;
 
@@ -29,7 +32,8 @@ pub(crate) struct FireCoordinate {
     /// The firer's own world Z, before any fire offset.
     pub source_z: i32,
     /// The facing the shot leaves along: the turret's when the firer has one,
-    /// the body's otherwise. Selects the 8-way muzzle animation.
+    /// the body's otherwise; a building's is its fire facing
+    /// ([`building_fire_facings`]). Selects the 8-way muzzle animation.
     pub aim_facing16: u16,
     /// `coord.y` minus the Y of the object coordinate (`vtable+0xAC`) the
     /// offset was added to. Every arm, the base `GetFLH` included
@@ -59,6 +63,9 @@ pub(crate) struct FireSource {
     pub veterancy: u16,
     /// The firing occupant's port, when an occupied building fires.
     pub garrison_fire_index: Option<u8>,
+    /// TarCom (`+0x2B4`) as the shot reads it; a building's fire facings aim
+    /// at it.
+    pub tar_com: Option<TargetKind>,
 }
 
 impl FireSource {
@@ -79,6 +86,7 @@ impl FireSource {
             barrel_facing: entity.barrel_facing,
             veterancy: entity.veterancy,
             garrison_fire_index: None,
+            tar_com: entity.attack_target.as_ref().map(|attack| attack.target),
         }
     }
 }
@@ -99,6 +107,9 @@ impl From<&AttackerSnapshot> for FireSource {
             barrel_facing: snap.barrel_facing,
             veterancy: snap.veterancy,
             garrison_fire_index: snap.garrison.as_ref().map(|garrison| garrison.fire_index),
+            // A building's FireAt runs inside the visit whose TarCom its shot
+            // carries (`world_receiver::fireat_tarcom`).
+            tar_com: snap.building_shot.map(|shot| shot.target()),
         }
     }
 }
@@ -118,9 +129,10 @@ impl From<&AttackerSnapshot> for FireSource {
 /// - Otherwise the base `GetFLH`.
 ///
 /// RESIDUAL: three type bytes steer arms that are not modelled: `+0x16C6`
-/// (`GetTurretDrawPosition`), `+0x16C5` (a second pixel offset at `+0x11E0`
-/// added to the base FLH) and `+0x1764` (pixel offset added to the base FLH
-/// instead of to the building coordinate). Their INI keys are UNCHECKED. The
+/// (`GetTurretDrawPosition`), `+0x16C5` (`TurretAnimIsVoxel=`, whose arm adds
+/// `TurretAnimX=`/`TurretAnimY=` at `+0x11E0` to the base FLH) and `+0x1764`
+/// (pixel offset added to the base FLH instead of to the building
+/// coordinate). The keys of `+0x16C6` and `+0x1764` are UNCHECKED. The
 /// secondary slot's pixel offset and the `PrimaryFireDualOffset` mirror are
 /// VERA's reading of the art keys, carried over from the presentation code
 /// this replaces; the native body read here uses `+0xE44` alone.
@@ -129,16 +141,16 @@ impl From<&AttackerSnapshot> for FireSource {
 /// - Frequency: stock turreted defences (voxel turret buildings).
 /// - Downstream risk: the projectile origin is hashed.
 ///
-/// RESIDUAL: a building's base GetFLH is TechnoClass::GetFLH's arm without a
-/// locomotor (`0x006F3C1A`): no body matrix, so `TurretOffset=` is not turned,
-/// and the FLH turns by vt+0x2A8 alone (`0x00445E50`). That answers `+0x388`
-/// for a building with a turret (vt+0x3FC, `0x004527D0`) or without a TarCom,
-/// and for any other the direction to its TarCom at the call. VERA turns the
-/// FLH by `+0x388` about the authored facing.
-/// - Trigger: a turretless defence whose `+0x388` is still turning (GAPILL,
-///   `ROT=10`), or a building with a nonzero `TurretOffset=`.
-/// - Effect: the shot and its flash start a few leptons off.
-/// - Frequency: a Pillbox's first shots at a new target.
+/// A building's base GetFLH is TechnoClass::GetFLH's arm without a locomotor
+/// (`0x006F3C1A`): one turn by vt+0x2A8 ([`building_fire_facings`]) less a
+/// quarter, with no body matrix. RESIDUAL: VERA turns the FLH by that facing
+/// less the authored facing, adds `TurretOffset=`, then turns by the authored
+/// facing less a quarter.
+/// - Trigger: a building shot from its FLH (not a pixel-offset arm), such as
+///   the Tesla Coil's.
+/// - Effect: two sine-table lookups where native makes one, at most a lepton;
+///   a `TurretOffset=` would also be turned (no retail building sets one).
+/// - Frequency: every such shot.
 /// - Downstream risk: the projectile origin is hashed.
 pub(crate) fn fire_coordinate(
     world: &Simulation,
@@ -160,7 +172,7 @@ pub(crate) fn fire_coordinate(
     };
     let base = fire_coordinate_base(world, rules, snap, obj);
     let (source_x, source_y, source_z) = (base.x, base.y, base.z);
-    let aim_facing16 = base.facings.aim;
+    let aim_facing16 = base.fire_facing;
     let art = base.art;
 
     if snap.category == EntityCategory::Structure
@@ -207,12 +219,14 @@ pub(crate) fn fire_coordinate(
 }
 
 /// What every GetFLH arm starts from: the object coordinate (`vtable+0xAC`),
-/// the facings its transform reads and the object's art.
+/// the facings its transform reads, FireAt's fire facing and the object's art.
 struct FireBase<'r> {
     x: i32,
     y: i32,
     z: i32,
     facings: crate::util::flh_transform::FlhFacings,
+    /// The aim facing, or a building's vt+0x308 ([`building_fire_facings`]).
+    fire_facing: u16,
     art: Option<&'r ArtEntry>,
 }
 
@@ -266,22 +280,142 @@ fn fire_coordinate_base<'r>(
         body_facing16
     };
 
-    let art = rules
-        .art_registry
-        .get(&obj.image)
-        .or_else(|| rules.art_registry.get(&obj.id));
+    let art = firer_art(rules, obj);
+    let (flh_facing16, fire_facing) = if snap.category == EntityCategory::Structure {
+        building_fire_facings(world, rules, snap, obj, art, aim_facing16)
+    } else {
+        (aim_facing16, aim_facing16)
+    };
 
     FireBase {
         x: source_x,
         y: source_y,
         z: source_z,
         facings: crate::util::flh_transform::FlhFacings {
-            aim: aim_facing16,
+            aim: flh_facing16,
             body: body_facing16,
             matrix: matrix_facing16,
         },
+        fire_facing,
         art,
     }
+}
+
+fn firer_art<'r>(rules: &'r RuleSet, obj: &ObjectType) -> Option<&'r ArtEntry> {
+    rules
+        .art_registry
+        .get(&obj.image)
+        .or_else(|| rules.art_registry.get(&obj.id))
+}
+
+/// A building's two fire facings, from `+0x388`'s current facing `current`:
+/// the one GetFLH turns its FLH by (vt+0x2A8, `0x00445E50`) and FireAt's
+/// (vt+0x308, `0x0044D7D0`), which picks the 8-way muzzle anim
+/// (`0x006FF2E5`) and heads a `ROT=` or dropping bullet (`0x006FE950`).
+/// - vt+0x2A8: `current` for a building with a turret (HasTurret, vt+0x3FC
+///   `0x004527D0`: `Turret=`, or an upgrade's, dormant with no retail
+///   `PowersUpBuilding=`) or without a TarCom; otherwise the direction
+///   between the two GetCoords.
+/// - vt+0x308: without a TarCom, `current` rounded to 1/256 turn; with a
+///   turret that is not `TurretAnimIsVoxel=` (`+0x16C5`), rounded to 1/32;
+///   otherwise [`building_direction_to`] the TarCom.
+///
+/// A TarCom no longer stored reads as none: native detaches it.
+fn building_fire_facings(
+    world: &Simulation,
+    rules: &RuleSet,
+    snap: &FireSource,
+    obj: &ObjectType,
+    art: Option<&ArtEntry>,
+    current: u16,
+) -> (u16, u16) {
+    let entities = &world.substrate.entities;
+    let origin = entities
+        .get(snap.stable_id)
+        .map(|building| coords_xy(super::target_coords(building, Some(rules), &world.interner)));
+    let target = snap.tar_com.and_then(|target| {
+        super::resolve_target_coords(&target, entities, Some(rules), &world.interner)
+    });
+    let (Some(origin), Some(target)) = (origin, target.map(coords_xy)) else {
+        // `0x0044D7F4..0x0044D7FF`: `((current >> 7) + 1) >> 1` as the high byte.
+        let rounded = ((((u32::from(current) >> 7) + 1) >> 1) & 0xFF) << 8;
+        return (current, rounded as u16);
+    };
+    if obj.has_turret {
+        // `0x0044D83A..0x0044D844`.
+        let fire = if obj.turret_anim_is_voxel {
+            facing16_between(aim_origin(origin, obj, art), target)
+        } else {
+            u16::from(step32_from_facing16(current)) << 11
+        };
+        return (current, fire);
+    }
+    (
+        facing16_between(origin, target),
+        facing16_between(aim_origin(origin, obj, art), target),
+    )
+}
+
+/// BuildingClass vt+0x4E8 (`0x0043ED40`): the direction from the building's
+/// GetCoords (vt+0x48, `0x00447AC0`), moved by its aim pixel offset
+/// ([`aim_origin`]), to `target`'s GetCoords. Mission_Attack's Set_Desired
+/// (`0x0044B162`, `0x0044B19B`, `0x0044B1F2`), its voxel-turret retry
+/// (`0x0044B056`), GetFireError's FACING test (`0x00447FF8`) and the fire
+/// facing aim through it. `None` for a target no longer stored.
+pub(crate) fn building_direction_to(
+    world: &Simulation,
+    rules: &RuleSet,
+    building: &GameEntity,
+    target: TargetKind,
+) -> Option<u16> {
+    let obj = world.object_type(building.type_ref(), rules)?;
+    let target = super::resolve_target_coords(
+        &target,
+        &world.substrate.entities,
+        Some(rules),
+        &world.interner,
+    )?;
+    let origin = coords_xy(super::target_coords(building, Some(rules), &world.interner));
+    Some(facing16_between(
+        aim_origin(origin, obj, firer_art(rules, obj)),
+        coords_xy(target),
+    ))
+}
+
+/// `0x0043ED56..0x0043EDDB`: GetCoords plus IsometricPixelToWorld
+/// (`0x006D2070`) of `PrimaryFirePixelOffset=`, or, unset, of
+/// `TurretAnimX=`/`TurretAnimY=` (`+0x11E0`/`+0x11E4`) unless both are 0.
+fn aim_origin(origin: [i32; 2], obj: &ObjectType, art: Option<&ArtEntry>) -> [i32; 2] {
+    let pixel = primary_fire_pixel_offset(art).or_else(|| {
+        (obj.turret_anim_x != 0 || obj.turret_anim_y != 0)
+            .then_some((obj.turret_anim_x, obj.turret_anim_y))
+    });
+    let (dx, dy) = pixel.map_or((0, 0), |(x, y)| {
+        PixelConversionBounds::isometric_pixel_to_leptons(x, y)
+    });
+    [origin[0].wrapping_add(dx), origin[1].wrapping_add(dy)]
+}
+
+/// `PrimaryFirePixelOffset=` (BuildingType `+0xE44`). The constructor's
+/// (0xFFFF, 0xFFFF) (`0x0045DE39..0x0045DE46`), which the art reader keeps
+/// when the key is absent, reads as unset (`0x004538D7`, `0x0043ED6F`).
+fn primary_fire_pixel_offset(art: Option<&ArtEntry>) -> Option<(i32, i32)> {
+    art?.primary_fire_pixel_offset
+        .filter(|&offset| offset != (0xFFFF, 0xFFFF))
+}
+
+fn coords_xy(
+    (rx, ry, sub_x, sub_y): (
+        u16,
+        u16,
+        crate::util::fixed_math::SimFixed,
+        crate::util::fixed_math::SimFixed,
+    ),
+) -> [i32; 2] {
+    [
+        i32::from(rx) * 256 + sub_x.to_num::<i32>(),
+        i32::from(ry) * 256 + sub_y.to_num::<i32>(),
+    ]
 }
 
 /// `TechnoClass::GetFLH @ 0x006F3AD0`'s transform of one FLH triple about
@@ -372,7 +506,7 @@ fn building_pixel_offset(
         );
     }
     let (mut px, py) = match slot {
-        WeaponSlot::Primary => art.primary_fire_pixel_offset,
+        WeaponSlot::Primary => primary_fire_pixel_offset(Some(art)),
         WeaponSlot::Secondary => art.secondary_fire_pixel_offset,
     }?;
     if matches!(slot, WeaponSlot::Primary) && art.primary_fire_dual_offset && burst_index % 2 == 1 {
@@ -483,6 +617,7 @@ mod tests {
             barrel_facing: None,
             veterancy: 0,
             garrison_fire_index: None,
+            tar_com: None,
         }
     }
 
@@ -704,3 +839,7 @@ mod tests {
         assert_eq!(building_muzzle_z_adjust(-130, true), -200);
     }
 }
+
+#[cfg(test)]
+#[path = "fire_coord_building_tests.rs"]
+mod building_tests;

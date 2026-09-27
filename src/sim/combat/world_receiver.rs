@@ -3652,12 +3652,16 @@ pub(super) fn emit_admitted_fire(
         .unwrap_or_default();
     // FLH uses only odd/even parity; retain the signed dword in its owner.
     let burst_index = (burst.index() & 1) as u8;
+    let tarcom = fireat_tarcom(world, snap);
     // One fire coordinate per shot: the bullet origin, the muzzle animation and
     // the report sound all take it (`combat::fire_coord`).
     let fire = super::fire_coord::fire_coordinate(
         world,
         rules,
-        &super::fire_coord::FireSource::from(snap),
+        &super::fire_coord::FireSource {
+            tar_com: tarcom,
+            ..super::fire_coord::FireSource::from(snap)
+        },
         obj,
         selected.index,
         burst_index,
@@ -3681,7 +3685,6 @@ pub(super) fn emit_admitted_fire(
     // fails has still spent one.
     let bullet_id = world.allocate_stable_id();
     let native_unique_id = world.next_native_runtime_id();
-    let tarcom = fireat_tarcom(world, snap);
     fireat_estimate_debit(world, rules, snap.stable_id, tarcom, obj, weapon);
     let launched = {
         let impact_world_z_leptons = attack_world_z_leptons(
@@ -3828,10 +3831,8 @@ pub(super) fn emit_admitted_fire(
                     EntityCategory::Aircraft => source
                         .and_then(|source| source.barrel_facing.as_ref())
                         .map_or(0, |facing| facing.current(binary_frame)),
-                    // RESIDUAL: Building +308 (44D7D0/43ED40) has current-target,
-                    // pixel-offset and quantization producers beyond this owner.
-                    // Ordinary stock reachability of a directed Building projectile
-                    // is not established; its input producer remains open.
+                    // A building's is its fire facing, vt+0x308 (`0x0044D7D0`,
+                    // read at `0x006FE2D2` and `0x006FE950`).
                     EntityCategory::Structure => fire.aim_facing16,
                 }
             });

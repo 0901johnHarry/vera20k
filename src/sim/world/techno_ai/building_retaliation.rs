@@ -47,14 +47,24 @@
 //!   IsAlive and runs the block natively: the residual at the call in
 //!   `combat::world_receiver::commit_entities`.
 //! - A heal with a source and a non-zero result runs the block natively; the
-//!   receiver's healing arm returns before it. No retail weapon heals a
-//!   building.
+//!   receiver's healing arm returns before it. Trigger, reachability not
+//!   traced: a repair IFV's RepairBullet (`[Mechanical]`, `Damage=-50`, 100%
+//!   against `medium`) healing a deployed Slave Miner (YAREFN,
+//!   `Armor=medium`), if its targeting admits the building. Effect: native
+//!   pings the ore-miner line and stops at the ally test; VERA pings nothing.
 //! - An occupied building's weapon 0 is the firing occupant's
 //!   (`0x004526F0`), which VERA chooses for the source as target
 //!   ([`super::target_scan::weapon_at_index_for`]). Only presence and `AA=`
 //!   are read, so this only matters if an occupant's weapons differ in them.
-//! - Is_Operational's Tesla-charger and EMP inputs
-//!   ([`Simulation::building_operational_state`]).
+//! - Is_Operational ([`Simulation::building_operational_state`]) counts no
+//!   Tesla chargers and no EMP. Trigger: a Tesla Coil in a low-power base
+//!   charged by two or more Tesla Troopers (`ElectricAssault=`), which native
+//!   counts operational (`+0x67C >= 2`). Effect: native turns a human's coil
+//!   with one draw and gives an AI's coil the source through SetTarget; VERA
+//!   draws nothing, so the Scenario stream diverges, and SetTarget refuses.
+//!   Frequency: uncommon, Soviet bases short of power. Later owner: the Tesla
+//!   overpower chain, which ports the charger vector. No reachable retail EMP
+//!   source was traced.
 //!
 //! No RNG beyond the one Scenario draw per turn; `+0x388`'s timer is the only
 //! timer written; nothing is detached.
@@ -66,7 +76,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::combat_weapon::is_ally_by_object;
 use crate::sim::combat::damage::DamageState;
-use crate::sim::combat::{TargetKind, UnderAttackEvent};
+use crate::sim::combat::{TargetKind, UnderAttackEvent, resolve_target_coords};
 use crate::sim::mission::MissionType;
 use crate::sim::world::Simulation;
 
@@ -93,9 +103,17 @@ impl Simulation {
         let building = self.substrate.entities.get(id)?;
         let source_entity = self.substrate.entities.get(source)?;
         let obj = self.object_type(building.type_ref(), rules)?;
+        // The radar cell is the building's GetCoords (vt+0x48, `0x00447AC0`,
+        // the foundation centre; `0x004F94AE`, `0x004F950E`, `0x004F956A`).
+        let (rx, ry, _, _) = resolve_target_coords(
+            &TargetKind::Entity(id),
+            &self.substrate.entities,
+            Some(rules),
+            &self.interner,
+        )?;
         let ping = (!obj.insignificant && !obj.is_1x1_with_undeploy()).then(|| UnderAttackEvent {
-            rx: building.position.rx,
-            ry: building.position.ry,
+            rx,
+            ry,
             owner: building.owner(),
             // The ore-miner line (`0x004F9491..0x004F94A3`): the deployed
             // Slave Miner.
