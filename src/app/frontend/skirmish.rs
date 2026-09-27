@@ -514,7 +514,6 @@ mod tests {
                 track: track_cost,
                 ..Default::default()
             },
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

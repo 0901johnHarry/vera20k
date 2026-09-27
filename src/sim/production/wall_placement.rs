@@ -12,10 +12,7 @@ use crate::sim::overlay_grid::{
     NavigationPublication, WallDamageTransactionHost, WallZoneRepairKind,
     refresh_wall_connectivity_after_placement_with_host,
 };
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{Simulation, SimulationWallRuntimeHost};
-
-use super::production_placement::can_this_exist_here;
 
 /// Native regular-wall visit order: north, east, south, west.
 pub(super) const CARDINAL_DIRECTIONS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
@@ -35,16 +32,18 @@ pub(super) fn linked_overlay_id(
 /// Scan one regular-wall direction.
 ///
 /// `FUN_00588750 @ 0x00588750` checks a same-ToOverlay, same-owner endpoint
-/// before asking whether the visited cell can accept a filler. Any blocker
-/// discards the whole direction; a found endpoint returns the gap in
-/// nearest-to-click order. Rust stores GuardRange in I16F16 cells, so integer
-/// conversion is the equivalent of native's signed fixed-point shift by 8.
+/// before asking whether the visited cell can accept a filler
+/// (`CellClass::Is_Clear_To_Build` for the wall type and owner, `0x0058886E`).
+/// Any blocker discards the whole direction; a found endpoint returns the gap
+/// in nearest-to-click order. Rust stores GuardRange in I16F16 cells, so
+/// integer conversion is the equivalent of native's signed fixed-point shift
+/// by 8.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn scan_autofill_direction(
     sim: &Simulation,
     rules: &RuleSet,
+    registry: &OverlayTypeRegistry,
     object_type: &ObjectType,
-    path_grid: Option<&PathGrid>,
     origin: (u16, u16),
     owner: InternedId,
     overlay_id: u8,
@@ -58,7 +57,8 @@ pub(super) fn scan_autofill_direction(
     if limit == 0 {
         return Vec::new();
     }
-    let Some(grid) = sim.overlay_grid.as_ref() else {
+    let (Some(grid), Some(terrain)) = (sim.overlay_grid.as_ref(), sim.resolved_terrain.as_ref())
+    else {
         return Vec::new();
     };
     let (width, height) = (i32::from(grid.width()), i32::from(grid.height()));
@@ -77,14 +77,14 @@ pub(super) fn scan_autofill_direction(
         if cell.overlay_id == Some(overlay_id) && cell.wall_owner == Some(owner) {
             return gap;
         }
-        if !can_this_exist_here(
+        if !crate::sim::build_site::is_clear_to_build(
             sim,
-            &sim.substrate.entities,
             rules,
-            object_type,
-            path_grid,
-            cell_coord.0,
-            cell_coord.1,
+            Some(registry),
+            terrain.native_cell_identity((cx as i16, cy as i16)),
+            crate::sim::build_site::building_speed_type(object_type),
+            Some(object_type),
+            Some(owner),
         ) {
             return Vec::new();
         }
@@ -95,12 +95,11 @@ pub(super) fn scan_autofill_direction(
     Vec::new()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn autofill_cells(
     sim: &Simulation,
     rules: &RuleSet,
+    registry: &OverlayTypeRegistry,
     object_type: &ObjectType,
-    path_grid: Option<&PathGrid>,
     origin: (u16, u16),
     owner: InternedId,
     overlay_id: u8,
@@ -110,8 +109,8 @@ pub(super) fn autofill_cells(
         cells.extend(scan_autofill_direction(
             sim,
             rules,
+            registry,
             object_type,
-            path_grid,
             origin,
             owner,
             overlay_id,

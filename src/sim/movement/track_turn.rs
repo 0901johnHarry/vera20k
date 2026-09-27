@@ -10,7 +10,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionType;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,7 +59,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        grid: Option<&PathGrid>,
+        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -145,7 +144,7 @@ impl Simulation {
             return false;
         }
         if completed {
-            self.unit_track_per_cell(id, PerCellReason::TurnComplete, rules, grid);
+            self.unit_track_per_cell(id, PerCellReason::TurnComplete, rules, registry);
             // Native reloads these three bytes after the synchronous callback.
             if !self.substrate.entities.get(id).is_some_and(|e| {
                 e.lifecycle.object_alive && !e.lifecycle.in_limbo && e.object_is_falling_down == 0

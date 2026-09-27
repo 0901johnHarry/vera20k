@@ -268,7 +268,6 @@ mod tests {
             base_yr_cell_land_type: LandType::Water.as_index(),
             base_terrain_class: TerrainClass::Water,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,
@@ -771,7 +770,7 @@ mod tests {
             .or_default()
             .extend([naval, land]);
         let mut ai = [AiPlayerState::new(owner)];
-        let commands = tick_ai(&sim, &mut ai, &rules, Some(&path), &BTreeMap::new(), None);
+        let commands = tick_ai(&sim, &mut ai, &rules, Some(&path), None);
         assert_eq!(
             commands.len(),
             1,
@@ -788,14 +787,7 @@ mod tests {
         let blocked_path =
             PathGrid::from_resolved_terrain(blocked.resolved_terrain.as_ref().unwrap());
         let mut ai = [AiPlayerState::new(owner)];
-        let commands = tick_ai(
-            &blocked,
-            &mut ai,
-            &rules,
-            Some(&blocked_path),
-            &BTreeMap::new(),
-            None,
-        );
+        let commands = tick_ai(&blocked, &mut ai, &rules, Some(&blocked_path), None);
         assert!(commands.is_empty());
         assert_eq!(
             blocked.production.ready_by_owner[&owner].front(),

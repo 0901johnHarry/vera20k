@@ -14,7 +14,7 @@ use crate::sim::world::Simulation;
 impl Simulation {
     /// Object5F5850 publishes the mark byte before Foot Exit/Enter. REMOVE
     /// retains the old addressed cell even if a later receiver changes XYZ.
-    pub(super) fn foot_mark_remove(
+    pub(crate) fn foot_mark_remove(
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
@@ -45,7 +45,7 @@ impl Simulation {
         }
     }
 
-    pub(super) fn foot_mark_put(
+    pub(crate) fn foot_mark_put(
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,

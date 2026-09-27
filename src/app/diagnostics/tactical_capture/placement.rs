@@ -3,8 +3,6 @@
 //! The iterator owns only candidate order. The live simulation remains the
 //! placement authority through `production::placement_preview_for_owner_with_overlays`.
 
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -132,7 +130,6 @@ pub(crate) fn first_valid_placement(
     anchor_cell: (u16, u16),
     max_radius: u16,
     path_grid: &PathGrid,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Result<PlacementChoice, PlacementSearchError> {
     if path_grid.width() == 0 || path_grid.height() == 0 {
@@ -183,8 +180,6 @@ pub(crate) fn first_valid_placement(
             type_id,
             candidate.cell.0,
             candidate.cell.1,
-            Some(path_grid),
-            height_map,
             overlay_registry,
         )
         .ok_or_else(|| PlacementSearchError::MissingPlacementType {
@@ -233,6 +228,8 @@ ConstructionYard=yes
 Strength=750
 Foundation=2x2
 Adjacent=2
+[Clear]
+Buildable=yes
 ",
         );
         RuleSet::from_ini(&ini).expect("placement rules")
@@ -242,11 +239,11 @@ Adjacent=2
         width: u16,
         height: u16,
         yard_cell: (u16, u16),
-    ) -> (Simulation, RuleSet, PathGrid, BTreeMap<(u16, u16), u8>, u64) {
+    ) -> (Simulation, RuleSet, PathGrid, u64) {
         let rules = placement_rules();
         let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let grid = PathGrid::new(width, height);
-        let height_map = BTreeMap::new();
         let yard_id = sim
             .spawn_object(
                 "GACNST",
@@ -255,7 +252,7 @@ Adjacent=2
                 yard_cell.1,
                 0,
                 &rules,
-                &height_map,
+                &BTreeMap::new(),
             )
             .expect("yard");
         let owner_id = sim.interner.intern("Russians");
@@ -265,7 +262,7 @@ Adjacent=2
             .entry(owner_id)
             .or_default()
             .push_back(target_id);
-        (sim, rules, grid, height_map, yard_id)
+        (sim, rules, grid, yard_id)
     }
 
     #[test]
@@ -311,7 +308,7 @@ Adjacent=2
 
     #[test]
     fn first_live_preview_valid_candidate_wins_stably() {
-        let (sim, rules, grid, heights, yard_id) = ready_fixture(24, 24, (10, 10));
+        let (sim, rules, grid, yard_id) = ready_fixture(24, 24, (10, 10));
         let ordered = ordered_square_ring_cells((10, 10), grid.width(), grid.height(), 16);
         let expected = ordered
             .iter()
@@ -323,8 +320,6 @@ Adjacent=2
                     "NAPOWR",
                     candidate.cell.0,
                     candidate.cell.1,
-                    Some(&grid),
-                    &heights,
                 )
                 .is_some_and(|preview| preview.valid)
             })
@@ -340,7 +335,6 @@ Adjacent=2
             (10, 10),
             16,
             &grid,
-            &heights,
             None,
         )
         .expect("placement");
@@ -353,7 +347,6 @@ Adjacent=2
             (10, 10),
             16,
             &grid,
-            &heights,
             None,
         )
         .expect("repeat placement");
@@ -366,7 +359,7 @@ Adjacent=2
 
     #[test]
     fn target_must_be_ready_before_search() {
-        let (mut sim, rules, grid, heights, yard_id) = ready_fixture(24, 24, (10, 10));
+        let (mut sim, rules, grid, yard_id) = ready_fixture(24, 24, (10, 10));
         sim.production.ready_by_owner.clear();
         assert!(matches!(
             first_valid_placement(
@@ -378,7 +371,6 @@ Adjacent=2
                 (10, 10),
                 16,
                 &grid,
-                &heights,
                 None,
             ),
             Err(PlacementSearchError::TargetNotReady { .. })
@@ -387,7 +379,7 @@ Adjacent=2
 
     #[test]
     fn anchor_must_still_be_the_live_local_structure() {
-        let (mut sim, rules, grid, heights, yard_id) = ready_fixture(24, 24, (10, 10));
+        let (mut sim, rules, grid, yard_id) = ready_fixture(24, 24, (10, 10));
         sim.substrate.entities.remove(yard_id);
         assert!(matches!(
             first_valid_placement(
@@ -399,7 +391,6 @@ Adjacent=2
                 (10, 10),
                 16,
                 &grid,
-                &heights,
                 None,
             ),
             Err(PlacementSearchError::AnchorYardMissing { .. })
@@ -408,7 +399,7 @@ Adjacent=2
 
     #[test]
     fn no_valid_candidate_fails_without_fallback() {
-        let (sim, rules, grid, heights, yard_id) = ready_fixture(1, 1, (0, 0));
+        let (sim, rules, grid, yard_id) = ready_fixture(1, 1, (0, 0));
         assert!(matches!(
             first_valid_placement(
                 &sim,
@@ -419,7 +410,6 @@ Adjacent=2
                 (0, 0),
                 16,
                 &grid,
-                &heights,
                 None,
             ),
             Err(PlacementSearchError::NoValidCell { .. })

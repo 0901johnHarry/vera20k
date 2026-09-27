@@ -227,7 +227,7 @@ pub(super) fn build_catalog_rules() -> RuleSet {
              Factory=UnitType\n\
              [GAAIRC]\n\
              TechLevel=-1\n\
-             Factory=AircraftType\n",
+             Factory=AircraftType\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("build catalog rules should parse")
 }
@@ -320,7 +320,6 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
                     hover: Some(100),
                     ..crate::rules::terrain_rules::SpeedCostProfile::default()
                 },
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -375,7 +374,7 @@ pub(super) fn placement_radius_rules() -> RuleSet {
              Owner=Americans\n\
              Foundation=2x2\n\
              BaseNormal=no\n\
-             Adjacent=0\n",
+             Adjacent=0\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("placement radius rules should parse")
 }
