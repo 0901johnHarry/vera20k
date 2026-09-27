@@ -159,8 +159,8 @@ pub(crate) fn update(state: &mut AppState) {
         return;
     }
     let wall = crate::app::input::tooltips::now_ms(state);
-    state.match_state.match_presentation.message_clock.set_paused(state.match_state.paused, wall);
-    if state.match_state.paused {
+    state.match_state.match_presentation.message_clock.set_paused(state.match_state.paused(), wall);
+    if state.match_state.paused() {
         return;
     }
     sync_view(state);

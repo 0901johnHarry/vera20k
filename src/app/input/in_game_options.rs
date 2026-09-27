@@ -1,12 +1,12 @@
 //! Paused-overlay mouse routing for the active in-game Options (`0xBBB`) dialog.
 //!
-//! Part of the app layer. While `state.paused`, `handle_mouse_input` routes here
+//! Part of the app layer. While paused, `handle_mouse_input` routes here
 //! BEFORE the gadget/tactical dispatch and this consumes the click so it never
 //! reaches the tactical viewport (no unit orders behind the overlay). Interaction
 //! changes only the visual/stored state — slider thumb + stored value, checkbox
 //! check, pressed button frame, and the changed-position value-label flag. The downstream
 //! EFFECTS (sim cadence, target-line gate, INI persist) apply on close only, in
-//! `app::persistence::options::in_game_options_close` (KD-8).
+//! `app::persistence::options::accept_in_game_options` (KD-8).
 //!
 //! Hit-testing uses the `InGameOptionsAnchor` the overlay render pass cached on
 //! `AppState` (KD-6) — the sidebar-anchored Back/Sound/Keyboard button Y is only
@@ -159,7 +159,7 @@ pub(crate) fn in_game_options_mouse(state: &mut AppState, button: MouseButton, p
                 state,
                 crate::ui::shell::keyboard::KeyboardParent::GameControls,
             ),
-            Some(control::BACK) => crate::app::persistence::options::in_game_options_close(state),
+            Some(control::BACK) => crate::app::App::route_in_game_menu_escape(state),
             _ => {}
         }
     }
