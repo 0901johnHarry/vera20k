@@ -47,7 +47,7 @@
   "finalized_utc": "2026-09-27T20:00:02.943777+00:00",
   "frozen_utc": "2026-09-27T19:25:52.965493+00:00",
   "imported_sources": {
-    "tools/native_oracle.py": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "tools/native_oracle.py": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
     "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
     "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
@@ -89,7 +89,7 @@
   "owned": {
     "hut.json.gz": "624dface5dfb18ce8f517879c0dd1ced7b5cb24881cdbb2702b31899aa62b06f",
     "hut.md": "114367c3c27e04fb79a2f12dbbbeef4292aef76fcb3264df8b8b18b24c4fa23c",
-    "hut.meta.json": "278f1c24c69b977765a0b007e50c167dbc01e2a0b1eae3509b0cf56b786f4eeb",
+    "hut.meta.json": "0d57ea0a8e9664db005748a6c28fc3d581c16eeae1dca60ddd44d06a42196ae8",
     "hut.py": "000950121c307d77867148f5dd1f023b7dcc0236022d142117c82fe923f98435",
     "hut_callsite_bytes.json": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
     "hut_promotion.json": "8519a2f8335746a09d83bfdf11a35d80cd80d7d0d824d6551f44c864feb7a98f",
@@ -195,5 +195,15 @@
     "native_trace_and_rng_outputs_unchanged": true,
     "original_external_files_unchanged": 14,
     "summary_projection_canonicalized_only": true
+  },
+  "loader_compatibility_refresh": {
+    "kind": "Pinned loader source-provenance compatibility; no game-function replay",
+    "original_execution_source_sha256": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "compatible_current_source_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
+    "evidence": "tools/spatial_oracle/shrapnel_damage/loader_compatibility.json",
+    "evidence_sha256": "c7050e54e7abe3bfb532bbb523f3ed2ea95ee6ffe603a6353f88dd17d64c2227",
+    "receipt": "tools/spatial_oracle/shrapnel_damage/loader_compatibility_receipt.json",
+    "native_payloads_unchanged": true,
+    "historical_execution_and_compatibility_records_preserved": true
   }
 }

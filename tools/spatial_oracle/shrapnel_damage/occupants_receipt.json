@@ -19,18 +19,18 @@
   "owned_artifacts_sha256": {
     "occupants.py": "031c1a01698f314f4f9398ebc715cb354caeb4e8e96ff0da93f5b3d330000864",
     "occupants.json.gz": "dae34d6ac6325a51ea22d7658eac9061042fc09807ab59f5216e7d0d1e3b5f66",
-    "occupants.meta.json": "1b8e5527a4ef15e5479307f7c2eb921b808f178c985f1e3c50f454e41b5c30bc",
+    "occupants.meta.json": "cd5b7c467bdbe7e84c68127c7bcd62113e9d652a73729995b35686169c0af7fb",
     "occupants_promotion.json": "f6310661ca8d30bd288d939ec49b1925fd6a984c6fc086f60d931e1140a8922e",
     "occupants_test_vectors.py": "dba865474bcfc3fe0d89585357e1bcacbf5c457bebdd832214958cb55507553a",
     "occupants_test_vectors.json": "71519e46bd5569a552c3a8ccdc97472dd8f186654be1666534ea0a1f272754b8",
     "occupants_test_vectors.meta.json": "b20a61133fdf07bde48074ddd9b5b13440baf833f0542c284afbce4e9c457067",
     "occupants_timer.py": "7b11fe8ebb1e25da981d517dae93bc8c3ee9ec4f9cca258264e93e408efdfa66",
     "occupants_timer.json": "5822123e0c30aa6cbf2b53ee6db4a8bd7419e58086320a7f91cbac47e1f740a2",
-    "occupants_timer.meta.json": "0bbcfc2cdaafb91096f0e6ba12d335141ae009743d72a0d469cf8b23253e561b",
+    "occupants_timer.meta.json": "babeef4ef5ade964b07c19cf370947bc3de572570fed01eb7d7e02ef5713a7ee",
     "occupants.md": "840a27dcbfc91457b6bbc1ded93e93692a14083823a7167bf36cab1bd52404a1",
     "occupants_joined.py": "222666742e93a87573c621336f4c3b18a2ca30a6ff0b74c4877344ba1b570261",
     "occupants_joined.json.gz": "b3f72c9d9f6b6f47bd937c47609489f89b72aec8bed9a9c9400435c42ac8a3b3",
-    "occupants_joined.meta.json": "e4689b2e64e38f087c50321e8de590b0ea053011fd9e8b29a44eeec78f8df704",
+    "occupants_joined.meta.json": "008519388be3a6b590409f869cf39a7187550654ae3f69d4c08beb1ff1abd5ef",
     "occupants_joined_promotion.json": "b6469e803fd0f7bf9b7f659e2c9583fe6199084fe9def63e1e50860747013056",
     "occupants_joined_test_vectors.py": "1b5e51b661295eb0cd00882919cf43843c8a7d99e849be1d02eda174101d0ec2",
     "occupants_joined_test_vectors.json": "2d709c8f60986c6ddf1c4507a39719056829faf07265bb3adc160496edf56d84",
@@ -122,5 +122,15 @@
       "occupants_joined_test_vectors.json": "2d709c8f60986c6ddf1c4507a39719056829faf07265bb3adc160496edf56d84"
     },
     "scope": "Only these executions are claimed replayed by this receipt; Anytown enclosing receipts and historical concrete validation remain separately owned."
+  },
+  "loader_compatibility_refresh": {
+    "kind": "Pinned loader source-provenance compatibility; no game-function replay",
+    "original_execution_source_sha256": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "compatible_current_source_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
+    "evidence": "tools/spatial_oracle/shrapnel_damage/loader_compatibility.json",
+    "evidence_sha256": "c7050e54e7abe3bfb532bbb523f3ed2ea95ee6ffe603a6353f88dd17d64c2227",
+    "receipt": "tools/spatial_oracle/shrapnel_damage/loader_compatibility_receipt.json",
+    "native_payloads_unchanged": true,
+    "historical_execution_and_compatibility_records_preserved": true
   }
 }

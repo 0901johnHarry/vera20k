@@ -147,10 +147,20 @@ native IDs and Anim runtime/Bouncer fields. Frame1000 and game speed4 are
 explicit supplied boundaries on both sides; normalized Anim rates are not taken
 from the loaded scenario's default speed. House totals use the existing active
 unit owner. Separate scalar/controller and cache-reconciliation checks pass24
-tests. The full retail library suite passes9550 tests (211ignored), clippy passes, and
+tests. After integrating main `0be4174e`, the full retail library suite passes
+9,570 tests (212 ignored), clippy passes, and
 the release build loads physical Shrapnel through the shared headless scenario
 loader and advances10 frames. Build identities, commands and literal results
 belong to the [validation receipt](../../tools/spatial_oracle/bridge_wood_validation.json).
+The integrated candidate repeats all production checks and all 14 complete native
+navigation comparisons. The fresh read-only critic found no actionable defects
+before the clean main integration; its frozen scope and the owner's subsequent
+integration validation are preserved separately.
+
+The upstream PE bounds checks changed source identity without changing the
+pinned executable mapping. The [loader compatibility proof](../../tools/spatial_oracle/shrapnel_damage/loader_compatibility.md)
+compares all mapped bytes and preserves the original native execution identities;
+that metadata refresh does not claim a new native game-function replay.
 
 The offscreen witness uses the production overlay builder, active SNOW atlas and
 GPU submission. It checks source-art color/depth, camera/fog admission and

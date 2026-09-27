@@ -41,7 +41,7 @@
     "hierarchy_boundary": "0x00586990"
   },
   "source_sha256": {
-    "tools/native_oracle.py": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "tools/native_oracle.py": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
     "tools/spatial_oracle/bridge_ordinary_damage.py": "c2848388a9c1c0d13628245c3c94d325c2140a59e7bc31a81f9225329d723f1f",
     "tools/spatial_oracle/bridge_ordinary_repair.py": "50aedc1763ff60fe602f72e61bbfcc081fdbdcdddec5b5abded892c0c17ad5bd",
     "tools/spatial_oracle/bridge_repair.py": "d58a968a6c63b0be1389e0476f5d935a9d3f9dd6fa767fd8da3fbc11bd27c722",
