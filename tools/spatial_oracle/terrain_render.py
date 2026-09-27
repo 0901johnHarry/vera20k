@@ -13,7 +13,7 @@ from unicorn.x86_const import (
     UC_X86_REG_EIP,
 )
 from tools.native_oracle import finish_vectors, provenance, run_checked
-from tools.projectile_oracle.ordinary_collision import slope_matrices
+from tools.native_slope import slope_matrices
 from tools.spatial_oracle.bridge_damage_admission import (
     CELL, MEM, SP, base, call, read32, words,
 )

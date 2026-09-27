@@ -18,7 +18,7 @@ from tools.native_oracle import (
     RET_MAGIC, NATIVE_FPCW,
 )
 from tools.rmg_oracle.gen_rng_vectors import seeded_struct
-from tools.projectile_oracle.ordinary_collision import slope_matrices
+from tools.native_slope import slope_matrices
 
 MEM, TABLE = 0x21000000, 0x21100000
 CELL, ANCHOR, RULES, SCENARIO, WARHEAD, ION, IMPACT, BULLET = (

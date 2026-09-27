@@ -6,7 +6,8 @@ import sys
 import unittest
 
 
-MODULES = ('fireat_launch', 'directed_launch', 'building_pitch', 'voxel_launch', 'arc_second_probe', 'fireat_runtime', 'load_timers')
+MODULES = ('fireat_launch', 'directed_launch', 'building_pitch', 'voxel_launch', 'arc_second_probe', 'fireat_runtime', 'load_timers',
+           'ordinary_collision', 'shared_collision', 'homing_impact')
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -26,10 +27,11 @@ from unittest.mock import patch
 from tools import native_oracle
 with patch.object(native_oracle, "image_bytes", side_effect=AssertionError("native load on import")), \\
      patch.object(Path, "write_text", side_effect=AssertionError("golden write on import")):
+    importlib.import_module("tools.native_slope")
     for name in __import__('sys').argv[1:]:
         importlib.import_module("tools.projectile_oracle." + name)
 '''
-        result = subprocess.run([sys.executable, '-c', script, *MODULES], cwd=ROOT,
+        result = subprocess.run([sys.executable, '-c', script, *MODULES, 'collision_fixture'], cwd=ROOT,
                                 env=self.environment(), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 

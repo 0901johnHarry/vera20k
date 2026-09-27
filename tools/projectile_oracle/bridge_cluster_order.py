@@ -14,11 +14,12 @@ from unicorn.x86_const import (
     UC_X86_REG_ESI, UC_X86_REG_ESP,
 )
 from tools.spatial_oracle.bridge_damage_admission import (
-    base, call, words, read32, signed, seed_bytes, slope_matrices,
+    base, call, words, read32, signed, seed_bytes,
     MEM, TABLE, CELL, ANCHOR, DUMMY, SCENARIO, RULES, WARHEAD, ION,
     BULLET, DRIVERS, SP, RET_MAGIC,
 )
 from tools.native_oracle import run_checked, finish_vectors, provenance
+from tools.native_slope import slope_matrices
 
 TYPE = MEM + 0xA000
 DEFAULTS = dict(level=2, impact_z=624, seed=1, damage=2000, strength=1500,

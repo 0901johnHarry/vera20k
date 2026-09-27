@@ -2,7 +2,7 @@
 import struct
 from pathlib import Path
 from functools import lru_cache
-from tools.projectile_oracle.ordinary_collision import slope_matrices
+from tools.native_slope import slope_matrices
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_ESP, UC_X86_REG_FPCW
 from tools.native_oracle import load_image, run_checked, finish_vectors, provenance, NATIVE_FPCW
