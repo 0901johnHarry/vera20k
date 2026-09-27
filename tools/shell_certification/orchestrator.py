@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any
+
+from tools.child_process import run_child
 
 from .core import (
     CAPTURE_SCHEMA_VERSION,
@@ -37,7 +37,6 @@ RUN_FILENAME = "run.json"
 COMPARISON_FILENAME = "comparison.json"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_TIMEOUT_SECONDS = 300.0
-POST_KILL_DRAIN_SECONDS = 5.0
 EXPECTED_CHILD_ARTIFACTS = frozenset(("capture.json", "frame.bgra"))
 CONFIG_FILENAME = "config.toml"
 
@@ -238,62 +237,11 @@ def capture_and_compare(
     executable_sha256 = sha256_file(executable, "VERA executable")
     command = build_capture_command(executable, run_dir)
     started_at = utc_now()
-    child_pid: int | None = None
-    exit_status: int | None = None
-    timed_out = False
-    stdout = b""
-    stderr = b""
-    orchestration_errors: list[str] = []
-
-    # Temporary regular files avoid an unbounded pipe drain if a child-created
-    # descendant inherits stdout/stderr. They live outside the not-yet-created
-    # capture directory and are copied into exclusive evidence files afterward.
-    with tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir.parent, prefix=f".{run_dir.name}-stdout-"
-    ) as stdout_stream, tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir.parent, prefix=f".{run_dir.name}-stderr-"
-    ) as stderr_stream:
-        try:
-            child = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_stream,
-                stderr=stderr_stream,
-                shell=False,
-                cwd=child_working_directory,
-            )
-            child_pid = child.pid
-            try:
-                child.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                orchestration_errors.append(
-                    f"capture child PID {child.pid} exceeded {timeout:g}s timeout"
-                )
-                # Popen.kill targets only this child PID on Windows and POSIX.
-                try:
-                    child.kill()
-                except OSError as exc:
-                    orchestration_errors.append(
-                        f"failed to kill timed-out child PID {child.pid}: {exc}"
-                    )
-                try:
-                    child.wait(timeout=POST_KILL_DRAIN_SECONDS)
-                except subprocess.TimeoutExpired:
-                    orchestration_errors.append(
-                        f"capture child PID {child.pid} did not terminate within "
-                        f"{POST_KILL_DRAIN_SECONDS:g}s after kill"
-                    )
-            exit_status = child.returncode
-        except OSError as exc:
-            orchestration_errors.append(f"failed to start capture child: {exc}")
-
-        stdout_stream.flush()
-        stdout_stream.seek(0)
-        stdout = stdout_stream.read()
-        stderr_stream.flush()
-        stderr_stream.seek(0)
-        stderr = stderr_stream.read()
+    child = run_child(command, cwd=child_working_directory, temporary_directory=run_dir.parent,
+                      timeout_seconds=timeout)
+    child_pid, exit_status, timed_out = child.pid, child.exit_status, child.timed_out
+    stdout, stderr = child.stdout, child.stderr
+    orchestration_errors = list(child.errors)
 
     finished_at = utc_now()
     _ensure_diagnostic_directory(run_dir)

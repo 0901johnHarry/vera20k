@@ -49,7 +49,7 @@ class OrchestratorTests(unittest.TestCase):
             )
 
     @mock.patch("tools.shell_certification.orchestrator.validate_guard")
-    @mock.patch("tools.shell_certification.orchestrator.subprocess.Popen")
+    @mock.patch("tools.child_process.subprocess.Popen")
     def test_relative_child_working_directory_rejects_before_launch(
         self, popen: mock.Mock, validate_guard: mock.Mock
     ) -> None:
@@ -69,7 +69,7 @@ class OrchestratorTests(unittest.TestCase):
             validate_guard.assert_called_once()
 
     @mock.patch("tools.shell_certification.orchestrator.validate_guard")
-    @mock.patch("tools.shell_certification.orchestrator.subprocess.Popen")
+    @mock.patch("tools.child_process.subprocess.Popen")
     def test_missing_config_rejects_before_launch(
         self, popen: mock.Mock, validate_guard: mock.Mock
     ) -> None:
@@ -89,7 +89,7 @@ class OrchestratorTests(unittest.TestCase):
             validate_guard.assert_called_once()
 
     @mock.patch("tools.shell_certification.orchestrator.validate_guard")
-    @mock.patch("tools.shell_certification.orchestrator.subprocess.Popen")
+    @mock.patch("tools.child_process.subprocess.Popen")
     def test_existing_run_directory_rejects_before_launch(
         self, popen: mock.Mock, validate_guard: mock.Mock
     ) -> None:
@@ -113,7 +113,7 @@ class OrchestratorTests(unittest.TestCase):
     @mock.patch("tools.shell_certification.orchestrator.build_comparison_report")
     @mock.patch("tools.shell_certification.orchestrator.validate_capture_bundle")
     @mock.patch("tools.shell_certification.orchestrator.validate_guard")
-    @mock.patch("tools.shell_certification.orchestrator.subprocess.Popen")
+    @mock.patch("tools.child_process.subprocess.Popen")
     def test_timeout_kills_only_the_exact_child_object_and_retains_diagnostics(
         self,
         popen: mock.Mock,
@@ -131,6 +131,7 @@ class OrchestratorTests(unittest.TestCase):
             child = mock.Mock()
             child.pid = 4321
             child.returncode = -9
+            child.poll.return_value = None
             child.wait.side_effect = (
                 subprocess.TimeoutExpired(cmd=["vera20k.exe"], timeout=1),
                 -9,
@@ -180,7 +181,7 @@ class OrchestratorTests(unittest.TestCase):
     @mock.patch("tools.shell_certification.orchestrator.build_comparison_report")
     @mock.patch("tools.shell_certification.orchestrator.validate_capture_bundle")
     @mock.patch("tools.shell_certification.orchestrator.validate_guard")
-    @mock.patch("tools.shell_certification.orchestrator.subprocess.Popen")
+    @mock.patch("tools.child_process.subprocess.Popen")
     def test_config_change_during_child_forces_invalid(
         self,
         popen: mock.Mock,

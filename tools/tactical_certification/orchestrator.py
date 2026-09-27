@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import os
 import stat
-import subprocess
-import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from tools.child_process import run_child
 
 from .core import (
     INVALID,
@@ -70,7 +70,6 @@ STDOUT_NAME = "stdout.txt"
 STDERR_NAME = "stderr.txt"
 VALIDATION_NAME = "validation.json"
 RUN_NAME = "run.json"
-POST_KILL_WAIT_SECONDS = 5.0
 EXPECTED_SUCCESS_ARTIFACTS = frozenset((CAPTURE_MANIFEST_NAME, FRAME_NAME))
 
 
@@ -529,69 +528,11 @@ def capture_once(
         environment.executable.path, profile, contract, child_output
     )
     started_at = utc_now()
-    child_pid: int | None = None
-    exit_status: int | None = None
-    timed_out = False
-    errors: list[str] = []
-    stdout = b""
-    stderr = b""
-
-    with tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir, prefix=".stdout-"
-    ) as stdout_stream, tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir, prefix=".stderr-"
-    ) as stderr_stream:
-        child: subprocess.Popen[bytes] | None = None
-        try:
-            child = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_stream,
-                stderr=stderr_stream,
-                shell=False,
-                cwd=environment.working_directory,
-            )
-            child_pid = child.pid
-            try:
-                child.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                errors.append(
-                    f"capture child PID {child.pid} exceeded {timeout:g}s timeout"
-                )
-                if child.poll() is None:
-                    try:
-                        child.kill()
-                    except OSError as exc:
-                        errors.append(
-                            f"failed to kill exact child PID {child.pid}: {exc}"
-                        )
-                try:
-                    child.wait(timeout=POST_KILL_WAIT_SECONDS)
-                except subprocess.TimeoutExpired:
-                    errors.append(
-                        f"exact child PID {child.pid} did not exit within "
-                        f"{POST_KILL_WAIT_SECONDS:g}s after kill"
-                    )
-            exit_status = child.returncode
-        except OSError as exc:
-            errors.append(f"failed to start capture child: {exc}")
-
-        for stream, destination, label in (
-            (stdout_stream, "stdout", "stdout"),
-            (stderr_stream, "stderr", "stderr"),
-        ):
-            try:
-                stream.flush()
-                os.fsync(stream.fileno())
-                stream.seek(0)
-                data = stream.read()
-                if destination == "stdout":
-                    stdout = data
-                else:
-                    stderr = data
-            except OSError as exc:
-                errors.append(f"failed to drain child {label}: {exc}")
+    child = run_child(command, cwd=environment.working_directory, temporary_directory=run_dir,
+                      timeout_seconds=timeout)
+    child_pid, exit_status, timed_out = child.pid, child.exit_status, child.timed_out
+    stdout, stderr = child.stdout, child.stderr
+    errors = list(child.errors)
 
     finished_at = utc_now()
     if not timed_out:
