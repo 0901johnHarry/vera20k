@@ -64,5 +64,6 @@ python -m unittest tools.tests.test_anim_boundary -v
 
 The portable tests execute synthetic HLT, infinite-loop and invalid-instruction
 fixtures through the actual shared runner, and check that failed writes preserve
-existing references. They also guard import/help behavior and repeat the failure
-gates with optimized Python. They do not reproduce Anim behavior in a second model.
+existing references. Shared `tools.tests.test_oracle_lifecycle` guards import/help behavior for
+animation and projectile producers. The failure gates also run with optimized
+Python. They do not reproduce Anim behavior in a second model.
