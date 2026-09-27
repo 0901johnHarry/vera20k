@@ -1700,12 +1700,7 @@ impl Simulation {
                 self.maintain_damage_smoke_after_receive(stable_id, state, rules);
             }
             crate::sim::combat::FatalLifecycleStage::PostMortemExactZero { killer_owner } => {
-                self.postmortem_exact_zero_callbacks(
-                    stable_id,
-                    killer_owner,
-                    rules,
-                    uninit_context,
-                );
+                self.postmortem_exact_zero_callbacks(stable_id, killer_owner, uninit_context);
             }
             crate::sim::combat::FatalLifecycleStage::BeforeDeathEffects => {
                 // A building's occupants. A unit's passengers stay for its own
@@ -4135,70 +4130,7 @@ impl Simulation {
     #[cfg(debug_assertions)]
     pub(crate) fn debug_assert_production_shadow(&self) {
         self.debug_assert_factory_shell_trace();
-        self.debug_assert_factory_conservation(); // P3
         self.debug_assert_factory_invariants(); // P5b (repurposed from the P5a inversion assert)
-    }
-
-    /// Debug-only P3 assert: each live shadow factory's `advance_one_step` conserves
-    /// exact cost (C15) and settles correctly (C2/C12). Steps a CLONE against a CLONE
-    /// economy seeded with exactly `original_balance`; SURFACES divergence with
-    /// tick + owner + category, NEVER writes back to the shadow or the wallet.
-    #[cfg(debug_assertions)]
-    pub(crate) fn debug_assert_factory_conservation(&self) {
-        use crate::sim::economy::Economy;
-        use crate::sim::production::{PRODUCTION_STEPS, StepOutcome};
-        for factory in self.production.factory_shadow.iter_insertion_ordered() {
-            if factory.object.is_none() {
-                continue; // queue-only / no active object: nothing to conserve
-            }
-            let cost = factory.original_balance;
-            // A fresh, armed clone driven from progress 0 with exact funds.
-            let mut f = factory.clone();
-            f.progress = 0;
-            f.balance = cost;
-            f.on_hold = false;
-            f.suspended = false;
-            f.manual = false;
-            let mut econ = Economy {
-                credits: cost,
-                ..Economy::default()
-            };
-            let mut steps = 0i32;
-            loop {
-                match f.advance_one_step(&mut econ) {
-                    StepOutcome::Stepped => steps += 1,
-                    StepOutcome::Completed => {
-                        steps += 1;
-                        break;
-                    }
-                    // Stalled/Idle cannot happen with exact funds + a fresh arm; the
-                    // asserts below fire (steps != 54) and surface the divergence.
-                    _ => break,
-                }
-            }
-            debug_assert_eq!(
-                steps, PRODUCTION_STEPS as i32,
-                "C2: tick {} {:?}/{:?}: a full build must take 54 steps (got {})",
-                self.session.tick, factory.owner, factory.category, steps,
-            );
-            debug_assert_eq!(
-                econ.spent_credits, cost,
-                "C15: tick {} {:?}/{:?}: total spent {} must equal full cost {}",
-                self.session.tick, factory.owner, factory.category, econ.spent_credits, cost,
-            );
-            debug_assert_eq!(
-                f.balance, 0,
-                "C12: tick {} {:?}/{:?}: completion must zero the balance",
-                self.session.tick, factory.owner, factory.category,
-            );
-            debug_assert!(
-                f.suspended && f.object.is_some(),
-                "C12: tick {} {:?}/{:?}: completion must suspend with the object attached",
-                self.session.tick,
-                factory.owner,
-                factory.category,
-            );
-        }
     }
 
     /// Debug-only P5b invariants on the now-authoritative registry (repurposed from the
@@ -4244,8 +4176,8 @@ impl Simulation {
             }
         }
 
-        // (B) STATE: progress in 0..=54; 0 <= balance <= original_balance (the per-step
-        // ladder only decrements balance, and cancel resets both to 0).
+        // (B) STATE: progress in 0..=54; balance >= 0 (the seed is non-negative, the
+        // per-step ladder only decrements it, and cancel resets it to 0).
         for f in self.production.factory_shadow.iter_insertion_ordered() {
             debug_assert!(
                 f.progress <= PRODUCTION_STEPS,
@@ -4257,13 +4189,12 @@ impl Simulation {
                 PRODUCTION_STEPS,
             );
             debug_assert!(
-                f.balance >= 0 && f.balance <= f.original_balance,
-                "P5b (B): tick {} {:?}/{:?}: balance {} out of [0, original {}]",
+                f.balance >= 0,
+                "P5b (B): tick {} {:?}/{:?}: balance {} is negative",
                 self.session.tick,
                 f.owner,
                 f.category,
                 f.balance,
-                f.original_balance,
             );
         }
     }
@@ -4540,6 +4471,9 @@ impl Simulation {
             stable_id,
             crate::sim::house_tracking::HouseTracking::add_tracking,
         );
+        if category == EntityCategory::Structure {
+            self.move_house_base_tracking(stable_id, old_owner, new_owner);
+        }
         // `BuildingClass::ChangeOwner @ 0x00448723` marks every transferred
         // building HasBeenCaptured (+0x6E3); survivors read it at death. Its
         // repair stops without a sound (`+0x6E8 = 0`, `0x00448CE8`).

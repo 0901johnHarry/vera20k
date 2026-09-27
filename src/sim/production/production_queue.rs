@@ -10,14 +10,12 @@ use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 
 use super::PRODUCTION_STEPS;
-use super::factory_lifecycle::{self, enqueue_by_type};
+use super::factory_lifecycle;
 use super::production_spawn::{
     ProductionDeliveryKind, find_helipad_for_aircraft, find_spawn_selection_for_owner_with_type,
     mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
-use super::production_tech::{
-    owner_matches_build_identity, production_category_for_object, should_use_relaxed_build_mode,
-};
+use super::production_tech::{owner_matches_build_identity, production_category_for_object};
 use super::production_types::*;
 
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
@@ -72,24 +70,10 @@ pub(in crate::sim) fn credits_entry_for_owner<'a>(
     &mut sim.houses.get_mut(&key).unwrap().economy.credits
 }
 
-/// Try to enqueue a default buildable unit for `owner`.
-///
-/// Returns the enqueued type ID on success.
-pub fn enqueue_default_unit_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> Option<InternedId> {
-    let type_id: InternedId = pick_default_buildable_unit(sim, rules, owner)?;
-    let type_str = sim.interner.resolve(type_id).to_string();
-    enqueue_by_type(sim, rules, owner, &type_str).then_some(type_id)
-}
-
 /// Build a production list across supported sidebar categories for an owner.
 ///
-/// In RA2, only items the player has unlocked via the tech tree are shown.
-/// Items with missing prerequisites, wrong faction, or no factory are hidden
-/// entirely — only items with insufficient credits are shown greyed out.
+/// In RA2, only items the player has unlocked via the tech tree are shown
+/// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
     let strict: Vec<BuildOption> =
         super::production_tech::build_options_for_owner_mode(sim, rules, owner, BuildMode::Strict);
@@ -108,7 +92,6 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
                 Some(BuildDisabledReason::MissingPrerequisite(_)) => "MissingPrerequisite",
                 Some(BuildDisabledReason::NoFactory) => "NoFactory",
                 Some(BuildDisabledReason::AtBuildLimit) => "AtBuildLimit",
-                Some(BuildDisabledReason::InsufficientCredits) => "InsufficientCredits",
                 Some(BuildDisabledReason::PlacementModeUnavailable) => "PlacementModeUnavailable",
                 None => "Enabled",
             };
@@ -148,14 +131,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
 
     let visible: Vec<BuildOption> = strict
         .into_iter()
-        .filter(|opt| {
-            opt.enabled
-                || matches!(
-                    opt.reason,
-                    Some(BuildDisabledReason::InsufficientCredits)
-                        | Some(BuildDisabledReason::AtBuildLimit)
-                )
-        })
+        .filter(BuildOption::visible_in_sidebar)
         .collect();
     let visible = dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner);
     if !visible.is_empty() || !super::production_tech::prototype_fallback_enabled() {
@@ -692,29 +668,4 @@ pub fn ready_buildings_for_owner(
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn pick_default_buildable_unit(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-) -> Option<InternedId> {
-    let mode = if should_use_relaxed_build_mode(sim, rules, owner) {
-        BuildMode::PrototypeRelaxed
-    } else {
-        BuildMode::Strict
-    };
-    super::production_tech::build_options_for_owner_mode(sim, rules, owner, mode)
-        .into_iter()
-        .find(|opt| {
-            opt.enabled
-                && matches!(
-                    opt.queue_category,
-                    ProductionCategory::Infantry
-                        | ProductionCategory::Vehicle
-                        | ProductionCategory::Ship
-                        | ProductionCategory::Aircraft
-                )
-        })
-        .map(|opt| opt.type_id)
 }

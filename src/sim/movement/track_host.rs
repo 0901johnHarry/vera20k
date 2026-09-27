@@ -1411,16 +1411,8 @@ impl Simulation {
                 let owner = self.substrate.entities.get(id).map(|entity| entity.owner());
                 if let Some(entity) = self.substrate.entities.get_mut(victim) {
                     entity.health.current = 0;
-                    crate::sim::combat::capture_kill_credit(entity, owner, rules, &self.interner);
                 }
-                crate::sim::combat::award_kill_experience(
-                    &mut self.substrate.entities,
-                    rules,
-                    &self.interner,
-                    &self.house_alliances,
-                    id,
-                    victim,
-                );
+                self.record_the_kill(victim, Some(id), owner, rules);
                 self.apply_lifecycle_request_with_rules(
                     LifecycleRequest::Uninit {
                         stable_id: victim,

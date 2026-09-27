@@ -663,7 +663,12 @@ use crate::sim::world::Simulation;
 // shorts, outside Simulation and its deterministic state hash.
 // House MatchStatistics now persists and hashes its existing live totals;
 // an active-sinking save must retain its first RecordKill before the terminal one.
-const SNAPSHOT_VERSION: u32 = 227;
+// 227 -> 228: Cost_Of. A house's building registrations carry the FactoryPlant
+// cost bonuses instead of a raw cost, which a 227 save never filled; the house
+// keeps its FactoryPlant list (House+0x140), hashed from schema 228, and drops
+// its unread tracked-building count and base radius; a factory keeps no
+// VERA-only full-cost copy of its Balance.
+const SNAPSHOT_VERSION: u32 = 228;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3647,7 +3652,8 @@ mod tests {
         // 225 -> 226: the factory step timer is the CDTimer a build start arms;
         // no stored build-time estimates.
         // 226 -> 227: retained surface-ship sinking and its sound edge.
-        assert_eq!(super::SNAPSHOT_VERSION, 227);
+        // 227 -> 228: FactoryPlant cost bonuses; no full-cost Balance copy.
+        assert_eq!(super::SNAPSHOT_VERSION, 228);
     }
 
     #[test]

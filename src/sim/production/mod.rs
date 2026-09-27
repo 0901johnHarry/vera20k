@@ -41,15 +41,15 @@ pub use self::production_placement::{
     toggle_pause_for_owner_category,
 };
 pub use self::production_queue::{
-    build_options_for_owner, credits_for_owner, enqueue_default_unit_for_owner,
-    has_strict_build_option_for_owner, power_balance_for_owner, queue_view_for_owner,
-    ready_buildings_for_owner, theoretical_power_for_owner, tick_production,
-    tick_production_with_overlay_registry,
+    build_options_for_owner, credits_for_owner, has_strict_build_option_for_owner,
+    power_balance_for_owner, queue_view_for_owner, ready_buildings_for_owner,
+    theoretical_power_for_owner, tick_production, tick_production_with_overlay_registry,
 };
 pub(crate) use self::production_refinery::spawn_completed_refinery_free_units;
 pub(crate) use self::production_sell::{
-    archive_less_sale, begin_selling, building_type_refund, eject_destruction_garrison_with_context,
-    eject_red_hp_garrison, sell_complete, sell_stage_one, sell_stage_zero, undeploy_target,
+    archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
+    eject_red_hp_garrison, sell_complete, sell_stage_one, sell_stage_zero, type_refund,
+    undeploy_target,
 };
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};

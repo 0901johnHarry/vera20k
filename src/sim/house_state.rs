@@ -516,6 +516,12 @@ pub struct HouseState {
 }
 
 impl HouseState {
+    /// The HouseType this House was made from (HouseClass `+0x34`): its
+    /// `Country=`, else its own name, which a map House shares with its type.
+    pub(crate) fn house_type_id(&self) -> InternedId {
+        self.country.unwrap_or(self.name)
+    }
+
     /// `HouseClass::SetDifficulty @ 0x004F6EC0`, for the fields VERA keeps:
     /// the difficulty index (`+0x184`), the ROF bias (`+0x1A8`) and the
     /// repair delay (`+0x1C0`). Outside a campaign the bias is the difficulty

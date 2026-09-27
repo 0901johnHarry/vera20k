@@ -101,18 +101,8 @@ impl Simulation {
             // `0x004DEC72` zeroes Health (Foot+6AD, a Magnetron lift, would
             // keep it; VERA never sets it).
             let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
-            if let Some(attacker) = attacker {
-                crate::sim::combat::award_kill_experience(
-                    &mut self.substrate.entities,
-                    rules,
-                    &self.interner,
-                    &self.house_alliances,
-                    attacker,
-                    id,
-                );
-            }
+            self.record_the_kill(id, attacker, killer, rules);
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                crate::sim::combat::record_kill_credit(entity, killer, rules, &self.interner);
                 entity.health.current = 0;
             }
         }
@@ -491,20 +481,10 @@ impl Simulation {
         rules: &RuleSet,
     ) {
         let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
-        if let Some(attacker) = attacker {
-            crate::sim::combat::award_kill_experience(
-                &mut self.substrate.entities,
-                rules,
-                &self.interner,
-                &self.house_alliances,
-                attacker,
-                victim,
-            );
-        }
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
             entity.health.current = 0;
-            crate::sim::combat::record_kill_credit(entity, killer, rules, &self.interner);
         }
+        self.record_the_kill(victim, attacker, killer, rules);
         self.uninit_with_rules(victim, rules);
     }
 }

@@ -1604,19 +1604,7 @@ impl Simulation {
         let killer_owner = killer
             .and_then(|id| self.substrate.entities.get(id))
             .map(|entity| entity.owner());
-        if let Some(victim) = self.substrate.entities.get_mut(slave) {
-            crate::sim::combat::record_kill_credit(victim, killer_owner, rules, &self.interner);
-        }
-        if let Some(killer) = killer {
-            crate::sim::combat::award_kill_experience(
-                &mut self.substrate.entities,
-                rules,
-                &self.interner,
-                &self.house_alliances,
-                killer,
-                slave,
-            );
-        }
+        self.record_the_kill(slave, killer, killer_owner, rules);
         self.uninit_with_context(slave, UninitContext::with_rules(rules));
     }
 
