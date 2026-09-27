@@ -119,12 +119,13 @@ Trace their use before changes. Untangle affected ownership, consolidate duplica
 finish required migrations and remove obsolete code/state. Preserve intentional
 differences, validate affected paths and keep cleanup within task scope.
 
-Refactoring you find but cannot finish in the current change goes to a GitHub issue
-labeled `refactor`. Search open issues first and comment on a match instead of filing
-a duplicate. Say where it is, why it hurts and what work it slowed down, not how to fix
-it, and comment again each time it slows work down. Issues are leads: verify them before
-acting, and correct or close any that prove wrong. Pick refactoring work by that recorded
-cost and close the issue from the PR that fixes it.
+Fix refactoring in the code your change touches. File a GitHub issue labeled `refactor`
+only for what would change behavior outside your chain or is too big for the change.
+Search open issues first and comment on a match instead of filing a duplicate. Say where
+it is, why it hurts and what work it slowed down, not how to fix it, and comment again
+each time it slows work down. Issues are leads: verify them before acting, and correct
+or close any that prove wrong. Pick refactoring work by that recorded cost. When your PR
+fixes or changes what an open issue says, close or correct it in that PR.
 
 Simulation state and shared decisions have one authoritative owner. Before adding
 state or decision logic, find existing writers and name the owner in the PR. Extend
@@ -212,7 +213,7 @@ Before fixing a bug whose expected behavior is established, first make a focused
 - Docs/skills: validate content, links/examples and tooling; no Cargo suite.
 - Every `cargo test` uses `--lib`.
 
-Before Cargo: `Get-Process cargo,rustc -ErrorAction SilentlyContinue`. Wait for other
+Before Cargo, check for running `cargo` and `rustc` processes. Wait for other
 owners; never compete or kill a compile. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
@@ -240,6 +241,11 @@ APIs, hot loops, error handling or tests; this contract wins on conflict.
 Resolve `<main-checkout>` with `git worktree list`; its `ini/`, config and `LOCAL.md`
 are machine-local. Use `asset`/`asset-browser`; a successful parse or plausible
 render is not correctness proof.
+
+Tools follow the same one-owner rule as code. Before writing a helper, look for an
+existing tool in `tools/` and `src/bin/`, and extend it instead of copying it. Put
+anything another session would need in the repo, not a scratchpad; one-off
+investigation scripts can stay in scratch.
 
 Check compatibility before dependency changes; document non-obvious decisions near
 their owner. Edit skills in `.agents/skills/`; generate Claude copies with

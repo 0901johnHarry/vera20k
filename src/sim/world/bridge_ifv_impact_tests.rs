@@ -211,11 +211,11 @@ fn native_ifv_bridge_impact_orders_live_selection_debris_ids_and_rng() {
         let impact = coord(&damage["position"]);
         assert_eq!(live, ProjectileCoord::new(2688, 5248, 104));
         assert_eq!(impact, ProjectileCoord::new(2688, 5248, 520));
-        let payload = ProjectilePayload {
-            base_damage: rules.weapon("HoverMissile").unwrap().damage,
-            warhead: world.interner.intern("HE"),
-            weapon: world.interner.intern("HoverMissile"),
-        };
+        let payload = ProjectilePayload::new(
+            rules.weapon("HoverMissile").unwrap().damage,
+            world.interner.intern("HE"),
+            world.interner.intern("HoverMissile"),
+        );
         let target = ProjectileTarget::Cell { rx: 10, ry: 20 };
         let stable_id = world.allocate_stable_id();
         // Only retained location/OnBridge and payload are read by this handoff.

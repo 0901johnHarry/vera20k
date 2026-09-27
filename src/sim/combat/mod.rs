@@ -148,7 +148,7 @@ use crate::util::lepton::{LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
 use super::animation::SequenceKind;
-use super::game_entity::{GameEntity, PendingBuildingFire};
+use super::game_entity::GameEntity;
 use super::occupancy::OccupancyGrid;
 use super::production::foundation_dimensions;
 
@@ -1545,10 +1545,21 @@ pub struct TiberiumReductionRequest {
 pub(crate) struct FireRequests {
     /// Aircraft whose Mission_Attack strike state (4..9) asked for its visit.
     pub aircraft: std::collections::BTreeSet<u64>,
-    /// Buildings whose Mission_Attack took its FireAt arm (`0x0044B6D0`):
-    /// GetFireError answered OK in that visit, so combat emits the shot
-    /// without asking again.
-    pub buildings: std::collections::BTreeSet<u64>,
+    /// Buildings whose Update asked for a FireAt: GetFireError answered OK in
+    /// that visit, so combat emits the shot without asking again.
+    pub buildings: std::collections::BTreeMap<u64, BuildingShot>,
+}
+
+/// Which FireAt of `BuildingClass::Update` a building's request stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildingShot {
+    /// Mission_Attack's FireAt arm (`0x0044B6D0`), with SelectWeapon's weapon.
+    Mission,
+    /// ProcessDelayedFire's mode-1 FireAt (`0x00450492`), with the weapon
+    /// Mission_Attack saved when it armed the shot (`+0x708`). A launched
+    /// bullet takes the building's support bonus
+    /// (`Simulation::take_support_bonus`).
+    Delayed(combat_weapon::WeaponSlot),
 }
 
 /// Ordinary fire prelude plus one consuming deferred-consequence packet.
@@ -2784,11 +2795,11 @@ fn emit_projectile_shrapnel(
             origin: detonation.impact,
             target,
             initial_target_position: target_coord,
-            payload: ProjectilePayload {
-                base_damage: child_weapon.damage,
-                warhead: interner.intern(child_warhead_name),
-                weapon: interner.intern(child_weapon_name),
-            },
+            payload: ProjectilePayload::new(
+                child_weapon.damage,
+                interner.intern(child_warhead_name),
+                interner.intern(child_weapon_name),
+            ),
             speed_leptons_per_frame: child_weapon.speed.clamp(1, i32::from(u16::MAX)) as u16,
             velocity: crate::sim::projectile::launch::shrapnel_launch_velocity(
                 detonation.impact,
@@ -2844,7 +2855,6 @@ pub(crate) fn build_attacker_snapshot(
     entity: &GameEntity,
     target: TargetKind,
     pending_infantry_fire: Option<PendingInfantryFire>,
-    pending_building_fire: Option<PendingBuildingFire>,
     garrison: Option<GarrisonSnapshot>,
 ) -> AttackerSnapshot {
     AttackerSnapshot {
@@ -2870,14 +2880,13 @@ pub(crate) fn build_attacker_snapshot(
         is_fully_deployed: entity.is_fully_deployed(),
         has_movement: entity.movement_target.is_some(),
         pending_infantry_fire,
-        pending_building_fire,
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,
         in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
-        mission_fire_request: false,
+        building_shot: None,
     }
 }
 

@@ -579,7 +579,7 @@ fn ready_building(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &
     let started = sim
         .production
         .factory_shadow
-        .enqueue(owner_id, category, type_id, 0, 1, cost);
+        .enqueue(owner_id, category, type_id, 0, cost);
     assert!(started, "test fixture arms one fresh factory head");
     super::construct_active_factory_fixture(sim, rules, owner_id, category, type_id)
         .expect("ready-building fixture constructs at StartProduction");
@@ -650,7 +650,6 @@ fn completed_building_moves_into_ready_placement_pool() {
         "Americans",
         "GACNST",
         ProductionCategory::Building,
-        100,
         1,
     );
     assert!(
@@ -720,7 +719,6 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
         "Americans",
         "GACNST",
         ProductionCategory::Building,
-        100,
         50,
     );
     let mut expected = sim.scenario_rng.clone();
@@ -2206,7 +2204,7 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
         1,
         "fixture must begin with one authoritative completed wall"
     );
-    super::tests::arm_build_via(&mut sim, &rules, "Americans", "GAWALL", category, 100, 50);
+    super::tests::arm_build_via(&mut sim, &rules, "Americans", "GAWALL", category, 50);
     let mut expected_rng = sim.scenario_rng.clone();
     let successor_word = (expected_rng.next_u32() & 0xffff) as u16;
     let overlay_id = registry.id_for_name("GAWALL").expect("wall overlay");
@@ -3459,7 +3457,6 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
         "Americans",
         "E1",
         ProductionCategory::Infantry,
-        100,
         1,
     );
     super::tests::arm_build_via(
@@ -3468,7 +3465,6 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         2,
     );
 

@@ -88,11 +88,7 @@ fn fixture(row: &Value, kind: &crate::rules::projectile_type::ProjectileType) ->
             origin: coord,
             target: ProjectileTarget::None,
             initial_target_position: coord,
-            payload: ProjectilePayload {
-                base_damage: 0,
-                warhead,
-                weapon,
-            },
+            payload: ProjectilePayload::new(0, warhead, weapon),
             speed_leptons_per_frame: 0,
             velocity: input["velocity"].as_array().map_or_else(
                 || ProjectileVelocity::new(0, 0, 0),

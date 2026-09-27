@@ -307,11 +307,7 @@ impl Simulation {
                 y: impact.y,
                 z: impact.z,
             },
-            payload: crate::sim::projectile::ProjectilePayload {
-                base_damage: damage,
-                warhead,
-                weapon,
-            },
+            payload: crate::sim::projectile::ProjectilePayload::new(damage, warhead, weapon),
             reason: crate::sim::projectile::ProjectileDetonationReason::DeathWeapon,
         };
         self.commit_logic_projectile_detonations(rules, overlay_registry, &[detonation]);

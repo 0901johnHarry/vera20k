@@ -42,6 +42,7 @@ use crate::rules::voxel_anim_type::{VoxelAnimType, VoxelAnimTypeId};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SIM_ONE, SimFixed, sim_from_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
@@ -68,6 +69,12 @@ pub struct CountryRules {
     pub armor_aircraft_mult: f32,
     pub armor_buildings_mult: f32,
     pub armor_defenses_mult: f32,
+    /// `BuildTimeInfantryMult=`, `BuildTimeUnitsMult=`, `BuildTimeAircraftMult=`,
+    /// `BuildTimeBuildingsMult=` and `BuildTimeDefensesMult=` (HouseType
+    /// `+0x134..+0x144`): ReadDouble into floats (`0x00511C70..0x00511CEC`),
+    /// the constructor's 1.0 (`0x005114D8..0x005114F0`) as default, no clamp.
+    /// No retail country sets them.
+    pub build_time_mults: [NativeF32Bits; 5],
     /// `ROF=` (HouseType `+0xE8`; constructor 1.0 at `0x00511457`, ReadDouble
     /// at `0x00511A0C`). `HouseClass::SetDifficulty` multiplies it into the
     /// house's ROF bias outside campaigns. No retail country sets it.
@@ -98,6 +105,7 @@ impl Default for CountryRules {
             armor_aircraft_mult: 1.0,
             armor_buildings_mult: 1.0,
             armor_defenses_mult: 1.0,
+            build_time_mults: [NativeF32Bits::ONE; 5],
             rof: 1.0,
             ui_name: None,
             name: None,
@@ -121,6 +129,14 @@ impl CountryRules {
             armor_aircraft_mult: section.get_f32("ArmorAircraftMult").unwrap_or(1.0),
             armor_buildings_mult: section.get_f32("ArmorBuildingsMult").unwrap_or(1.0),
             armor_defenses_mult: section.get_f32("ArmorDefensesMult").unwrap_or(1.0),
+            build_time_mults: [
+                "BuildTimeInfantryMult",
+                "BuildTimeUnitsMult",
+                "BuildTimeAircraftMult",
+                "BuildTimeBuildingsMult",
+                "BuildTimeDefensesMult",
+            ]
+            .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
             rof: section.read_double("ROF", 1.0),
             ui_name: section
                 .get("UIName")
@@ -150,61 +166,39 @@ const TYPE_REGISTRIES: &[(&str, ObjectCategory)] = &[
     ("BuildingTypes", ObjectCategory::Building),
 ];
 
-/// Production timing rules parsed from `[General]`.
-///
-/// The `_ppm` (parts-per-million) fields are pre-computed at INI parse time from the
-/// corresponding f32 fields so that sim code can use pure integer arithmetic.
-/// 1_000_000 = 1.0×. The f32 originals are kept for logging/debugging.
+/// The `[General]` keys `TechnoClass::Time_To_Build @ 0x006F47A0` reads,
+/// stored as the RulesClass fields hold them. The reader (`0x0066D530`) reads
+/// each with `INIClass::ReadDouble @ 0x005283D0`, the field's current value as
+/// default and no clamp; the values below are the constructor's
+/// (`RulesClass @ 0x00665650`).
 #[derive(Debug, Clone, Copy)]
 pub struct ProductionRules {
-    /// Minutes to build an object that costs 1000 credits before per-object modifiers.
-    pub build_speed: f32,
-    /// Time multiplier applied for each extra matching factory.
-    pub multiple_factory: f32,
-    /// Severity of the low-power speed penalty.
-    pub low_power_penalty_modifier: f32,
-    /// Lower bound on production speed while low power is active.
-    pub min_low_power_production_speed: f32,
-    /// Upper bound on production speed while low power is active.
-    pub max_low_power_production_speed: f32,
-    // -- Pre-computed integer-scaled values for deterministic sim math --
-    /// `multiple_factory` scaled to PPM (e.g., 0.8 → 800_000).
-    pub multiple_factory_ppm: u64,
-    /// `low_power_penalty_modifier` scaled to PPM.
-    pub low_power_penalty_modifier_ppm: u64,
-    /// `min_low_power_production_speed` scaled to PPM.
-    pub min_low_power_production_speed_ppm: u64,
-    /// `max_low_power_production_speed` scaled to PPM.
-    pub max_low_power_production_speed_ppm: u64,
-    /// `build_speed` pre-scaled ×1000 for deterministic build-time computation.
-    pub build_speed_x1000: u64,
-    /// Speed coefficient applied to wall building production after all other
-    /// queue time scaling. Parsed from `WallBuildSpeedCoefficient=` in [General].
-    pub wall_build_speed_coefficient: f32,
-}
-
-/// PPM scale constant (1_000_000 = 1.0×) used for f32→integer conversion at parse time.
-const PRODUCTION_PPM: u64 = 1_000_000;
-
-/// Convert an f32 value clamped to `[min, ∞)` into PPM u64 at parse time only.
-fn f32_to_ppm(val: f32, min: f32) -> u64 {
-    (val.max(min) as f64 * PRODUCTION_PPM as f64) as u64
+    /// `BuildSpeed=`: minutes to build a 1000-credit object (`+0x1748`, double;
+    /// 1.0).
+    pub build_speed: NativeF64Bits,
+    /// `MultipleFactory=`: the time factor per extra factory (`+0x57C`, float;
+    /// 1.0).
+    pub multiple_factory: NativeF32Bits,
+    /// `LowPowerPenaltyModifier=` (`+0x578`, float; 1.0).
+    pub low_power_penalty_modifier: NativeF32Bits,
+    /// `MinLowPowerProductionSpeed=` (`+0x570`, float; 0.5).
+    pub min_low_power_production_speed: NativeF32Bits,
+    /// `MaxLowPowerProductionSpeed=` (`+0x574`, float; 0.9).
+    pub max_low_power_production_speed: NativeF32Bits,
+    /// `WallBuildSpeedCoefficient=`: a wall's time factor (`+0x758`, double;
+    /// 0.5).
+    pub wall_build_speed_coefficient: NativeF64Bits,
 }
 
 impl Default for ProductionRules {
     fn default() -> Self {
         Self {
-            build_speed: 1.0,
-            multiple_factory: 0.8,
-            low_power_penalty_modifier: 1.0,
-            min_low_power_production_speed: 0.5,
-            max_low_power_production_speed: 0.9,
-            multiple_factory_ppm: f32_to_ppm(0.8, 0.01),
-            low_power_penalty_modifier_ppm: f32_to_ppm(1.0, 0.0),
-            min_low_power_production_speed_ppm: f32_to_ppm(0.5, 0.0),
-            max_low_power_production_speed_ppm: f32_to_ppm(0.9, 0.0),
-            build_speed_x1000: (1.0f64 * 1000.0) as u64,
-            wall_build_speed_coefficient: 1.0,
+            build_speed: NativeF64Bits::ONE,
+            multiple_factory: NativeF32Bits::ONE,
+            low_power_penalty_modifier: NativeF32Bits::ONE,
+            min_low_power_production_speed: NativeF32Bits::from_bits(0.5_f32.to_bits()),
+            max_low_power_production_speed: NativeF32Bits::from_bits(0x3F66_6666),
+            wall_build_speed_coefficient: NativeF64Bits::HALF,
         }
     }
 }
@@ -431,9 +425,12 @@ pub struct GeneralRules {
     /// `SeparateAircraft=`. False means the first pad building's value includes
     /// the average cost of the first two `PadAircraft` entries.
     pub separate_aircraft: bool,
-    /// BuildingType identity handled by the Prism support/cascade mission path.
-    /// The generic art-delayed fire path must not consume this type.
+    /// `[General] PrismType=` (Rules `+0x498`): the BuildingType whose
+    /// Mission_Attack forwards its charge instead of firing
+    /// (`sim::world::techno_ai::building_missions`).
     pub prism_type: Option<String>,
+    /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
+    pub prism_support: PrismSupportRules,
     /// Whether ore cells grow denser over time (TiberiumGrows= in [General]).
     /// Default true. Can be overridden per-map in [SpecialFlags].
     pub tiberium_grows: bool,
@@ -1296,6 +1293,64 @@ fn parse_paradrop_list(
 /// double nearest .02 (`0x3F947AE147AE147B`, pushed at `0x0066D317`).
 const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
 
+/// The `[General]` Prism support keys, read by `RulesClass::ReadGeneral`
+/// (`0x0066D530`) on every rules pass that has a `[General]` section, each
+/// with its current value as the default (`0x0067114F..0x006711B8`). The
+/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
+/// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
+/// reader outside the constructor and ReadGeneral.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PrismSupportRules {
+    /// `PrismSupportModifier=` (`Rules+0x49C`), the percent each supporter
+    /// adds to the shot: `ftol(ReadDouble(key, current) x 100)`, so a pass
+    /// with a `[General]` section and no key multiplies it by 100 again.
+    pub modifier: i32,
+    /// `PrismSupportMax=` (`Rules+0x4A0`), the supporters one shot recruits.
+    pub max: i32,
+    /// `PrismSupportDelay=` (`Rules+0x4A4`), a supporter's downtime in frames.
+    pub delay: i32,
+}
+
+impl Default for PrismSupportRules {
+    /// The RulesClass constructor's values (`0x00665CF3`, `0x00665CF9`,
+    /// `0x00665D03`).
+    fn default() -> Self {
+        Self {
+            modifier: 100,
+            max: 8,
+            delay: 100,
+        }
+    }
+}
+
+impl PrismSupportRules {
+    /// One ReadGeneral pass over a `[General]` section. The modifier is
+    /// `fmul qword 100.0` (`0x0067116E`) on the value ReadDouble returns, then
+    /// ftol (`0x007C5F00`), under the game's masked chop control word.
+    ///
+    /// RESIDUAL: ReadDouble's own percent product (`fmul qword 0.01`,
+    /// `0x0052857E`) is chopped under that control word too, while the shared
+    /// reader ([`crate::rules::ini_value`]) rounds it to nearest. Trigger: a
+    /// percent value whose product rounds differently (a modded `35%`; retail
+    /// `150%` is exact). Effect: the modifier reads one higher (`35%`: 35
+    /// against 34 in an unsaved native probe on `building_prism.py`'s group E
+    /// fixture). Later owner: the shared ReadDouble reader, whose other
+    /// percent keys it moves too.
+    pub(crate) fn read_pass(self, general: &crate::rules::ini_parser::IniSection) -> Self {
+        use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+        let percent = general.read_double("PrismSupportModifier", f64::from(self.modifier));
+        let modifier = X87::ftol_i32_low_masked(X87::mul(
+            X87::load_f64(NativeF64Bits::from_bits(percent.to_bits())),
+            X87::load_f64(NativeF64Bits::from_bits(100.0_f64.to_bits())),
+        ));
+        Self {
+            modifier,
+            max: general.read_int("PrismSupportMax", self.max),
+            delay: general.read_int("PrismSupportDelay", self.delay),
+        }
+    }
+}
+
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
@@ -1349,6 +1404,7 @@ impl Default for GeneralRules {
             pad_aircraft_types: Vec::new(),
             separate_aircraft: false,
             prism_type: None,
+            prism_support: PrismSupportRules::default(),
             tiberium_grows: true,
             tiberium_spreads: true,
             growth_rate_minutes: 2.0,
@@ -2173,13 +2229,20 @@ impl GeneralRules {
             separate_aircraft: general
                 .get_bool("SeparateAircraft")
                 .unwrap_or(defaults.separate_aircraft),
-            // RulesClass reads this BuildingType identity from [General].
-            // BuildingClass::Mission_Attack @ 0x0044ACF0 dispatches it to the
-            // Prism-specific path before considering generic delayed fire.
-            prism_type: general
-                .get("PrismType")
-                .map(|value| value.trim().to_ascii_uppercase())
-                .filter(|value| !value.is_empty()),
+            // `0x00671144` -> `0x0067BCE0`: ReadString128, an empty value
+            // keeps the current type and `none`/`<none>` clear it
+            // (BuildingType FindOrAllocate `0x004653C0`). The layered reader
+            // (`native_processing`) replaces this projection.
+            prism_type: match general.read_string("PrismType", "", 0x80) {
+                name if name.is_empty() => defaults.prism_type,
+                name if name.eq_ignore_ascii_case("none")
+                    || name.eq_ignore_ascii_case("<none>") =>
+                {
+                    None
+                }
+                name => Some(name.to_ascii_uppercase()),
+            },
+            prism_support: defaults.prism_support.read_pass(general),
             tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
             tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
             growth_rate_minutes: general.get_f32("GrowthRate").unwrap_or(2.0),
@@ -2762,40 +2825,33 @@ impl GeneralRules {
 }
 
 impl ProductionRules {
+    /// The RulesClass `[General]` reads, in native order: the four floats
+    /// (`0x0066EB5B..0x0066EBC9`), then `BuildSpeed=` (`0x00670D23`) and
+    /// `WallBuildSpeedCoefficient=` (`0x0067187F`). An absent section skips
+    /// them all (the section test `0x00526810` jumps to `0x00671E8E`).
     fn from_ini(ini: &IniFile) -> Self {
+        let mut rules = Self::default();
         let Some(general) = ini.section("General") else {
-            return Self::default();
+            return rules;
         };
-
-        // Fallback for an absent key matches the engine's constructor default
-        // (BuildSpeed 1.0). Retail rulesmd.ini always supplies its own value
-        // (.7), so this fallback fires only for a non-retail INI missing the key.
-        let bs = general.get_f32("BuildSpeed").unwrap_or(1.0);
-        let mf = general.get_f32("MultipleFactory").unwrap_or(0.8);
-        let lpp = general.get_f32("LowPowerPenaltyModifier").unwrap_or(1.0);
-        let min_lp = general.get_f32("MinLowPowerProductionSpeed").unwrap_or(0.5);
-        let max_lp = general.get_f32("MaxLowPowerProductionSpeed").unwrap_or(0.9);
-        let wall_coeff = general.get_f32("WallBuildSpeedCoefficient").unwrap_or(1.0);
-        let result = Self {
-            build_speed: bs,
-            multiple_factory: mf,
-            low_power_penalty_modifier: lpp,
-            min_low_power_production_speed: min_lp,
-            max_low_power_production_speed: max_lp,
-            multiple_factory_ppm: f32_to_ppm(mf, 0.01),
-            low_power_penalty_modifier_ppm: f32_to_ppm(lpp, 0.0),
-            min_low_power_production_speed_ppm: f32_to_ppm(min_lp, 0.0),
-            max_low_power_production_speed_ppm: f32_to_ppm(max_lp.max(min_lp), 0.0),
-            build_speed_x1000: (bs.max(0.01) as f64 * 1000.0).round() as u64,
-            wall_build_speed_coefficient: wall_coeff,
-        };
-        log::info!(
-            "ProductionRules: BuildSpeed={}, MultipleFactory={}, LowPowerPenalty={}",
-            result.build_speed,
-            result.multiple_factory,
-            result.low_power_penalty_modifier,
+        rules.min_low_power_production_speed = general.read_double_to_float(
+            "MinLowPowerProductionSpeed",
+            rules.min_low_power_production_speed,
         );
-        result
+        rules.max_low_power_production_speed = general.read_double_to_float(
+            "MaxLowPowerProductionSpeed",
+            rules.max_low_power_production_speed,
+        );
+        rules.low_power_penalty_modifier = general
+            .read_double_to_float("LowPowerPenaltyModifier", rules.low_power_penalty_modifier);
+        rules.multiple_factory =
+            general.read_double_to_float("MultipleFactory", rules.multiple_factory);
+        rules.build_speed = general.read_double_bits("BuildSpeed", rules.build_speed);
+        rules.wall_build_speed_coefficient = general.read_double_bits(
+            "WallBuildSpeedCoefficient",
+            rules.wall_build_speed_coefficient,
+        );
+        rules
     }
 }
 
@@ -3169,6 +3225,8 @@ impl RuleSet {
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
+        rules.general.prism_support = processed.prism_support();
+        rules.general.prism_type = processed.prism_type().map(str::to_owned);
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
         rules.general.weather_con_bolt_explosion = weather_anim.to_owned();
@@ -4028,11 +4086,12 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v9".hash(&mut hasher);
+        b"rules-simulation-config-v10".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
         self.general.gravity.hash(&mut hasher);
+        self.general.prism_support.hash(&mut hasher);
         self.general.missile_rot_var.to_bits().hash(&mut hasher);
         self.general.safety_altitude.hash(&mut hasher);
         self.general.line_trail_color_override.hash(&mut hasher);
@@ -4291,6 +4350,26 @@ impl RuleSet {
             }
             ObjectCategory::Building => country.armor_buildings_mult,
         }
+    }
+
+    /// `HouseClass @ 0x0050C0A0` for a house of country `id`: its
+    /// `BuildTime*Mult=` for `object`'s class (a `BuildCat=Combat` building
+    /// takes the defenses one), 1.0 for an unknown country.
+    pub(crate) fn country_build_time_mult_for_type(
+        &self,
+        id: &str,
+        object: &ObjectType,
+    ) -> NativeF32Bits {
+        let Some(country) = self.country_rules(id) else {
+            return NativeF32Bits::ONE;
+        };
+        country.build_time_mults[match object.category {
+            ObjectCategory::Infantry => 0,
+            ObjectCategory::Vehicle => 1,
+            ObjectCategory::Aircraft => 2,
+            ObjectCategory::Building if object.build_cat == Some(BuildCategory::Combat) => 4,
+            ObjectCategory::Building => 3,
+        }]
     }
 
     /// Resolve a country name to its stable `[Countries]` registration index.
@@ -5473,13 +5552,55 @@ CellSpread=0
         assert_eq!(rules.aircraft_ids.len(), 0);
         assert_eq!(rules.building_ids.len(), 1);
         assert_eq!(rules.object_count(), 4); // E1, E2, MTNK, GAPOWR
-        assert!((rules.production.build_speed - 0.75).abs() < 0.0001);
-        assert!((rules.production.multiple_factory - 0.7).abs() < 0.0001);
-        assert!((rules.production.low_power_penalty_modifier - 1.25).abs() < 0.0001);
-        assert!((rules.production.min_low_power_production_speed - 0.4).abs() < 0.0001);
-        assert!((rules.production.max_low_power_production_speed - 0.85).abs() < 0.0001);
+        // ReadDouble scans a float and widens it; float fields store it back.
+        let float = |value: f32| NativeF32Bits::from_bits(value.to_bits());
+        assert_eq!(
+            rules.production.build_speed,
+            NativeF64Bits::from_bits(f64::from(0.75_f32).to_bits())
+        );
+        assert_eq!(rules.production.multiple_factory, float(0.7));
+        assert_eq!(rules.production.low_power_penalty_modifier, float(1.25));
+        assert_eq!(rules.production.min_low_power_production_speed, float(0.4));
+        assert_eq!(rules.production.max_low_power_production_speed, float(0.85));
         assert_eq!(rules.bridge_rules.strength, 1000);
         assert!(rules.bridge_rules.destroyable_by_default);
+    }
+
+    /// `HouseClass @ 0x0050C0A0` takes the country's build-time multiplier by
+    /// WhatAmI: infantry `+0x134`, units `+0x138`, aircraft `+0x13C`, and a
+    /// building's `+0x140`, or `+0x144` when its BuildCat is 5, Combat
+    /// (`0x0050C0F0`). An absent key or an unknown country gives 1.0.
+    #[test]
+    fn country_build_time_mults_follow_the_native_slots() {
+        let ini = IniFile::from_str(
+            "[Countries]\n0=T\n1=U\n\
+             [T]\nBuildTimeInfantryMult=0.5\nBuildTimeUnitsMult=0.75\n\
+             BuildTimeAircraftMult=1.25\nBuildTimeBuildingsMult=1.5\n\
+             BuildTimeDefensesMult=2.0\n\
+             [U]\nBuildTimeUnitsMult=0.8\n\
+             [InfantryTypes]\n0=I\n[VehicleTypes]\n0=V\n[AircraftTypes]\n0=A\n\
+             [BuildingTypes]\n0=B\n1=D\n2=P\n\
+             [I]\nStrength=1\n[V]\nStrength=1\n[A]\nStrength=1\n[B]\nStrength=1\n\
+             [D]\nStrength=1\nBuildCat=Combat\n[P]\nStrength=1\nBuildCat=Power\n",
+        );
+        let rules = RuleSet::from_ini(&ini).expect("country fixture parses");
+        let float = |value: f32| NativeF32Bits::from_bits(value.to_bits());
+        let mult = |country: &str, object: &str| {
+            rules.country_build_time_mult_for_type(country, rules.object(object).unwrap())
+        };
+        for (object, expected) in [
+            ("I", 0.5),
+            ("V", 0.75),
+            ("A", 1.25),
+            ("B", 1.5),
+            ("D", 2.0),
+            ("P", 1.5),
+        ] {
+            assert_eq!(mult("T", object), float(expected), "{object}");
+        }
+        assert_eq!(mult("U", "V"), float(0.8));
+        assert_eq!(mult("U", "I"), NativeF32Bits::ONE);
+        assert_eq!(mult("Nowhere", "V"), NativeF32Bits::ONE);
     }
 
     #[test]
@@ -5743,7 +5864,10 @@ MutateWarhead=MyMutate\n\
         assert_eq!(e1.strength, 125);
         assert_eq!(e1.category, ObjectCategory::Infantry);
         assert_eq!(e1.primary, Some("M60".to_string()));
-        assert!((e1.build_time_multiplier - 1.15).abs() < 0.0001);
+        assert_eq!(
+            e1.build_time_multiplier,
+            NativeF32Bits::from_bits(1.15_f32.to_bits())
+        );
 
         let mtnk: &ObjectType = rules.object("MTNK").expect("MTNK exists");
         assert_eq!(mtnk.cost, 700);

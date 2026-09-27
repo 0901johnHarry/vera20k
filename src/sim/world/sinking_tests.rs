@@ -136,7 +136,7 @@ fn sinking_state_is_hashed_only_in_its_schema_and_survives_snapshot() {
     // Native load restarts Scenario from Seed0. Begin both compared futures
     // at that same cursor; this test does not assert saved Scenario retention.
     sim.scenario_rng = SimRng::new(0);
-    let old_hash = sim.state_hash_with_schema(HashSchema::Before(226));
+    let old_hash = sim.state_hash_with_schema(HashSchema::Before(227));
     let active_hash = sim.state_hash();
     sim.sinking_edge_sounds(id, &rules);
     assert_ne!(
@@ -145,7 +145,7 @@ fn sinking_state_is_hashed_only_in_its_schema_and_survives_snapshot() {
         "the observed sound edge is authority"
     );
     assert_eq!(
-        sim.state_hash_with_schema(HashSchema::Before(226)),
+        sim.state_hash_with_schema(HashSchema::Before(227)),
         old_hash
     );
     let expected_hash = sim.state_hash();

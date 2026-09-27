@@ -944,6 +944,7 @@ pub fn projectile_special_detonation_action(
 }
 
 /// Stable projectile payload transferred to combat only at detonation.
+/// Built by [`Self::new`]; the private multiplier keeps struct literals out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectilePayload {
     /// Damage after firing-side modifiers, before target/warhead resolution.
@@ -951,6 +952,52 @@ pub struct ProjectilePayload {
     pub warhead: InternedId,
     /// Weapon identity retained for impact-only effects such as radiation.
     pub weapon: InternedId,
+    /// `BulletClass+0x150`, 1/256 units: `BulletClass::Construct` writes
+    /// [`Self::UNSCALED`] (`0x00466546`) and only a Prism master's supported
+    /// shot writes another value (`BuildingClass::ProcessDelayedFire`,
+    /// `0x004504C7`). It scales only the damage handed to `Apply_area_damage`
+    /// ([`Self::area_damage`]) and the DirectRocker arm's damage
+    /// (`0x004697FC..0x0046980C`, not ported: dormant in retail, see
+    /// [`SpecialDetonationAction::DirectRocker`]).
+    damage_multiplier: i32,
+}
+
+impl ProjectilePayload {
+    /// `BulletClass::Construct @ 0x004664C0` writes 256 (`0x00466546`).
+    pub const UNSCALED: i32 = 256;
+
+    /// A payload as `BulletClass::Construct` leaves it: unscaled damage.
+    pub fn new(base_damage: i32, warhead: InternedId, weapon: InternedId) -> Self {
+        Self {
+            base_damage,
+            warhead,
+            weapon,
+            damage_multiplier: Self::UNSCALED,
+        }
+    }
+
+    /// The same payload carrying another `+0x150` multiplier, as a Prism
+    /// master's supported shot does.
+    pub fn with_damage_multiplier(self, damage_multiplier: i32) -> Self {
+        Self {
+            damage_multiplier,
+            ..self
+        }
+    }
+
+    pub fn damage_multiplier(&self) -> i32 {
+        self.damage_multiplier
+    }
+
+    /// `BulletClass::DetonateAtCoord @ 0x004690B0` hands
+    /// `(+0x150 * +0x6C) >> 8` to `Apply_area_damage` (`0x00469A56..0x00469A66`:
+    /// `imul` wraps in 32 bits, then `sar 8`). The unported DirectRocker arm
+    /// scales its own damage the same way (`0x004697FC..0x0046980C`); every
+    /// other consumer, such as the explosion anim choice (`0x00469BBA`), reads
+    /// the raw damage.
+    pub fn area_damage(&self) -> i32 {
+        self.damage_multiplier.wrapping_mul(self.base_damage) >> 8
+    }
 }
 
 /// Presentation constructor receipt from ObjectType ART. This is emitted once
@@ -2310,11 +2357,11 @@ mod tests {
                 ProjectileTarget::None => ProjectileCoord::new(0, 0, 0),
                 ProjectileTarget::DummyCell => ProjectileCoord::new(0, 0, 0),
             },
-            payload: ProjectilePayload {
-                base_damage: 40,
-                warhead: InternedId::from_index(3),
-                weapon: InternedId::from_index(4),
-            },
+            payload: ProjectilePayload::new(
+                40,
+                InternedId::from_index(3),
+                InternedId::from_index(4),
+            ),
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),
             trajectory: ProjectileTrajectory::Straight,

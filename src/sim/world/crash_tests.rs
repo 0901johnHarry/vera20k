@@ -570,11 +570,11 @@ fn a_death_weapon_detonates_once_without_cluster_draws() {
     ))
     .unwrap();
     sim.resolve_type_handles(&rules);
-    let payload = ProjectilePayload {
-        base_damage: 150,
-        warhead: sim.interner.intern("CrashWH"),
-        weapon: sim.interner.intern("CrashGun"),
-    };
+    let payload = ProjectilePayload::new(
+        150,
+        sim.interner.intern("CrashWH"),
+        sim.interner.intern("CrashGun"),
+    );
     let detonation = |reason| ProjectileDetonation {
         projectile_id: 1,
         source_id: 1,

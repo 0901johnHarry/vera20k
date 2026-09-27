@@ -85,11 +85,11 @@ fn detonation(sim: &mut Simulation, input: &Value) -> ProjectileDetonation {
         source_id: RAD_NO_ATTACKER,
         target: ProjectileTarget::Cell { rx: 10, ry: 20 },
         impact: ProjectileCoord::new(2688, 5248, input["impact_z"].as_i64().unwrap() as i32),
-        payload: ProjectilePayload {
-            base_damage: input["damage"].as_i64().unwrap() as i32,
-            warhead: sim.interner.intern("WH"),
-            weapon: sim.interner.intern("SHOT"),
-        },
+        payload: ProjectilePayload::new(
+            input["damage"].as_i64().unwrap() as i32,
+            sim.interner.intern("WH"),
+            sim.interner.intern("SHOT"),
+        ),
         reason: ProjectileDetonationReason::ReachedTarget,
     }
 }

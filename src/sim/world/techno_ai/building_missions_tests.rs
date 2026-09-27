@@ -357,7 +357,7 @@ fn mission_attack_matches_the_original() {
 
         let entity = sim.substrate.entities.get(building).unwrap();
         assert_eq!(
-            sim.fire_requests.buildings.contains(&building),
+            sim.fire_requests.buildings.contains_key(&building),
             called(row, "fire_at"),
             "{name} FireAt"
         );
@@ -381,7 +381,7 @@ fn mission_attack_matches_the_original() {
             entity.pending_building_fire,
             (delayed[0] == 1).then(|| PendingBuildingFire {
                 remaining_ticks: delayed[2].as_i64().unwrap() as i32,
-                weapon_slot: WeaponSlot::Primary,
+                fire: DelayedFire::Weapon(WeaponSlot::Primary),
             }),
             "{name} delayed fire"
         );
@@ -768,10 +768,10 @@ fn retail_building_mission_inputs() {
 }
 
 /// Retail Dustbowl with a `kind` base defence of `owner` at the returned cell
-/// and an `enemy` `mcv` five cells east of it, on open level ground from two
-/// cells west to twenty cells east and one cell north and south, and a power
-/// plant for each house twenty-four or more cells away. The MCV is placed
-/// first, so the spot is one a vehicle's Unlimbo admits. Americans and
+/// and an `enemy` `mcv` five cells east of it, on open level ground from
+/// `west` cells west to twenty cells east and one cell north and south, and a
+/// power plant for each house twenty-four or more cells away. The MCV is
+/// placed first, so the spot is one a vehicle's Unlimbo admits. Americans and
 /// Russians are both human (no AI orders) and allied with the map's own
 /// `Player` house, as in `combat::open_topped_fire_tests`.
 fn retail_dustbowl_defence(
@@ -779,6 +779,7 @@ fn retail_dustbowl_defence(
     owner: &str,
     enemy: &str,
     mcv: &str,
+    west: u16,
 ) -> (
     crate::headless_scenario::HeadlessScenario,
     u64,
@@ -817,7 +818,7 @@ fn retail_dustbowl_defence(
             let grid = sim.path_grid()?;
             let terrain = sim.resolved_terrain.as_ref()?;
             let level = terrain.cell(x, y)?.level;
-            let open = (x - 2..=x + 20).all(|cx| {
+            let open = (x - west..=x + 20).all(|cx| {
                 (y - 1..=y + 1).all(|cy| {
                     terrain.cell(cx, cy).is_some_and(|cell| cell.level == level)
                         && grid.cell(cx, cy).is_some_and(|cell| cell.ground_walkable)
@@ -930,7 +931,8 @@ fn retail_defence_guards_attacks_and_returns(
     mcv: &str,
     infantry: &str,
 ) {
-    let (mut scenario, defence, truck, (x, y)) = retail_dustbowl_defence(kind, owner, enemy, mcv);
+    let (mut scenario, defence, truck, (x, y)) =
+        retail_dustbowl_defence(kind, owner, enemy, mcv, 2);
     let weapon = {
         let rules = &scenario.runtime.resources.rules;
         let weapon = rules
@@ -1069,7 +1071,7 @@ fn retail_dustbowl_sentry_gun_guards_attacks_and_returns_to_guard() {
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn retail_dustbowl_tesla_coil_charges_before_each_shot() {
     let (mut scenario, coil, truck, _) =
-        retail_dustbowl_defence("TESLA", "Russians", "Americans", "AMCV");
+        retail_dustbowl_defence("TESLA", "Russians", "Americans", "AMCV", 2);
     let slots = |scenario: &crate::headless_scenario::HeadlessScenario| {
         let sim = scenario.sim();
         let entity = sim.substrate.entities.get(coil).unwrap();
@@ -1124,4 +1126,182 @@ fn retail_dustbowl_tesla_coil_charges_before_each_shot() {
         arms.iter().zip(&shots).all(|(arm, shot)| shot - arm == 27),
         "each shot 27 frames after its arming"
     );
+}
+
+/// Prism forwarding through the production frame on retail Dustbowl. A Prism
+/// tower (`ATESLA`) with an enemy MCV five cells east, and two more towers of
+/// its House four and six cells west, out of the MCV's reach so they stay on
+/// Guard:
+/// - The master's Mission_Attack recruits the nearer tower, then the farther
+///   one on the next frame (one per visit), then arms its own shot with
+///   weapon 0; each armed tower swaps its anims to `GAPRIS_A`.
+/// - The shot lands 27 frames after the master's arm, with the bonus of two
+///   supporters: `((150 * 2 + 100) << 8) / 100 = 1024`/256 of `PrismShot`'s
+///   120 damage, 480 against the MCV's heavy armor (100%), and the count
+///   restarts.
+/// - A supporter updates after the master in the Logic order here, so it
+///   beams 27 frames after its recruitment, then waits out
+///   `PrismSupportDelay=45` on its rearm timer.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_prism_towers_forward_their_charge() {
+    use crate::sim::game_entity::DelayedFire;
+    let (mut scenario, master, mcv, (x, y)) =
+        retail_dustbowl_defence("ATESLA", "Americans", "Russians", "SMCV", 6);
+    let near = retail_spawn(&mut scenario, "ATESLA", "Americans", (x - 4, y));
+    let far = retail_spawn(&mut scenario, "ATESLA", "Americans", (x - 6, y));
+    // A second plant: three towers draw 225 of the first plant's 200.
+    {
+        let crate::sim::runtime::SimRuntime {
+            simulation: sim,
+            resources,
+        } = &mut scenario.runtime;
+        (20..120_u16)
+            .flat_map(|py| (20..120_u16).map(move |px| (px, py)))
+            .filter(|&(px, py)| px.abs_diff(x).max(py.abs_diff(y)) >= 30)
+            .find_map(|(px, py)| {
+                sim.spawn_object(
+                    "GAPOWR",
+                    "Americans",
+                    px,
+                    py,
+                    0,
+                    &resources.rules,
+                    &resources.height_map,
+                )
+            })
+            .expect("room for a second GAPOWR");
+        sim.resolve_type_handles(&resources.rules);
+    }
+    assert!(retail_distance(&scenario, near, mcv) > 2048);
+    assert!(retail_distance(&scenario, far, mcv) > 2048);
+    {
+        let sim = scenario.sim();
+        let rules = &scenario.runtime.resources.rules;
+        assert_eq!(
+            rules.general.prism_support,
+            crate::rules::ruleset::PrismSupportRules {
+                modifier: 150,
+                max: 8,
+                delay: 45,
+            }
+        );
+        let americans = sim.interner.get("Americans").expect("interned");
+        let list = sim.houses[&americans].base_projection.buildings();
+        let order: Vec<u64> = list
+            .iter()
+            .copied()
+            .filter(|id| [master, near, far].contains(id))
+            .collect();
+        assert_eq!(order, [master, near, far], "House+68 keeps Unlimbo order");
+    }
+
+    let fire = |scenario: &crate::headless_scenario::HeadlessScenario, id: u64| {
+        scenario
+            .sim()
+            .substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .pending_building_fire
+            .map(|pending| pending.fire)
+    };
+    let special = |scenario: &crate::headless_scenario::HeadlessScenario, id: u64| {
+        let sim = scenario.sim();
+        let entity = sim.substrate.entities.get(id).unwrap();
+        let name = |slot: usize| {
+            entity.building_anim_slots[slot].map(|anim| {
+                sim.interner
+                    .resolve(sim.anim(anim).unwrap().type_id)
+                    .to_string()
+            })
+        };
+        (name(3), name(10))
+    };
+    let (mut recruits, mut beams, mut arm, mut shot) = (Vec::new(), Vec::new(), None, None);
+    for frame in 0..300_u32 {
+        let before = [master, near, far].map(|id| fire(&scenario, id));
+        let health = scenario
+            .sim()
+            .substrate
+            .entities
+            .get(mcv)
+            .unwrap()
+            .health
+            .current;
+        let binary_frame = scenario.sim().session.binary_frame as i32;
+        let output = retail_frame(&mut scenario, Vec::new());
+        let after = [master, near, far].map(|id| fire(&scenario, id));
+        for (index, id) in [master, near, far].into_iter().enumerate() {
+            match (before[index], after[index]) {
+                (None, Some(DelayedFire::SupportBeam { .. })) => {
+                    assert_eq!(special(&scenario, id), (None, Some("GAPRIS_A".into())));
+                    recruits.push((frame, id));
+                }
+                (None, Some(DelayedFire::Weapon(slot))) => {
+                    assert_eq!(id, master);
+                    assert_eq!(slot, WeaponSlot::Primary);
+                    assert_eq!(special(&scenario, id), (None, Some("GAPRIS_A".into())));
+                    arm = Some(frame);
+                }
+                (Some(DelayedFire::SupportBeam { .. }), None) => {
+                    let entity = scenario.sim().substrate.entities.get(id).unwrap();
+                    assert_eq!(
+                        entity.rearm_timer,
+                        crate::sim::timer::CdTimer::started(binary_frame, 45),
+                        "the downtime starts on the beam's frame"
+                    );
+                    assert_eq!(entity.prism_support_count, 0);
+                    beams.push((frame, id));
+                }
+                _ => {}
+            }
+        }
+        for supporter in [near, far] {
+            let entity = scenario.sim().substrate.entities.get(supporter).unwrap();
+            assert_ne!(
+                entity.mission.effective(),
+                MissionId::from_known(MissionType::Attack),
+                "a supporter stays recruitable"
+            );
+        }
+        if output
+            .fire_events
+            .iter()
+            .any(|event| event.attacker_id == master)
+        {
+            let after = scenario
+                .sim()
+                .substrate
+                .entities
+                .get(mcv)
+                .unwrap()
+                .health
+                .current;
+            shot = Some((frame, health - after));
+            let entity = scenario.sim().substrate.entities.get(master).unwrap();
+            assert_eq!(
+                entity.prism_support_count, 0,
+                "the bonus restarts the count"
+            );
+            break;
+        }
+    }
+    println!("PRISM: recruits {recruits:?}, arm {arm:?}, beams {beams:?}, shot {shot:?}");
+    let [(first, first_id), (second, second_id)] = recruits[..] else {
+        panic!("two recruits, got {recruits:?}");
+    };
+    assert_eq!((first_id, second_id), (near, far), "nearest first");
+    assert_eq!(second, first + 1, "one recruit per visit");
+    assert_eq!(
+        arm,
+        Some(second + 1),
+        "the master arms once no tower is left"
+    );
+    assert_eq!(
+        beams,
+        [(first + 27, near), (second + 27, far)],
+        "a supporter after its master beams 27 frames after its recruitment"
+    );
+    assert_eq!(shot, Some((second + 1 + 27, 480)));
 }

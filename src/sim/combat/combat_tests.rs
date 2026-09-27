@@ -84,7 +84,6 @@ fn sonic_active_wave_gate_precedes_target_resolution_and_all_shot_work() {
         TargetKind::Entity(999),
         None,
         None,
-        None,
     );
     let mut rng = SimRng::new(0x50_4e_49_43);
     let rng_before = rng.logical_state();
@@ -834,11 +833,7 @@ fn gsi_04_10_projectile_inert_suppresses_bridge_ore_and_collector_rng() {
         source_id: 99,
         target: ProjectileTarget::Cell { rx: 8, ry: 5 },
         impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 100,
-            warhead,
-            weapon,
-        },
+        payload: ProjectilePayload::new(100, warhead, weapon),
         reason: ProjectileDetonationReason::ReachedTarget,
     };
     let mut entities = EntityStore::new();
@@ -1762,11 +1757,11 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
             source_id: 99,
             target: ProjectileTarget::Entity(10),
             impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload: ProjectilePayload {
-                base_damage: 10,
-                warhead: interner.intern("NoWallWH"),
-                weapon: interner.intern("Gun"),
-            },
+            payload: ProjectilePayload::new(
+                10,
+                interner.intern("NoWallWH"),
+                interner.intern("Gun"),
+            ),
             reason: ProjectileDetonationReason::ReachedTarget,
         };
         let mut scenario_rng = SimRng::new(1);
@@ -2002,11 +1997,7 @@ fn retaliates(case: RetaliationCase) -> bool {
         source_id: 1,
         target: ProjectileTarget::Entity(2),
         impact: ProjectileCoord::new(i32::from(victim_rx) * 256 + 128, 5 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: incoming_wh,
-            weapon: incoming_weapon,
-        },
+        payload: ProjectilePayload::new(10, incoming_wh, incoming_weapon),
         reason: ProjectileDetonationReason::ReachedTarget,
     };
     let mut houses = BTreeMap::new();
@@ -2507,11 +2498,7 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
             source_id: if source_present { 1 } else { RAD_NO_ATTACKER },
             target: ProjectileTarget::Entity(2),
             impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload: ProjectilePayload {
-                base_damage: 10,
-                warhead: incoming_wh,
-                weapon: incoming_weapon,
-            },
+            payload: ProjectilePayload::new(10, incoming_wh, incoming_weapon),
             reason: ProjectileDetonationReason::ReachedTarget,
         };
         let mut alliances = HouseAllianceMap::new();
@@ -3543,11 +3530,7 @@ fn gsi_04_07_damage_repair_bullet_cellspread_zero_keeps_signed_area_record() {
         source_id: 77,
         target: ProjectileTarget::Entity(10),
         impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: weapon.damage,
-            warhead: warhead_ref,
-            weapon: weapon_ref,
-        },
+        payload: ProjectilePayload::new(weapon.damage, warhead_ref, weapon_ref),
         reason: ProjectileDetonationReason::ReachedTarget,
     };
     let mut scenario_rng = SimRng::new(9);
@@ -8350,11 +8333,11 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
         source_id: 1,
         target: crate::sim::projectile::ProjectileTarget::Cell { rx: 5, ry: 5 },
         impact: crate::sim::projectile::ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0),
-        payload: crate::sim::projectile::ProjectilePayload {
-            base_damage: 20,
-            warhead: interner.intern("WH"),
-            weapon: interner.intern("PARENT"),
-        },
+        payload: crate::sim::projectile::ProjectilePayload::new(
+            20,
+            interner.intern("WH"),
+            interner.intern("PARENT"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let mut scenario_rng = SimRng::new(0x46_a310);
@@ -8433,11 +8416,11 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
         source_id: 1,
         target: crate::sim::projectile::ProjectileTarget::Cell { rx: 5, ry: 5 },
         impact,
-        payload: crate::sim::projectile::ProjectilePayload {
-            base_damage: 20,
-            warhead: interner.intern("WH"),
-            weapon: interner.intern("PARENT"),
-        },
+        payload: crate::sim::projectile::ProjectilePayload::new(
+            20,
+            interner.intern("WH"),
+            interner.intern("PARENT"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let mut scenario_rng = SimRng::new(0x46_a310);
@@ -8523,11 +8506,11 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
         source_id: 1,
         target: ProjectileTarget::Cell { rx: 5, ry: 5 },
         impact: ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0),
-        payload: crate::sim::projectile::ProjectilePayload {
-            base_damage: 20,
-            warhead: interner.intern("WH"),
-            weapon: interner.intern("PARENT"),
-        },
+        payload: crate::sim::projectile::ProjectilePayload::new(
+            20,
+            interner.intern("WH"),
+            interner.intern("PARENT"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
 
@@ -10304,11 +10287,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
             source_id: 77,
             target: ProjectileTarget::Entity(10),
             impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload: ProjectilePayload {
-                base_damage: 50,
-                warhead: warhead_ref,
-                weapon: interner.intern("MissingWeapon"),
-            },
+            payload: ProjectilePayload::new(50, warhead_ref, interner.intern("MissingWeapon")),
             reason: ProjectileDetonationReason::ReachedTarget,
         };
         let mut scenario_rng = SimRng::new(9);
@@ -10405,11 +10384,11 @@ fn clusters_scatter_around_the_impact() {
         source_id: 77,
         target: ProjectileTarget::Cell { rx: 40, ry: 50 },
         impact,
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: interner.intern("Blast"),
-            weapon: interner.intern("ClusterGun"),
-        },
+        payload: ProjectilePayload::new(
+            10,
+            interner.intern("Blast"),
+            interner.intern("ClusterGun"),
+        ),
         reason: ProjectileDetonationReason::ReachedTarget,
     };
     let mut scenario_rng = SimRng::new(11);
@@ -10494,11 +10473,11 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
             source_id: 77,
             target: ProjectileTarget::Entity(10),
             impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload: ProjectilePayload {
-                base_damage: 50,
-                warhead: interner.intern("Rocker"),
-                weapon: interner.intern("MissingWeapon"),
-            },
+            payload: ProjectilePayload::new(
+                50,
+                interner.intern("Rocker"),
+                interner.intern("MissingWeapon"),
+            ),
             reason: ProjectileDetonationReason::ReachedTarget,
         };
         let mut scenario_rng = SimRng::new(9);

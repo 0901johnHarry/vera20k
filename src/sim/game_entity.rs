@@ -281,17 +281,45 @@ pub struct BerserkState {
     pub timer: i32,
 }
 
-/// Building shot held behind its art-authored firing animation delay.
+/// A building's delayed fire (`BuildingClass+0x704` mode, `+0x714`
+/// countdown, `+0x708..+0x710` payload), armed by Mission_Attack and served by
+/// ProcessDelayedFire (`0x004503F0`) when the countdown ends.
 ///
-/// The target is deliberately not captured: expiry reads the building's live
-/// `attack_target`, while the selected weapon slot remains the one saved when
-/// `BuildingClass::Mission_Attack` armed the shot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+/// A shot captures no target: expiry reads the building's live
+/// `attack_target`, with the weapon Mission_Attack saved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PendingBuildingFire {
     /// Signed native timer value, clamped to zero by ProcessDelayedFire after
     /// its pre-decrement.
     pub remaining_ticks: i32,
-    pub weapon_slot: WeaponSlot,
+    pub fire: DelayedFire,
+}
+
+/// What a delayed fire does when its countdown ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DelayedFire {
+    /// Mode 1: FireAt the live target with the saved weapon (`+0x708`).
+    Weapon(WeaponSlot),
+    /// Mode 2: a Prism support beam (`0x0044ABD0`) to the master's weapon-0
+    /// FLH as it stood at recruitment (`+0x708..+0x710`, world leptons).
+    SupportBeam {
+        to: crate::sim::projectile::ProjectileCoord,
+    },
+}
+
+impl std::hash::Hash for PendingBuildingFire {
+    /// A weapon shot folds as the pre-support latch did (countdown, then the
+    /// slot); a support beam folds a third tag and its point.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.remaining_ticks.hash(state);
+        match self.fire {
+            DelayedFire::Weapon(slot) => slot.hash(state),
+            DelayedFire::SupportBeam { to } => {
+                2isize.hash(state);
+                to.hash(state);
+            }
+        }
+    }
 }
 
 /// Unified entity struct — replaces all hecs ECS components.
@@ -627,9 +655,16 @@ pub struct GameEntity {
     pub(crate) setter_force_reassign: bool,
     /// Active attack target — present when entity is firing at something.
     pub attack_target: Option<AttackTarget>,
-    /// Generic non-Prism Building delayed-fire latch.
+    /// A building's delayed fire: a delayed shot, or a Prism support beam.
     #[serde(default)]
     pub pending_building_fire: Option<PendingBuildingFire>,
+    /// `BuildingClass+0x664`, the supporters a Prism master has recruited for
+    /// its next shot (constructor 0, `0x0043B895`). Mission_Attack counts
+    /// them (`0x0044B4D7`); the shot's bonus (`0x004504CD`), a support beam
+    /// (`0x0044ACCA`) and Mission_Attack's null-target and drop tails
+    /// (`0x0044AF9F`, `0x0044B0ED`) reset it.
+    #[serde(default)]
+    pub prism_support_count: i32,
     /// TechnoClass `CurrentWeaponNumber`: the last live weapon slot selected
     /// for this object. Slot zero is the constructor state. Fatal receiver
     /// logic reuses this exact slot for the Suicide gate and death fallback.
@@ -714,6 +749,9 @@ pub struct GameEntity {
     ///   the unhalved rearm.
     /// - `AircraftClass::Drop_Payload` restarts it with no duration
     ///   (`0x00415E88`). Ported (the paradrop success arm).
+    /// - A Prism support beam starts the supporter's downtime,
+    ///   {Frame, `PrismSupportDelay=`} (`0x0044ACD0..0x0044ACDC`). Ported
+    ///   (`building_missions::process_delayed_fire`).
     /// - RESIDUAL, with their mechanisms:
     ///   - the C4 plant arms the planter with `GetROF(1)`
     ///     (`InfantryClass::PerCellProcess 0x0051A564`/`0x0051A624`; see
@@ -721,8 +759,6 @@ pub struct GameEntity {
     ///   - `UnitClass::ReceiveGunner`/`RemoveGunner` read a running rearm
     ///     (`0x0074643A`, `0x00746502`) and hand it over (`0x0074646E`,
     ///     `0x0074655C`; see `temporal.rs`);
-    ///   - the Prism support beam arms a support tower with
-    ///     `PrismSupportDelay=` (`0x0044ACB2`; unported Prism);
     ///   - `UnitClass::PerCellProcess` arms a unit that stops with no NavCom
     ///     and no path with `GetROF(1) / 4` when its type has
     ///     `MobileFire=no` (`0x0073ADCA..0x0073AE18`). Dormant: no retail
@@ -731,15 +767,14 @@ pub struct GameEntity {
     /// Readers: GetFireError answers Rearm while it runs (`0x006FC94F`);
     /// `CanAutoCloak @ 0x006FBDC0` waits for it; `FootClass::Mission_Guard`
     /// returns its remaining frames as the next delay and draws nothing
-    /// (`0x004D52A9`); `TechnoClass::Compute_CRC` folds it (`0x0070C362`).
+    /// (`0x004D52A9`); the Prism walk skips a tower while it runs
+    /// (`0x0044B3AE`); `TechnoClass::Compute_CRC` folds it (`0x0070C362`).
     /// RESIDUAL:
     /// - `AircraftClass::Mission_Guard` falls into the same Foot body
     ///   (`0x0041A92B`), but VERA's aircraft Guard is not a port of it.
     /// - `CanDeploySlashUnload @ 0x00700D50` refuses a deployed infantryman's
     ///   undeploy while it runs (`0x00700E02`; see
     ///   `Command::ToggleInfantryDeploy`).
-    /// - The Prism support-candidate loop skips a tower while it runs
-    ///   (`0x0044B3AE`).
     /// - The charge-turret frame (`IsChargeTurret=`, the Prism Tank) reads it
     ///   with the `+0x2F8` ROF copy (`0x006FA540`), which VERA does not keep
     ///   or draw.
@@ -1553,6 +1588,7 @@ impl GameEntity {
             setter_force_reassign: false,
             attack_target: None,
             pending_building_fire: None,
+            prism_support_count: 0,
             current_weapon_index: 0,
             radio_contacts: Contacts::default(),
             dock_entered_with: None,

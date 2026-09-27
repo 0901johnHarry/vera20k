@@ -1794,11 +1794,11 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
             source_id: 99,
             target: crate::sim::projectile::ProjectileTarget::Entity(10),
             impact: crate::sim::projectile::ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload: crate::sim::projectile::ProjectilePayload {
-                base_damage: 10,
-                warhead: sim.interner.intern("KillWH"),
-                weapon: sim.interner.intern("Gun"),
-            },
+            payload: crate::sim::projectile::ProjectilePayload::new(
+                10,
+                sim.interner.intern("KillWH"),
+                sim.interner.intern("Gun"),
+            ),
             reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
         };
         let result = sim.tick_combat_with_fatal_lifecycle(
@@ -1984,11 +1984,11 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
         target: crate::sim::projectile::ProjectileTarget::Cell { rx: 5, ry: 5 },
         impact: crate::sim::projectile::ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0),
-        payload: crate::sim::projectile::ProjectilePayload {
-            base_damage: 100,
-            warhead: sim.interner.intern("OREWH"),
-            weapon: sim.interner.intern("TestWeapon"),
-        },
+        payload: crate::sim::projectile::ProjectilePayload::new(
+            100,
+            sim.interner.intern("OREWH"),
+            sim.interner.intern("TestWeapon"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
 

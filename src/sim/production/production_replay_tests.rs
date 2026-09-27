@@ -15,10 +15,8 @@
 //!     and nowhere else; no credit is created or destroyed by the charge machinery.
 //!
 //! Pre-flip-baseline observable equivalence (P5c part C) is intentionally DEFERRED:
-//! the pre-flip charge path is retired at the flip, and the one intended difference
-//! (the x0.9-free producer cadence) is already documented and asserted by the
-//! producer's own tests. The determinism + conservation gates here are the
-//! load-bearing ratification of the flip.
+//! the pre-flip charge path is retired at the flip. The determinism + conservation
+//! gates here are the load-bearing ratification of the flip.
 //!
 //! Cross-sim replay invariant: a command carries owner/type as `InternedId`, and
 //! `advance_tick` resolves those IDs against the sim's OWN interner. `scenario()`
@@ -85,8 +83,11 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             cash,
             crate::sim::credit_income::available_money(&runtime.simulation, owner)
         );
-        if tick == 2 {
-            assert!(cash < START_CREDITS, "the live factory charged the wallet");
+        if tick == 39 {
+            assert!(
+                cash < START_CREDITS + 123 - 17,
+                "the live factory charged the wallet"
+            );
         }
     }
     let economy = &runtime.simulation.houses[&owner].economy;
@@ -236,12 +237,15 @@ fn record(
     (hashes, log)
 }
 
+/// A build started by a command is armed at that frame (the build start `0x004C9EA0`) and
+/// first steps, charging the wallet, one rate later (`FactoryClass::AI 0x004C9B20`).
 #[test]
-fn event_tail_enqueue_first_charges_on_the_following_frame() {
+fn event_tail_enqueue_first_charges_one_rate_later() {
     let (mut sim, rules, heights) = scenario();
     let (owner, _, infantry, _) = ids(&sim);
     let credits_before = sim.houses[&owner].economy.credits;
 
+    let start_frame = sim.session.binary_frame;
     sim.advance_tick(
         &[queue(owner, infantry, 1)],
         Some(&rules),
@@ -250,21 +254,28 @@ fn event_tail_enqueue_first_charges_on_the_following_frame() {
         None,
         TICK_MS,
     );
-    let armed = sim
-        .production
-        .factory_shadow
-        .view(owner, ProductionCategory::Infantry)
-        .expect("the command tail arms the factory");
-    assert_eq!(armed.progress, 0);
+    let factory = |sim: &Simulation| {
+        sim.production
+            .factory_shadow
+            .iter_insertion_ordered()
+            .into_iter()
+            .find(|f| f.owner == owner && f.category == ProductionCategory::Infantry)
+            .map(|f| (f.progress, f.step_rate_frames, f.step_timer))
+            .expect("the command tail arms the factory")
+    };
+    let (progress, rate, timer) = factory(&sim);
+    assert_eq!(progress, 0);
+    assert_eq!(timer.start_frame(), start_frame as i32);
+    assert!(rate > 1);
     assert_eq!(sim.houses[&owner].economy.credits, credits_before);
 
+    for _ in 1..rate {
+        sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
+        assert_eq!(factory(&sim).0, 0);
+    }
+    assert_eq!(sim.houses[&owner].economy.credits, credits_before);
     sim.advance_tick(&[], Some(&rules), &heights, None, None, TICK_MS);
-    let charged = sim
-        .production
-        .factory_shadow
-        .view(owner, ProductionCategory::Infantry)
-        .expect("the active factory remains registered");
-    assert_eq!(charged.progress, 1);
+    assert_eq!(factory(&sim).0, 1);
     assert!(sim.houses[&owner].economy.credits < credits_before);
 }
 
@@ -280,7 +291,7 @@ fn derived_view_state_stays_building_on_underfunded_stall() {
     // Arm an E1 build directly, then simulate a mid-build underfunded stall.
     sim.production
         .factory_shadow
-        .enqueue(am, ProductionCategory::Infantry, e1, 1, 100, 200);
+        .enqueue(am, ProductionCategory::Infantry, e1, 1, 200);
     {
         let f = sim
             .production
@@ -520,10 +531,10 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
     // an owner with NO war factory -> both classify NoFactory -> PermanentlyBlocked.
     sim.production
         .factory_shadow
-        .enqueue(am, ProductionCategory::Vehicle, mtnk, 1, 100, 900);
+        .enqueue(am, ProductionCategory::Vehicle, mtnk, 1, 900);
     sim.production
         .factory_shadow
-        .enqueue(am, ProductionCategory::Vehicle, mtnk, 2, 100, 900);
+        .enqueue(am, ProductionCategory::Vehicle, mtnk, 2, 900);
     assert!(
         sim.production
             .factory_shadow
@@ -656,4 +667,128 @@ fn runtime_backed_replay_hashes_match_each_tick() {
         timeline_live, timeline_runtime,
         "runtime-backed replay must reproduce the live hash timeline bit-for-bit"
     );
+}
+
+/// Retail MTNK, FV and E1 through the production path. The queue command starts
+/// the build, and its rate and steps match the originals' (`0x004C9EA0`, then
+/// `FactoryClass::AI` `0x004C9B20` each frame) for the inputs the factory
+/// resolved: the cadence oracle's funded row with those inputs, offset to the
+/// build's start frame.
+#[test]
+fn retail_builds_step_at_the_native_frames() {
+    let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
+    else {
+        return;
+    };
+    let mut rules = RuleSet::from_ini(&rules_ini).expect("retail rules");
+    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    let cadence = super::factory::native_factory_cadence();
+    let oracle_start = cadence["start_frame"].as_u64().unwrap() as u32;
+    for (unit, factory, category) in [
+        ("MTNK", "GAWEAP", ProductionCategory::Vehicle),
+        ("FV", "GAWEAP", ProductionCategory::Vehicle),
+        ("E1", "GAPILE", ProductionCategory::Infantry),
+    ] {
+        let mut sim = Simulation::new();
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        let owner = sim.interner.intern("Americans");
+        sim.houses.insert(
+            owner,
+            HouseState::new(owner, 0, None, true, START_CREDITS, 10),
+        );
+        spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+        spawn_structure(&mut sim, 2, "Americans", factory, 16, 10);
+        spawn_structure(&mut sim, 3, "Americans", "GAPOWR", 22, 10);
+        spawn_structure(&mut sim, 4, "Americans", "GAPOWR", 26, 10);
+        spawn_structure(&mut sim, 5, "Americans", "GAPOWR", 30, 10);
+        // Full-strength buildings, so the plants give their retail 200 each.
+        for id in 1..=5 {
+            let entity = sim.substrate.entities.get_mut(id).expect("structure");
+            let strength = rules
+                .object(sim.interner.resolve(entity.type_ref))
+                .expect("retail building")
+                .strength;
+            entity.health.current = strength;
+        }
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .tracking
+            .set_buildings_for_test(5);
+        let type_id = sim.interner.intern(unit);
+        let height_map = BTreeMap::new();
+
+        let factory_state = |sim: &Simulation| {
+            sim.production
+                .factory_shadow
+                .iter_insertion_ordered()
+                .into_iter()
+                .find(|f| f.owner == owner && f.category == category)
+                .map(|f| {
+                    let held = f.object.as_ref().and_then(|object| object.entity_id);
+                    (f.progress, f.step_rate_frames, f.step_timer, held)
+                })
+        };
+        let mut start = None;
+        let mut held = None;
+        let mut step_frames = Vec::new();
+        for tick in 1..=3000u64 {
+            let frame = sim.session.binary_frame;
+            let commands = if tick == 1 {
+                vec![queue(owner, type_id, 1)]
+            } else {
+                Vec::new()
+            };
+            let before = factory_state(&sim).map_or(0, |(progress, ..)| progress);
+            sim.advance_tick(&commands, Some(&rules), &height_map, None, None, TICK_MS);
+            let Some((progress, rate, timer, object)) = factory_state(&sim) else {
+                // The last step completes the build and the unit leaves in the
+                // same frame, which retires the idle factory.
+                if let Some(held) = held {
+                    let unit_entity = sim.substrate.entities.get(held).expect("built unit");
+                    assert!(!unit_entity.lifecycle.in_limbo, "{unit}: delivered");
+                    step_frames.push(frame);
+                    break;
+                }
+                continue;
+            };
+            if start.is_none() {
+                assert_eq!(
+                    timer.start_frame(),
+                    frame as i32,
+                    "{unit}: the build start arms the timer"
+                );
+                start = Some((frame, rate));
+                held = object;
+            }
+            if progress != before {
+                step_frames.push(frame);
+            }
+        }
+        let (start_frame, rate) = start.expect("the build started");
+        let obj = sim.object_type(type_id, &rules).expect("retail type");
+        let inputs = super::factory::time_to_build_inputs(&sim, &rules, owner, category, obj);
+        let row = cadence["builds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| {
+                super::factory::native_time_to_build_inputs(row) == inputs
+                    && row["final"]["stage"] == 54
+            })
+            .unwrap_or_else(|| panic!("{unit}: no funded cadence row for {inputs:?}"));
+        assert_eq!(
+            u64::from(rate),
+            row["after_start"]["rate"].as_u64().unwrap(),
+            "{unit}: the start's rate"
+        );
+        let expected: Vec<u32> = row["attempts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|attempt| start_frame + (attempt[0].as_u64().unwrap() as u32 - oracle_start))
+            .collect();
+        assert_eq!(step_frames, expected, "{unit}: the native step frames");
+    }
 }

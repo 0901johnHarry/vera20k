@@ -986,6 +986,13 @@ impl Simulation {
             projectile.payload.base_damage.hash(hasher);
             projectile.payload.warhead.index().hash(hasher);
             projectile.payload.weapon.index().hash(hasher);
+            if schema.includes(HashFeature::PrismSupport)
+                && projectile.payload.damage_multiplier()
+                    != crate::sim::projectile::ProjectilePayload::UNSCALED
+            {
+                b"prism-damage-multiplier-v1".hash(hasher);
+                projectile.payload.damage_multiplier().hash(hasher);
+            }
             if !schema.includes(HashFeature::InvisoBullet) {
                 // The retired owner-house snapshot: the live source's house.
                 self.substrate
@@ -1186,6 +1193,12 @@ impl Simulation {
                     stable_id.hash(hasher);
                 }
             }
+            if schema.includes(HashFeature::PrismSupport)
+                && !house.base_projection.buildings().is_empty()
+            {
+                b"house-buildings-v1".hash(hasher);
+                house.base_projection.buildings().hash(hasher);
+            }
             if schema.includes(HashFeature::BasePlan) {
                 house.base_plan.percent_built.hash(hasher);
                 house.base_plan.nodes.len().hash(hasher);
@@ -1295,11 +1308,10 @@ impl Simulation {
             f.insertion_seq.hash(hasher);
             f.progress.hash(hasher);
             f.step_rate_frames.hash(hasher);
-            f.step_timer.hash(hasher);
+            f.step_timer.start_frame().hash(hasher);
+            f.step_timer.duration().hash(hasher);
             f.balance.hash(hasher);
             f.original_balance.hash(hasher);
-            // P5d: the active build's ETA basis (was the front `BuildQueueItem.total_base_frames`).
-            f.active_total_base_frames.hash(hasher);
             match &f.object {
                 Some(o) => {
                     1u8.hash(hasher);
@@ -1332,7 +1344,6 @@ impl Simulation {
             for e in &f.queue {
                 e.type_id.hash(hasher);
                 e.enqueue_order.hash(hasher);
-                e.total_base_frames.hash(hasher);
             }
         }
     }
@@ -2070,6 +2081,10 @@ impl Simulation {
                 entity.weapon_burst.hash(hasher);
             }
             entity.pending_building_fire.hash(hasher);
+            if schema.includes(HashFeature::PrismSupport) && entity.prism_support_count != 0 {
+                b"prism-support-count-v1".hash(hasher);
+                entity.prism_support_count.hash(hasher);
+            }
             entity.current_weapon_index.hash(hasher);
 
             // Slot-indexed fold: capacity + each slot's Option (null holes and
@@ -3505,7 +3520,7 @@ mod state_hash_field_tests {
         sim.houses
             .insert(owner, HouseState::new(owner, 0, None, false, 0, 10));
         let clear_hash = sim.state_hash();
-        let previous = sim.state_hash_with_schema(super::HashSchema::Before(226));
+        let previous = sim.state_hash_with_schema(super::HashSchema::Before(227));
         assert_eq!(clear_hash, previous, "zero statistics add no fold");
         let mutations: [fn(&mut MatchStatistics); 6] = [
             |stats| stats.units_killed = 1,
@@ -3525,7 +3540,7 @@ mod state_hash_field_tests {
                 "each live total is authority"
             );
             assert_eq!(
-                sim.state_hash_with_schema(super::HashSchema::Before(226)),
+                sim.state_hash_with_schema(super::HashSchema::Before(227)),
                 previous,
                 "previous projections omit live statistics"
             );
@@ -5450,6 +5465,74 @@ mod aircraft_dock_hash_tests {
             sim.state_hash(),
             occupied,
             "release changes future admission"
+        );
+    }
+}
+
+#[cfg(test)]
+mod prism_support_hash_tests {
+    use super::super::hash_schema::HashSchema;
+    use super::Simulation;
+    use crate::map::entities::EntityCategory;
+    use crate::sim::components::Health;
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::house_state::HouseState;
+
+    /// Schema225's Prism folds are tagged suffixes present only when set: a
+    /// zero support count, Construct's multiplier 256 and an empty House+0x68
+    /// hash as Before(225) does, and each set value changes the stream.
+    #[test]
+    fn prism_support_state_folds_only_when_set() {
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        sim.houses
+            .insert(owner, HouseState::new(owner, 0, None, false, 0, 10));
+        let tower = GameEntity::new_at_frame_zero_for_test(
+            1,
+            0,
+            0,
+            0,
+            0,
+            owner,
+            Health { current: 600 },
+            sim.interner.intern("ATESLA"),
+            EntityCategory::Structure,
+            0,
+            5,
+            false,
+        );
+        sim.substrate.entities.insert(tower);
+        let bullet = sim.allocate_stable_id();
+        sim.admit_projectile(
+            bullet,
+            super::super::lifecycle_tests::gsi_05_02_projectile(1, None),
+        );
+        let unset = sim.state_hash_with_schema(HashSchema::Before(225));
+        assert_eq!(sim.state_hash(), unset, "unset Prism state adds no fold");
+
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .prism_support_count = 2;
+        let count = sim.state_hash();
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .base_projection
+            .replace_buildings_for_test(vec![1]);
+        let list = sim.state_hash();
+        let payload = &mut sim.projectiles.get_mut(bullet).unwrap().payload;
+        *payload = payload.with_damage_multiplier(1024);
+        let multiplier = sim.state_hash();
+        let hashes = [unset, count, list, multiplier];
+        for (index, hash) in hashes.iter().enumerate() {
+            assert!(!hashes[index + 1..].contains(hash), "fold {index} aliases");
+        }
+        assert_eq!(
+            sim.state_hash_with_schema(HashSchema::Before(225)),
+            unset,
+            "Before(225) folds none of them"
         );
     }
 }

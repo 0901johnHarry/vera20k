@@ -1024,11 +1024,11 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             origin: ProjectileCoord::new(0, 0, 0),
             target: ProjectileTarget::Cell { rx: 4, ry: 0 },
             initial_target_position: ProjectileCoord::new(1024, 0, 0),
-            payload: ProjectilePayload {
-                base_damage: 40,
-                warhead: crate::sim::intern::InternedId::from_index(0),
-                weapon: crate::sim::intern::InternedId::from_index(0),
-            },
+            payload: ProjectilePayload::new(
+                40,
+                crate::sim::intern::InternedId::from_index(0),
+                crate::sim::intern::InternedId::from_index(0),
+            ),
             speed_leptons_per_frame: 64,
             velocity: crate::sim::projectile::ProjectileVelocity::new(64, 0, 0),
             trajectory: crate::sim::projectile::ProjectileTrajectory::Straight,

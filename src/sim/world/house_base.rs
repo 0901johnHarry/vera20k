@@ -36,7 +36,11 @@ struct RegisteredBuilding {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct HouseBaseState {
     registrations: Vec<RegisteredBuilding>,
-    /// Native House+68; append/remove at the actual callback boundary.
+    /// Native House+68 (DynamicVectorClass, Items `+0x6C`, Count `+0x78`):
+    /// Unlimbo appends (`0x00441553..0x00441594`), pointer expiry and
+    /// ChangeOwner stable-remove (`0x004FBC1C`, `0x00448A78..0x00448AB0`) and
+    /// ChangeOwner appends to the new House's tail (`0x00449197..0x004491D2`).
+    /// The Prism walk reads it in this order ([`Self::buildings`]).
     buildings: Vec<u64>,
     /// Native House+140, whose order determines each f32 multiplication/store.
     plants: Vec<u64>,
@@ -106,6 +110,18 @@ impl HouseBaseState {
     /// left them.
     pub(crate) fn building_cost_factor(&self, defense: bool) -> NativeF32Bits {
         self.factors[if defense { 4 } else { 3 }]
+    }
+
+    /// House+68 in vector order.
+    pub(crate) fn buildings(&self) -> &[u64] {
+        &self.buildings
+    }
+
+    /// An oracle row's House+68, in its order; an id no object holds stands
+    /// for a null entry.
+    #[cfg(test)]
+    pub(crate) fn replace_buildings_for_test(&mut self, buildings: Vec<u64>) {
+        self.buildings = buildings;
     }
 
     #[allow(dead_code)]
@@ -197,6 +213,21 @@ impl HouseBaseState {
             self.plants.push(id);
             self.refresh_factors();
         }
+        self.buildings.push(id);
+    }
+
+    /// The House+68 tail append Unlimbo (`0x00441553..0x00441594`) and
+    /// ChangeOwner (`0x00449197..0x004491D2`) make after their FactoryPlant
+    /// append.
+    ///
+    /// RESIDUAL: VERA makes neither FactoryPlant append (House+140,
+    /// `0x00441501..0x0044154E`, `0x00449155..0x00449192`), so `plants` stays
+    /// empty in play. Trigger: an Industrial Plant (`FactoryPlant=`). Effect:
+    /// the house's cost factors stay 1.0, so a sale refunds the unreduced
+    /// cost; the production price never read them. Frequency: every game
+    /// with an Industrial Plant. Later owner: the FactoryPlant cost factors of
+    /// production and refunds together.
+    fn append_building(&mut self, id: u64) {
         self.buildings.push(id);
     }
 
@@ -373,6 +404,41 @@ impl Simulation {
         let owner = entity.owner();
         if let Some(house) = self.houses.get_mut(&owner) {
             house.base_projection.register(entry);
+        }
+    }
+
+    /// `BuildingClass::Unlimbo`'s House+68 append (`0x00441553..0x00441594`),
+    /// reached on the same path as its BuildConst append
+    /// ([`Simulation::append_live_build_const`]).
+    pub(super) fn append_house_base_building(&mut self, id: u64) {
+        let Some(owner) = self
+            .substrate
+            .entities
+            .get(id)
+            .filter(|entity| entity.category == EntityCategory::Structure)
+            .map(|entity| entity.owner())
+        else {
+            return;
+        };
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house.base_projection.append_building(id);
+        }
+    }
+
+    /// `BuildingClass::ChangeOwner`'s moves between the two Houses' lists:
+    /// before the Techno owner swap it stable-removes the building from the
+    /// old House's FactoryPlant list, recomputes and removes it from House+68
+    /// (`0x00448A21..0x00448AB0`); after it, it appends to the new House's
+    /// lists (`0x00449155..0x004491D2`).
+    pub(super) fn leave_house_base_lists(&mut self, id: u64, owner: InternedId) {
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house.base_projection.remove_membership(id);
+        }
+    }
+
+    pub(super) fn join_house_base_lists(&mut self, id: u64, owner: InternedId) {
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house.base_projection.append_building(id);
         }
     }
 

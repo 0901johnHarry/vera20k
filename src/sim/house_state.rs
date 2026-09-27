@@ -448,7 +448,7 @@ pub struct HouseState {
     /// existing totals through loading: an active sinking hull has already
     /// booked its first loss and records another at terminal depth. These
     /// live values also feed TerminalScoreSnapshot's Scenario RNG bound and
-    /// participate in the deterministic hash from schema226.
+    /// participate in the deterministic hash from schema227.
     pub stats: MatchStatistics,
     /// Sole credit balance and economy statistics; serialized and hashed.
     pub economy: Economy,

@@ -88,7 +88,7 @@ restored; later shared cleanup avoids duplicating that callback.
 
 The existing House statistics owner now persists its six live Rust totals.
 Dropping the initial loss on load changed terminal score and its later RNG draw.
-Native House streams demonstrate retention. Snapshot 226 includes sinking,
+Native House streams demonstrate retention. Snapshot 227 includes sinking,
 statistics and a neutral presentation supplement; earlier hash projections omit
 the additions and default-zero additions preserve the former folds.
 

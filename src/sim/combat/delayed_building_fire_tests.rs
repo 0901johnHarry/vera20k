@@ -1,10 +1,13 @@
-//! Retail generic Building delayed-fire contract tests (GSI-05.10).
+//! Building delayed-fire contract tests (GSI-05.10): Mission_Attack arms the
+//! shot, ProcessDelayedFire counts it down in the building's visit and the
+//! combat phase serves its FireAt.
 
 use std::collections::BTreeMap;
 
 use super::*;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 
@@ -106,7 +109,7 @@ fn gsi_05_10_tesla_arms_without_emission_and_fires_on_visit_28() {
             .pending_building_fire,
         Some(PendingBuildingFire {
             remaining_ticks: 27,
-            weapon_slot: WeaponSlot::Primary,
+            fire: DelayedFire::Weapon(WeaponSlot::Primary),
         })
     );
 
@@ -179,8 +182,8 @@ fn gsi_05_10_expiry_reads_live_target_but_keeps_saved_weapon_slot() {
             .unwrap()
             .pending_building_fire
             .unwrap()
-            .weapon_slot,
-        WeaponSlot::Secondary
+            .fire,
+        DelayedFire::Weapon(WeaponSlot::Secondary)
     );
 
     let building = sim.substrate.entities.get_mut(tower).unwrap();
@@ -250,7 +253,7 @@ fn gsi_05_10_expiry_error_clears_without_retarget_or_shot() {
 }
 
 #[test]
-fn gsi_05_10_non_delayed_and_prism_type_bypass_fire_immediately() {
+fn gsi_05_10_non_delayed_fires_at_once_and_a_lone_prism_arms_its_own_shot() {
     let rules = delayed_building_rules();
     assert_eq!(rules.general.prism_type.as_deref(), Some("ATESLA"));
     assert!(
@@ -281,7 +284,10 @@ fn gsi_05_10_non_delayed_and_prism_type_bypass_fire_immediately() {
     ));
     let result = combat_visit(&mut sim, &rules, &mut SimRng::new(4), 1);
 
-    assert_eq!(result.consequences.fire_events().len(), 2);
+    // The Prism arm never reaches FireAt: with no tower to recruit it arms its
+    // own shot with weapon 0, then ProcessDelayedFire counts it down.
+    assert_eq!(result.consequences.fire_events().len(), 1);
+    assert_eq!(result.consequences.fire_events()[0].attacker_id, ordinary);
     assert!(
         sim.substrate
             .entities
@@ -290,13 +296,16 @@ fn gsi_05_10_non_delayed_and_prism_type_bypass_fire_immediately() {
             .pending_building_fire
             .is_none()
     );
-    assert!(
+    assert_eq!(
         sim.substrate
             .entities
             .get(prism)
             .unwrap()
-            .pending_building_fire
-            .is_none()
+            .pending_building_fire,
+        Some(PendingBuildingFire {
+            remaining_ticks: 27,
+            fire: DelayedFire::Weapon(WeaponSlot::Primary),
+        })
     );
 }
 

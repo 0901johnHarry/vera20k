@@ -16,8 +16,7 @@ use super::production_spawn::{
     mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
 use super::production_tech::{
-    effective_time_to_build_frames_for_type, estimated_real_time_ms, owner_matches_build_identity,
-    production_category_for_object, should_use_relaxed_build_mode,
+    owner_matches_build_identity, production_category_for_object, should_use_relaxed_build_mode,
 };
 use super::production_types::*;
 
@@ -605,30 +604,21 @@ fn tick_production_impl(
 
 /// Build a queue snapshot for one owner, including progress metadata for UI.
 ///
-/// P5d: projects the player-visible build queue from the registry (the queue-of-record),
-/// byte-identically to the retired `queues_by_owner` view. Per factory: the active build
-/// (head) then its FIFO tail. Sorted by `(category, stamp)` where stamp is the head's
-/// `insertion_seq` or a tail entry's `enqueue_order` — algebraically the same order as the
-/// retired `(queue_category, enqueue_order)` sort (D1: insertion_seq == active enqueue_order).
+/// Projects the player-visible build queue from the registry (the queue-of-record).
+/// Per factory: the active build (head) then its FIFO tail, sorted by `(category,
+/// stamp)` where stamp is the head's `insertion_seq` or a tail entry's `enqueue_order`
+/// (D1: insertion_seq == active enqueue_order).
 ///
-/// `state` is DERIVED (the `BuildQueueState` field is retired): head -> Paused if `manual`,
-/// else Done if complete-held (`progress >= PRODUCTION_STEPS`, the blocked-exit case that
-/// persists across ticks), else Building; tail -> Queued. `remaining` is DERIVED from
-/// `progress` (the retired B2 mirror: `active_total_base_frames * (54 - progress) / 54`,
-/// multiply-then-divide); a queued tail item has not started, so remaining == its total.
+/// `state` is DERIVED: head -> Paused if `manual`, else Done if complete-held
+/// (`progress >= PRODUCTION_STEPS`, the blocked-exit case that persists across ticks),
+/// else Building; tail -> Queued. `progress` is the factory's step count; a queued
+/// tail item has not started.
 pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<QueueItemView> {
     let Some(owner_id) = sim.interner.get(owner) else {
         return Vec::new();
     };
-    // (category, stamp, type_id, state, remaining_base_frames, total_base_frames)
-    let mut items: Vec<(
-        ProductionCategory,
-        u64,
-        InternedId,
-        BuildQueueState,
-        u32,
-        u32,
-    )> = Vec::new();
+    // (category, stamp, type_id, state, progress)
+    let mut items: Vec<(ProductionCategory, u64, InternedId, BuildQueueState, u16)> = Vec::new();
     for f in sim.production.factory_shadow.iter_insertion_ordered() {
         if f.owner != owner_id {
             continue;
@@ -641,16 +631,12 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
             } else {
                 BuildQueueState::Building
             };
-            let steps_left = PRODUCTION_STEPS.saturating_sub(f.progress.min(PRODUCTION_STEPS));
-            let remaining = ((u64::from(f.active_total_base_frames) * u64::from(steps_left))
-                / u64::from(PRODUCTION_STEPS)) as u32;
             items.push((
                 f.category,
                 f.insertion_seq,
                 obj.type_id,
                 state,
-                remaining,
-                f.active_total_base_frames,
+                f.progress.min(PRODUCTION_STEPS),
             ));
         }
         for e in &f.queue {
@@ -659,49 +645,27 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
                 e.enqueue_order,
                 e.type_id,
                 BuildQueueState::Queued,
-                e.total_base_frames,
-                e.total_base_frames,
+                0,
             ));
         }
     }
     items.sort_by_key(|&(category, stamp, ..)| (category, stamp));
     items
         .into_iter()
-        .map(
-            |(queue_category, _stamp, type_id, state, remaining_base, total_base)| {
-                let type_str = sim.interner.resolve(type_id);
-                let (display_name, remaining_frames, total_frames) = rules
-                    .object(type_str)
-                    .map(|obj| {
-                        (
-                            obj.name.clone().unwrap_or_else(|| type_str.to_string()),
-                            effective_time_to_build_frames_for_type(
-                                sim,
-                                rules,
-                                owner,
-                                type_str,
-                                remaining_base,
-                            ),
-                            effective_time_to_build_frames_for_type(
-                                sim,
-                                rules,
-                                owner,
-                                type_str,
-                                total_base.max(1),
-                            ),
-                        )
-                    })
-                    .unwrap_or_else(|| (type_str.to_string(), remaining_base, total_base.max(1)));
-                QueueItemView {
-                    type_id,
-                    display_name,
-                    queue_category,
-                    state,
-                    remaining_ms: estimated_real_time_ms(remaining_frames, PRODUCTION_RATE_SCALE),
-                    total_ms: estimated_real_time_ms(total_frames, PRODUCTION_RATE_SCALE),
-                }
-            },
-        )
+        .map(|(queue_category, _stamp, type_id, state, progress)| {
+            let type_str = sim.interner.resolve(type_id);
+            let display_name = rules
+                .object(type_str)
+                .and_then(|obj| obj.name.clone())
+                .unwrap_or_else(|| type_str.to_string());
+            QueueItemView {
+                type_id,
+                display_name,
+                queue_category,
+                state,
+                progress,
+            }
+        })
         .collect()
 }
 

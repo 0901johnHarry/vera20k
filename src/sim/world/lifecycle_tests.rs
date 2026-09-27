@@ -4091,11 +4091,11 @@ pub(super) fn gsi_05_02_projectile(source_id: u64, fuse_frames: Option<u16>) -> 
         origin: ProjectileCoord::new(0, 0, 0),
         target: ProjectileTarget::Cell { rx: 16, ry: 0 },
         initial_target_position: ProjectileCoord::new(4096, 0, 0),
-        payload: ProjectilePayload {
-            base_damage: 1,
-            warhead: crate::sim::intern::InternedId::from_index(0),
-            weapon: crate::sim::intern::InternedId::from_index(0),
-        },
+        payload: ProjectilePayload::new(
+            1,
+            crate::sim::intern::InternedId::from_index(0),
+            crate::sim::intern::InternedId::from_index(0),
+        ),
         speed_leptons_per_frame: 64,
         velocity: ProjectileVelocity::new(64, 0, 0),
         trajectory: ProjectileTrajectory::Straight,
@@ -4140,11 +4140,11 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
         spawn.origin = impact;
         spawn.target = ProjectileTarget::Cell { rx: 5, ry: 5 };
         spawn.initial_target_position = impact;
-        spawn.payload = ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-        };
+        spawn.payload = ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        );
         sim.admit_projectile(projectile_id, spawn);
 
         assert!(sim.object_ai_visit_one(
@@ -4330,11 +4330,11 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         } else {
             None
         };
-        shot.payload = ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-        };
+        shot.payload = ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        );
         let id = sim.allocate_stable_id();
         sim.admit_projectile(id, shot);
         if with_source {
@@ -5128,11 +5128,11 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
         source_id,
         target: ProjectileTarget::Cell { rx: 6, ry: 7 },
         impact: ProjectileCoord::new(6 * 256 + 128, 7 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 0,
-            warhead: sim.interner.intern("WH"),
-            weapon: sim.interner.intern("PARENT"),
-        },
+        payload: ProjectilePayload::new(
+            0,
+            sim.interner.intern("WH"),
+            sim.interner.intern("PARENT"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
 
@@ -5205,11 +5205,11 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
         target: ProjectileTarget::Entity(victim_id),
         impact: ProjectileCoord::new(5 * 256 + 128, 6 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: sim.interner.intern("KILLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-        },
+        payload: ProjectilePayload::new(
+            10,
+            sim.interner.intern("KILLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let logic_order = sim.live_object_order_snapshot();
@@ -5328,11 +5328,11 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
         target: ProjectileTarget::Entity(building_id),
         impact: ProjectileCoord::new(8 * 256 + 128, 8 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: sim.interner.intern("KILLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-        },
+        payload: ProjectilePayload::new(
+            10,
+            sim.interner.intern("KILLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let logic_order = sim.live_object_order_snapshot();
@@ -5936,11 +5936,11 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
     spawn.origin = impact;
     spawn.target = ProjectileTarget::Entity(victim_id);
     spawn.initial_target_position = impact;
-    spawn.payload = ProjectilePayload {
-        base_damage: 10,
-        warhead: sim.interner.intern("KILLWH"),
-        weapon: sim.interner.intern("MISSINGWEAPON"),
-    };
+    spawn.payload = ProjectilePayload::new(
+        10,
+        sim.interner.intern("KILLWH"),
+        sim.interner.intern("MISSINGWEAPON"),
+    );
     sim.admit_projectile(projectile_id, spawn);
     sim.set_logic_order_for_test(vec![projectile_id, victim_id, successor_id]);
     sim.lifecycle_test_events.clear();
@@ -7477,6 +7477,9 @@ fn naval_build_const_reveal_conceal_and_reentry_preserve_acquisition_order() {
         vec![20, 10],
         "acquisition order differs from stable-ID order"
     );
+    // House+68, the Prism walk's list, is appended on the same Unlimbo path
+    // (`0x00441553..0x00441594`).
+    assert_eq!(house_buildings(&sim, owner), vec![20, 10]);
 
     assert_eq!(
         sim.try_reveal_entity(20, request(2, 2, PlacementEvidence::MarkSucceeded)),
@@ -7498,6 +7501,8 @@ fn naval_build_const_reveal_conceal_and_reentry_preserve_acquisition_order() {
 
     assert_eq!(sim.conceal(20), super::ConcealOutcome::Concealed);
     assert_eq!(sim.houses[&owner].build_const_order, vec![10]);
+    // The pointer expiry stable-removes it from House+68 too (`0x004FBC1C`).
+    assert_eq!(house_buildings(&sim, owner), vec![10]);
 
     // Already-limbo returns before the House expiry callback, so even an
     // intentionally stale fixture entry is untouched by this no-op path.
@@ -7519,6 +7524,12 @@ fn naval_build_const_reveal_conceal_and_reentry_preserve_acquisition_order() {
         vec![10, 20],
         "successful re-entry appends at the live tail"
     );
+    assert_eq!(house_buildings(&sim, owner), vec![10, 20]);
+}
+
+/// House+68 in vector order.
+fn house_buildings(sim: &Simulation, house: crate::sim::intern::InternedId) -> Vec<u64> {
+    sim.houses[&house].base_projection.buildings().to_vec()
 }
 
 #[test]
@@ -7542,10 +7553,18 @@ fn naval_build_const_capture_moves_old_entry_to_new_owner_tail() {
     assert_eq!(sim.houses[&old_owner].build_const_order, vec![40, 12]);
     assert_eq!(sim.houses[&new_owner].build_const_order, vec![50]);
 
+    assert_eq!(house_buildings(&sim, old_owner), vec![40, 12]);
+    assert_eq!(house_buildings(&sim, new_owner), vec![50]);
+
     sim.change_owner(40, new_owner);
 
     assert_eq!(sim.houses[&old_owner].build_const_order, vec![12]);
     assert_eq!(sim.houses[&new_owner].build_const_order, vec![50, 40]);
+    // ChangeOwner moves House+68 the same way: stable-removed from the old
+    // House (`0x00448A78..0x00448AB0`), appended at the new one's tail
+    // (`0x00449197..0x004491D2`).
+    assert_eq!(house_buildings(&sim, old_owner), vec![12]);
+    assert_eq!(house_buildings(&sim, new_owner), vec![50, 40]);
     assert_eq!(sim.substrate.entities.get(40).unwrap().owner, new_owner);
 }
 

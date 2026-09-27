@@ -394,10 +394,10 @@ pub struct ObjectType {
     pub sight: i32,
     /// Technology level required (-1 = unbuildable by player).
     pub tech_level: i32,
-    /// Multiplier to the time it takes for this object to be built.
-    pub build_time_multiplier: f32,
-    /// `build_time_multiplier` pre-scaled ×1000 for deterministic build-time computation.
-    pub build_time_multiplier_x1000: u64,
+    /// `BuildTimeMultiplier=` (TechnoType `+0x608`): read by `0x00714377` with
+    /// ReadDouble into the float field; the TechnoType constructor's 1.0
+    /// (`0x00711030`) is the default, with no clamp.
+    pub build_time_multiplier: crate::util::native_x87::NativeF32Bits,
     /// Which houses/sides can build this (e.g., ["Americans", "Alliance"]).
     pub owner: Vec<String>,
     /// Specific countries that may build this object.
@@ -1811,8 +1811,6 @@ impl ObjectType {
             .map(|s| s.to_string())
             .collect();
 
-        let btm_f32: f32 = section.get_f32("BuildTimeMultiplier").unwrap_or(1.0);
-
         // `TechnoTypeClass::ReadINI` reads `VeteranAbilities=` into `+0x29C`
         // (`0x007154A3`) and `EliteAbilities=` into `+0x2AE` (`0x007154E8`).
         // VERA's merged section already carries the last INI pass's value
@@ -1962,8 +1960,10 @@ impl ObjectType {
             // key is absent. Explicit TechLevel=-1 remains a distinct
             // civilian/unbuildable sentinel.
             tech_level: section.get_i32("TechLevel").unwrap_or(255),
-            build_time_multiplier: btm_f32,
-            build_time_multiplier_x1000: (btm_f32.max(0.01) as f64 * 1000.0).round() as u64,
+            build_time_multiplier: section.read_double_to_float(
+                "BuildTimeMultiplier",
+                crate::util::native_x87::NativeF32Bits::ONE,
+            ),
             owner,
             required_houses,
             forbidden_houses,
@@ -2944,7 +2944,10 @@ mod tests {
         assert_eq!(obj.armor, "heavy");
         assert_eq!(obj.speed, 6);
         assert_eq!(obj.tech_level, 2);
-        assert!((obj.build_time_multiplier - 1.0).abs() < f32::EPSILON);
+        assert_eq!(
+            obj.build_time_multiplier,
+            crate::util::native_x87::NativeF32Bits::ONE
+        );
         assert_eq!(obj.owner, vec!["Americans", "Alliance"]);
         assert_eq!(obj.required_houses, vec!["Americans"]);
         assert!(obj.allowed_to_start_in_multiplayer);
@@ -3242,7 +3245,10 @@ mod tests {
         assert_eq!(obj.idle_rate, 0);
         assert_eq!(obj.sight, 0);
         assert_eq!(obj.tech_level, 255);
-        assert!((obj.build_time_multiplier - 1.0).abs() < f32::EPSILON);
+        assert_eq!(
+            obj.build_time_multiplier,
+            crate::util::native_x87::NativeF32Bits::ONE
+        );
         assert!(obj.owner.is_empty());
         assert!(obj.required_houses.is_empty());
         assert!(obj.prerequisite.is_empty());
@@ -3290,7 +3296,10 @@ mod tests {
         let obj: ObjectType =
             ObjectType::from_ini_section("HTNK", section, ObjectCategory::Vehicle);
 
-        assert!((obj.build_time_multiplier - 1.3).abs() < 0.0001);
+        assert_eq!(
+            obj.build_time_multiplier,
+            crate::util::native_x87::NativeF32Bits::from_bits(1.3_f32.to_bits())
+        );
     }
 
     #[test]
