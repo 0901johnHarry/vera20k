@@ -635,7 +635,9 @@ use crate::sim::world::Simulation;
 // shared Dummy differently on the next scan, so reject mixed continuations.
 // 219 -> 220: a factory's rally point lives only in its ArchiveTarget
 // (`Techno+0x218`); the house's rally copy and the building's rally cell go.
-const SNAPSHOT_VERSION: u32 = 220;
+// 220 -> 221: pending production commands carry no house of their own; they
+// act on their envelope's house. Dropping the fields changes the bincode schema.
+const SNAPSHOT_VERSION: u32 = 221;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3580,7 +3582,8 @@ mod tests {
         // 217 -> 218: a passenger's `+0x82`; no open-transport weapon override.
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
         // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
-        assert_eq!(super::SNAPSHOT_VERSION, 220);
+        // 220 -> 221: production commands take their envelope's house.
+        assert_eq!(super::SNAPSHOT_VERSION, 221);
     }
 
     #[test]
