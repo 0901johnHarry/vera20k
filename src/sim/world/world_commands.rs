@@ -1325,39 +1325,35 @@ impl Simulation {
                 production::set_rally_point_for_owner(self, owner, *rx, *ry);
                 self.set_rally_target_for_producers(command_owner, producer_ids, *rx, *ry, rules)
             }
-            Command::QueueProduction { owner, type_id, .. } => {
+            // Production events act on the event's own house (the
+            // EventClass header's house id); the payload names no owner.
+            Command::QueueProduction { type_id, .. } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::enqueue_by_type(self, rules, &owner_s, &type_s)
+                production::enqueue_by_type(self, rules, command_owner, &type_s)
             }
-            Command::TogglePauseProduction { owner, category } => {
-                let owner_s = self.interner.resolve(*owner).to_string();
-                production::toggle_pause_for_owner_category(self, &owner_s, *category)
+            Command::TogglePauseProduction { category } => {
+                production::toggle_pause_for_owner_category(self, command_owner, *category)
             }
-            Command::CycleProducerFocus { owner, category } => {
+            Command::CycleProducerFocus { category } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 production::cycle_active_producer_for_owner_category(
-                    self, rules, &owner_s, *category,
+                    self,
+                    rules,
+                    command_owner,
+                    *category,
                 )
             }
-            Command::PlaceReadyBuilding {
-                owner,
-                type_id,
-                rx,
-                ry,
-            } => {
+            Command::PlaceReadyBuilding { type_id, rx, ry } => {
                 let Some(rules) = rules else { return false };
-                if self.interner.get(command_owner) != Some(*owner) {
+                let Some(owner) = self.interner.get(command_owner) else {
                     return false;
-                }
-                let owner_s = self.interner.resolve(*owner).to_string();
+                };
                 let type_s = self.interner.resolve(*type_id).to_string();
                 let placed = production::place_ready_building_with_overlays(
                     self,
                     rules,
-                    &owner_s,
+                    command_owner,
                     &type_s,
                     *rx,
                     *ry,
@@ -1371,20 +1367,18 @@ impl Simulation {
                     // `EVA_CannotDeployHere` when `this == PlayerPtr`; the
                     // app applies the local-owner half.
                     self.sound_events
-                        .push(SimSoundEvent::CannotDeployHere { owner: *owner });
+                        .push(SimSoundEvent::CannotDeployHere { owner });
                 }
                 placed
             }
-            Command::CancelLastProduction { owner } => {
+            Command::CancelLastProduction => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
-                production::cancel_last_for_owner(self, rules, &owner_s)
+                production::cancel_last_for_owner(self, rules, command_owner)
             }
-            Command::CancelProductionByType { owner, type_id } => {
+            Command::CancelProductionByType { type_id } => {
                 let Some(rules) = rules else { return false };
-                let owner_s = self.interner.resolve(*owner).to_string();
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::cancel_by_type_for_owner(self, rules, &owner_s, &type_s)
+                production::cancel_by_type_for_owner(self, rules, command_owner, &type_s)
             }
             // The SELL event (`EventClass::Execute 0x004C6F20`): the target's
             // owner must be the event's house (`0x004C6F45`); a building
