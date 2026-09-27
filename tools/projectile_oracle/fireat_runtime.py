@@ -8,7 +8,7 @@ from tools.native_oracle import OracleError, finish_vectors
 from tools.projectile_oracle import fireat_fixture, fireat_speed
 from tools.projectile_oracle.ordinary_motion import run as ordinary_motion
 from tools.projectile_oracle.vertical_motion import run as vertical_motion
-from tools.rules_oracle.weapon_speed_order import fresh, s32
+from tools.rules_oracle.weapon_speed_order import fresh, metadata as reader_metadata, s32
 from tools.spatial_oracle.building_body_rules import RULES
 
 
@@ -63,6 +63,7 @@ def metadata():
             'Native binary64 launch velocities feed the existing ordinary_motion or vertical_motion fixture. Ordinary gravity sequence is [6,3,1,0,-1,2,5,6]; Vertical Acceleration=3 and its native retained maximum speed are supplied. Eight motion visits execute.',
             'Motion fixtures supply admitted position/velocity commits between visits. No native world scheduling, collision, target admission, snapshot serialization, RNG or detach behavior is established by this composition.',
         ],
+        substitutions=reader_metadata()['substitutions'],
         entry_points={'weapon_reader': 0x772080, 'bullet_reader': 0x46BEE0,
                       'rules_process': 0x668BF0, 'weapon_postpass': 0x7729F0, 'get_speed': fireat_speed.GET_SPEED,
                       'launch_distance_begin': fireat_speed.DISTANCE_BEGIN,
