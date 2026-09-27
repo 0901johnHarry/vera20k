@@ -22,7 +22,6 @@
 //! producer for that field yet, so it holds the constructor value:
 //! - T4/T11/T28..T31/T42: the Magnetron hold.
 //! - T6: the Robot Control Center latch.
-//! - T7/T57: sinking.
 //! - T15: the Chronosphere warp latch.
 //! - T18: balloon docking.
 //! - T19: ObjectClass `+0x8D`, VERA's `object_is_falling_down`, which no

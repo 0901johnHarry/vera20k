@@ -206,6 +206,7 @@ impl FireSubject<'_> {
                 .map_or(0, |z| z as i32),
             berserk: firer.berserk.active,
             falling: firer.object_is_falling_down != 0,
+            sinking: firer.sinking.is_active(),
             in_open_transport: firer.passenger_role.in_open_transport(),
             transporter: match transport {
                 None => Transporter::None,
@@ -336,6 +337,7 @@ impl FireSubject<'_> {
                         },
                         bomb: entity.bomb.is_some(),
                         in_limbo: entity.lifecycle.in_limbo,
+                        sinking: entity.sinking.is_active(),
                         on_bridge: entity.on_bridge,
                         z: self
                             .terrain()

@@ -443,12 +443,12 @@ pub struct HouseState {
     /// its `Record_Last_Built` step increments once per finished factory item.
     /// Only the totals are player-visible, so the Rust model keeps totals.
     ///
-    /// The live counters remain unserialized and unhashed. At the natural
-    /// terminal edge, sim copies their totals into the serialized/hash-covered
-    /// `TerminalScoreSnapshot`; the raw score also bounds its Scenario RNG bonus
-    /// draw. Saving and loading before that edge still resets these counters, so
-    /// a post-load score can differ (recorded DRIFT).
-    #[serde(skip)]
+    /// House Save504080/Load503040 preserve the native inline statistics and
+    /// all four built Counters (naval_house_stats native execution). Keep the
+    /// existing totals through loading: an active sinking hull has already
+    /// booked its first loss and records another at terminal depth. These
+    /// live values also feed TerminalScoreSnapshot's Scenario RNG bound and
+    /// participate in the deterministic hash from schema226.
     pub stats: MatchStatistics,
     /// Sole credit balance and economy statistics; serialized and hashed.
     pub economy: Economy,
@@ -715,7 +715,9 @@ impl HouseState {
 /// column, adds its two loss counters for the Losses column, and sums its four
 /// per-category built counters for the Built column. Totals are all the screen
 /// ever reads, so these are kept as totals.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct MatchStatistics {
     /// Non-building enemy objects this house destroyed.
     pub units_killed: u32,
@@ -738,6 +740,10 @@ pub struct MatchStatistics {
     /// [`MatchStatistics::score`].
     pub score_points: i32,
 }
+
+#[cfg(test)]
+#[path = "house_statistics_tests.rs"]
+mod statistics_tests;
 
 impl MatchStatistics {
     /// Score-screen Kills column: units + buildings destroyed.

@@ -1107,6 +1107,16 @@ impl Simulation {
             house.economy.spent_credits.hash(hasher);
             house.economy.harvested_credits.hash(hasher);
             house.economy.purifier_count.hash(hasher);
+            // Live score totals affect the later terminal Scenario draw, and
+            // House504080/503040 preserves them through native load. The
+            // retained-ship chain needs both its initial and terminal loss.
+            // Preserve zero and historical streams before this schema.
+            if schema.includes(HashFeature::ShipSinking)
+                && house.stats != crate::sim::house_state::MatchStatistics::default()
+            {
+                b"house-match-statistics-v1".hash(hasher);
+                house.stats.hash(hasher);
+            }
             house.side_index.hash(hasher);
             house.is_human.hash(hasher);
             house.player_control.hash(hasher);
@@ -1691,6 +1701,10 @@ impl Simulation {
             if schema.includes(HashFeature::AircraftCrash) {
                 entity.crashing.hash(hasher);
                 entity.crashing_seen.hash(hasher);
+            }
+            if schema.includes(HashFeature::ShipSinking) && !entity.sinking.is_default() {
+                b"techno-sinking-v1".hash(hasher);
+                entity.sinking.hash(hasher);
             }
             if schema.includes(HashFeature::TechnoMissionOnly) {
                 entity.is_mission_only().hash(hasher);
@@ -3480,6 +3494,42 @@ mod state_hash_field_tests {
         sim_b.houses.insert(owner_b, hard_house);
 
         assert_ne!(sim_a.state_hash(), sim_b.state_hash());
+    }
+
+    #[test]
+    fn live_house_statistics_change_current_hash_and_preserve_older_projections() {
+        use crate::sim::house_state::{HouseState, MatchStatistics};
+
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        sim.houses
+            .insert(owner, HouseState::new(owner, 0, None, false, 0, 10));
+        let clear_hash = sim.state_hash();
+        let previous = sim.state_hash_with_schema(super::HashSchema::Before(226));
+        assert_eq!(clear_hash, previous, "zero statistics add no fold");
+        let mutations: [fn(&mut MatchStatistics); 6] = [
+            |stats| stats.units_killed = 1,
+            |stats| stats.buildings_killed = 1,
+            |stats| stats.units_lost = 1,
+            |stats| stats.buildings_lost = 1,
+            |stats| stats.built = 1,
+            |stats| stats.score_points = -1,
+        ];
+        let mut hashes = std::collections::BTreeSet::from([clear_hash]);
+        for mutate in mutations {
+            let stats = &mut sim.houses.get_mut(&owner).unwrap().stats;
+            *stats = MatchStatistics::default();
+            mutate(stats);
+            assert!(
+                hashes.insert(sim.state_hash()),
+                "each live total is authority"
+            );
+            assert_eq!(
+                sim.state_hash_with_schema(super::HashSchema::Before(226)),
+                previous,
+                "previous projections omit live statistics"
+            );
+        }
     }
 
     #[test]

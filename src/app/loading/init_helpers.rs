@@ -305,18 +305,29 @@ pub(crate) fn load_startup_rules(asset_manager: &AssetManager) -> Option<Startup
         log::warn!("artmd.ini not found or could not be parsed during native rules startup");
         None
     })?;
-    let native_owner =
+    let mut native_owner =
         NativeRulesProcessOwner::from_cold_start_sources(rulesmd, langrule, fixed_art)
             .map_err(|error| log::warn!("Native rules cold startup failed: {error}"))
             .ok()?;
+    // Init_Game52C763..52C796 reads SOUNDMD once, independently of the
+    // scenario's Rules passes. Both startup and later match projections use
+    // this same catalog for native sound-reference validity and retention.
+    if let Some(sound_ini) = load_retail_ini(asset_manager, "soundmd.ini") {
+        native_owner.select_fixed_sounds(crate::rules::sound_ini::SoundRegistry::from_ini(
+            &sound_ini,
+        ));
+    }
 
     let (compatibility_rules, compatibility_projection) = match native_owner
         .startup_compatibility_projection()
     {
         Ok(processed) => {
-            let compatibility_rules = RuleSet::from_processed_rules(&processed)
+            let mut compatibility_rules = RuleSet::from_processed_rules(&processed)
                 .map_err(|error| log::warn!("Failed to parse startup rules projection: {error}"))
                 .ok();
+            if let Some(rules) = compatibility_rules.as_mut() {
+                native_owner.bind_sinking_sounds(rules, &processed);
+            }
             let compatibility_projection = processed.into_projection_discarding_native_receipt();
             (compatibility_rules, Some(compatibility_projection))
         }

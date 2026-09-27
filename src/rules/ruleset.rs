@@ -822,6 +822,9 @@ pub struct GeneralRules {
     /// Stock: `ExplosionWaterLarge` and empty (silence).
     pub impact_water_sound: Option<String>,
     pub impact_land_sound: Option<String>,
+    /// AudioVisual/SinkingSound -> Rules+208 (6699C8); constructor665940
+    /// stores -1. Used only when the sinking type has no resolved sound.
+    pub sinking_sound: Option<String>,
     /// `[AudioVisual] BombTickingSound=` (`RulesClass+0x20C`): the looping
     /// tick at a bombed object (`BombListClass::UpdateAll @ 0x00438BF0`).
     pub bomb_ticking_sound: Option<String>,
@@ -1458,6 +1461,7 @@ impl Default for GeneralRules {
             chrono_out_sound: Some("ChronoMinerTeleport".to_string()),
             impact_water_sound: None,
             impact_land_sound: None,
+            sinking_sound: None,
             bomb_ticking_sound: None,
             bomb_attach_sound: None,
             damage_delay_minutes: 1.0,
@@ -2426,6 +2430,8 @@ impl GeneralRules {
                 .and_then(|s| s.get("ImpactLandSound"))
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            // Constructor -1 until the fixed SOUNDMD catalog resolves it.
+            sinking_sound: None,
             bomb_ticking_sound,
             bomb_attach_sound,
             warp_in: AnimRef {
@@ -3211,6 +3217,27 @@ impl RuleSet {
         }
         rules.source_ini_hash = processed.content_hash();
         Ok(rules)
+    }
+
+    /// Resolve the three sinking sound readers against the startup-selected
+    /// SOUNDMD registry. The processed projection retains only passes where
+    /// each type existed, including the native current-ID retention order.
+    /// Type defaults and Rules+208 start at -1; [AudioVisual] owns the latter.
+    pub(crate) fn bind_sinking_sounds(
+        &mut self,
+        ini: &IniFile,
+        sounds: &crate::rules::sound_ini::SoundRegistry,
+    ) {
+        self.general.sinking_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
+        for object in &mut self.object_list {
+            let section = ini.section(&object.id);
+            object.sinking_sound =
+                section.and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
+            object.voice_sinking =
+                section.and_then(|section| sounds.read_rules_reference(section, "VoiceSinking"));
+        }
     }
 
     /// Parse a complete RuleSet from a rules.ini IniFile.

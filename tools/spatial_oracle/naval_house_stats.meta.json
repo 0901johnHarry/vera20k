@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original House full Save/Load statistics retention on bounded empty services.",
+  "assumptions": [
+    "Actual original repair-neighbor sinking produces UnitsLost1 in the first row. Full House504080Save,410320AbstractSave,503040Load,410380AbstractLoad and no-init4F5190 execute; empty object/vector/COM services are supplied. Mixed inline statistics and four valid capacity3 Counter arrays are supplied controls, not native production of those values.",
+    "Original Swizzle constructor/registration/conversion run. The retained external HouseType has an explicit identity mapping, and the actor owner link is rebound to the restored House; complete scenario/object reload is excluded. A direct original Unit RecordKill after restore proves loss1\u21922, not the full restored AI cadence.",
+    "A copied mixed House executes no-init4F5190 separately, demonstrating inline retention and reset built Counter owners; full House Load restores those owners from appended Counter streams. Normal constructor statistics blocks4F5A2A..4F5B39 and4F629A..4F62B8 execute with explicit EBP=this,EBX0,ESI-1/0 caller registers, proving zero initialization only for those blocks.",
+    "Native combined score54E8 is preserved as raw signed bits. This is not a new proof of the Rust split score or aggregate per-house/category representation. All three complete RNG states are unchanged."
+  ],
+  "substitutions": [
+    "IStream Write/Read retain exactly the bytes and lengths requested by original methods; allocator returns successful bump storage/free is no-op. Original code and House vtable remain unchanged."
+  ],
+  "entry_points": {
+    "house_save": "0x00504080",
+    "house_load": "0x00503040",
+    "noinit": "0x004F5190",
+    "abstract_save": "0x00410320",
+    "abstract_load": "0x00410380",
+    "get_size": "0x00504730",
+    "counter_save": "0x0049FB70",
+    "counter_load": "0x0049FBE0",
+    "record_kill": "0x00744720",
+    "swizzle_ctor": "0x006CF180",
+    "swizzle_register": "0x006CF2C0",
+    "swizzle_convert": "0x006CF230",
+    "constructor_losses_score_counters": "0x004F5A2A",
+    "constructor_kill_tables": "0x004F629A"
+  },
+  "payload_sha256": "1ccdec7152f5a50bd397b88b8e07a3395bbdd64d5ac8a512d6da6c330fd5b187"
+}

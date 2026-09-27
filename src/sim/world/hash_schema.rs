@@ -177,6 +177,10 @@ pub(super) enum HashFeature {
     /// nonzero. A tagged suffix for nonzero values preserves the former
     /// zero-byte streams; earlier projections omit this byte entirely.
     FootScoldLatch = 224,
+    /// Techno+3CD/+3CE retained sinking and sound-edge state, plus the live
+    /// House statistics needed to preserve its two loss records through load.
+    /// Default-zero states append nothing; earlier schemas omit both additions.
+    ShipSinking = 226,
 }
 
 impl HashSchema {
@@ -219,6 +223,7 @@ impl HashSchema {
                     | HashFeature::NativeRuntimeIdentity
                     | HashFeature::RetiredRallyCopies
                     | HashFeature::FootScoldLatch
+                    | HashFeature::ShipSinking
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

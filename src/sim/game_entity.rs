@@ -989,6 +989,10 @@ pub struct GameEntity {
     /// rising edge plays the crash voice and sound (`0x004DACDD..0x004DADC2`).
     #[serde(default)]
     pub crashing_seen: bool,
+    /// Techno+3CD/+3CE retained sinking lifetime and prior Foot AI sound edge.
+    /// `world::sinking` owns mutations; this is independent of crash +425/+426.
+    #[serde(default)]
+    pub(crate) sinking: crate::sim::world::SinkingState,
 
     // --- Passenger/transport system ---
     /// Original owner of a CanBeOccupied building, saved when the first garrison
@@ -1634,6 +1638,7 @@ impl GameEntity {
             move_sound_countdown: 0,
             crashing: false,
             crashing_seen: false,
+            sinking: crate::sim::world::SinkingState::default(),
             garrison_original_owner: None,
             passenger_role: PassengerRole::None,
             weapon_override: None,

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original sinking waterline rectangle and draw-gate evidence.\n\nInterior render locals and projected rectangles are explicit supplied boundaries.\nOriginal intersection421B60 executes. This is not VXL rasterization or a captured\nlive-process frame, and does not establish the ambient native x87 control word.\n",
+  "assumptions": [
+    "Original renderer frame locals are supplied: caller clip, draw anchor Y, raster bounds Y/height, Tactical+B4 world camera Y, view width and current/offscreen surface identity. No values derive from Rust.",
+    "Original Unit73BEA4..73BF7B cached composite and Techno70709E..70716D generic piece rectangles run through native421B60. Unit capture includes -128 because its cached raster uses a128px center; generic inputs use corresponding shifted raster bounds. First capture leaves the caller clip unchanged.",
+    "Constructor field stores6F2F1E..6F2F37 execute with the enclosing constructor zero-register invariant supplied. Raw-load/no-init persistence is separately executed in naval_lifetime_controls.",
+    "Shadow gate73C1D2..73C202/73C5C9 and full early DrawExtras6F5190 return for nonzero sinking execute. Sinking0 stops before the remaining ordinary tails. Raw255 is a supplied legacy-byte control, not an active producer claim.",
+    "All executed instructions in this packet are integer arithmetic, stores and branches. FPCW0E7F is supplied and immaterial to these slices. No RNG calls, timer writes or detach calls are present in these executed slices; preceding raster production excluded."
+  ],
+  "substitutions": [
+    "No calls are replaced; native421B60 rectangle intersection executes. Projection, raster creation, full render dispatcher and surface blits are outside the measured boundaries."
+  ],
+  "entry_points": {
+    "unit_clip": "0x0073BEA4",
+    "techno_clip": "0x0070709E",
+    "shadow_gate": "0x0073C1D2",
+    "extras_gate": "0x006F5190",
+    "ctor": "0x006F2F1E",
+    "intersection": "0x00421B60"
+  },
+  "original_slices": {
+    "unit_clip": {
+      "start": "0x73bea4",
+      "end": "0x73bf7b",
+      "bytes": "8b8424d40100008b8c24d80100008b9424d001000089442454668b85ca030000894c2458895424508b9424dc01000033c98954245c663bc17e678b1524738800510fbfc08bbab40000008b15a86f88002bc7898c24800000008984248c0000008d842480000000898c24840000008994248800000051508d54245c8d4c2448e8385cceff8b08894c24508b5004895424548b4808894c24588b500c8954245ceb368a85cd03000084c0742ca1247388008b15c4cfb100668b88b4000000a1cccfb10066038c24cc01000003c88d441180668985ca030000"
+    },
+    "techno_clip": {
+      "start": "0x70709e",
+      "end": "0x70716d",
+      "bytes": "8b8c24500100008bbc244c0100008b11895424208b4104894424248b5108895424288b410c8b0d147388008944242ca13cd1b1003bc80f8493000000668b85ca03000033c9663bc17e588b1524738800510fbfc08bb2b40000008b15a86f88002bc6894c2414894424208d442414894c24188954241c51508d54242c8d4c2458e83daad1ff8b08894c24208b5004895424248b4808894c24288b500c8954242ceb2d8a85cd03000084c07423a1247388008b542438668b88b40000008b44244866034f0403ca03c866898dca030000"
+    },
+    "shadow_gate": {
+      "start": "0x73c1d2",
+      "end": "0x73c202",
+      "bytes": "8a85cd030000899424c40000008b15cccfb10084c0898c24cc000000899424d0000000c685d3060000000f85c7030000"
+    },
+    "extras_gate": {
+      "start": "0x6f5190",
+      "end": "0x6f51b0",
+      "bytes": "81ec8c000000558be956578a85cd03000089ac249400000084c00f85330d0000"
+    },
+    "ctor": {
+      "start": "0x6f2f1e",
+      "end": "0x6f2f37",
+      "bytes": "66899eca030000889ecc030000889ecd030000889ece030000"
+    }
+  },
+  "payload_sha256": "188665deea26c0df43fd5b323b58e88d2e935acee471e685203513d4871e35bd"
+}

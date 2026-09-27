@@ -191,10 +191,8 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
 /// `0x006FCF2D`), which keeps a shot-down Rocketeer falling at Health 1 off
 /// every target list; otherwise the setter writes NULL, so a Restore or a
 /// retaliation that names a dying object leaves its receiver without a
-/// target. One further NULL arm has no VERA producer: a Foot with `+0x3CD` set
-/// (sinking or crashing: `UnitClass::ReceiveDamage 0x00737E51`, the Jumpjet
-/// crash `0x0054CEB7`, the squid grapple `0x00629C69`, the Teleport water check
-/// `0x0071896B`/`0x00718AC2`).
+/// target. Techno+3CD also refuses the candidate (`0x006FCF10`); its stock
+/// surface-ship producer is Unit ReceiveDamage737E51, owned by world::sinking.
 pub(crate) fn assign_target_commits(
     entities: &crate::sim::entity_store::EntityStore,
     requested: Option<TargetKind>,
@@ -203,6 +201,7 @@ pub(crate) fn assign_target_commits(
         Some(TargetKind::Entity(id)) => entities.get(id).is_some_and(|target| {
             target.lifecycle.object_alive
                 && target.health.current != 0
+                && !target.sinking.is_active()
                 && !(target.category == crate::map::entities::EntityCategory::Infantry
                     && target.mission_leaf.as_infantry().is_some_and(|leaf| {
                         crate::sim::movement::infantry_action::in_death_sequence(leaf.doing())
