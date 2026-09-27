@@ -1020,11 +1020,11 @@ pub struct Simulation {
     /// the same tick.
     #[serde(skip)]
     pub(crate) pending_missile_detonations: Vec<crate::sim::spawn_manager::MissileDetonation>,
-    /// Aircraft whose Mission_Attack strike state (4..9), dispatched in their
-    /// own LogicVector slot, asked the combat phase for its visit this frame.
-    /// Filled by the live pass, drained by combat in the same frame.
+    /// The shots the objects' own missions asked the combat phase for this
+    /// frame (aircraft strike visits, building FireAt arms). Filled by the
+    /// live pass, drained by combat in the same frame.
     #[serde(skip)]
-    pub(crate) aircraft_fire_requests: std::collections::BTreeSet<u64>,
+    pub(crate) fire_requests: crate::sim::combat::FireRequests,
     /// BulletClass AI results produced in mixed Logic order and consumed at
     /// the existing combat receiver seam later in this master frame.
     #[serde(skip)]
@@ -1800,7 +1800,7 @@ impl Simulation {
         tick_ms: u32,
         logic_order: &[u64],
         fire_suppressed: &BTreeSet<u64>,
-        aircraft_fire_requests: &BTreeSet<u64>,
+        fire_requests: &crate::sim::combat::FireRequests,
         projectile_detonations: &[crate::sim::projectile::ProjectileDetonation],
         wave_damage_events: &[crate::sim::wave::WaveDamageEvent],
     ) -> crate::sim::combat::CombatTickResult {
@@ -1813,7 +1813,7 @@ impl Simulation {
             tick_ms,
             logic_order,
             fire_suppressed,
-            aircraft_fire_requests,
+            fire_requests,
             projectile_detonations,
             wave_damage_events,
         );
@@ -2965,7 +2965,7 @@ impl Simulation {
             pending_lifecycle_requests: Vec::new(),
             pending_rocket_detonations: Vec::new(),
             pending_missile_detonations: Vec::new(),
-            aircraft_fire_requests: Default::default(),
+            fire_requests: Default::default(),
             pending_projectile_detonations: Vec::new(),
             pending_wave_damage_requests: Vec::new(),
             #[cfg(test)]
@@ -5588,7 +5588,18 @@ impl Simulation {
         for &sid in &finished {
             if let Some(entity) = self.substrate.entities.get_mut(sid) {
                 entity.building_up = None;
+                // Mission_Construction's completing visit queues Guard
+                // (`0x00449AE2`) and the ready check after the Techno AI
+                // commences it on the `+0x6DD` the build-up's last frame set
+                // (`0x0043FF91..0x0043FFAD`), which leaves the byte clear.
+                crate::sim::mission::authority::queue_entity_mission_deferred(
+                    entity,
+                    crate::sim::mission::MissionId::from_known(
+                        crate::sim::mission::MissionType::Guard,
+                    ),
+                );
             }
+            let _ = self.mission_commence_exact(sid, now as u32);
         }
         finished
     }
@@ -6143,7 +6154,7 @@ impl Simulation {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::LogicVector);
         // Receipts are frame-local: an aborted earlier frame must not leak one.
-        self.aircraft_fire_requests.clear();
+        self.fire_requests = Default::default();
         let object_pass = self.advance_live_object_pass(rules, path_grid, overlay_registry)?;
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         let movement_stats = object_pass.movement;
@@ -6212,9 +6223,9 @@ impl Simulation {
             );
         }
 
-        // Aircraft missions ran in their own LogicVector slots during the live
-        // pass; combat runs the strike visits (states 4..9) they requested.
-        let aircraft_fire_requests = std::mem::take(&mut self.aircraft_fire_requests);
+        // Aircraft and building missions ran in their own LogicVector slots
+        // during the live pass; combat runs the shots they requested.
+        let fire_requests = std::mem::take(&mut self.fire_requests);
 
         // Wake anims under moving units on water (native gate and cadence in
         // `spawn_wakes_for_frame`).
@@ -6360,7 +6371,7 @@ impl Simulation {
                 tick_ms,
                 &logic_order,
                 &fire_suppressed,
-                &aircraft_fire_requests,
+                &fire_requests,
                 &projectile_detonations,
                 &[],
             );
@@ -6382,8 +6393,8 @@ impl Simulation {
             // combat Phase-2 window (pre-death state — a unit whose target died
             // this tick keeps aiming at it this tick; idle-return starts next
             // tick). This is the unchanged write point; tick_turret_rotation
-            // above still skips Units (it owns Aircraft/Building barrels until
-            // their slices land).
+            // above skips Units (it owns only the legacy Infantry barrels; a
+            // building's turns through its Mission_Attack).
             crate::sim::world::unit_post::apply_unit_facing(
                 &mut self.substrate.entities,
                 &combat_result.unit_facing,
