@@ -1,25 +1,22 @@
-//! Per-(house, category) factory + deterministic registry — AUTHORITATIVE.
+//! Per-(house, category) factories and their deterministic registry: the
+//! authoritative production state.
 //!
 //! This module owns production charging and the queue-of-record: enqueue
-//! only checks affordability, `step_all` charges `balance/steps_left` per step
-//! at the tick's production phase, a shortfall rewinds the step onto on-hold,
-//! and cancel refunds the already-paid portion. State here is serialized
-//! and folded into the lockstep hash.
+//! only checks affordability, `step_all` steps each build once per rate and
+//! charges `balance/steps_left` per step, a shortfall rewinds the step onto
+//! on-hold, and cancel refunds the already-paid portion. State here is
+//! serialized and folded into the lockstep hash.
 //!
 //! Determinism: `BTreeMap<(InternedId, ProductionCategory), Factory>` (both key
 //! components derive `Ord`) gives sorted iteration for replay/lockstep; no
 //! `HashMap`, no fixed-size player array, no `1<<idx` bitmask — satisfies the
-//! 30-player scale target. Integer math only; no float, no RNG.
+//! 30-player scale target. No RNG. Charges are integer math; `time_to_build`
+//! reproduces gamemd's x87 arithmetic through `util::native_x87`.
 //!
 //! Depends on: `sim/intern`, `sim/production/production_types` (ProductionCategory,
-//! BuildQueueState), `sim/economy` (the house wallet), `rules` (type cost), and
-//! `sim/world::Simulation` (read-only) for the derive. NEVER on
-//! render/ui/sidebar/audio/net (sim invariant #1).
-//!
-//! P2/P3 shadow scaffold: several types/methods (`BuildEligibility`, the step-rate
-//! clamps, some `Factory` fields) are forward-declared seams consumed by later
-//! slices (P4 cancel, P6 prereq revalidation) and are intentionally unused here, so
-//! dead-code is allowed module-wide.
+//! BuildQueueState), `sim/economy` (the house wallet), `rules` (type cost and
+//! build-time factors), and `sim/world::Simulation` (read-only) for the inputs.
+//! NEVER on render/ui/sidebar/audio/net (sim invariant #1).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -573,8 +570,8 @@ pub struct FactoryView<'a> {
     pub ready: bool,
 }
 
-/// Deterministic registry of all factories — the derived shadow analog of the
-/// engine's global factory array, keyed (no fixed-size player array) for scale.
+/// Deterministic registry of all factories, keyed by (house, category) rather
+/// than gamemd's global factory array, so it needs no fixed-size player array.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FactoryRegistry {
     factories: BTreeMap<(InternedId, ProductionCategory), Factory>,
