@@ -510,36 +510,28 @@ pub enum Command {
         ry: u16,
         producer_ids: Vec<u64>,
     },
+    // The production commands act on the envelope's house, as a native
+    // production event acts on its header's house id (`EventClass::Execute
+    // 0x004C6CB0` reads it at `0x004C6CC4`); none names another.
     /// Enqueue a production item.
     QueueProduction {
-        owner: InternedId,
         type_id: InternedId,
         mode: QueueMode,
     },
-    /// Pause/resume the active production item for one owner/category queue.
-    TogglePauseProduction {
-        owner: InternedId,
-        category: ProductionCategory,
-    },
-    /// Cycle the active producer facility for one owner/category.
-    CycleProducerFocus {
-        owner: InternedId,
-        category: ProductionCategory,
-    },
+    /// Pause/resume the active production item of one category queue.
+    TogglePauseProduction { category: ProductionCategory },
+    /// Cycle the active producer facility of one category.
+    CycleProducerFocus { category: ProductionCategory },
     /// Place one completed building that is waiting for placement.
     PlaceReadyBuilding {
-        owner: InternedId,
         type_id: InternedId,
         rx: u16,
         ry: u16,
     },
-    /// Cancel the last queued production item for owner.
-    CancelLastProduction { owner: InternedId },
+    /// Cancel the last queued production item.
+    CancelLastProduction,
     /// Cancel one queued item of a specific type (right-click cameo).
-    CancelProductionByType {
-        owner: InternedId,
-        type_id: InternedId,
-    },
+    CancelProductionByType { type_id: InternedId },
     /// Sell a building, refunding a percentage of its cost and despawning it.
     SellBuilding { entity_id: u64 },
     /// Toggle repair mode on a building (spend credits to heal over time).

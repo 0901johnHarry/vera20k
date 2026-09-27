@@ -814,7 +814,6 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
         americans,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: americans,
             type_id: gapowr,
             rx: 12,
             ry: 10,
@@ -901,7 +900,6 @@ fn stock_gapowr_placement_restores_power_and_radar_during_buildup() {
         americans,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: americans,
             type_id: gapowr,
             rx: 12,
             ry: 10,
@@ -1723,7 +1721,6 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             americans,
             sim.session.tick + 1,
             Command::PlaceReadyBuilding {
-                owner: americans,
                 type_id: gapowr,
                 rx: 12,
                 ry: 10,
@@ -1790,7 +1787,6 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             americans,
             sim.session.tick + 1,
             Command::PlaceReadyBuilding {
-                owner: americans,
                 type_id: gapowr,
                 rx: 12,
                 ry: 10,
@@ -1851,7 +1847,6 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
         americans,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: americans,
             type_id: gapowr,
             rx: 12,
             ry: 10,
@@ -1910,7 +1905,6 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
         americans,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: americans,
             type_id: gapowr,
             rx: 12,
             ry: 10,
@@ -2129,7 +2123,6 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
             owner,
             sim.session.tick + 1,
             Command::PlaceReadyBuilding {
-                owner,
                 type_id,
                 rx: 12,
                 ry: 10,
@@ -2621,8 +2614,10 @@ fn gsi_04_07_wall_placement_publishes_connectivity_neighbor_auto_destruction() {
     );
 }
 
+/// A placement event places its own house's ready building: the Americans'
+/// event cannot place the Russians' wall.
 #[test]
-fn gsi_04_07_placement_command_rejects_payload_owner_mismatch() {
+fn gsi_04_07_placement_command_places_only_its_own_houses_production() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
     let height_map = BTreeMap::new();
     let path_grid = PathGrid::new(64, 64);
@@ -2631,7 +2626,6 @@ fn gsi_04_07_placement_command_rejects_payload_owner_mismatch() {
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
     ready_building(&mut sim, &rules, "Russians", "GAWALL");
     let event_owner = sim.interner.intern("Americans");
-    let payload_owner = sim.interner.get("Russians").expect("payload owner");
     let wall_type = sim.interner.get("GAWALL").expect("wall type");
 
     let tick = sim.advance_tick(
@@ -2639,7 +2633,6 @@ fn gsi_04_07_placement_command_rejects_payload_owner_mismatch() {
             event_owner,
             sim.session.tick + 1,
             Command::PlaceReadyBuilding {
-                owner: payload_owner,
                 type_id: wall_type,
                 rx: 12,
                 ry: 10,
@@ -2664,7 +2657,7 @@ fn gsi_04_07_placement_command_rejects_payload_owner_mismatch() {
     assert_eq!(
         ready_buildings_for_owner(&sim, &rules, "Russians").len(),
         1,
-        "a rejected forged owner must not consume production"
+        "another house's event must not consume production"
     );
     assert_eq!(tick.state_hash, sim.state_hash());
 }

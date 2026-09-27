@@ -39,13 +39,11 @@ fn resolve_owner(state: &mut AppState) -> String {
 
 pub(crate) fn queue_build_by_type(state: &mut AppState, type_id: &str) {
     let owner: String = resolve_owner(state);
-    let owner_id = intern_in_sim(state, &owner);
     let type_interned = intern_in_sim(state, type_id);
     schedule_command(
         state,
         &owner,
         Command::QueueProduction {
-            owner: owner_id,
             type_id: type_interned,
             mode: QueueMode::Append,
         },
@@ -62,15 +60,7 @@ pub(crate) fn toggle_pause_build_queue(
     category: production::ProductionCategory,
 ) {
     let owner: String = resolve_owner(state);
-    let owner_id = intern_in_sim(state, &owner);
-    schedule_command(
-        state,
-        &owner,
-        Command::TogglePauseProduction {
-            owner: owner_id,
-            category,
-        },
-    );
+    schedule_command(state, &owner, Command::TogglePauseProduction { category });
     log::info!(
         "Build pause/resume command queued: owner={} category={} issue_frame=current",
         owner,
@@ -83,15 +73,7 @@ pub(crate) fn cycle_active_producer(
     category: production::ProductionCategory,
 ) {
     let owner: String = resolve_owner(state);
-    let owner_id = intern_in_sim(state, &owner);
-    schedule_command(
-        state,
-        &owner,
-        Command::CycleProducerFocus {
-            owner: owner_id,
-            category,
-        },
-    );
+    schedule_command(state, &owner, Command::CycleProducerFocus { category });
     log::info!(
         "Producer focus cycle queued: owner={} category={} issue_frame=current",
         owner,
@@ -101,24 +83,17 @@ pub(crate) fn cycle_active_producer(
 
 pub(crate) fn cancel_last_build(state: &mut AppState) {
     let owner: String = resolve_owner(state);
-    let owner_id = intern_in_sim(state, &owner);
-    schedule_command(
-        state,
-        &owner,
-        Command::CancelLastProduction { owner: owner_id },
-    );
+    schedule_command(state, &owner, Command::CancelLastProduction);
     log::info!("Build cancel command queued: owner={owner} issue_frame=current");
 }
 
 pub(crate) fn cancel_build_by_type(state: &mut AppState, type_id: &str) {
     let owner: String = resolve_owner(state);
-    let owner_id = intern_in_sim(state, &owner);
     let type_interned = intern_in_sim(state, type_id);
     schedule_command(
         state,
         &owner,
         Command::CancelProductionByType {
-            owner: owner_id,
             type_id: type_interned,
         },
     );
@@ -412,13 +387,11 @@ pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str
             return;
         }
     }
-    let owner_id = intern_in_sim(state, &owner);
     let type_interned = intern_in_sim(state, type_id);
     schedule_command(
         state,
         &owner,
         Command::PlaceReadyBuilding {
-            owner: owner_id,
             type_id: type_interned,
             rx,
             ry,
@@ -517,13 +490,11 @@ pub(crate) fn place_starter_base_for_local_owner(state: &mut AppState) {
         .collect();
     let mut queued = 0u32;
     for type_id in queueable {
-        let owner_id = intern_in_sim(state, &owner);
         let type_interned = intern_in_sim(state, &type_id);
         schedule_command(
             state,
             &owner,
             Command::QueueProduction {
-                owner: owner_id,
                 type_id: type_interned,
                 mode: QueueMode::Append,
             },
