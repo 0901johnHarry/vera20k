@@ -726,10 +726,12 @@ pub struct GameEntity {
     /// `g_CurrentFrameCounter`. `UnitClass::Facing_Update` gates the idle turret
     /// return on `frame - this >= GuardAreaTargetingDelay + 5`, so the dwell is
     /// measured from the unit's own last shot, NOT from target loss.
+    /// BuildingClass::Update starts a Gattling building's idle decay once
+    /// `frame - this > GuardAreaTargetingDelay + 5` (`0x0043FEE9`).
     ///
-    /// Not folded into `world_hash`: its only consumer is that idle return, so
-    /// a divergence surfaces one tick later through `barrel_facing`, which the
-    /// hash does fold.
+    /// Not folded into `world_hash`: its two consumers' results are, so a
+    /// divergence surfaces one tick later through `barrel_facing` or
+    /// `gattling`.
     #[serde(default = "default_last_fire_frame")]
     pub last_fire_frame: i64,
     /// The rearm countdown (`TechnoClass+0x2EC`, a CDTimerClass whose
@@ -787,9 +789,11 @@ pub struct GameEntity {
     /// `TechnoClass+0x148`, the voxel turret's animation counter. The
     /// constructor zeroes it (`0x006F2BE2`); the unit firing update
     /// (`0x007370D5`, `0x007370F2`, `0x0073713A`) and the building's attack
-    /// and update advance it. Only the draw reads it
+    /// (`0x0044B23C`, `0x0044B713`) and Gattling block (`0x0043FE88`,
+    /// `0x0043FF8B`) advance it. Only the draws read it
     /// (`UnitClass::DrawVoxelBody @ 0x0073B500`: while the body's HVA frame is
-    /// 0 the turret's frame is this modulo its frame count).
+    /// 0 the turret's frame is this modulo its frame count; the building's
+    /// voxel draw `0x0043DA80`, which VERA does not port).
     ///
     /// Not folded into `world_hash`: its one reader is presentation.
     #[serde(default)]

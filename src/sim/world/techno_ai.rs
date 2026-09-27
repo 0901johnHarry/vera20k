@@ -662,6 +662,10 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            // The Gattling block after the Techno AI (`0x0043FE5B..0x0043FF8B`).
+            if let Some(rules) = rules {
+                building_missions::gattling_idle(sim, id, rules);
+            }
             // The ready check after the Techno AI (`0x0043FF91`).
             building_missions::ready_commence(sim, id);
             // ProcessDelayedFire (`0x004400F4`), then

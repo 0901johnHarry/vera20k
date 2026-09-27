@@ -2358,6 +2358,25 @@ pub(super) fn resolve_attacker_fire(
     fire_error
 }
 
+/// `TechnoClass::Fire`'s per-shot report (`0x006FF349..0x006FF38F`, every
+/// class, buildings included): none for an empty `Report=` (a signed count
+/// test) or an `IsGattling=` type, whose report is its stage loop
+/// (`combat::gattling`); otherwise `Report[(u16)+0x3C8 % Count]`, the low
+/// word of the constructor's Scenario draw picking the item (an unsigned
+/// `div`). Native rows: `tools/spatial_oracle/building_gattling.json`
+/// (`report_gate`).
+pub(crate) fn per_shot_report(
+    weapon: &crate::rules::weapon_type::WeaponType,
+    is_gattling: bool,
+    sequence: u16,
+) -> Option<&str> {
+    let count = weapon.report_count();
+    if count <= 0 || is_gattling {
+        return None;
+    }
+    weapon.report_item(usize::from(sequence) % count as usize)
+}
+
 fn admit_attacker_fire<'r>(
     world: &mut Simulation,
     rules: &'r RuleSet,
@@ -2373,6 +2392,10 @@ fn admit_attacker_fire<'r>(
     let sound_enabled = sound_enabled(world);
     let delayed_building_slot = match snap.building_shot {
         Some(super::BuildingShot::Delayed(slot)) => Some(slot),
+        _ => None,
+    };
+    let mission_building_weapon = match snap.building_shot {
+        Some(super::BuildingShot::Mission { weapon }) => Some(weapon),
         _ => None,
     };
     let obj = match rules.object(world.interner.resolve(snap.type_id)) {
@@ -2521,9 +2544,11 @@ fn admit_attacker_fire<'r>(
         }
     };
 
-    // Weapon selection: garrison uses occupant's OccupyWeapon, everything
-    // else runs the native selection ladder (`What_Weapon_Should_I_Use`
-    // `0x006F3330`, which asks no legality; GetFireError below does).
+    // Weapon selection: garrison uses occupant's OccupyWeapon, a building's
+    // Mission_Attack shot the weapon its visit selected
+    // ([`super::BuildingShot::Mission`]), everything else runs the native
+    // selection ladder (`What_Weapon_Should_I_Use` `0x006F3330`, which asks no
+    // legality; GetFireError below does).
     //
     // RESIDUAL: two arms still filter before GetFireError, as the selection
     // owner does until it loses its legality subset.
@@ -2569,6 +2594,18 @@ fn admit_attacker_fire<'r>(
                 return None;
             }
         }
+    } else if let Some(weapon) = mission_building_weapon {
+        (
+            weapon,
+            combat_weapon::resolve_weapon_index(
+                rules,
+                obj,
+                snap.veterancy,
+                weapon,
+                Some(&target_facts),
+            ),
+            false,
+        )
     } else {
         let attacker_facts = world
             .substrate
@@ -3936,21 +3973,13 @@ pub(super) fn emit_admitted_fire(
         return;
     }
 
-    // `TechnoClass::Fire` plays the per-shot `Report=` only for a type that is
-    // not `IsGattling=` (`0x006FF349..0x006FF38F`, every class); a gattling's
-    // report is its stage loop (`combat::gattling`).
-    // RESIDUAL: a building keeps its per-shot report. The Gattling Cannon's
-    // loop starts in BuildingClass::Mission_Attack's charge and decay calls
-    // (`0x70DE70`, `0x70E000`), which VERA's Mission_Attack does not make yet
-    // (residual D11 in `world::techno_ai::building_missions`); without the
-    // gate it would fire silently. Trigger: every `[YAGGUN]` shot. Effect:
-    // the loop's first sample on each shot in place of the stage loop. Goes
-    // with D11.
-    let report_sound_id = weapon
-        .report
-        .as_ref()
-        .filter(|_| !obj.is_gattling || snap.category == EntityCategory::Structure)
-        .map(|report_id| world.interner.intern(report_id));
+    let sequence = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .map_or(0, |firer| firer.techno_ctor_random_word);
+    let report_sound_id = per_shot_report(weapon, obj.is_gattling, sequence)
+        .map(|report| world.interner.intern(report));
     let in_open_transport = world
         .substrate
         .entities
