@@ -1,14 +1,13 @@
 //! Voxel unit instance builders — per-frame SpriteInstance generation for VXL entities.
 //!
 //! Handles turret/barrel separation, harvest overlays, and VXL animation frames.
-//! Split from `presentation::instances` to keep files under the 600-line limit.
 //!
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
 
 use super::helpers::{
     EntityDrawBand, compute_sprite_depth, entity_draw_band, ground_sort_row, in_view,
-    tactical_entity_render_admission,
+    projection_admitted, tactical_entity_render_admission,
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
@@ -279,6 +278,9 @@ pub(crate) fn build_unit_instances(
         state.render_width() as f32 / z,
         state.render_height() as f32 / z,
     );
+    let (_, _, tactical_width, tactical_height) =
+        crate::app::input::camera::tactical_viewport_px(state);
+    let unit_viewport = [tactical_width as f32 / z, tactical_height as f32 / z];
     let local_owner = crate::app::input::commands::preferred_local_owner_name(state);
     let local_owner_id = local_owner.as_deref().and_then(|o| sim.interner.get(o));
     let ignore_visibility = state.match_state.sandbox_full_visibility;
@@ -368,11 +370,15 @@ pub(crate) fn build_unit_instances(
         // slope during gamemd's 3-frame transition, then falls back to the
         // stable terrain slope path.
         let slope_state = unit_render_slope_state(state, entity, display_binary_frame, band);
-        let (sx, sy) = crate::render::locomotor_visual::screen_position(entity);
-        let interp_z = pos.z;
-        if !in_view(sx, sy, TILE_WIDTH, TILE_HEIGHT, cam_x, cam_y, sw, sh, 120.0) {
+        let viewport = if entity.category == EntityCategory::Unit {
+            unit_viewport
+        } else {
+            [sw, sh]
+        };
+        let Some([sx, sy]) = unit_draw_anchor(entity, [cam_x, cam_y], viewport) else {
             continue;
-        }
+        };
+        let interp_z = pos.z;
         let draw_state = draw_decision.state;
         let tint = vxl_body_tint(
             state.match_state.match_presentation.lighting.grid(),
@@ -1034,6 +1040,32 @@ fn push_unit_sprite(
     });
 }
 
+fn unit_draw_anchor(
+    entity: &crate::sim::game_entity::GameEntity,
+    camera: [f32; 2],
+    viewport: [f32; 2],
+) -> Option<[f32; 2]> {
+    let (x, y) = crate::render::locomotor_visual::screen_position(entity);
+    // Unit draw admission precedes stateful +3CA capture. A smaller visual
+    // cull delays that first capture and changes later visible clipping.
+    let admitted = if entity.category == EntityCategory::Unit {
+        projection_admitted([x, y], camera, viewport)
+    } else {
+        in_view(
+            x,
+            y,
+            TILE_WIDTH,
+            TILE_HEIGHT,
+            camera[0],
+            camera[1],
+            viewport[0],
+            viewport[1],
+            120.0,
+        )
+    };
+    admitted.then_some([x, y])
+}
+
 /// One parent raster has separate atlas storage and native drawing bounds.
 /// Unit73BEA4's waterline and 73B140's split both consume the native union;
 /// atlas padding must not move either boundary. Unsplit depth retains its
@@ -1045,6 +1077,21 @@ struct CompositeDrawBounds {
 }
 
 impl CompositeDrawBounds {
+    fn unit_waterline(
+        self,
+        cache: &mut crate::render::sinking::SinkingWaterlines,
+        id: u64,
+        sinking: bool,
+    ) -> Option<i16> {
+        if let Some([_, y, _, height]) = self.native {
+            cache.unit_draw(id, sinking, y.wrapping_add(height))
+        } else {
+            // Unsupported fallback geometry cannot establish a new native
+            // rectangle; an already retained +3CA still clips its body.
+            cache.retained_clip(id)
+        }
+    }
+
     fn depth_rect(self, wants_split: bool) -> ([f32; 2], bool) {
         if wants_split {
             if let Some([_, y, _, height]) = self.native {
@@ -1100,17 +1147,8 @@ fn unit_body_draw_state(
             .match_presentation
             .sinking_waterlines
             .borrow_mut();
-        let clip = if let Some([_, y, _, height]) = bounds.native {
-            cache.unit_draw(
-                entity.stable_id(),
-                entity.sinking.is_active(),
-                y.wrapping_add(height),
-            )
-        } else {
-            // Unsupported fallback geometry cannot establish a new native
-            // rectangle; an already retained +3CA still clips its body.
-            cache.retained_clip(entity.stable_id())
-        };
+        let clip =
+            bounds.unit_waterline(&mut cache, entity.stable_id(), entity.sinking.is_active());
         crate::render::sinking::apply_waterline_clip(&mut draw_state, clip);
     }
     draw_state

@@ -7,16 +7,17 @@
     1,
     33621247
   ],
-  "scope": "Original sinking waterline rectangle and draw-gate evidence.\n\nInterior render locals and projected rectangles are explicit supplied boundaries.\nOriginal intersection421B60 executes. This is not VXL rasterization or a captured\nlive-process frame, and does not establish the ambient native x87 control word.\n",
+  "scope": "Original sinking waterline rectangle and draw-gate evidence.\n\nUnit draw admission executes original projection before the body boundary.\nInterior raster locals remain supplied, with the camera sequence consuming the\nseparate physical AEGIS raster packet. This is not a captured live-process frame\nand does not establish the ambient native x87 control word.\n",
   "assumptions": [
     "Original renderer frame locals are supplied: caller clip, draw anchor Y, raster bounds Y/height, Tactical+B4 world camera Y, view width and current/offscreen surface identity. No values derive from Rust.",
     "Original Unit73BEA4..73BF7B cached composite and Techno70709E..70716D generic piece rectangles run through native421B60. Unit capture includes -128 because its cached raster uses a128px center; generic inputs use corresponding shifted raster bounds. First capture leaves the caller clip unchanged.",
     "Constructor field stores6F2F1E..6F2F37 execute with the enclosing constructor zero-register invariant supplied. Raw-load/no-init persistence is separately executed in naval_lifetime_controls.",
     "Shadow gate73C1D2..73C202/73C5C9 and full early DrawExtras6F5190 return for nonzero sinking execute. Sinking0 stops before the remaining ordinary tails. Raw255 is a supplied legacy-byte control, not an active producer claim.",
-    "All executed instructions in this packet are integer arithmetic, stores and branches. FPCW0E7F is supplied and immaterial to these slices. No RNG calls, timer writes or detach calls are present in these executed slices; preceding raster production excluded."
+    "The original clip/gate slices are integer-only. Added Unit73B0B0->Object5F4B10->CoordsToClient2 6D2140 executes native projection and ftol under supplied FPCW0E7F and startup scalar bits3FC25E5374344960; supplied XYZ/camera and redraw-ready Unit with original vtable7F5C70. No RNG, timer or detach calls occur in these measured draw boundaries.",
+    "Native viewport store6D5F60..6D5F8D executes with supplied tactical rect886FA0, matching original caller4A89B8 and Scenario687620. Full camera clamping/window creation excluded. The retained camera sequence consumes facing-zero cached_dirty from the separately executable physical AEGIS raster packet; no Rust raster inputs."
   ],
   "substitutions": [
-    "No calls are replaced; native421B60 rectangle intersection executes. Projection, raster creation, full render dispatcher and surface blits are outside the measured boundaries."
+    "No calls or executable instructions are replaced. Unit body entry73CEC0 is a stop boundary; the separately measured clip slice consumes its anchor/caller rectangle plus the physical raster bounds. Full Display iteration, intervening sink ticks, whole Unit raster dispatch and surface blits are outside this packet."
   ],
   "entry_points": {
     "unit_clip": "0x0073BEA4",
@@ -24,6 +25,9 @@
     "shadow_gate": "0x0073C1D2",
     "extras_gate": "0x006F5190",
     "ctor": "0x006F2F1E",
+    "unit_draw_entry": "0x0073B0B0",
+    "projection": "0x006D2140",
+    "viewport_store": "0x006D5F60",
     "intersection": "0x00421B60"
   },
   "original_slices": {
@@ -51,7 +55,23 @@
       "start": "0x6f2f1e",
       "end": "0x6f2f37",
       "bytes": "66899eca030000889ecc030000889ecd030000889ece030000"
+    },
+    "unit_draw_entry": {
+      "start": "0x73b0b0",
+      "end": "0x73b13c",
+      "bytes": "56578bf98a871804000084c074666a00e87bfcf1ff8bf08bce8b06ff502c83f80675518b168bceff928401000083f810740983beb400000010753981c6500300008bcee818a0d6ff84c075218bcee82da0d6ff84c075168bcee8a2a0d6ff84c0750b8bcee8b7a0d6ff84c074075f32c05ec20c008b4424108b4c240c6a0050518bcfe8d999ebff5f5ec20c00"
+    },
+    "projection": {
+      "start": "0x6d2140",
+      "end": "0x6d2272",
+      "bytes": "83ec08538b5c241055568b338b4304894424108be98d0476578b7c24148b5b088d0480c744241c00000000c1e002992bc28bc88d0476d1f98d0480d1e0992bc28bf08bc7c1e0042bc7f7d8c1e002992bc2d1f803c88d047fd1fe8d0480894c2410d1e0992bc2895c2410d1f803f08bc19981e2ff00000003c28bf88bc69981e2ff00000003c28bf0c1ff08c1fe0881fbd80200007c08c744241c01000000db442410dc0d48cdb000da44241cdc0538177e00e8093d0f002bf08b44242089388970048b8db00000008badb40000008b388b70042bf92bf589388bcf8970048bc65f5e5d81f998feffff5b7d0832c083c408c208008b1530ceb00081c2680100003bca7e0832c083c408c208003d4cffffff7d0832c083c408c208008b0d34ceb00081c1b40000003bc10f9ec083c408c20800"
+    },
+    "viewport_store": {
+      "start": "0x6d5f60",
+      "end": "0x6d5f8d",
+      "bytes": "83ec088b44240c568bf18b08890d28ceb0008b500489152cceb0008b4808890d30ceb0008b500c891534ceb000"
     }
   },
-  "payload_sha256": "188665deea26c0df43fd5b323b58e88d2e935acee471e685203513d4871e35bd"
+  "aegis_raster_packet_sha256": "46384d9d714c808e51b38fb1fc27c89d5902b55417ec7402348e69ad756a086a",
+  "payload_sha256": "7aa901603268bb241beb154162d368ef4a89b83ca0a43bae9a2b9dc5ace55c90"
 }

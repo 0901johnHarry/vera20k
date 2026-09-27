@@ -1,4 +1,831 @@
 {
+  "admission": {
+    "aegis_cached_dirty": [
+      78,
+      67,
+      105,
+      89
+    ],
+    "cases": [
+      {
+        "input": {
+          "camera": [
+            1981,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": false,
+          "endpoint": "0x30000000",
+          "projected": [
+            -361,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1980,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            -360,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            -360,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1979,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            -359,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            -359,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            860,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            760,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            760,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            859,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            761,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            761,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            780,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            840,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            840,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            621,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            999,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            999,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            620,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            1000,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            1000,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            619,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": false,
+          "endpoint": "0x30000000",
+          "projected": [
+            1001,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            2746
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": false,
+          "endpoint": "0x30000000",
+          "projected": [
+            300,
+            -181
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            2745
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            300,
+            -180
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            300,
+            -180
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            2744
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            300,
+            -179
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            300,
+            -179
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            1906
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            300,
+            659
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            300,
+            659
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            1905
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": true,
+          "body_anchor": [
+            300,
+            660
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            300,
+            660
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      },
+      {
+        "input": {
+          "camera": [
+            1320,
+            1904
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "admitted": false,
+          "endpoint": "0x30000000",
+          "projected": [
+            300,
+            661
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        }
+      }
+    ],
+    "sequence": [
+      {
+        "clip_input": {
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "camera_world_y": 2365,
+          "draw_y": 200,
+          "raster_height": 89,
+          "raster_y": 67,
+          "sinking": 1,
+          "view_width": 640
+        },
+        "entry": {
+          "admitted": true,
+          "body_anchor": [
+            840,
+            200
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            840,
+            200
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        },
+        "input": {
+          "camera": [
+            780,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            208
+          ]
+        },
+        "output": {
+          "calls": [],
+          "clip": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "waterline_after": 2593,
+          "waterline_before": 0,
+          "writes": [
+            {
+              "offset": "0x3ca",
+              "pc": "0x73bf74",
+              "size": 2,
+              "value": 2593
+            }
+          ]
+        }
+      },
+      {
+        "clip_input": {
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "camera_world_y": 2365,
+          "draw_y": 229,
+          "raster_height": 89,
+          "raster_y": 67,
+          "sinking": 1,
+          "view_width": 640
+        },
+        "entry": {
+          "admitted": true,
+          "body_anchor": [
+            840,
+            229
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            840,
+            229
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        },
+        "input": {
+          "camera": [
+            780,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            8
+          ]
+        },
+        "output": {
+          "calls": [
+            {
+              "caller": [
+                0,
+                0,
+                640,
+                480
+              ],
+              "candidate": [
+                0,
+                0,
+                640,
+                228
+              ],
+              "pc": "0x421b60"
+            }
+          ],
+          "clip": [
+            0,
+            0,
+            640,
+            228
+          ],
+          "waterline_after": 2593,
+          "waterline_before": 2593,
+          "writes": []
+        }
+      },
+      {
+        "clip_input": {
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "camera_world_y": 2365,
+          "draw_y": 229,
+          "raster_height": 89,
+          "raster_y": 67,
+          "sinking": 1,
+          "view_width": 640
+        },
+        "entry": {
+          "admitted": true,
+          "body_anchor": [
+            300,
+            229
+          ],
+          "caller_rect": [
+            0,
+            0,
+            640,
+            480
+          ],
+          "endpoint": "0x73cec0",
+          "projected": [
+            300,
+            229
+          ],
+          "retained_viewport": [
+            0,
+            0,
+            640,
+            480
+          ]
+        },
+        "input": {
+          "camera": [
+            1320,
+            2365
+          ],
+          "viewport": [
+            640,
+            480
+          ],
+          "xyz": [
+            29056,
+            15232,
+            8
+          ]
+        },
+        "output": {
+          "calls": [
+            {
+              "caller": [
+                0,
+                0,
+                640,
+                480
+              ],
+              "candidate": [
+                0,
+                0,
+                640,
+                228
+              ],
+              "pc": "0x421b60"
+            }
+          ],
+          "clip": [
+            0,
+            0,
+            640,
+            228
+          ],
+          "waterline_after": 2593,
+          "waterline_before": 2593,
+          "writes": []
+        }
+      }
+    ]
+  },
   "cases": [
     {
       "input": {
@@ -1492,5 +2319,5 @@
       }
     }
   ],
-  "schema": 1
+  "schema": 2
 }

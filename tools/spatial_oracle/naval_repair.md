@@ -74,7 +74,7 @@ These compositions do not claim native whole-scenario loading or frame timing.
 | `naval_lifetime_cleanup` | Four marked-world cases through Mark(UP), retained head/track and Logic/Display membership; terminal UnInit, Limbo, list removal and deferred self deletion | Sparse marked actor; full spawn and final destructor drain are excluded |
 | `naval_lifetime_audio` | Constructor defaults, layered sound readers and nine Foot sound-edge cases, voice before attached sound/fallback | Seven reachable Boolean cases and two raw-byte controls; playback observed at call boundary, not audible capture |
 | `naval_lifetime_controls` | Two selection controls, repeated direct fatal damage, two raw-load sound-reset controls | Original selection remains allowed; full scenario loading is excluded |
-| `naval_sinking_clip` | Constructor; 28 entries including repeated sequences; signed waterline capture/clip; shadow and entire DrawExtras gates | Interior raster rectangles supplied; original intersection executes |
+| `naval_sinking_clip` | Constructor; 28 clip entries including repeated sequences; 15 original Unit/Object projection-admission boundaries; three admitted AEGIS draw visits; signed waterline capture/clip; shadow and entire DrawExtras gates | Native viewport writer prefix executes; physical raster is composed from its separate packet; full Display iteration excluded |
 | `naval_draw_bounds` | Physical AEGIS rules/ART reader, original Ship matrix and complete voxel raster at four cardinal facings, composed with waterline | Flat, no Rocking, one part, frame0; no whole-frame RGB claim |
 | [naval_house_stats](naval_house_stats.md) | Full original House Save/Load: sinking loss1 survives, then RecordKill makes2; mixed kill/loss/score/built counters round-trip | Bounded services; existing Rust aggregate score representation is not newly certified |
 
@@ -100,6 +100,20 @@ new-world entry clears it; successful app load replaces it and failed load keeps
 the old presentation. The shader preserves geometry, UVs, palette conversion and
 depth while discarding below the world row. Sinking suppresses shadows and
 DrawExtras, and the radar tracker consumes the authoritative sinking state.
+
+The single critic found that the former 120px viewport cull delayed the first
+waterline capture. Original Unit73B0B0→Object5F4B10→CoordsToClient2 6D2140 admits
+X[-360,width+360], Y[-180,height+180], including the endpoints. Its dimensions
+come from the tactical rectangle: Set_View_Dimensions4A89B8 and Scenario687620
+pass886FA0 into the writer6D5F60. Unit and Bullet drawing now share this admission
+owner and use the tactical dimensions. Aircraft retain their existing admission.
+The original AEGIS sequence first admits client(840,200) in a640×480 view and
+captures world row2593. At supplied later Z8, then after panning X, the native
+cache still clips at client row228. Delayed capture would instead retain2622.
+Both Rust regressions failed before the fix; they compare all15 boundary cases
+and the production projection/parent-bound/cache adapters, shader inputs and
+neutral snapshot round-trips. These tests do not construct an AppState window;
+the visible application and GPU comparisons provide separate output evidence.
 
 ### RNG, timers, detach and loading
 
