@@ -713,12 +713,12 @@ fn prism_bonus_damage_matches_the_original() {
     let mut interner = crate::sim::intern::StringInterner::new();
     for row in damage {
         let input = &row["input"];
-        let payload = ProjectilePayload {
-            base_damage: input["damage"].as_i64().unwrap() as i32,
-            warhead: interner.intern("PRISM"),
-            weapon: interner.intern("PRISMSHOT"),
-            damage_multiplier: input["multiplier"].as_i64().unwrap() as i32,
-        };
+        let payload = ProjectilePayload::new(
+            input["damage"].as_i64().unwrap() as i32,
+            interner.intern("PRISM"),
+            interner.intern("PRISMSHOT"),
+        )
+        .with_damage_multiplier(input["multiplier"].as_i64().unwrap() as i32);
         assert_eq!(
             i64::from(payload.area_damage()),
             row["damage"].as_i64().unwrap(),

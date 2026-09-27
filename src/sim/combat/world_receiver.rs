@@ -3858,12 +3858,12 @@ pub(super) fn emit_admitted_fire(
                 }
                 _ => ProjectilePayload::UNSCALED,
             };
-            let payload = ProjectilePayload {
+            let payload = ProjectilePayload::new(
                 base_damage,
-                warhead: world.interner.intern(&warhead.id),
-                weapon: world.interner.intern(selected.weapon_id),
-                damage_multiplier,
-            };
+                world.interner.intern(&warhead.id),
+                world.interner.intern(selected.weapon_id),
+            )
+            .with_damage_multiplier(damage_multiplier);
             let arm_frames = projectile_arm_delay(arm_frames, target, &world.substrate.entities);
             let spawn = ProjectileSpawn {
                 native_unique_id,

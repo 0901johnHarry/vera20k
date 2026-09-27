@@ -4091,12 +4091,11 @@ pub(super) fn gsi_05_02_projectile(source_id: u64, fuse_frames: Option<u16>) -> 
         origin: ProjectileCoord::new(0, 0, 0),
         target: ProjectileTarget::Cell { rx: 16, ry: 0 },
         initial_target_position: ProjectileCoord::new(4096, 0, 0),
-        payload: ProjectilePayload {
-            base_damage: 1,
-            warhead: crate::sim::intern::InternedId::from_index(0),
-            weapon: crate::sim::intern::InternedId::from_index(0),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        },
+        payload: ProjectilePayload::new(
+            1,
+            crate::sim::intern::InternedId::from_index(0),
+            crate::sim::intern::InternedId::from_index(0),
+        ),
         speed_leptons_per_frame: 64,
         velocity: ProjectileVelocity::new(64, 0, 0),
         trajectory: ProjectileTrajectory::Straight,
@@ -4141,12 +4140,11 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
         spawn.origin = impact;
         spawn.target = ProjectileTarget::Cell { rx: 5, ry: 5 };
         spawn.initial_target_position = impact;
-        spawn.payload = ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        };
+        spawn.payload = ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        );
         sim.admit_projectile(projectile_id, spawn);
 
         assert!(sim.object_ai_visit_one(
@@ -4332,12 +4330,11 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         } else {
             None
         };
-        shot.payload = ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        };
+        shot.payload = ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        );
         let id = sim.allocate_stable_id();
         sim.admit_projectile(id, shot);
         if with_source {
@@ -5131,12 +5128,11 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
         source_id,
         target: ProjectileTarget::Cell { rx: 6, ry: 7 },
         impact: ProjectileCoord::new(6 * 256 + 128, 7 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 0,
-            warhead: sim.interner.intern("WH"),
-            weapon: sim.interner.intern("PARENT"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        },
+        payload: ProjectilePayload::new(
+            0,
+            sim.interner.intern("WH"),
+            sim.interner.intern("PARENT"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
 
@@ -5209,12 +5205,11 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
         target: ProjectileTarget::Entity(victim_id),
         impact: ProjectileCoord::new(5 * 256 + 128, 6 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: sim.interner.intern("KILLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        },
+        payload: ProjectilePayload::new(
+            10,
+            sim.interner.intern("KILLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let logic_order = sim.live_object_order_snapshot();
@@ -5333,12 +5328,11 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
         target: ProjectileTarget::Entity(building_id),
         impact: ProjectileCoord::new(8 * 256 + 128, 8 * 256 + 128, 0),
-        payload: ProjectilePayload {
-            base_damage: 10,
-            warhead: sim.interner.intern("KILLWH"),
-            weapon: sim.interner.intern("MISSINGWEAPON"),
-            damage_multiplier: ProjectilePayload::UNSCALED,
-        },
+        payload: ProjectilePayload::new(
+            10,
+            sim.interner.intern("KILLWH"),
+            sim.interner.intern("MISSINGWEAPON"),
+        ),
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
     let logic_order = sim.live_object_order_snapshot();
@@ -5942,12 +5936,11 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
     spawn.origin = impact;
     spawn.target = ProjectileTarget::Entity(victim_id);
     spawn.initial_target_position = impact;
-    spawn.payload = ProjectilePayload {
-        base_damage: 10,
-        warhead: sim.interner.intern("KILLWH"),
-        weapon: sim.interner.intern("MISSINGWEAPON"),
-        damage_multiplier: ProjectilePayload::UNSCALED,
-    };
+    spawn.payload = ProjectilePayload::new(
+        10,
+        sim.interner.intern("KILLWH"),
+        sim.interner.intern("MISSINGWEAPON"),
+    );
     sim.admit_projectile(projectile_id, spawn);
     sim.set_logic_order_for_test(vec![projectile_id, victim_id, successor_id]);
     sim.lifecycle_test_events.clear();
