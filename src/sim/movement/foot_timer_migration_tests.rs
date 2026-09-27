@@ -9,7 +9,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{
-    DriveCoord, DriveLocomotionRuntime, FootPathQueue, FootPathRuntime, Health, MovementTarget,
+    DriveCoord, DriveLocomotionRuntime, FootPathQueue, Health, MovementTarget,
     ShipLocomotionRuntime,
 };
 use crate::sim::game_entity::GameEntity;
@@ -108,12 +108,11 @@ fn accepted_direct_and_regular_orders_keep_signed_rules_delays_and_retry_word() 
                 for command in 0..3 {
                     let mut sim = fixture(kind);
                     let entity = sim.substrate.entities.get_mut(1).unwrap();
-                    entity.navigation.path_runtime = FootPathRuntime {
-                        movement_timer: CdTimer::from_raw(17, -9),
-                        blocked_timer: CdTimer::from_raw(19, 42),
-                        path_blocked: true,
-                        retries_left: u32::MAX,
-                    };
+                    let path_runtime = &mut entity.navigation.path_runtime;
+                    path_runtime.movement_timer = CdTimer::from_raw(17, -9);
+                    path_runtime.blocked_timer = CdTimer::from_raw(19, 42);
+                    path_runtime.path_blocked = true;
+                    path_runtime.retries_left = u32::MAX;
                     let timing = DestinationTiming::from_rules(frame, Some(&rules));
                     match command {
                         0 => timing.accept(sim.substrate.entities.get_mut(1).unwrap()),
@@ -217,12 +216,11 @@ fn ordinary_drive_and_ship_process_do_not_age_native_waiting_timer_fields() {
                 json_i32(&call["after"]["blocked_timer"][2]),
             );
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.navigation.path_runtime = FootPathRuntime {
-                movement_timer: expected_movement,
-                blocked_timer: expected_blocked,
-                path_blocked: true,
-                retries_left: 0x8000_0001,
-            };
+            let path_runtime = &mut entity.navigation.path_runtime;
+            path_runtime.movement_timer = expected_movement;
+            path_runtime.blocked_timer = expected_blocked;
+            path_runtime.path_blocked = true;
+            path_runtime.retries_left = 0x8000_0001;
             assert!(!expected_movement.expired(frame), "native wait branch");
             sim.session.binary_frame = frame as u32;
             sim.session.tick = u64::from(frame as u32);

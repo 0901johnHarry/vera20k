@@ -53,9 +53,10 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use damaged_variant::extend_unique_cells;
 
 /// Sentinel `overlay_byte` value meaning "no bridge overlay" (the original
-/// engine's -1 / 0xFF). A cell carrying this byte renders empty and is treated
-/// as non-walkable by `effective_render_state` / `is_bridge_walkable`. Also
-/// written by the orchestrator's `update_adjacent_bridges` stub-reset path.
+/// engine's -1 / 0xFF). A cell carrying this byte has no own overlay sprite.
+/// It may still be a structural deck cell stamped by a neighboring anchor;
+/// native structural consumers read live BridgeCellFacts bit0x100 instead.
+/// Also written by the orchestrator's `update_adjacent_bridges` stub reset.
 const OVERLAY_BYTE_NONE: u8 = 0xFF;
 
 /// High-bridge theater slots used by the map-load bridge-record walk.
@@ -1011,6 +1012,10 @@ impl BridgeRuntimeState {
         self.endpoint_records = records;
     }
 
+    /// Visible overlay state, also retained by legacy overlay controllers.
+    /// This is not a structural-presence query: native constructor5FC380
+    /// leaves nonanchor structural cells at overlay-1 (constructor corpus
+    /// cases8..11), and the anchor supplies their bridge sprite.
     pub fn effective_render_state(cell: &BridgeRuntimeCell) -> Option<DamageState> {
         let state_from_overlay = match cell.overlay_byte {
             0x4A..=0x4D => Some(DamageState::Healthy {
@@ -1040,6 +1045,10 @@ impl BridgeRuntimeState {
         }
     }
 
+    /// Legacy overlay/runtime walkability only. Native Cell+140 bit0x100
+    /// readers must use live `BridgeCellFacts::has_structural_bridge` instead:
+    /// this owner has no flag authority, and absent side-cell overlays do not
+    /// remove a stamped deck. PathGrid limits this fallback to legacy cells.
     pub fn is_bridge_walkable(&self, rx: u16, ry: u16) -> bool {
         self.cell(rx, ry)
             .is_some_and(|cell| cell.deck_present && Self::effective_render_state(cell).is_some())

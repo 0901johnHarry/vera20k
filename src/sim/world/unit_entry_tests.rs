@@ -91,7 +91,8 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
         if input.get("wall").is_some() {
             extra.push_str(&format!("[O0]\nWall=yes\nCrushable={}\n", flag("wall")));
         }
-        let (mut sim, rules, registry) = super::super::super::tests::fixture_with_rules(&extra);
+        let (mut sim, rules, registry) =
+            crate::sim::world::entry_test_fixture::fixture_with_rules(&extra);
         let coord = |value: &serde_json::Value| {
             (
                 value[0].as_u64().unwrap() as u16,
@@ -443,16 +444,22 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     .native_cell_identity((x as i16, y as i16))
             }),
         };
-        let mut live = LivePublication {
-            sim: &mut sim,
+        let live = EntryReadContext {
+            sim: &sim,
             rules: &rules,
             registry: Some(&registry),
-            collapsed: false,
         };
         let expected = row["result"].as_u64().unwrap() as u8;
-        let actual = foot_entry(&mut live, CellObjectMember::Entity(90), cell, args);
-        let repair =
-            repair_projection.then(|| impassable(&mut live, CellObjectMember::Entity(90), cell));
+        let actual = classify_entry(&live, CellObjectMember::Entity(90), cell, args);
+        let repair = repair_projection.then(|| {
+            classify_entry(
+                &live,
+                CellObjectMember::Entity(90),
+                cell,
+                crate::sim::movement::infantry_entry::InfantryEntryArgs::REPAIR,
+            )
+            .map(|code| code == 7)
+        });
         if actual != Ok(expected) || repair.is_some_and(|answer| answer != Ok(expected == 7)) {
             mismatches.push(format!("{input}: expected {expected}, actual {actual:?}"));
         }

@@ -173,6 +173,10 @@ pub(super) enum HashFeature {
     /// base-defence state. Earlier schemas fold the empty copies in their
     /// place; no pinned fixture sets a rally point.
     RetiredRallyCopies = 220,
+    /// Foot+68A is a retained byte, even though its sound guard only tests
+    /// nonzero. A tagged suffix for nonzero values preserves the former
+    /// zero-byte streams; earlier projections omit this byte entirely.
+    FootScoldLatch = 224,
 }
 
 impl HashSchema {
@@ -214,6 +218,7 @@ impl HashSchema {
                     | HashFeature::BuildingRepair
                     | HashFeature::NativeRuntimeIdentity
                     | HashFeature::RetiredRallyCopies
+                    | HashFeature::FootScoldLatch
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

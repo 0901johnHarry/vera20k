@@ -23,7 +23,7 @@ fn native_boundary(stage: FreshStage, dispatch: FreshDispatch) -> &'static str {
             FreshStage::Second => "before_two_node_shift",
         },
         FreshDispatch::OwnerNotAlive => "owner_not_alive",
-        FreshDispatch::Redraw { .. } => "redraw_response",
+        FreshDispatch::UncloakContacts { .. } => "redraw_response",
         FreshDispatch::BlockedDelay => "code2_blocked_delay_response",
         FreshDispatch::Gate { .. } => "gate_response",
         FreshDispatch::WallOrObject { .. } => "wall_override_response",
@@ -188,7 +188,7 @@ fn retry_flags_preserve_stage_and_required_preceding_effects() {
         for stage in [FreshStage::First, FreshStage::Second] {
             assert_eq!(
                 dispatch_entry(stage, 1, allow_retry, true),
-                Some(FreshDispatch::Redraw { retry })
+                Some(FreshDispatch::UncloakContacts { retry })
             );
         }
         assert_eq!(

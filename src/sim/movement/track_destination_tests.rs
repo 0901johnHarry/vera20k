@@ -1,7 +1,7 @@
 //! Original MoveTo/Foot and ordinary Unit destination comparisons. The complete
 //! Unit setter (radio, force-reassign and skip-MoveTo) remains a required port.
 use super::*;
-use crate::sim::components::{FootPathQueue, FootPathRuntime};
+use crate::sim::components::FootPathQueue;
 use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 use crate::sim::timer::CdTimer;
@@ -88,12 +88,11 @@ fn actor(input: &Value) -> GameEntity {
         reference_cell: Some((9, 8)),
         ..Default::default()
     };
-    e.navigation.path_runtime = FootPathRuntime {
-        movement_timer: CdTimer::started(50, 5),
-        blocked_timer: CdTimer::started(40, 6),
-        path_blocked: true,
-        retries_left: 7,
-    };
+    let path_runtime = &mut e.navigation.path_runtime;
+    path_runtime.movement_timer = CdTimer::started(50, 5);
+    path_runtime.blocked_timer = CdTimer::started(40, 6);
+    path_runtime.path_blocked = true;
+    path_runtime.retries_left = 7;
     if input["warp_out"] == true || input["warp_in"] == true {
         e.teleport_state = Some(TeleportState {
             phase: if input["warp_out"] == true {

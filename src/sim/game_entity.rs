@@ -1014,9 +1014,8 @@ pub struct GameEntity {
     pub display_type_override: Option<InternedId>,
     /// Target building for an engineer-arrival intent. Set by
     /// `CaptureBuilding`, cleared on arrival or if the target is lost.
-    /// Overloaded: when the target's type has `BridgeRepairHut=yes`,
-    /// `tick_bridge_repair_orders` consumes the engineer for bridge repair
-    /// instead of capture (the original game never captures CABHUTs).
+    /// BridgeRepairHut entry instead reads authoritative NavCom/attack Target
+    /// in Infantry PerCell2; this intent cannot drive a second hut movement path.
     pub capture_target: Option<u64>,
     /// Active C4 plant intent on this attacker. Set by `Command::PlantC4`,
     /// cleared on arrival (after the building's pending detonation is set),

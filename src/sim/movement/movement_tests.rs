@@ -466,12 +466,11 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
             None,
             DestinationTiming::new(100, 60),
         ));
-        let retained = FootPathRuntime {
-            movement_timer: timer,
-            blocked_timer: CdTimer::started(100, 60),
-            path_blocked: true,
-            retries_left: u32::MAX,
-        };
+        let mut retained = FootPathRuntime::at_frame(0);
+        retained.movement_timer = timer;
+        retained.blocked_timer = CdTimer::started(100, 60);
+        retained.path_blocked = true;
+        retained.retries_left = u32::MAX;
         let actor = sim.substrate.entities.get_mut(1).unwrap();
         actor.navigation.path_runtime = retained;
         let position = actor.position.clone();

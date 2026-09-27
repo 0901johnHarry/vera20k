@@ -14,6 +14,7 @@
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
 use crate::rules::ini_parser::IniSection;
+use crate::rules::locomotor_type::SpeedType;
 use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 
 /// 0x20 = ASCII space; gamemd `strtrim` strips bytes <= 0x20 (space + all ASCII
@@ -92,6 +93,21 @@ impl IniSection {
         }
         let raw = self.get(key).unwrap_or(default);
         strtrim_ascii(truncate_bytes(raw, capacity - 1)).to_string()
+    }
+
+    /// TechnoType7121D1..7121EB -> ReadSpeedType476FC0: exact key,
+    /// 128-byte ReadString, empty retains the current field, other unknown
+    /// names store -1 without clamping. Each rules pass supplies its prior
+    /// field as default. Executed controls: rules_oracle/infantry_speed_type.
+    pub fn read_speed_type(&self, key: &str, default: SpeedType) -> SpeedType {
+        self.fold_rules_values(key, default, |current, raw| {
+            let value = strtrim_ascii(truncate_bytes(raw, 127));
+            if value.is_empty() {
+                current
+            } else {
+                SpeedType::from_ini(value)
+            }
+        })
     }
 
     /// ReadCoord529CA0 (`CCINIClass` coordinate read `0x00529CA0`, the art FLH

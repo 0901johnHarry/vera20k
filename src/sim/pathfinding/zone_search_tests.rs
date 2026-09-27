@@ -3,7 +3,9 @@
 use super::super::zone_hierarchy::{ZoneEdgeRecord, ZoneHierarchy, ZoneLevelGraph, ZoneRecord};
 use super::super::zone_map::{ZONE_INVALID, ZoneGrid, ZoneId};
 use super::*;
-use crate::map::bridge_facts::{BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL};
+use crate::map::bridge_facts::{
+    BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
+};
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
 use crate::rules::ini_parser::IniFile;
@@ -806,7 +808,12 @@ fn caller_count_bridge_detour(
         path.set_cell_for_test(x, 2, 0, true, true);
         let cell = terrain.cell_mut(x, 2).unwrap();
         cell.level = 0;
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        // Keep the native Cell flags consistent with PathCell.transition.
+        // Foot4D9C60 requires raw200 for both the height4 -> deck entry and
+        // subsequent deck candidates. Original unit_entry_traversal rows
+        // 58/59 pin clear0 with raw300 versus refusal7 with raw100 alone.
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -1163,6 +1170,51 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         .expect("Capture target admission uses the live Building NavCom"),
         crate::sim::movement::infantry_entry::InfantryEntryClass::Clear
     );
+
+    let destination = sim
+        .substrate
+        .entities
+        .get(engineer_id)
+        .unwrap()
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .walk_destination()
+        .unwrap();
+    assert!(
+        sim.foot_path_zone_precheck(engineer_id, destination, &rules)
+            .expect("native source and destination row query"),
+        "the live Foot precheck admits the supplied map/zone inputs"
+    );
+    // REPAIR above deliberately bypasses height/direction checks. Exercise
+    // AStar's explicit previous-Cell inputs as well: the marked bridge detour
+    // must be physically traversable through the same live +1AC owner.
+    for (previous, candidate, direction) in [
+        ((1, 0), (1, 1), 4),
+        ((1, 2), (2, 2), 2),
+        ((2, 2), (3, 2), 2),
+        ((3, 2), (4, 2), 2),
+        ((4, 2), (5, 2), 2),
+        ((5, 1), (5, 0), 0),
+    ] {
+        let terrain = sim.resolved_terrain.as_ref().unwrap();
+        assert_eq!(
+            sim.foot_can_enter(
+                engineer_id,
+                terrain.native_cell_identity(candidate),
+                crate::sim::movement::infantry_entry::InfantryEntryArgs {
+                    direction,
+                    height: 4,
+                    previous_cell: Some(terrain.native_cell_identity(previous)),
+                },
+                &rules,
+                None,
+            )
+            .expect("live Capture corridor admission"),
+            0,
+            "physical corridor {previous:?} -> {candidate:?}"
+        );
+    }
 
     // Execute the real no-head Process with live blockers and canonical grids.
     sim.process_ground_locomotor_for_test(engineer_id, Some(&rules), None, None)
