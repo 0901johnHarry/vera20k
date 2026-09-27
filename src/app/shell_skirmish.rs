@@ -100,13 +100,6 @@ impl App {
             map_idx,
         );
         state.frontend.random_map_retention.select_map(&file_name);
-        if let Some(legacy_idx) = state
-            .frontend.available_maps
-            .iter()
-            .position(|map| map.file_name.eq_ignore_ascii_case(&file_name))
-        {
-            state.frontend.skirmish_settings.selected_map_idx = legacy_idx;
-        }
         state.frontend.skirmish_preview_texture = None;
         true
     }
@@ -157,21 +150,6 @@ impl App {
         {
             log::warn!("Could not bind Cooperative Choose Map progress: {err}");
         }
-    }
-
-    fn sync_legacy_skirmish_settings_from_shell(state: &mut AppState) {
-        let selected_file = Self::selected_shell_map_file(state);
-        let mut settings = crate::ui::skirmish_shell::launch_settings(&state.frontend.skirmish_shell_state);
-        settings.selected_map_idx = selected_file
-            .as_deref()
-            .and_then(|file_name| {
-                state
-                    .frontend.available_maps
-                    .iter()
-                    .position(|map| map.file_name.eq_ignore_ascii_case(file_name))
-            })
-            .unwrap_or(0);
-        state.frontend.skirmish_settings = settings;
     }
 
     /// Skirmish Back (`0x5C0`): the proc packs the session like Start does
@@ -279,20 +257,13 @@ impl App {
                     accepted,
                     &mut clock,
                 );
-                crate::app::loading::pump::LoadingRequest::accepted_skirmish(
-                    startup,
-                    state.frontend.skirmish_settings.clone(),
-                )
+                crate::app::loading::pump::LoadingRequest::accepted_skirmish(startup)
             }
             crate::match_bootstrap::StartupSessionClassification::UnverifiedLegacy(reason) => {
                 log::warn!("Skirmish startup uses unverified compatibility path: {reason:?}");
                 let mut clock = crate::match_bootstrap::OrdinaryMatchSeedClock;
                 let seed = crate::match_bootstrap::read_match_seed(&mut clock);
-                crate::app::loading::pump::LoadingRequest::unverified_legacy_skirmish(
-                    session,
-                    seed,
-                    state.frontend.skirmish_settings.clone(),
-                )
+                crate::app::loading::pump::LoadingRequest::unverified_legacy_skirmish(session, seed)
             }
         }
         .with_accepted_random_map(accepted_random_map);
@@ -389,7 +360,6 @@ impl App {
                         // 0x006ACEE0 packs the session and writes
                         // result 0x617; the runner (0x006AE2C0) then
                         // slides the dialog out before the launch.
-                        Self::sync_legacy_skirmish_settings_from_shell(state);
                         Self::leave_shell_dialog(
                             state,
                             crate::app::frontend::shell_transition::ShellExitThen::SkirmishStart(

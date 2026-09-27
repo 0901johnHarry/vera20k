@@ -1,4 +1,4 @@
-//! Launch settings and session conversion for the skirmish shell.
+//! Launch session conversion for the skirmish shell.
 
 use crate::map::scenario_menu::MapMenuEntry;
 use crate::skirmish_launch::{
@@ -7,7 +7,7 @@ use crate::skirmish_launch::{
     SkirmishAiSlot, SkirmishLaunchMode, SkirmishLaunchSession, SkirmishLocalSlot,
 };
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::{SkirmishCountry, SkirmishSettings, StartPosition};
+use crate::ui::main_menu::{SkirmishCountry, StartPosition};
 
 use super::SkirmishShellState;
 
@@ -50,25 +50,6 @@ fn launch_color_index(slot: usize, color_index: usize) -> Result<u8, LaunchValid
         Ok(color_index as u8)
     } else {
         Err(LaunchValidationError::InvalidColorIndex { slot, color_index })
-    }
-}
-
-pub fn launch_settings(state: &SkirmishShellState) -> SkirmishSettings {
-    let ai_country = state
-        .opponents
-        .iter()
-        .find(|opponent| opponent.is_active())
-        .map(|opponent| opponent.country)
-        .unwrap_or(SkirmishCountry::Russia);
-
-    SkirmishSettings {
-        selected_map_idx: state.selected_map_idx,
-        player_country: state.player_country,
-        ai_country,
-        starting_credits: state.credits(),
-        start_position: state.player_start_position,
-        short_game: state.short_game,
-        zoom_enabled: state.zoom_enabled,
     }
 }
 
