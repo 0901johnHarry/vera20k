@@ -10,9 +10,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::util::lepton::ground_height_leptons;
 
-use super::super::combat_weapon::{
-    VersesGate, is_armed, primary_for_tier, target_is_high_flying, verses_gate,
-};
+use super::super::combat_weapon::{VersesGate, is_armed, primary_for_tier, verses_gate};
 use super::super::{TargetKind, armor_index, object_world_z_leptons};
 use super::{BaseDefenseResponseContext, ExistingTargetDisposition, ResponderPeekFireError};
 
@@ -251,6 +249,8 @@ pub(crate) fn responder_peek_fire_error(
     candidate_object: &ObjectType,
     target_object: &ObjectType,
     rules: &RuleSet,
+    terrain: Option<&ResolvedTerrainGrid>,
+    interner: &StringInterner,
 ) -> ResponderPeekFireError {
     if candidate.slave.owner().is_some()
         || target.lifecycle.in_limbo
@@ -282,8 +282,11 @@ pub(crate) fn responder_peek_fire_error(
         .and_then(|id| rules.projectile(id));
     // `0x006FC705..0x006FC739`: altitude, not category — a landed Rocketeer is
     // an ordinary ground target and needs no AA projectile.
-    let projectile_legal =
-        !target_is_high_flying(target) || projectile.is_some_and(|projectile| projectile.aa);
+    let projectile_legal = !crate::sim::movement::air_movement::is_high_flying(
+        target,
+        terrain,
+        Some((rules, interner)),
+    ) || projectile.is_some_and(|projectile| projectile.aa);
     if !projectile_legal
         || verses_gate(
             warhead
@@ -353,6 +356,8 @@ pub(super) fn candidate_admitted(
                 )
                 .expect("entry retained attacker type"),
             context.rules,
+            context.terrain,
+            context.interner,
         ) == ResponderPeekFireError::Illegal
     {
         return false;

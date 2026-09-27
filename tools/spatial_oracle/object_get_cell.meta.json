@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original ObjectGetCell5F6960 and both physical-coordinate Map lookups.\n\nSupplied object XYZ/marked byte, sparse cells and retained shared-dummy land/flags.\nNo virtual receiver, lifecycle or full FireError claim. Both native bodies execute.\n",
+  "assumptions": [
+    "Ten controls: real/negativefraction/wrappedalias/missing/signedextreme with marked0/1. ObjectGetCell ignores marked and reads physicalXYZ twice.",
+    "Supplied sparse fixed512stride cells and retained dummyLand2/rawflags500. Neither map nor object lifecycle initialized. Read-only hooks; only allowed nonstackwrite is dummy coordinate."
+  ],
+  "substitutions": [],
+  "entry_points": {
+    "object_get_cell": "0x005F6960",
+    "map_get_cell": "0x00565730"
+  },
+  "payload_sha256": "6ae93640d7d6dd354630fcfa997d2bfb943d7268697f010b12c1476d9caddbe1"
+}

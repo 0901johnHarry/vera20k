@@ -496,3 +496,6 @@ fn a_natural_scanner_passes_over_an_unnatural_candidate() {
     assert_eq!(scan("TANK"), Some(2));
     assert_eq!(scan("HOUND"), None);
 }
+
+#[path = "fire_error_cell_tests.rs"]
+mod cell_queries;

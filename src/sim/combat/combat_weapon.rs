@@ -43,7 +43,6 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::mission::MissionType;
-use crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS;
 
 /// Which weapon slot the unit is using for this engagement.
 ///
@@ -180,6 +179,56 @@ pub(crate) struct AttackerFacts {
     pub capture: Option<crate::sim::capture_manager::CaptureControllerFacts>,
 }
 
+/// Flight virtuals are queried only where the selection ladder asks them.
+/// Gathering target facts must not eagerly move the canonical fallback cell.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TargetFlight<'a> {
+    Live {
+        entity: &'a GameEntity,
+        terrain: Option<&'a ResolvedTerrainGrid>,
+        rules: &'a RuleSet,
+        interner: &'a StringInterner,
+    },
+    #[cfg(test)]
+    Supplied { high: bool, low: bool },
+}
+
+impl TargetFlight<'_> {
+    fn high(self) -> bool {
+        match self {
+            Self::Live {
+                entity,
+                terrain,
+                rules,
+                interner,
+            } => crate::sim::movement::air_movement::is_high_flying(
+                entity,
+                terrain,
+                Some((rules, interner)),
+            ),
+            #[cfg(test)]
+            Self::Supplied { high, .. } => high,
+        }
+    }
+
+    fn low(self) -> bool {
+        match self {
+            Self::Live {
+                entity,
+                terrain,
+                rules,
+                interner,
+            } => crate::sim::movement::air_movement::is_low_flying(
+                entity,
+                terrain,
+                Some((rules, interner)),
+            ),
+            #[cfg(test)]
+            Self::Supplied { low, .. } => low,
+        }
+    }
+}
+
 /// Target-side facts read by the ladder and the GetFireError subset.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum TargetFacts<'a> {
@@ -203,7 +252,7 @@ pub(crate) enum TargetFacts<'a> {
         kind: TechnoKind,
         /// `ObjectClass::IsHighFlying @ 0x005F6B90` (vtable `+0x54`):
         /// marked on the map and `GetHeight() >= 2 * LeptonsPerLevel`.
-        is_high_flying: bool,
+        flight: TargetFlight<'a>,
         /// `FootClass+0x8C OnBridge`.
         on_bridge: bool,
         /// `LandType` of the target's occupied cell (`vt+0x1BC` → `+0xEC`).
@@ -282,7 +331,7 @@ impl TargetFacts<'_> {
 
     fn is_high_flying(&self) -> bool {
         match self {
-            TargetFacts::Techno { is_high_flying, .. } => *is_high_flying,
+            TargetFacts::Techno { flight, .. } => flight.high(),
             // `CellClass` vtable `+0x54` @ `0x00410530` returns 0.
             TargetFacts::Cell { .. } | TargetFacts::Terrain => false,
         }
@@ -870,7 +919,7 @@ fn techno_what_weapon_should_i_use(
     // Q @ 0x006F36DB.
     let Some(TargetFacts::Techno {
         obj: target_obj,
-        is_high_flying,
+        flight,
         on_bridge,
         cell_land_type,
         ..
@@ -891,7 +940,7 @@ fn techno_what_weapon_should_i_use(
     // and only GetFireError turns it into ILLEGAL.
     let mut on_water = *cell_land_type == LandType::Water.as_index()
         || *cell_land_type == LandType::Beach.as_index();
-    if *is_high_flying {
+    if flight.high() {
         on_water = false;
     }
     if !*on_bridge && on_water {
@@ -902,11 +951,11 @@ fn techno_what_weapon_should_i_use(
         return 0;
     }
     // U @ 0x006F37B9.
-    if !*is_high_flying && obj.land_targeting == 2 {
+    if !flight.high() && obj.land_targeting == 2 {
         return 1;
     }
     // V @ 0x006F37E7: unconditional AA-secondary against a high-flying target.
-    if secondary_aa && *is_high_flying {
+    if secondary_aa && flight.high() {
         return 1;
     }
     0
@@ -955,7 +1004,7 @@ fn targeting_fire_error_blocks(
         }
         TargetFacts::Techno {
             obj: target_obj,
-            is_high_flying,
+            flight,
             on_bridge,
             cell_land_type,
             parasite,
@@ -997,14 +1046,14 @@ fn targeting_fire_error_blocks(
             // where gamemd may answer ILLEGAL. Frequency: brief windows at the
             // start and end of every flight. Downstream: none — the verdict is
             // recomputed every tick.
-            if is_high_flying && !aa {
+            if flight.high() && !aa {
                 return true;
             }
             // 0x006FC76A..0x006FC7CA: the naval `-1` verdict, under the same
             // water/not-high-flying/not-on-bridge gate ladder step T used.
             let mut on_water = (cell_land_type == LandType::Water.as_index()
                 || cell_land_type == LandType::Beach.as_index())
-                && !is_high_flying;
+                && !flight.high();
             if !on_bridge {
                 if on_water && select_naval_targeting_weapon(obj, Some(target)) == -1 {
                     return true;
@@ -1014,15 +1063,7 @@ fn targeting_fire_error_blocks(
             }
             // 0x006FC7D0..0x006FC868: `target->IsLowFlying (vt+0x50)` and not
             // on water, fired at by a `LandTargeting=1` type.
-            //
-            // RESIDUAL (UNCHECKED) — `ObjectClass::IsLowFlying @ 0x005F6B60`
-            // is `marked-on-map (+0x74) && height < 2 * LeptonsPerLevel`, so
-            // an unmarked object is neither low- nor high-flying and native
-            // skips this gate; VERA reads `!is_high_flying`, which is true for
-            // an unmarked object. Trigger: only a target that is not marked on
-            // the map, i.e. in limbo inside a transport — never a fire target
-            // in ordinary play. Frequency: unreachable as written.
-            if !is_high_flying && !on_water && obj.land_targeting == 1 {
+            if flight.low() && !on_water && obj.land_targeting == 1 {
                 return true;
             }
             // 0x006FCB6A: `FLD Warhead.Verses[armor]`, `FCOMP 0.0` → 5.
@@ -1077,9 +1118,10 @@ fn resolve_index<'a>(
     .then_some(selected)
 }
 
-/// GetWeapon/warhead resolution without repeating GetFireError. Mission_Attack
+/// Native SelectWeapon/GetWeapon resolution without a GetFireError filter.
+/// Evaluate owns the subsequent full fire-error query; Mission_Attack
 /// 418432..418476 selects on each burst iteration after one admission only.
-pub(crate) fn select_weapon_for_emission<'a>(
+pub(crate) fn resolve_selected_weapon<'a>(
     rules: &'a RuleSet,
     obj: &'a ObjectType,
     attacker: &AttackerFacts,
@@ -1172,18 +1214,6 @@ pub(crate) fn is_ally_by_object(
         || alliances.is_some_and(|map| {
             is_allied_with(map, interner.resolve(asker), interner.resolve(other))
         })
-}
-
-/// `ObjectClass::IsHighFlying` for a represented entity: locomotor altitude
-/// at or above two levels. Category is irrelevant — a landed aircraft is a
-/// ground target and an airborne jumpjet infantry is an air target.
-pub(crate) fn target_is_high_flying(entity: &GameEntity) -> bool {
-    entity
-        .locomotor
-        .as_ref()
-        .map(|locomotor| locomotor.altitude.to_num::<i64>())
-        .unwrap_or(0)
-        >= HIGH_FLIGHT_THRESHOLD_LEPTONS
 }
 
 /// Arm G's pair (`0x006F33D9`) and the DeployFire infantry arm's
@@ -1296,10 +1326,12 @@ pub(crate) fn attacker_facts_from_snapshot(
 /// Target facts for a Techno target. `terrain == None` (headless fixtures)
 /// reads the occupied cell as clear land.
 pub(crate) fn techno_target_facts<'a>(
-    target: &GameEntity,
+    target: &'a GameEntity,
     target_obj: &'a ObjectType,
-    terrain: Option<&ResolvedTerrainGrid>,
+    terrain: Option<&'a ResolvedTerrainGrid>,
     is_ally: bool,
+    rules: &'a RuleSet,
+    interner: &'a StringInterner,
 ) -> TargetFacts<'a> {
     let cell = terrain.and_then(|grid| grid.cell(target.position.rx, target.position.ry));
     let cell_land_type = cell
@@ -1308,7 +1340,12 @@ pub(crate) fn techno_target_facts<'a>(
     TargetFacts::Techno {
         obj: target_obj,
         kind: TechnoKind::from_category(target.category),
-        is_high_flying: target_is_high_flying(target),
+        flight: TargetFlight::Live {
+            entity: target,
+            terrain,
+            rules,
+            interner,
+        },
         on_bridge: target.on_bridge,
         cell_land_type,
         submerged: target.cloak.as_ref().is_some_and(|cloak| cloak.state != 0),
@@ -1365,7 +1402,7 @@ pub(crate) fn select_weapon_against<'a>(
             let target_obj = rules.object(interner.resolve(target_entity.type_ref()))?;
             let is_ally =
                 is_ally_by_object(alliances, interner, attacker_owner, target_entity.owner());
-            techno_target_facts(target_entity, target_obj, terrain, is_ally)
+            techno_target_facts(target_entity, target_obj, terrain, is_ally, rules, interner)
         }
         TargetKind::Cell(rx, ry) => cell_target_facts(rx, ry, terrain),
     };
@@ -2089,7 +2126,10 @@ IsLocomotor=yes
         TargetFacts::Techno {
             obj,
             kind,
-            is_high_flying: false,
+            flight: TargetFlight::Supplied {
+                high: false,
+                low: true,
+            },
             on_bridge: false,
             cell_land_type: LandType::Clear.as_index(),
             submerged: false,
@@ -2105,7 +2145,7 @@ IsLocomotor=yes
             TargetFacts::Techno {
                 obj,
                 kind,
-                is_high_flying,
+                flight,
                 on_bridge,
                 submerged,
                 is_ally,
@@ -2114,7 +2154,7 @@ IsLocomotor=yes
             } => TargetFacts::Techno {
                 obj,
                 kind,
-                is_high_flying,
+                flight,
                 on_bridge,
                 cell_land_type: LandType::Water.as_index(),
                 submerged,
@@ -2144,7 +2184,10 @@ IsLocomotor=yes
             } => TargetFacts::Techno {
                 obj,
                 kind,
-                is_high_flying: true,
+                flight: TargetFlight::Supplied {
+                    high: true,
+                    low: false,
+                },
                 on_bridge,
                 cell_land_type,
                 submerged,
@@ -2162,7 +2205,7 @@ IsLocomotor=yes
             TargetFacts::Techno {
                 obj,
                 kind,
-                is_high_flying,
+                flight,
                 on_bridge,
                 cell_land_type,
                 submerged,
@@ -2171,7 +2214,7 @@ IsLocomotor=yes
             } => TargetFacts::Techno {
                 obj,
                 kind,
-                is_high_flying,
+                flight,
                 on_bridge,
                 cell_land_type,
                 submerged,
@@ -2321,7 +2364,10 @@ IsLocomotor=yes
         let submerged_sub = TargetFacts::Techno {
             obj: sub,
             kind: TechnoKind::Unit,
-            is_high_flying: false,
+            flight: TargetFlight::Supplied {
+                high: false,
+                low: true,
+            },
             on_bridge: false,
             cell_land_type: LandType::Water.as_index(),
             submerged: true,
@@ -3024,7 +3070,7 @@ IsLocomotor=yes
         let TargetFacts::Techno {
             obj,
             kind,
-            is_high_flying,
+            flight,
             cell_land_type,
             submerged,
             is_ally,
@@ -3037,7 +3083,7 @@ IsLocomotor=yes
         let bridged = TargetFacts::Techno {
             obj,
             kind,
-            is_high_flying,
+            flight,
             on_bridge: true,
             cell_land_type,
             submerged,
@@ -3068,7 +3114,10 @@ IsLocomotor=yes
         let submerged = TargetFacts::Techno {
             obj: sub,
             kind: TechnoKind::Unit,
-            is_high_flying: false,
+            flight: TargetFlight::Supplied {
+                high: false,
+                low: true,
+            },
             on_bridge: false,
             cell_land_type: LandType::Water.as_index(),
             submerged: true,
@@ -3100,7 +3149,10 @@ IsLocomotor=yes
         let beach = TargetFacts::Techno {
             obj,
             kind,
-            is_high_flying: false,
+            flight: TargetFlight::Supplied {
+                high: false,
+                low: true,
+            },
             on_bridge: false,
             cell_land_type: LandType::Beach.as_index(),
             submerged: false,
@@ -3471,21 +3523,24 @@ IsLocomotor=yes
     fn target_facts_high_flying_ignores_category_and_reads_cloak() {
         let rules = stock_rules();
         let rock_obj = rules.object("ROCK").unwrap();
+        let interner = crate::sim::intern::test_interner();
         let mut rock = GameEntity::test_default(3, "ROCK", "Soviet", 2, 2);
         rock.category = EntityCategory::Infantry;
         let TargetFacts::Techno {
-            is_high_flying,
+            flight,
             kind,
             submerged,
             ..
-        } = techno_target_facts(&rock, rock_obj, None, false)
+        } = techno_target_facts(&rock, rock_obj, None, false, &rules, &interner)
         else {
             unreachable!()
         };
-        assert!(!is_high_flying);
+        assert!(!flight.high());
         assert_eq!(kind, TechnoKind::Infantry);
         assert!(!submerged);
-        assert!(!target_is_high_flying(&rock));
+        assert!(!crate::sim::movement::air_movement::is_high_flying(
+            &rock, None, None
+        ));
     }
 
     #[test]
@@ -3670,7 +3725,10 @@ Verses=100%,100%,90%,75%,50%,50%,100%,50%,25%,100%,100%
             let target = TargetFacts::Techno {
                 obj: tank,
                 kind: TechnoKind::Unit,
-                is_high_flying: false,
+                flight: TargetFlight::Supplied {
+                    high: false,
+                    low: true,
+                },
                 on_bridge: false,
                 cell_land_type: LandType::Clear.as_index(),
                 submerged: false,
