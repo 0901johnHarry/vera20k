@@ -108,7 +108,7 @@
 //!   (`0x0043DA80`, Building vt+0x4E4) takes its main and turret HVA frames
 //!   from `+0x148` modulo their frame counts, and VERA's building voxel
 //!   presentation (`emit_building_turret_vxl`) does not read the count.
-//!   Presentation only; its own presentation chain.
+//!   Presentation only; its own presentation chain (#757).
 //! - Status 0's `Begin_Mode(1)` (`0x0044995D`): the idle body, presentation.
 //! - Dormant with retail data: the SAM arm (`0x0044AD07`, `SAM=` unset), the
 //!   upgrade arm (`0x0044B2BC`, no `PowersUpBuilding=`), Mission_Guard's
