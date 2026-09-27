@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-19
 **Status:** VERIFIED (live Ghidra session, gamemd.exe)
-**Trigger:** `tests/retail_goldens` `certify_vxl_structural` proved 8 retail VXLs
+**Trigger:** `src/asset_tools/retail_corpus` `certify_vxl_structural` proved 8 retail VXLs
 reference voxel `normal_index` 255 — 1,931 voxels, exclusively in limbs named
 `DUMMY01`/`DUMMY02`: cahead.vxl (952), caheaddm.vxl (556), dpod.vxl (36),
 icbm.vxl (64), bike.vxl (205), sreftur.vxl (28), cop.vxl (82), orcab.vxl (8).
@@ -102,7 +102,7 @@ correctness-by-construction rather than a visible in-match change.
   (both modes × three facings).
 - gamemd's staleness for 245–252 (mode 4) / 36–252 (mode 2) is NOT emulated —
   retail data never references those indices (retail_goldens corpus proof).
-- `tests/retail_goldens` ratchets are unaffected (parser output unchanged);
+- `src/asset_tools/retail_corpus` ratchets are unaffected (parser output unchanged);
   a pixel-golden of sreftur would be the certifying instrument once the
   pixel-oracle exists.
 

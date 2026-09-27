@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-19
 **Status:** VERIFIED (live Ghidra session, gamemd.exe) with one bounded open corner (§4)
-**Trigger:** `tests/retail_goldens` `certify_aud_chunk_walk` found 4 unique
+**Trigger:** `src/asset_tools/retail_corpus` `certify_aud_chunk_walk` found 4 unique
 retail .aud files whose FINAL chunk declares `output_size = 4*compressed + 2`
 — one 16-bit sample more than the IMA nibble stream can produce:
 `intro.aud` (ra2.mix→local.mix), `wipe.aud`, `efficien.aud`, `mouseon.aud`
@@ -73,7 +73,7 @@ RA2-era shell ever consumed.
 - `decode_aud` stays input-driven; no fix. The one-sample shortfall can only
   manifest if OUR engine chooses to play one of those four files — none of
   which the original plays.
-- `tests/retail_goldens/certify_audio.rs` already encodes the corpus shape
+- `src/asset_tools/retail_corpus/certify_audio.rs` already encodes the corpus shape
   (`output == 4*compressed`, final-chunk `+2` exception for exactly these
   files) and records them. Its comment calling the native trailing-sample
   semantics "unverified" can now be sharpened to "unreachable in gamemd".

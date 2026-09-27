@@ -1,10 +1,8 @@
 //! `asset parse-check` — run every parser over the whole retail corpus.
 //!
-//! This is `src/bin/audit-assets.rs` made callable and machine-readable. That
-//! binary hardcodes one install path and prints a table for a person; this verb
-//! takes the caller's already-mounted [`AssetManager`] and returns a
-//! [`ParseCheckReport`]. The sniff → parser dispatch is the same one, in the
-//! same order, so the two agree on what "covered" means.
+//! Owns parser dispatch for both the asset CLI and retail corpus regression
+//! checks. Takes the caller's mounted [`AssetManager`] and returns a
+//! [`ParseCheckReport`].
 //!
 //! ## `unsniffed` does not mean broken
 //!
@@ -24,8 +22,7 @@
 //!
 //! An `ok` means `from_bytes` returned `Ok` — the bytes were readable in the
 //! shape the parser expects. It is never a statement that the decoded values
-//! match what gamemd does with the same file. `audit-assets.rs` makes this
-//! point in its header for a human reader; it is repeated into `warnings` here
+//! match what gamemd does with the same file. This is repeated into `warnings`
 //! because a machine-readable "100% ok" invites exactly the wrong conclusion.
 //!
 //! ## Corpus reach
@@ -60,14 +57,13 @@ use crate::assets::vxl_file::VxlFile;
 pub const DEFAULT_FAILURE_CAP: usize = 8;
 
 /// Format tags a parser covers, in [`run_parser`]'s dispatch order — the same
-/// order `audit-assets` uses. Anything `identify` can name that is absent here
+/// order used by the corpus checks. Anything `identify` can name that is absent here
 /// is uncovered and lands in `unsniffed`.
 pub const COVERED_FORMATS: [&str; 10] = [
     "shp", "vxl", "hva", "tmp", "pal", "csf", "vpl", "fnt", "pcx", "aud",
 ];
 
-/// Longest parser error kept per failure. Matches the truncation
-/// `audit-assets` applies when printing, so the two show the same head.
+/// Longest parser error kept per sampled failure.
 const MAX_ERROR_CHARS: usize = 200;
 
 /// Emitted on every run. A caller that reads a clean report as parity evidence
@@ -104,9 +100,8 @@ impl Default for ParseCheckOptions {
 /// `None` means no parser covers the tag — the caller counts that as uncovered,
 /// never as a failure. `Some(Err)` is a real rejection by a real parser.
 ///
-/// The arms and their order mirror `src/bin/audit-assets.rs`; adding a parser
-/// means adding it here *and* to [`COVERED_FORMATS`], which the tests pin
-/// together.
+/// Adding a parser means adding it here and to [`COVERED_FORMATS`], which
+/// the tests pin together.
 pub fn run_parser(format: &str, data: &[u8]) -> Option<Result<(), String>> {
     let outcome = match format {
         "shp" => ShpFile::from_bytes(data)
@@ -262,7 +257,7 @@ pub fn run(
 
 /// Normalise a caller-supplied or sniffer-supplied tag to a covered one.
 ///
-/// Accepts `SHP`, `shp` and `.shp` — `audit-assets` prints its table rows with
+/// Accepts `SHP`, `shp` and `.shp` — callers may spell format tags with
 /// a leading dot, so that spelling reaches this verb by copy-paste.
 fn covered_tag(tag: &str) -> Option<&'static str> {
     let normalised = tag.trim().trim_start_matches('.').to_ascii_lowercase();

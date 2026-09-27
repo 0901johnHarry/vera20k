@@ -32,7 +32,8 @@ const AMBIENT_PAGE: u8 = 16;
 /// and there is no native entry 245. Retail VXL data DOES reference index
 /// 255 — but only inside limbs named DUMMY01/DUMMY02 (1,931 voxels across 8
 /// retail files, incl. the slave-miner refinery turret; verified by
-/// tests/retail_goldens certify_vxl_structural). Indices 245–254 never occur
+/// asset_tools::retail_corpus::certify_structural::certify_vxl_structural).
+/// Indices 245–254 never occur
 /// in retail data.
 ///
 /// The original engine shades index 255 deliberately: its lighting

@@ -90,7 +90,7 @@ src/assets/ima_adpcm.rs `decode_blocks` with these behavioral differences:
 | Last block shorter than the stride | decodes a full stride; the bytes past the tail are the previous block's, still in the input buffer | reproduces that buffer, except for a sound shorter than one stride (§2.1) | 2,049 of 2,197 AUDIOMD IMA entries |
 
 Proven by `certify_bag_adpcm_block_invariants`
-(tests/retail_goldens/certify_audio.rs): 3,325 IMA entries across
+(src/asset_tools/retail_corpus/certify_audio.rs): 3,325 IMA entries across
 AUDIOMD/AUDIO.MIX.
 
 ### 2.1 CORRECTION (2026-09-03) — the remainder rows were wrong twice

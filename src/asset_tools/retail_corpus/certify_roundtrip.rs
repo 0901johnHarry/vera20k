@@ -1,61 +1,73 @@
 //! `certify_*` byte-identity round-trips (PAL, HVA, VPL, MIX name resolution).
 //!
-//! These are the literal "byte-golden comparison against retail files": the
-//! parsed model is checked byte-for-byte (formula included) against the raw
-//! retail bytes.
+//! HVA/VPL fields are compared directly with retail bytes. PAL components
+//! are compared with checked native expansion outputs for those input bytes;
+//! renderer alpha policy is outside that native component comparison.
 
 use super::*;
 
-use vera20k::assets::hva_file::HvaFile;
-use vera20k::assets::pal_file::Palette;
-use vera20k::assets::vpl_file::VplFile;
+use crate::assets::hva_file::HvaFile;
+use crate::assets::pal_file::Palette;
+use crate::assets::vpl_file::VplFile;
 
-/// Independent restatements of the two production scale formulas
-/// (src/assets/pal_file.rs) pinned to the raw retail bytes.
-fn scale_vga(v: u8) -> u8 {
-    ((v as u16 * 255 + 31) / 63) as u8
-}
-fn scale_ui(v: u8) -> u8 {
-    v << 2
-}
-
-/// Shared skeleton (same shape as certify_structural::certify_format).
-fn certify_format(format: &str, mut check: impl FnMut(&CorpusEntry, &[u8]) -> Result<(), String>) {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
-    let mut failures: Vec<String> = Vec::new();
-    let mut total = 0usize;
-    walk_sniffed(&am, |ce, data| {
-        if ce.format != format {
-            return;
-        }
-        total += 1;
-        if let Err(msg) = check(ce, data) {
-            failures.push(format!(
-                "{} {:#010X} ({} bytes): {msg}",
-                ce.archive, ce.id as u32, ce.size
-            ));
-        }
-    });
+/// Original PAL expansion 0x0072AE3E -> 0x0072AE99, reproduced with
+/// `python -m tools.sidebar_oracle.palette --check`. The synthetic full-byte
+/// case exercises all component inputs; no second conversion formula lives here.
+fn native_palette_components() -> [u8; 256] {
+    #[derive(serde::Deserialize)]
+    struct Packet {
+        cases: Vec<Case>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Case {
+        archive: String,
+        name: String,
+        raw: Vec<u8>,
+        rgb: Vec<u8>,
+    }
+    let packet: Packet = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tools/sidebar_oracle/palette.json"
+    )))
+    .expect("checked native palette fixture");
+    let mut cases = packet
+        .cases
+        .into_iter()
+        .filter(|case| case.archive == "synthetic" && case.name == "full-byte");
+    let case = cases.next().expect("native full-byte palette case");
     assert!(
-        failures.is_empty(),
-        "{}: {} of {} retail files failed byte round-trip:\n{}",
-        format,
-        failures.len(),
-        total,
-        failures.join("\n")
+        cases.next().is_none(),
+        "full-byte palette case must be unique"
     );
+    assert_eq!(case.raw.len(), 768, "native input palette size");
+    assert_eq!(
+        case.rgb.len(),
+        case.raw.len(),
+        "native expansion output size"
+    );
+    let mut components = [None; 256];
+    for (raw, expanded) in case.raw.into_iter().zip(case.rgb) {
+        if let Some(previous) = components[usize::from(raw)].replace(expanded) {
+            assert_eq!(
+                previous, expanded,
+                "native component {raw} has inconsistent outputs"
+            );
+        }
+    }
+    assert!(
+        components.iter().all(Option::is_some),
+        "native component coverage must include all 256 bytes"
+    );
+    components.map(|value| value.expect("complete component coverage"))
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_pal_roundtrip_bytes() {
+    let native_components = native_palette_components();
     certify_format("pal", |_, data| {
-        // 6-bit VGA domain: a value > 63 would make scale_vga's u8 cast
-        // truncate — that would be a real finding about the formula's domain.
+        // The retail corpus is six-bit even though the checked native fixture
+        // covers all byte inputs. Preserve that separate corpus invariant.
         if let Some(pos) = data.iter().position(|&b| b > 63) {
             return Err(format!(
                 "raw byte {} at offset {pos} exceeds the 6-bit VGA domain",
@@ -70,17 +82,16 @@ fn certify_pal_roundtrip_bytes() {
             let u = ui.colors[i];
             // Alpha excluded: transparency policy is a documented parser
             // choice (index 0 / magenta chroma key), not file data.
-            let vga_expected = [scale_vga(raw[0]), scale_vga(raw[1]), scale_vga(raw[2])];
-            if [v.r, v.g, v.b] != vga_expected {
+            let expected = raw.map(|component| native_components[usize::from(component)]);
+            if [v.r, v.g, v.b] != expected {
                 return Err(format!(
-                    "index {i}: from_bytes {:?} != scale_vga({raw:?}) = {vga_expected:?}",
+                    "index {i}: from_bytes {:?} != native expansion of {raw:?} = {expected:?}",
                     [v.r, v.g, v.b]
                 ));
             }
-            let ui_expected = [scale_ui(raw[0]), scale_ui(raw[1]), scale_ui(raw[2])];
-            if [u.r, u.g, u.b] != ui_expected {
+            if [u.r, u.g, u.b] != expected {
                 return Err(format!(
-                    "index {i}: from_bytes_gamemd_ui {:?} != scale_ui({raw:?}) = {ui_expected:?}",
+                    "index {i}: from_bytes_gamemd_ui {:?} != native expansion of {raw:?} = {expected:?}",
                     [u.r, u.g, u.b]
                 ));
             }
@@ -90,7 +101,7 @@ fn certify_pal_roundtrip_bytes() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_hva_roundtrip_bytes() {
     certify_format("hva", |_, data| {
         let hva = HvaFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -125,7 +136,7 @@ fn certify_hva_roundtrip_bytes() {
 }
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_vpl_roundtrip_bytes() {
     certify_format("vpl", |_, data| {
         let vpl = VplFile::from_bytes(data).map_err(|e| e.to_string())?;
@@ -183,13 +194,9 @@ const KNOWN_NAMES: &[&str] = &[
 ];
 
 #[test]
-#[ignore] // Requires RA2_DIR (retail game files)
+#[ignore = "requires the recorded retail corpus; run the indexed retail-corpus profile"]
 fn certify_mix_known_name_resolution() {
-    let Some(root) = ra2_dir() else {
-        println!("SKIP: set RA2_DIR to the retail install");
-        return;
-    };
-    let am = load_corpus(&root);
+    let am = required_corpus();
     let mut failures: Vec<String> = Vec::new();
     for name in KNOWN_NAMES {
         match am.get_with_source_ref(name) {

@@ -1,8 +1,8 @@
 //! Magic-byte format sniffer for retail MIX entries.
 //!
 //! Identifies leaf-asset formats by structural signatures (no dependency on
-//! XCC's filename database). Shared by the audit-assets coverage binary and
-//! the retail_goldens certification suite so both walk the identical corpus.
+//! XCC's filename database). Shared by asset tooling and the
+//! retail corpus regression checks so both classify the same leaf formats.
 //!
 //! ## Dependency rules
 //! - Part of assets/ — depends only on assets::mix_archive.
