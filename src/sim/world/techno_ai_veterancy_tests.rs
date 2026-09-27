@@ -124,7 +124,6 @@ fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed 
             target_rx: rx + 6,
             target_ry: ry + 6,
             queue: false,
-            group_id: None,
         },
         Some(rules),
         Some(&grid),

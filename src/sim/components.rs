@@ -300,9 +300,6 @@ pub struct MovementTarget {
     /// system auto-replans from the current position. `None` for short paths
     /// or test-only movement targets that don't need segmented replanning.
     pub final_goal: Option<(u16, u16)>,
-    /// Group ID for formation speed sync. When set, the movement system caps
-    /// this unit's speed to the slowest member of the group (deep_113 line 451).
-    pub group_id: Option<u32>,
     /// When true, the movement tick skips terrain cost passability checks
     /// for cell entry. Used by `issue_direct_move` to let harvesters walk
     /// onto ore cells that are terrain-blocked for their SpeedType.
@@ -765,7 +762,6 @@ impl Default for MovementTarget {
             move_dir_y: SIM_ZERO,
             move_dir_len: SIM_ZERO,
             final_goal: None,
-            group_id: None,
             ignore_terrain_cost: false,
             bypass_grid: false,
             wall_refusal_cell: None,

@@ -255,7 +255,6 @@ impl Simulation {
                     target_rx: u16::try_from(typed.target_x).ok()?,
                     target_ry: u16::try_from(typed.target_y).ok()?,
                     queue: false,
-                    group_id: None,
                 },
             ));
         }
@@ -635,7 +634,6 @@ impl Simulation {
                 target_rx,
                 target_ry,
                 queue,
-                group_id,
             } => {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
@@ -770,7 +768,6 @@ impl Simulation {
                             mt.accel_factor = info.accel_factor;
                             mt.decel_factor = info.decel_factor;
                             mt.slowdown_distance = info.slowdown_distance;
-                            mt.group_id = *group_id;
                         }
                     }
                 }
@@ -3031,7 +3028,6 @@ mod tests {
                     target_rx: 34,
                     target_ry: 12,
                     queue: false,
-                    group_id: None,
                 }
             ))
         );
@@ -3133,7 +3129,6 @@ mod tests {
                 target_rx: 25,
                 target_ry: 20,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             Some(&grid),
@@ -3166,7 +3161,6 @@ mod tests {
                 target_rx: 25,
                 target_ry: 20,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             Some(&grid),
@@ -3235,7 +3229,6 @@ mod tests {
                 target_rx: 25,
                 target_ry: 20,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             Some(&grid),
@@ -3294,7 +3287,6 @@ mod tests {
                 target_rx: 25,
                 target_ry: 20,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             Some(&grid),
@@ -3328,7 +3320,6 @@ mod tests {
                     target_rx: 25,
                     target_ry: 20,
                     queue: false,
-                    group_id: None,
                 },
                 Some(&rules),
                 Some(&grid),

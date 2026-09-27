@@ -680,7 +680,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             target_rx: goal.0,
                             target_ry: goal.1,
                             queue: queue_mode,
-                            group_id: None,
                         },
                     ));
                 }
@@ -816,7 +815,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                 target_rx: goal.0,
                                 target_ry: goal.1,
                                 queue: queue_mode,
-                                group_id: None,
                             },
                         ));
                     }
@@ -1213,15 +1211,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     crate::app::match_runtime::sim_tick::tactical_bridge_cells(sim),
                 )
             };
-            // Assign a shared group_id when multiple units move together.
-            // The movement system uses this to sync speed to the slowest member.
-            let move_group_id: Option<u32> = if selected_units.len() > 1 && attack_target.is_none()
-            {
-                Some(execute_tick as u32)
-            } else {
-                None
-            };
-
             // VERA-internal: force-fire on a shrouded cell is rejected here.
             // gamemd equivalent CONTRADICTS this — the FootClass shroud wrapper
             // around What_Action_OnCell explicitly preserves the force-fire
@@ -1318,7 +1307,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             target_rx: goal.0,
                             target_ry: goal.1,
                             queue: queue_mode,
-                            group_id: None,
                         }
                     }
                 } else {
@@ -1355,7 +1343,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                     target_rx: goal.0,
                                     target_ry: goal.1,
                                     queue: queue_mode,
-                                    group_id: move_group_id,
                                 }
                             }
                         }
@@ -1660,7 +1647,6 @@ mod tests {
                 target_rx: 0,
                 target_ry: 0,
                 queue: false,
-                group_id: None,
             }),
             Some("VoiceMove")
         );

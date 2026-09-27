@@ -76,7 +76,6 @@ mod tests {
                     target_rx: 8,
                     target_ry: 4,
                     queue: false,
-                    group_id: None,
                 },
                 2 => Command::AttackMove {
                     entity_id: id,

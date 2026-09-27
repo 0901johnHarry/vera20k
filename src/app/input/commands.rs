@@ -885,7 +885,6 @@ pub(crate) fn roundtrip_ordinary_local_move(
             target_rx,
             target_ry,
             queue: false,
-            ..
         } => {
             let record =
                 sim.encode_megamission_move_record(owner, entity_id, target_rx, target_ry)?;
@@ -1182,7 +1181,6 @@ mod tests {
                     target_rx: 34,
                     target_ry: 12,
                     queue: false,
-                    group_id: Some(99),
                 },
             ),
             Some(123)
@@ -1197,10 +1195,9 @@ mod tests {
                     target_rx: 34,
                     target_ry: 12,
                     queue: false,
-                    group_id: None,
                 }
             ),
-            "ordinary Move has no semantic sidecar for Rust-only group metadata"
+            "an ordinary Move round-trips through its Megamission bytes"
         );
 
         schedule_command_in_sim(
@@ -1211,17 +1208,12 @@ mod tests {
                 target_rx: 35,
                 target_ry: 12,
                 queue: true,
-                group_id: Some(99),
             },
         )
         .unwrap();
         assert!(matches!(
             sim.pending_commands_for_tests()[1].payload,
-            Command::Move {
-                queue: true,
-                group_id: Some(99),
-                ..
-            }
+            Command::Move { queue: true, .. }
         ));
     }
 
