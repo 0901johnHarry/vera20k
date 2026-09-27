@@ -5,7 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
-  build-runner:
+  tests:
     strategy:
       fail-fast: false
       matrix:
@@ -15,5 +15,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-      - run: python -m unittest tools.tests.test_cargo_run -v
+          python-version: '3.12'
+      - run: python -m pip install -r tools/requirements-test.txt
+      - run: python -m tools.run_tests
+      - run: python tools/skill_sync.py --check

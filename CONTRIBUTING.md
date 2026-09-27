@@ -57,6 +57,8 @@ For anything large, ask on Discord or in an issue first.
 For concurrent worktrees and preserved A/B builds, use the
 [repository build runner and tool index](tools/README.md). It owns waiting and
 binary provenance; no source-file touching or hand-written wait loops are needed.
+Python tool changes also run `python -m tools.run_tests` with Python 3.12+ and
+`tools/requirements-test.txt` installed; the index lists optional retail evidence checks.
 
 ## Your first pull request
 
