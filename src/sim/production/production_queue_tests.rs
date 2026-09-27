@@ -122,6 +122,42 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
 
+/// `HouseClass::CanBuild @ 0x004F7870` caps a type's TechLevel at the
+/// house's own (`HouseClass+0x1D4`), which the match options set.
+#[test]
+fn a_house_builds_only_up_to_its_own_tech_level() {
+    let mut sim = Simulation::new();
+    let rules = build_catalog_rules();
+    sim.intern_rule_type_ids(&rules);
+    sim.resolve_type_handles(&rules);
+    let americans = sim.interner.intern("Americans");
+    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
+    let e1 = sim.interner.intern("E1");
+    // An UnbuildableTechLevel option is hidden from the sidebar list.
+    for (house_tech_level, listed_enabled) in [(0, None), (1, Some(true))] {
+        sim.houses.insert(
+            americans,
+            crate::sim::house_state::HouseState::new(
+                americans,
+                0,
+                None,
+                true,
+                50_000,
+                house_tech_level,
+            ),
+        );
+        let options = build_options_for_owner(&sim, &rules, "Americans");
+        assert_eq!(
+            options
+                .iter()
+                .find(|option| option.type_id == e1)
+                .map(|option| option.enabled),
+            listed_enabled,
+            "house TechLevel {house_tech_level}"
+        );
+    }
+}
+
 #[test]
 fn build_catalog_exposes_sidebar_categories_and_required_houses() {
     let mut sim = Simulation::new();
@@ -130,6 +166,13 @@ fn build_catalog_exposes_sidebar_categories_and_required_houses() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
+    for (side, name) in [(0, "Americans"), (0, "Alliance")] {
+        let id = sim.interner.intern(name);
+        sim.houses.insert(
+            id,
+            crate::sim::house_state::HouseState::new(id, side, None, true, 50_000, 10),
+        );
+    }
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 12, 10);
     spawn_structure(&mut sim, 3, "Americans", "GAAIRC", 14, 10);
@@ -642,6 +685,11 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
+    let americans_id = sim.interner.intern("Americans");
+    sim.houses.insert(
+        americans_id,
+        crate::sim::house_state::HouseState::new(americans_id, 0, None, true, 50_000, 10),
+    );
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
 
     let americans = build_options_for_owner(&sim, &rules, "Americans");

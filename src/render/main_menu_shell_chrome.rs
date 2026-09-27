@@ -9,6 +9,8 @@
 //! button through its animation frames. The `bue_*30` / `bde_*30` PCXs that ship
 //! in the same archives are greyscale and unused on this paint path.
 
+use anyhow::{Context, Result};
+
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::Palette;
 use crate::assets::pcx_file::PcxFile;
@@ -125,26 +127,8 @@ pub fn build_main_menu_shell_chrome_atlas(
     gpu: &GpuContext,
     batch: &BatchRenderer,
     assets: &AssetManager,
-) -> Option<MainMenuShellChromeAtlas> {
-    let mut rendered = Vec::new();
-
-    // Button artwork: the full SDBTNANM frame set rendered with SDBTNANM.PAL.
-    // Fall back to SHELL2.PAL if the dedicated palette isn't shipped (it still
-    // produces a close colorization). Frames 2/3/4 are the steady default/hover/
-    // pressed states; the whole 0..=16 set feeds the first-paint slide ramp.
-    let sdbtnanm_palette = load_named_palette(assets, "SDBTNANM.PAL")
-        .or_else(|| load_named_palette(assets, "SHELL2.PAL"))?;
-    for frame in 0..SDBTNANM_WAVE_FRAMES {
-        if let Some(entry) = render_shp_frame(
-            assets,
-            "SDBTNANM.SHP",
-            &sdbtnanm_palette,
-            frame,
-            &format!("wave#{frame}"),
-        ) {
-            rendered.push(entry);
-        }
-    }
+) -> Result<MainMenuShellChromeAtlas> {
+    let mut rendered = load_main_menu_button_frames(assets)?;
 
     // Right-panel + lower-side chrome SHPs. These render with SHELL.PAL,
     // except SDBTNBKGD which uses SHELL2.PAL.
@@ -203,19 +187,19 @@ pub fn build_main_menu_shell_chrome_atlas(
         rgba: vec![0xFF; 2 * 2 * 4],
     });
 
-    let (texture, packed) = pack_entries(gpu, batch, &rendered)?;
+    let (texture, packed) = pack_entries(gpu, batch, &rendered)
+        .context("Could not pack the required game-menu artwork")?;
     let mut by_label: std::collections::HashMap<String, MainMenuShellChromeEntry> =
         std::collections::HashMap::new();
     for (entry, placed) in rendered.iter().zip(packed.iter().copied()) {
         by_label.insert(entry.label.clone(), placed);
     }
     log::info!("Main-menu shell chrome atlas loaded");
-    // Frames 2/3/4 (default/hover/pressed) are mandatory; bail to the fallback
-    // path if SDBTNANM is too short to contain them, rather than panicking.
-    let button_default = *by_label.get("sdbtnanm.shp:wave#2")?;
-    let button_hover = *by_label.get("sdbtnanm.shp:wave#3")?;
-    let button_pressed = *by_label.get("sdbtnanm.shp:wave#4")?;
-    Some(MainMenuShellChromeAtlas {
+    // The loader validates these three required states before uploading the atlas.
+    let button_default = by_label["sdbtnanm.shp:wave#2"];
+    let button_hover = by_label["sdbtnanm.shp:wave#3"];
+    let button_pressed = by_label["sdbtnanm.shp:wave#4"];
+    Ok(MainMenuShellChromeAtlas {
         texture,
         button_default,
         button_hover,
@@ -256,6 +240,36 @@ pub fn build_main_menu_shell_chrome_atlas(
             entry
         }),
     })
+}
+
+/// Decode mandatory buttons before GPU upload, retaining the asset and parser error.
+fn load_main_menu_button_frames(assets: &AssetManager) -> Result<Vec<RenderedChromeEntry>> {
+    // Preserve the existing SHELL2 fallback when the dedicated palette is unavailable.
+    let palette = read_named_palette(assets, "SDBTNANM.PAL").or_else(|primary| {
+        read_named_palette(assets, "SHELL2.PAL").with_context(|| {
+            format!("Game-menu button palette failed: {primary:#}; fallback also failed")
+        })
+    })?;
+    let load = assets
+        .load_file_from_mix("SDBTNANM.SHP")
+        .context("Required game-menu artwork SDBTNANM.SHP is missing or unreadable")?;
+    let shp = ShpFile::from_bytes(&load.bytes).context("Could not parse SDBTNANM.SHP")?;
+    anyhow::ensure!(
+        shp.frames.len() >= 5,
+        "SDBTNANM.SHP has {} frames; game-menu buttons require frames 2, 3 and 4",
+        shp.frames.len()
+    );
+    (0..shp.frames.len().min(SDBTNANM_WAVE_FRAMES))
+        .map(|frame| {
+            shp_frame_entry(
+                &shp,
+                "SDBTNANM.SHP",
+                &palette,
+                frame,
+                Some(&format!("wave#{frame}")),
+            )
+        })
+        .collect()
 }
 
 /// Campaign selection `0x94` art from the loader `0x0072D9A0`: the faction
@@ -514,10 +528,16 @@ pub fn build_wol_welcome_art(
 }
 
 fn load_named_palette(assets: &AssetManager, name: &str) -> Option<Palette> {
-    let bytes = assets.get_ref(name)?;
-    Palette::from_bytes(bytes)
-        .map_err(|err| log::warn!("Could not parse palette {name}: {err:#}"))
+    read_named_palette(assets, name)
+        .map_err(|err| log::warn!("{err:#}"))
         .ok()
+}
+
+fn read_named_palette(assets: &AssetManager, name: &str) -> Result<Palette> {
+    let bytes = assets
+        .get_ref(name)
+        .with_context(|| format!("Palette {name} is missing or unreadable"))?;
+    Palette::from_bytes(bytes).with_context(|| format!("Could not parse palette {name}"))
 }
 
 fn push_optional_shp(
@@ -533,16 +553,6 @@ fn push_optional_shp(
     }
 }
 
-fn render_shp_frame(
-    assets: &AssetManager,
-    file_name: &str,
-    palette: &Palette,
-    frame: usize,
-    tag: &str,
-) -> Option<RenderedChromeEntry> {
-    render_shp_entry(assets, file_name, palette, frame, Some(tag))
-}
-
 fn render_shp_entry(
     assets: &AssetManager,
     file_name: &str,
@@ -552,7 +562,7 @@ fn render_shp_entry(
 ) -> Option<RenderedChromeEntry> {
     let load = assets.load_file_from_mix(file_name)?;
     let shp = ShpFile::from_bytes(&load.bytes).ok()?;
-    shp_frame_entry(&shp, file_name, palette, frame, tag)
+    shp_frame_entry(&shp, file_name, palette, frame, tag).ok()
 }
 
 /// Every frame of one SHP, parsed once, labelled `<file>:<prefix>#<frame>`.
@@ -578,6 +588,7 @@ fn render_shp_frames(
                 frame,
                 Some(&format!("{tag_prefix}#{frame}")),
             )
+            .ok()
         })
         .collect()
 }
@@ -589,11 +600,10 @@ fn shp_frame_entry(
     palette: &Palette,
     frame: usize,
     tag: Option<&str>,
-) -> Option<RenderedChromeEntry> {
-    if frame >= shp.frames.len() {
-        return None;
-    }
-    let frame_rgba = shp.frame_to_rgba(frame, palette).ok()?;
+) -> Result<RenderedChromeEntry> {
+    let frame_rgba = shp
+        .frame_to_rgba(frame, palette)
+        .with_context(|| format!("Could not render {file_name} frame {frame}"))?;
     let canvas_w = shp.width as u32;
     let canvas_h = shp.height as u32;
     let shp_frame = &shp.frames[frame];
@@ -619,7 +629,7 @@ fn shp_frame_entry(
         Some(t) => format!("{}:{}", file_name.to_ascii_lowercase(), t),
         None => file_name.to_ascii_lowercase(),
     };
-    Some(RenderedChromeEntry {
+    Ok(RenderedChromeEntry {
         label,
         width: canvas_w,
         height: canvas_h,
@@ -714,6 +724,60 @@ fn pack_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mandatory_button_loader_preserves_failure_details_and_palette_fallback() {
+        let root = std::env::temp_dir().join(format!("vera-menu-buttons-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let load = || load_main_menu_button_frames(&AssetManager::from_loose_root_for_test(&root));
+        let missing_palettes = format!("{:#}", load().err().expect("palettes are absent"));
+        assert!(
+            missing_palettes.contains("SDBTNANM.PAL"),
+            "{missing_palettes}"
+        );
+        assert!(
+            missing_palettes.contains("SHELL2.PAL"),
+            "{missing_palettes}"
+        );
+
+        std::fs::write(root.join("SDBTNANM.PAL"), b"bad").unwrap();
+        let corrupt_palette = format!("{:#}", load().err().expect("palette is malformed"));
+        assert!(
+            corrupt_palette.contains("SDBTNANM.PAL"),
+            "{corrupt_palette}"
+        );
+        assert!(corrupt_palette.contains("768"), "{corrupt_palette}");
+        // The existing SHELL2 fallback remains usable even with a bad primary palette.
+        std::fs::write(root.join("SHELL2.PAL"), [0u8; 768]).unwrap();
+        let missing_shape = format!("{:#}", load().err().expect("button shape is absent"));
+        assert!(missing_shape.contains("SDBTNANM.SHP"), "{missing_shape}");
+        assert!(missing_shape.contains("missing"), "{missing_shape}");
+
+        std::fs::write(root.join("SDBTNANM.SHP"), b"bad").unwrap();
+        let corrupt_shape = format!("{:#}", load().err().expect("button shape is malformed"));
+        assert!(corrupt_shape.contains("SDBTNANM.SHP"), "{corrupt_shape}");
+        assert!(corrupt_shape.contains("3 bytes"), "{corrupt_shape}");
+
+        // A valid four-frame file still lacks the required pressed state (frame 4).
+        let mut shp = vec![0u8; 8 + 4 * 24];
+        shp[2..4].copy_from_slice(&1u16.to_le_bytes());
+        shp[4..6].copy_from_slice(&1u16.to_le_bytes());
+        shp[6..8].copy_from_slice(&4u16.to_le_bytes());
+        std::fs::write(root.join("SDBTNANM.SHP"), &shp).unwrap();
+        let short_shape = format!("{:#}", load().err().expect("pressed state is absent"));
+        assert!(
+            short_shape.contains("SDBTNANM.SHP has 4 frames"),
+            "{short_shape}"
+        );
+
+        shp.resize(8 + 5 * 24, 0);
+        shp[6..8].copy_from_slice(&5u16.to_le_bytes());
+        std::fs::write(root.join("SDBTNANM.SHP"), &shp).unwrap();
+        let frames = load().expect("five states and fallback palette are sufficient");
+        assert_eq!(frames.len(), 5, "extra reveal frames remain optional");
+        assert_eq!(frames[4].label, "sdbtnanm.shp:wave#4");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn score_shading_keeps_three_eighths_of_every_rgb565_unit() {

@@ -217,6 +217,9 @@ impl App {
         }
         Self::update_saved_game_browser(state, false);
         match &state.frontend.screen {
+            GameScreen::MainMenu if state.frontend.main_menu_shell_error.is_some() => {
+                Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+            }
             _ if state.frontend.keyboard_dialog.is_some() => {
                 crate::app::frontend::skirmish_shell_render::render_keyboard_shell(state, &mut encoder, &output.texture)?;
             }
@@ -273,7 +276,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::MovieList;
                     } else {
-                        Self::render_egui_main_menu_fallback(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
                     }
                 } else if Self::campaign_active(state) {
                     if crate::app::frontend::campaign_shell_render::render_campaign_page(
@@ -283,7 +286,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::Campaign;
                     } else {
-                        Self::render_egui_main_menu_fallback(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
                     }
                 } else if Self::wol_welcome_active(state) {
                     if crate::app::frontend::wol_welcome_render::render_wol_welcome_page(
@@ -293,7 +296,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::WolWelcome;
                     } else {
-                        Self::render_egui_main_menu_fallback(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
                     }
                 } else if Self::load_saved_game_active(state) {
                     if crate::app::frontend::load_saved_game_render::render_load_saved_game_page(
@@ -303,7 +306,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::LoadSavedGame;
                     } else {
-                        Self::render_egui_main_menu_fallback(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
                     }
                 } else if Self::native_launcher_options_active(state) {
                     crate::app::frontend::skirmish_shell_render::render_launcher_options(
@@ -335,10 +338,7 @@ impl App {
                                 }
                             };
                             state.renderer.egui.begin_frame(&state.platform.window);
-                            // A menu modal draws over the page; confirm-quit
-                            // cannot originate here, so its return value is
-                            // ignored.
-                            let _ = Self::draw_main_menu_dialogs(state, false);
+                            Self::draw_main_menu_dialogs(state);
                             state.renderer.egui.end_frame_and_render(
                                 &state.renderer.gpu,
                                 &mut encoder,
@@ -348,7 +348,7 @@ impl App {
                             );
                         }
                         crate::app::frontend::menu_page_render::MenuPageRenderResult::Fallback => {
-                            Self::render_egui_main_menu_fallback(
+                            Self::render_shell_error(
                                 state,
                                 &mut encoder,
                                 &view,
@@ -356,7 +356,7 @@ impl App {
                             )?;
                         }
                     }
-                } else if !state.frontend.main_menu_shell_failed {
+                } else if state.frontend.main_menu_shell_error.is_none() {
                     match crate::app::frontend::main_menu_shell_render::render_main_menu_shell(
                         state,
                         &mut encoder,
@@ -368,11 +368,7 @@ impl App {
                             pending_main_menu_title_receipt = title_receipt;
                             presented_shell = PresentedShell::MainMenu;
                             state.renderer.egui.begin_frame(&state.platform.window);
-                            // The SHP shell renders the quit-confirm as an SHP
-                            // overlay (and OK exits via its hit-test), so the egui
-                            // exit-confirm is suppressed here; campaign/options/
-                            // movies egui dialogs still draw. confirm_quit stays false.
-                            let confirm_quit = Self::draw_main_menu_dialogs(state, false);
+                            Self::draw_main_menu_dialogs(state);
                             state.renderer.egui.end_frame_and_render(
                                 &state.renderer.gpu,
                                 &mut encoder,
@@ -380,33 +376,9 @@ impl App {
                                 &state.platform.window,
                                 state.use_software_cursor(),
                             );
-                            if confirm_quit {
-                                state.renderer.gpu.queue.submit(std::iter::once(encoder.finish()));
-                                output.present();
-                                if let Some(token) =
-                                    pending_main_menu_entry_token.take()
-                                {
-                                    crate::app::frontend::shell_transition::record_main_menu_entry_presented(
-                                        state, token,
-                                    )?;
-                                }
-                                if let Some(receipt) =
-                                    pending_main_menu_title_receipt.take()
-                                {
-                                    anyhow::ensure!(
-                                        state
-                                            .frontend.main_menu_shell_state
-                                            .title_reveal
-                                            .record_presented(receipt),
-                                        "main-menu title receipt was stale at present commit"
-                                    );
-                                }
-                                event_loop.exit();
-                                return Ok(());
-                            }
                         }
                         crate::app::frontend::main_menu_shell_render::MainMenuShellRenderResult::Fallback => {
-                            Self::render_egui_main_menu_fallback(
+                            Self::render_shell_error(
                                 state,
                                 &mut encoder,
                                 &view,
@@ -415,7 +387,7 @@ impl App {
                         }
                     }
                 } else {
-                    Self::render_egui_main_menu_fallback(state, &mut encoder, &view, event_loop)?;
+                    Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
                 }
             }
             GameScreen::Loading => {
