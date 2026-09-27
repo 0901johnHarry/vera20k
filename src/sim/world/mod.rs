@@ -4984,7 +4984,7 @@ impl Simulation {
         .rebuild_zones(path_grid, terrain, self.bridge_state.as_ref());
     }
 
-    /// Rebuild without the PathGrid-only incremental shortcut. Reduced zone
+    /// Rebuild without `rebuild_zones`' reuse of unchanged inputs. Reduced zone
     /// type can change while boolean walkability stays identical (notably a
     /// live OccupationBits=0 terrain object changing Building to Ground).
     fn rebuild_zone_grid_full(&mut self, path_grid: &PathGrid) {

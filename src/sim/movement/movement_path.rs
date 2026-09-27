@@ -1,7 +1,7 @@
 //! Movement path management — path computation, repath-after-block, and bridge pathing support.
 //!
 //! Wraps the A* pathfinder for use by the movement tick: computes initial paths,
-//! retries after blockages with zone-aware corridor search, and determines whether
+//! retries after blockages through the zone-aware search, and determines whether
 //! an entity's locomotor supports layered bridge pathing.
 
 use std::collections::BTreeSet;

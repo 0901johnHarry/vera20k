@@ -608,7 +608,7 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
             (2, 0),
             MovementLayer::Ground
         ),
-        "fixture must prove the old reduced SuperZoneMap would abort"
+        "fixture must put the endpoints in different reduced zones"
     );
 
     let blocker_counts = BlockerNeighborCounts::new(3, 1);

@@ -19,22 +19,6 @@ use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind, BridgeRun
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
 
-// Helper: build a PathGrid from a string map where '.' = walkable, '#' = blocked.
-fn grid_from_str(s: &str) -> PathGrid {
-    let lines: Vec<&str> = s.trim().lines().map(|l| l.trim()).collect();
-    let h = lines.len() as u16;
-    let w = lines[0].len() as u16;
-    let mut grid = PathGrid::new(w, h);
-    for (ry, line) in lines.iter().enumerate() {
-        for (rx, ch) in line.chars().enumerate() {
-            if ch == '#' {
-                grid.set_blocked(rx as u16, ry as u16, true);
-            }
-        }
-    }
-    grid
-}
-
 fn tiny_hierarchy() -> ZoneHierarchy {
     let mut level2 = ZoneLevelGraph::new(1);
     level2.set_record(ZoneRecord::new(1, 0, 0));

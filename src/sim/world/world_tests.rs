@@ -5787,8 +5787,10 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
 }
 
 /// Pins a ship's route end to end: the Move order, the Ship's first Process
-/// and the flat search ladder with the live zone grid and blocker plane. The
-/// island leaves one channel, so the route cannot follow the straight line.
+/// and the flat search with the live zone grid and blocker plane. The island
+/// leaves one channel, so the route cannot follow the straight line. A Water
+/// movement zone leaves the ladder at its first rung (no reduced precheck), so
+/// this pins the route, not the zone rungs; `zone_search_tests` covers those.
 /// The route is today's Rust result, a regression pin, not a native capture.
 #[test]
 fn a_ship_order_routes_around_an_island_through_the_live_search() {
@@ -9119,9 +9121,8 @@ fn derived_transit_separation_bound_is_inside_one_cell() {
 fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
     // Unit741970 names the occupied cell unchanged; the first Process's
     // Find_Path answers code 6 there and, beyond CloseEnough, retargets to an
-    // FNPC cell (0x4D3A92..0x4D3E0A). That owner needs native topology; the
-    // compatibility zone grid keeps the legacy search, which drives into the
-    // blocker's cell.
+    // FNPC cell (0x4D3A92..0x4D3E0A) instead of driving into the blocker's
+    // cell.
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;
     };
@@ -9295,7 +9296,8 @@ fn idle_objects_are_handed_out_only_for_their_own_turn() {
 /// Fails in transit on the production Drive track (2026-09-27): vehicles 7 and
 /// 8 share a cell 186 leptons apart at tick 22, below the 239 the in-transit
 /// check allows. Nothing rests on a shared cell. The short-range case below
-/// shows the same numbers, and retail Dustbowl reproduces them.
+/// shows the same numbers. Native behaviour for this case is not established;
+/// see that case for the residual.
 #[test]
 #[ignore = "production Drive track: two tanks share a cell 186 leptons apart in transit"]
 fn repro_group_move_of_eight_vehicles_to_one_cell() {
@@ -9464,8 +9466,13 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
 ///
 /// Fails in transit on the production Drive track (2026-09-27): vehicles 5 and
 /// 6 share a cell 186 leptons apart at tick 22, below the 239 the in-transit
-/// check allows; nothing rests on a shared cell. Retail Dustbowl gives the same
-/// 186 leptons at tick 22 at three open sites.
+/// check allows; nothing rests on a shared cell. VERA on the retail Dustbowl
+/// map gives the same 186 leptons at tick 22 at three open sites (a temporary
+/// probe spawning this group on open ground through `headless_scenario`).
+/// RESIDUAL: trigger — any group Move of adjacent Drive vehicles; effect —
+/// two hulls overlap by about a quarter cell for a few ticks mid-route;
+/// frequency — every group order; risk — visual only, nothing rests stacked.
+/// Whether gamemd keeps them farther apart is unmeasured.
 #[test]
 #[ignore = "production Drive track: two tanks share a cell 186 leptons apart in transit"]
 fn repro_group_move_short_range_traces_every_tick() {
@@ -9988,11 +9995,16 @@ fn repro_two_moving_vehicles_reservation_trace() {
 /// therefore still finish their orders.
 ///
 /// Fails on the production Find_Path owner and Drive track (2026-09-27): the
-/// pair meets mid-row and both tanks drop their orders side by side, as they do
-/// at three open sites on retail Dustbowl. It passed before only through the
-/// legacy inline search that fixtures without native zones took.
+/// pair meets mid-row and both tanks drop their orders side by side, as VERA
+/// does at three open sites on the retail Dustbowl map (a temporary probe
+/// through `headless_scenario`). It passed before only through the legacy
+/// inline search that fixtures without native zones took. RESIDUAL: trigger —
+/// two Drive vehicles ordered through each other's cells on one row; effect —
+/// both stop short, orders dropped; frequency — head-on traffic in lanes;
+/// risk — units fail to reach ordered cells. Native behaviour for a head-on
+/// pair is not established.
 #[test]
-#[ignore = "production Drive path drops both head-on orders; retail Dustbowl reproduces"]
+#[ignore = "production Drive path drops both head-on orders (VERA on retail Dustbowl too)"]
 fn head_on_pair_resolves_without_deadlock() {
     let Some((mut sim, rules, grid)) = stacking_world(24) else {
         return;

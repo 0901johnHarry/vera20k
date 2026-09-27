@@ -171,14 +171,6 @@ impl ZoneAdjacency {
         }
         self.neighbors[idx].contains(&b)
     }
-
-    /// Get the neighbors of a zone.
-    pub fn neighbors_of(&self, z: ZoneId) -> &[ZoneId] {
-        if z == ZONE_INVALID || z as usize >= self.neighbors.len() {
-            return &[];
-        }
-        &self.neighbors[z as usize]
-    }
 }
 
 /// Complete zone system: zone maps for all movement zones, their shared base
