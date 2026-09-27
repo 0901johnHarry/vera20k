@@ -23,7 +23,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectCategory};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{CellRect, CellRectOccupancyContext, check_occupancy_rect};
-use crate::sim::command::{Command, CommandEnvelope, QueueMode};
+use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
@@ -797,14 +797,7 @@ fn count_refineries(sim: &Simulation, owner: &str, rules: &RuleSet) -> usize {
 
 /// Create a QueueProduction command envelope.
 fn make_queue_cmd(owner: InternedId, type_id: InternedId, execute_tick: u64) -> CommandEnvelope {
-    CommandEnvelope::new(
-        owner,
-        execute_tick,
-        Command::QueueProduction {
-            type_id,
-            mode: QueueMode::Append,
-        },
-    )
+    CommandEnvelope::new(owner, execute_tick, Command::QueueProduction { type_id })
 }
 
 #[cfg(test)]

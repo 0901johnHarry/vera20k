@@ -405,6 +405,10 @@ pub enum SimSoundEvent {
     /// App layer gates this to the local human player and plays
     /// `EVA_CannotDeployHere`.
     CannotDeployHere { owner: InternedId },
+    /// `FactoryClass::StartProduction` refused to queue a build
+    /// (`0x004C9D3B..0x004C9D5F`): `[AudioVisual] ScoldSound=` when the house
+    /// is the local player's.
+    ProductionRefused { owner: InternedId },
     /// A chrono teleport happened — play the resolved warp sound at this position.
     /// Sim emits two of these per warp: one at the source cell with the unit's
     /// `ChronoOutSound=`, one at the destination cell with the unit's
@@ -4145,9 +4149,9 @@ impl Simulation {
         // yields strictly-increasing `insertion_seq` with NO ties (the strict-monotonic
         // `enqueue_order` property the hash fold + `step_all` charge order both depend on; a
         // tie would make the sweep order ambiguous and desync lockstep). Within each factory
-        // the tail stamps strictly increase AND exceed the active build's `insertion_seq`
-        // (FIFO `push_back` of a monotonic mint: the active build is the oldest, the tail
-        // newer) — this is the D1 invariant expressed as a real self-check.
+        // the tail stamps strictly increase AND exceed the factory's `insertion_seq`, its
+        // construction stamp (FIFO `push_back` of a monotonic mint: every queued build was
+        // stamped after the factory was made, and a promotion keeps the factory's stamp).
         let ordered = self.production.factory_shadow.iter_insertion_ordered();
         let mut prev_seq: Option<u64> = None;
         for f in &ordered {

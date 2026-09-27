@@ -100,18 +100,21 @@ pub enum SidebarAction {
     OpenPauseMenu,
     OpenDiplomacy,
     SelectTab(SidebarTab),
-    BuildType(String),
-    ArmPlacement(String),
-    ClearPlacementMode,
+    /// A press on a build cameo; `app::input::sidebar_eva::cameo_click` decides
+    /// what it does. `at_build_limit` is the cameo's build-limit state
+    /// (the only reason a shown build cameo is not buildable).
+    CameoPress {
+        type_id: String,
+        right: bool,
+        shift: bool,
+        at_build_limit: bool,
+    },
     /// Arm the targeting cursor for a charged superweapon.
     /// Payload: SW INI section name (e.g., "LightningStormSpecial").
     ArmSuperWeapon(String),
     /// Clear the SW targeting cursor (toggle off / second click on cameo).
     ClearSuperWeaponMode,
-    TogglePauseQueue(ProductionCategory),
     CycleProducer(ProductionCategory),
-    CancelBuild(String),
-    CancelLastBuild,
     CycleOwner,
     PlaceStarterBase,
     SpawnTestUnits,
@@ -246,11 +249,9 @@ pub struct SidebarView {
     pub top_buttons: [SidebarScrollButton; 2],
     pub scroll_down_button: SidebarScrollButton,
     pub scroll_up_button: SidebarScrollButton,
-    pub cancel_button: SidebarControlButton,
     pub cycle_owner_button: SidebarControlButton,
     pub starter_base_button: SidebarControlButton,
     pub spawn_test_units_button: SidebarControlButton,
-    pub pause_button: Option<SidebarControlButton>,
     pub producer_button: Option<SidebarControlButton>,
 }
 
@@ -313,47 +314,32 @@ pub fn scroll_button_rects(
      Rect { x: x + spec.scroll_pitch, y, w: uw, h: uh })
 }
 
-pub(crate) fn hit_test_item(item: &SidebarItem, right_click: bool) -> SidebarAction {
-    if right_click {
-        // SW cameos have no queue → right-click does nothing.
-        if item.is_superweapon {
-            return SidebarAction::None;
-        }
-        // Build cameo right-click: cancel one queued (or ready) item.
-        return if item.queued_count > 0 || item.is_ready {
-            SidebarAction::CancelBuild(item.type_id.clone())
-        } else {
-            SidebarAction::None
+/// The action a press on one cameo asks for. A superweapon cameo arms or
+/// clears its targeting here; a build cameo's press goes to the native click
+/// decision with the live queue (`SidebarAction::CameoPress`).
+pub(crate) fn hit_test_item(item: &SidebarItem, right_click: bool, shift: bool) -> SidebarAction {
+    if !item.is_superweapon {
+        return SidebarAction::CameoPress {
+            type_id: item.type_id.clone(),
+            right: right_click,
+            shift,
+            at_build_limit: !item.enabled,
         };
     }
-    // Left-click branch.
-    if item.is_superweapon {
-        if !item.is_ready {
-            return SidebarAction::None;
-        }
-        return if item.is_armed {
-            SidebarAction::ClearSuperWeaponMode
-        } else {
-            // Section name is unique; fall back to display_name (which
-            // matches today for SW views) if for some reason it's not set.
-            let section = item
-                .super_weapon_section
-                .clone()
-                .unwrap_or_else(|| item.display_name.clone());
-            SidebarAction::ArmSuperWeapon(section)
-        };
+    // SW cameos have no queue → right-click does nothing.
+    if right_click || !item.is_ready {
+        return SidebarAction::None;
     }
-    // Build cameo branch (unchanged behavior).
-    if item.is_ready {
-        if item.is_armed {
-            SidebarAction::ClearPlacementMode
-        } else {
-            SidebarAction::ArmPlacement(item.type_id.clone())
-        }
-    } else if item.enabled {
-        SidebarAction::BuildType(item.type_id.clone())
+    if item.is_armed {
+        SidebarAction::ClearSuperWeaponMode
     } else {
-        SidebarAction::None
+        // Section name is unique; fall back to display_name (which
+        // matches today for SW views) if for some reason it's not set.
+        let section = item
+            .super_weapon_section
+            .clone()
+            .unwrap_or_else(|| item.display_name.clone());
+        SidebarAction::ArmSuperWeapon(section)
     }
 }
 
@@ -396,7 +382,7 @@ mod tests {
     #[test]
     fn sw_ready_left_click_arms() {
         let item = make_sw_item(true, false);
-        let action = super::hit_test_item(&item, false);
+        let action = super::hit_test_item(&item, false, false);
         assert_eq!(
             action,
             SidebarAction::ArmSuperWeapon("LightningStormSpecial".to_string())
@@ -406,15 +392,32 @@ mod tests {
     #[test]
     fn sw_ready_armed_left_click_clears() {
         let item = make_sw_item(true, true);
-        let action = super::hit_test_item(&item, false);
+        let action = super::hit_test_item(&item, false, false);
         assert_eq!(action, SidebarAction::ClearSuperWeaponMode);
     }
 
     #[test]
     fn sw_charging_left_click_does_nothing() {
         let item = make_sw_item(false, false);
-        let action = super::hit_test_item(&item, false);
+        let action = super::hit_test_item(&item, false, false);
         assert_eq!(action, SidebarAction::None);
+    }
+
+    #[test]
+    fn build_cameo_press_carries_the_button_shift_and_limit() {
+        let mut item = make_sw_item(false, false);
+        item.is_superweapon = false;
+        item.type_id = "TANY".to_string();
+        item.enabled = false;
+        assert_eq!(
+            super::hit_test_item(&item, true, true),
+            SidebarAction::CameoPress {
+                type_id: "TANY".to_string(),
+                right: true,
+                shift: true,
+                at_build_limit: true,
+            }
+        );
     }
 
     #[test]
@@ -422,7 +425,7 @@ mod tests {
         for ready in [false, true] {
             for armed in [false, true] {
                 let item = make_sw_item(ready, armed);
-                let action = super::hit_test_item(&item, true);
+                let action = super::hit_test_item(&item, true, false);
                 assert_eq!(
                     action,
                     SidebarAction::None,

@@ -1,7 +1,7 @@
 //! P5c — the Factory/House authority-flip replay/parity ACCEPTANCE GATE.
 //!
 //! The ratification of the P5b authority flip (the first hashed-state change).
-//! Drives REAL production commands (`QueueProduction` / `TogglePauseProduction` /
+//! Drives REAL production commands (`QueueProduction` / `SuspendProduction` /
 //! `CancelProductionByType`) through `advance_tick` and the shared replay harness
 //! (`ReplayLog` / `ReplayRunner`), and asserts:
 //!
@@ -32,7 +32,7 @@ use super::tests::{build_catalog_rules, spawn_structure};
 use super::{BuildQueueState, ProductionCategory, queue_view_for_owner};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::command::{Command, CommandEnvelope, QueueMode};
+use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::replay::{ReplayHeader, ReplayLog, ReplayRunner};
@@ -67,7 +67,10 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             40 => vec![env(
                 owner,
                 tick,
-                Command::CancelProductionByType { type_id: tank },
+                Command::CancelProductionByType {
+                    type_id: tank,
+                    all: false,
+                },
             )],
             _ => Vec::new(),
         };
@@ -140,14 +143,7 @@ fn env(owner: InternedId, tick: u64, payload: Command) -> CommandEnvelope {
 }
 
 fn queue(owner: InternedId, type_id: InternedId, tick: u64) -> CommandEnvelope {
-    env(
-        owner,
-        tick,
-        Command::QueueProduction {
-            type_id,
-            mode: QueueMode::Append,
-        },
-    )
+    env(owner, tick, Command::QueueProduction { type_id })
 }
 
 /// Resolve the owner/type IDs the streams reference. All are already interned by
@@ -163,8 +159,8 @@ fn ids(sim: &Simulation) -> (InternedId, InternedId, InternedId, InternedId) {
 
 /// A rich stream exercising the full hashed-state machinery: a same-tick two-Begin
 /// from two owners, a second category (Vehicle) for one owner, a FIFO tail (a second
-/// infantry queued behind the first), a mid-build pause + resume, and a mid-build
-/// cancel (partial-refund active-abandon).
+/// infantry queued behind the first), a mid-build hold + resume (a PRODUCE of the held
+/// type), and a mid-build cancel (partial-refund active-abandon).
 fn rich_command_stream(sim: &Simulation) -> Vec<CommandEnvelope> {
     let (am, al, e1, mtnk) = ids(sim);
     vec![
@@ -174,23 +170,24 @@ fn rich_command_stream(sim: &Simulation) -> Vec<CommandEnvelope> {
         queue(am, mtnk, 1),
         // tick 2 — a second infantry behind the first (FIFO tail) for Americans.
         queue(am, e1, 2),
-        // pause Americans' Vehicle build, then resume.
+        // hold Americans' Vehicle build, then resume it.
         env(
             am,
             8,
-            Command::TogglePauseProduction {
+            Command::SuspendProduction {
                 category: ProductionCategory::Vehicle,
             },
         ),
-        env(
-            am,
-            25,
-            Command::TogglePauseProduction {
-                category: ProductionCategory::Vehicle,
-            },
-        ),
+        queue(am, mtnk, 25),
         // Alliance cancels its active infantry mid-build (partial refund).
-        env(al, 12, Command::CancelProductionByType { type_id: e1 }),
+        env(
+            al,
+            12,
+            Command::CancelProductionByType {
+                type_id: e1,
+                all: false,
+            },
+        ),
     ]
 }
 
@@ -280,10 +277,10 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
 }
 
 /// (P5d derived-state) An underfunded mid-build factory (on_hold) renders as Building in
-/// the sidebar build queue, NOT "On Hold"/NoFunds — the pre-P5d front never surfaced NoFunds
-/// during a stall (it stayed Building; on_hold is internal). The sibling of the blocked-exit
-/// Done case: the derived view state must reproduce the exact observed label set
-/// {Building, Paused, Done, Queued}.
+/// the sidebar build queue, NOT "On Hold": a cash stall keeps the factory's rate and leaves
+/// `+0x70` clear, so the strip's hold text (`0x006A9E9C..0x006A9ECC`) never shows for it.
+/// The sibling of the blocked-exit Done case: the derived view state must reproduce the
+/// exact observed label set {Building, Paused, Done, Queued}.
 #[test]
 fn derived_view_state_stays_building_on_underfunded_stall() {
     let (mut sim, rules, _heights) = scenario();
@@ -291,7 +288,7 @@ fn derived_view_state_stays_building_on_underfunded_stall() {
     // Arm an E1 build directly, then simulate a mid-build underfunded stall.
     sim.production
         .factory_shadow
-        .enqueue(am, ProductionCategory::Infantry, e1, 1, 200);
+        .test_enqueue_kernel(am, ProductionCategory::Infantry, e1, 1, 200);
     {
         let f = sim
             .production
@@ -445,7 +442,10 @@ fn economy_conservation_through_cancel_refund() {
         env(
             am,
             CANCEL_TICK,
-            Command::CancelProductionByType { type_id: mtnk },
+            Command::CancelProductionByType {
+                type_id: mtnk,
+                all: false,
+            },
         ),
     ]);
 
@@ -530,12 +530,20 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
     let mtnk = sim.interner.intern("MTNK");
     // Arm directly (bypassing the enqueue eligibility gate) an active + one queued MTNK for
     // an owner with NO war factory -> both classify NoFactory -> PermanentlyBlocked.
-    sim.production
-        .factory_shadow
-        .enqueue(am, ProductionCategory::Vehicle, mtnk, 1, 900);
-    sim.production
-        .factory_shadow
-        .enqueue(am, ProductionCategory::Vehicle, mtnk, 2, 900);
+    sim.production.factory_shadow.test_enqueue_kernel(
+        am,
+        ProductionCategory::Vehicle,
+        mtnk,
+        1,
+        900,
+    );
+    sim.production.factory_shadow.test_enqueue_kernel(
+        am,
+        ProductionCategory::Vehicle,
+        mtnk,
+        2,
+        900,
+    );
     assert!(
         sim.production
             .factory_shadow

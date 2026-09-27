@@ -597,10 +597,10 @@ pub(super) fn arm_build_via(
     let oid = sim.interner.intern(owner);
     let tid = sim.interner.intern(type_id);
     let cost = sim.object_type(tid, rules).map_or(0, |o| o.cost.max(0));
-    let started = sim
-        .production
-        .factory_shadow
-        .enqueue(oid, queue_category, tid, order, cost);
+    let started =
+        sim.production
+            .factory_shadow
+            .test_enqueue_kernel(oid, queue_category, tid, order, cost);
     if started {
         super::construct_active_factory_fixture(sim, rules, oid, queue_category, tid)
             .expect("test production type must construct at StartProduction");

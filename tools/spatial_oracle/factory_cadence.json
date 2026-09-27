@@ -366,6 +366,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -739,6 +740,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -1112,6 +1114,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 10,
       "power_output": 600,
@@ -1485,6 +1488,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -1858,6 +1862,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2231,6 +2236,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 50,
@@ -2310,6 +2316,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -2419,6 +2426,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -2486,6 +2494,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -2624,6 +2633,2097 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
+      "penalty_bits": 1065353216,
+      "power_drain": 25,
+      "power_output": 600,
+      "time_to_build": 660,
+      "wall": false,
+      "wall_coefficient_bits": 4613937818241073152
+    }
+  ],
+  "holds": [
+    {
+      "after_start": {
+        "balance": 700,
+        "credits": 10000,
+        "latch": true,
+        "on_hold": false,
+        "rate": 12,
+        "spent": 0,
+        "stage": 0,
+        "started": true,
+        "suspended": false,
+        "timer_duration": 12,
+        "timer_start": 100
+      },
+      "attempts": [
+        [
+          112,
+          1,
+          false,
+          9987
+        ],
+        [
+          124,
+          2,
+          false,
+          9974
+        ],
+        [
+          136,
+          3,
+          false,
+          9961
+        ],
+        [
+          148,
+          4,
+          false,
+          9948
+        ],
+        [
+          160,
+          5,
+          false,
+          9935
+        ],
+        [
+          172,
+          6,
+          false,
+          9922
+        ],
+        [
+          184,
+          7,
+          false,
+          9909
+        ],
+        [
+          196,
+          8,
+          false,
+          9896
+        ],
+        [
+          208,
+          9,
+          false,
+          9883
+        ],
+        [
+          220,
+          10,
+          false,
+          9870
+        ],
+        [
+          412,
+          11,
+          false,
+          9857
+        ],
+        [
+          424,
+          12,
+          false,
+          9844
+        ],
+        [
+          436,
+          13,
+          false,
+          9831
+        ],
+        [
+          448,
+          14,
+          false,
+          9818
+        ],
+        [
+          460,
+          15,
+          false,
+          9805
+        ],
+        [
+          472,
+          16,
+          false,
+          9792
+        ],
+        [
+          484,
+          17,
+          false,
+          9779
+        ],
+        [
+          496,
+          18,
+          false,
+          9766
+        ],
+        [
+          508,
+          19,
+          false,
+          9753
+        ],
+        [
+          520,
+          20,
+          false,
+          9740
+        ],
+        [
+          532,
+          21,
+          false,
+          9727
+        ],
+        [
+          544,
+          22,
+          false,
+          9714
+        ],
+        [
+          556,
+          23,
+          false,
+          9701
+        ],
+        [
+          568,
+          24,
+          false,
+          9688
+        ],
+        [
+          580,
+          25,
+          false,
+          9675
+        ],
+        [
+          592,
+          26,
+          false,
+          9662
+        ],
+        [
+          604,
+          27,
+          false,
+          9649
+        ],
+        [
+          616,
+          28,
+          false,
+          9636
+        ],
+        [
+          628,
+          29,
+          false,
+          9623
+        ],
+        [
+          640,
+          30,
+          false,
+          9610
+        ],
+        [
+          652,
+          31,
+          false,
+          9597
+        ],
+        [
+          664,
+          32,
+          false,
+          9584
+        ],
+        [
+          676,
+          33,
+          false,
+          9571
+        ],
+        [
+          688,
+          34,
+          false,
+          9558
+        ],
+        [
+          700,
+          35,
+          false,
+          9545
+        ],
+        [
+          712,
+          36,
+          false,
+          9532
+        ],
+        [
+          724,
+          37,
+          false,
+          9519
+        ],
+        [
+          736,
+          38,
+          false,
+          9506
+        ],
+        [
+          748,
+          39,
+          false,
+          9493
+        ],
+        [
+          760,
+          40,
+          false,
+          9480
+        ],
+        [
+          772,
+          41,
+          false,
+          9467
+        ],
+        [
+          784,
+          42,
+          false,
+          9454
+        ],
+        [
+          796,
+          43,
+          false,
+          9440
+        ],
+        [
+          808,
+          44,
+          false,
+          9426
+        ],
+        [
+          820,
+          45,
+          false,
+          9412
+        ],
+        [
+          832,
+          46,
+          false,
+          9398
+        ],
+        [
+          844,
+          47,
+          false,
+          9384
+        ],
+        [
+          856,
+          48,
+          false,
+          9370
+        ],
+        [
+          868,
+          49,
+          false,
+          9356
+        ],
+        [
+          880,
+          50,
+          false,
+          9342
+        ],
+        [
+          892,
+          51,
+          false,
+          9328
+        ],
+        [
+          904,
+          52,
+          false,
+          9314
+        ],
+        [
+          916,
+          53,
+          false,
+          9300
+        ],
+        [
+          928,
+          54,
+          false,
+          9300
+        ]
+      ],
+      "btm_bits": 1069547520,
+      "build_speed_bits": 4604480258916220928,
+      "cost": 700,
+      "country_bits": 1065353216,
+      "credits": 10000,
+      "defense": false,
+      "deposits": [],
+      "factory_count": 1,
+      "final": {
+        "balance": 0,
+        "credits": 9300,
+        "latch": true,
+        "on_hold": false,
+        "rate": 0,
+        "spent": 700,
+        "stage": 54,
+        "suspended": true,
+        "timer_duration": 0,
+        "timer_start": 928
+      },
+      "kind": "unit",
+      "last_frame": 940,
+      "max_speed_bits": 1061997773,
+      "min_speed_bits": 1056964608,
+      "multiple_factory_bits": 1061997773,
+      "naval": false,
+      "order_results": [
+        [
+          225,
+          "suspend",
+          true,
+          0,
+          225,
+          0,
+          10,
+          true
+        ],
+        [
+          400,
+          "resume",
+          true,
+          12,
+          400,
+          12,
+          10,
+          false
+        ]
+      ],
+      "orders": [
+        [
+          225,
+          "suspend"
+        ],
+        [
+          400,
+          "resume"
+        ]
+      ],
+      "penalty_bits": 1065353216,
+      "power_drain": 25,
+      "power_output": 600,
+      "time_to_build": 660,
+      "wall": false,
+      "wall_coefficient_bits": 4613937818241073152
+    },
+    {
+      "after_start": {
+        "balance": 700,
+        "credits": 10000,
+        "latch": true,
+        "on_hold": false,
+        "rate": 12,
+        "spent": 0,
+        "stage": 0,
+        "started": true,
+        "suspended": false,
+        "timer_duration": 12,
+        "timer_start": 100
+      },
+      "attempts": [
+        [
+          112,
+          1,
+          false,
+          9987
+        ],
+        [
+          124,
+          2,
+          false,
+          9974
+        ],
+        [
+          136,
+          3,
+          false,
+          9961
+        ],
+        [
+          148,
+          4,
+          false,
+          9948
+        ],
+        [
+          160,
+          5,
+          false,
+          9935
+        ],
+        [
+          172,
+          6,
+          false,
+          9922
+        ],
+        [
+          184,
+          7,
+          false,
+          9909
+        ],
+        [
+          196,
+          8,
+          false,
+          9896
+        ],
+        [
+          208,
+          9,
+          false,
+          9883
+        ],
+        [
+          220,
+          10,
+          false,
+          9870
+        ],
+        [
+          232,
+          11,
+          false,
+          9857
+        ],
+        [
+          244,
+          12,
+          false,
+          9844
+        ],
+        [
+          256,
+          13,
+          false,
+          9831
+        ],
+        [
+          268,
+          14,
+          false,
+          9818
+        ],
+        [
+          280,
+          15,
+          false,
+          9805
+        ],
+        [
+          292,
+          16,
+          false,
+          9792
+        ],
+        [
+          312,
+          17,
+          false,
+          9779
+        ],
+        [
+          324,
+          18,
+          false,
+          9766
+        ],
+        [
+          336,
+          19,
+          false,
+          9753
+        ],
+        [
+          348,
+          20,
+          false,
+          9740
+        ],
+        [
+          360,
+          21,
+          false,
+          9727
+        ],
+        [
+          372,
+          22,
+          false,
+          9714
+        ],
+        [
+          384,
+          23,
+          false,
+          9701
+        ],
+        [
+          396,
+          24,
+          false,
+          9688
+        ],
+        [
+          408,
+          25,
+          false,
+          9675
+        ],
+        [
+          420,
+          26,
+          false,
+          9662
+        ],
+        [
+          432,
+          27,
+          false,
+          9649
+        ],
+        [
+          444,
+          28,
+          false,
+          9636
+        ],
+        [
+          456,
+          29,
+          false,
+          9623
+        ],
+        [
+          468,
+          30,
+          false,
+          9610
+        ],
+        [
+          480,
+          31,
+          false,
+          9597
+        ],
+        [
+          492,
+          32,
+          false,
+          9584
+        ],
+        [
+          504,
+          33,
+          false,
+          9571
+        ],
+        [
+          516,
+          34,
+          false,
+          9558
+        ],
+        [
+          528,
+          35,
+          false,
+          9545
+        ],
+        [
+          540,
+          36,
+          false,
+          9532
+        ],
+        [
+          552,
+          37,
+          false,
+          9519
+        ],
+        [
+          564,
+          38,
+          false,
+          9506
+        ],
+        [
+          576,
+          39,
+          false,
+          9493
+        ],
+        [
+          588,
+          40,
+          false,
+          9480
+        ],
+        [
+          600,
+          41,
+          false,
+          9467
+        ],
+        [
+          612,
+          42,
+          false,
+          9454
+        ],
+        [
+          624,
+          43,
+          false,
+          9440
+        ],
+        [
+          636,
+          44,
+          false,
+          9426
+        ],
+        [
+          648,
+          45,
+          false,
+          9412
+        ],
+        [
+          660,
+          46,
+          false,
+          9398
+        ],
+        [
+          672,
+          47,
+          false,
+          9384
+        ],
+        [
+          684,
+          48,
+          false,
+          9370
+        ],
+        [
+          696,
+          49,
+          false,
+          9356
+        ],
+        [
+          708,
+          50,
+          false,
+          9342
+        ],
+        [
+          720,
+          51,
+          false,
+          9328
+        ],
+        [
+          732,
+          52,
+          false,
+          9314
+        ],
+        [
+          744,
+          53,
+          false,
+          9300
+        ],
+        [
+          756,
+          54,
+          false,
+          9300
+        ]
+      ],
+      "btm_bits": 1069547520,
+      "build_speed_bits": 4604480258916220928,
+      "cost": 700,
+      "country_bits": 1065353216,
+      "credits": 10000,
+      "defense": false,
+      "deposits": [],
+      "factory_count": 1,
+      "final": {
+        "balance": 0,
+        "credits": 9300,
+        "latch": true,
+        "on_hold": false,
+        "rate": 0,
+        "spent": 700,
+        "stage": 54,
+        "suspended": true,
+        "timer_duration": 0,
+        "timer_start": 756
+      },
+      "kind": "unit",
+      "last_frame": 760,
+      "max_speed_bits": 1061997773,
+      "min_speed_bits": 1056964608,
+      "multiple_factory_bits": 1061997773,
+      "naval": false,
+      "order_results": [
+        [
+          300,
+          "suspend",
+          true,
+          0,
+          300,
+          0,
+          16,
+          true
+        ],
+        [
+          300,
+          "resume",
+          true,
+          12,
+          300,
+          12,
+          16,
+          false
+        ]
+      ],
+      "orders": [
+        [
+          300,
+          "suspend"
+        ],
+        [
+          300,
+          "resume"
+        ]
+      ],
+      "penalty_bits": 1065353216,
+      "power_drain": 25,
+      "power_output": 600,
+      "time_to_build": 660,
+      "wall": false,
+      "wall_coefficient_bits": 4613937818241073152
+    },
+    {
+      "after_start": {
+        "balance": 700,
+        "credits": 10000,
+        "latch": true,
+        "on_hold": false,
+        "rate": 12,
+        "spent": 0,
+        "stage": 0,
+        "started": true,
+        "suspended": false,
+        "timer_duration": 12,
+        "timer_start": 100
+      },
+      "attempts": [
+        [
+          112,
+          1,
+          false,
+          9987
+        ],
+        [
+          124,
+          2,
+          false,
+          9974
+        ],
+        [
+          136,
+          3,
+          false,
+          9961
+        ],
+        [
+          148,
+          4,
+          false,
+          9948
+        ],
+        [
+          212,
+          5,
+          false,
+          9935
+        ],
+        [
+          224,
+          6,
+          false,
+          9922
+        ],
+        [
+          236,
+          7,
+          false,
+          9909
+        ],
+        [
+          248,
+          8,
+          false,
+          9896
+        ],
+        [
+          260,
+          9,
+          false,
+          9883
+        ],
+        [
+          272,
+          10,
+          false,
+          9870
+        ],
+        [
+          284,
+          11,
+          false,
+          9857
+        ],
+        [
+          296,
+          12,
+          false,
+          9844
+        ],
+        [
+          308,
+          13,
+          false,
+          9831
+        ],
+        [
+          320,
+          14,
+          false,
+          9818
+        ],
+        [
+          332,
+          15,
+          false,
+          9805
+        ],
+        [
+          344,
+          16,
+          false,
+          9792
+        ],
+        [
+          356,
+          17,
+          false,
+          9779
+        ],
+        [
+          368,
+          18,
+          false,
+          9766
+        ],
+        [
+          380,
+          19,
+          false,
+          9753
+        ],
+        [
+          392,
+          20,
+          false,
+          9740
+        ],
+        [
+          404,
+          21,
+          false,
+          9727
+        ],
+        [
+          416,
+          22,
+          false,
+          9714
+        ],
+        [
+          428,
+          23,
+          false,
+          9701
+        ],
+        [
+          440,
+          24,
+          false,
+          9688
+        ],
+        [
+          452,
+          25,
+          false,
+          9675
+        ],
+        [
+          464,
+          26,
+          false,
+          9662
+        ],
+        [
+          476,
+          27,
+          false,
+          9649
+        ],
+        [
+          488,
+          28,
+          false,
+          9636
+        ],
+        [
+          500,
+          29,
+          false,
+          9623
+        ],
+        [
+          512,
+          30,
+          false,
+          9610
+        ],
+        [
+          524,
+          31,
+          false,
+          9597
+        ],
+        [
+          536,
+          32,
+          false,
+          9584
+        ],
+        [
+          548,
+          33,
+          false,
+          9571
+        ],
+        [
+          560,
+          34,
+          false,
+          9558
+        ],
+        [
+          572,
+          35,
+          false,
+          9545
+        ],
+        [
+          584,
+          36,
+          false,
+          9532
+        ],
+        [
+          596,
+          37,
+          false,
+          9519
+        ],
+        [
+          608,
+          38,
+          false,
+          9506
+        ],
+        [
+          620,
+          39,
+          false,
+          9493
+        ],
+        [
+          632,
+          40,
+          false,
+          9480
+        ],
+        [
+          644,
+          41,
+          false,
+          9467
+        ],
+        [
+          656,
+          42,
+          false,
+          9454
+        ],
+        [
+          668,
+          43,
+          false,
+          9440
+        ],
+        [
+          680,
+          44,
+          false,
+          9426
+        ],
+        [
+          692,
+          45,
+          false,
+          9412
+        ],
+        [
+          704,
+          46,
+          false,
+          9398
+        ],
+        [
+          716,
+          47,
+          false,
+          9384
+        ],
+        [
+          728,
+          48,
+          false,
+          9370
+        ],
+        [
+          740,
+          49,
+          false,
+          9356
+        ],
+        [
+          752,
+          50,
+          false,
+          9342
+        ],
+        [
+          764,
+          51,
+          false,
+          9328
+        ],
+        [
+          776,
+          52,
+          false,
+          9314
+        ],
+        [
+          788,
+          53,
+          false,
+          9300
+        ],
+        [
+          800,
+          54,
+          false,
+          9300
+        ]
+      ],
+      "btm_bits": 1069547520,
+      "build_speed_bits": 4604480258916220928,
+      "cost": 700,
+      "country_bits": 1065353216,
+      "credits": 10000,
+      "defense": false,
+      "deposits": [],
+      "factory_count": 1,
+      "final": {
+        "balance": 0,
+        "credits": 9300,
+        "latch": true,
+        "on_hold": false,
+        "rate": 0,
+        "spent": 700,
+        "stage": 54,
+        "suspended": true,
+        "timer_duration": 0,
+        "timer_start": 800
+      },
+      "kind": "unit",
+      "last_frame": 800,
+      "max_speed_bits": 1061997773,
+      "min_speed_bits": 1056964608,
+      "multiple_factory_bits": 1061997773,
+      "naval": false,
+      "order_results": [
+        [
+          150,
+          "suspend",
+          true,
+          0,
+          150,
+          0,
+          4,
+          true
+        ],
+        [
+          160,
+          "suspend",
+          false,
+          0,
+          150,
+          0,
+          4,
+          true
+        ],
+        [
+          200,
+          "resume",
+          true,
+          12,
+          200,
+          12,
+          4,
+          false
+        ],
+        [
+          210,
+          "resume",
+          false,
+          12,
+          200,
+          12,
+          4,
+          false
+        ]
+      ],
+      "orders": [
+        [
+          150,
+          "suspend"
+        ],
+        [
+          160,
+          "suspend"
+        ],
+        [
+          200,
+          "resume"
+        ],
+        [
+          210,
+          "resume"
+        ]
+      ],
+      "penalty_bits": 1065353216,
+      "power_drain": 25,
+      "power_output": 600,
+      "time_to_build": 660,
+      "wall": false,
+      "wall_coefficient_bits": 4613937818241073152
+    },
+    {
+      "after_start": {
+        "balance": 700,
+        "credits": 10000,
+        "latch": true,
+        "on_hold": false,
+        "rate": 12,
+        "spent": 0,
+        "stage": 0,
+        "started": true,
+        "suspended": false,
+        "timer_duration": 12,
+        "timer_start": 100
+      },
+      "attempts": [
+        [
+          112,
+          1,
+          false,
+          9987
+        ],
+        [
+          124,
+          2,
+          false,
+          9974
+        ],
+        [
+          136,
+          3,
+          false,
+          9961
+        ],
+        [
+          148,
+          4,
+          false,
+          9948
+        ],
+        [
+          160,
+          5,
+          false,
+          9935
+        ],
+        [
+          172,
+          6,
+          false,
+          9922
+        ],
+        [
+          184,
+          7,
+          false,
+          9909
+        ],
+        [
+          196,
+          8,
+          false,
+          9896
+        ],
+        [
+          208,
+          9,
+          false,
+          9883
+        ],
+        [
+          220,
+          10,
+          false,
+          9870
+        ],
+        [
+          232,
+          11,
+          false,
+          9857
+        ],
+        [
+          244,
+          12,
+          false,
+          9844
+        ],
+        [
+          256,
+          13,
+          false,
+          9831
+        ],
+        [
+          268,
+          14,
+          false,
+          9818
+        ],
+        [
+          280,
+          15,
+          false,
+          9805
+        ],
+        [
+          292,
+          16,
+          false,
+          9792
+        ],
+        [
+          304,
+          17,
+          false,
+          9779
+        ],
+        [
+          316,
+          18,
+          false,
+          9766
+        ],
+        [
+          328,
+          19,
+          false,
+          9753
+        ],
+        [
+          340,
+          20,
+          false,
+          9740
+        ],
+        [
+          352,
+          21,
+          false,
+          9727
+        ],
+        [
+          364,
+          22,
+          false,
+          9714
+        ],
+        [
+          376,
+          23,
+          false,
+          9701
+        ],
+        [
+          388,
+          24,
+          false,
+          9688
+        ],
+        [
+          400,
+          25,
+          false,
+          9675
+        ],
+        [
+          412,
+          26,
+          false,
+          9662
+        ],
+        [
+          424,
+          27,
+          false,
+          9649
+        ],
+        [
+          436,
+          28,
+          false,
+          9636
+        ],
+        [
+          448,
+          29,
+          false,
+          9623
+        ],
+        [
+          460,
+          30,
+          false,
+          9610
+        ],
+        [
+          472,
+          31,
+          false,
+          9597
+        ],
+        [
+          484,
+          32,
+          false,
+          9584
+        ],
+        [
+          496,
+          33,
+          false,
+          9571
+        ],
+        [
+          508,
+          34,
+          false,
+          9558
+        ],
+        [
+          520,
+          35,
+          false,
+          9545
+        ],
+        [
+          532,
+          36,
+          false,
+          9532
+        ],
+        [
+          544,
+          37,
+          false,
+          9519
+        ],
+        [
+          556,
+          38,
+          false,
+          9506
+        ],
+        [
+          568,
+          39,
+          false,
+          9493
+        ],
+        [
+          580,
+          40,
+          false,
+          9480
+        ],
+        [
+          592,
+          41,
+          false,
+          9467
+        ],
+        [
+          604,
+          42,
+          false,
+          9454
+        ],
+        [
+          616,
+          43,
+          false,
+          9440
+        ],
+        [
+          628,
+          44,
+          false,
+          9426
+        ],
+        [
+          640,
+          45,
+          false,
+          9412
+        ],
+        [
+          652,
+          46,
+          false,
+          9398
+        ],
+        [
+          664,
+          47,
+          false,
+          9384
+        ],
+        [
+          676,
+          48,
+          false,
+          9370
+        ],
+        [
+          688,
+          49,
+          false,
+          9356
+        ],
+        [
+          700,
+          50,
+          false,
+          9342
+        ],
+        [
+          712,
+          51,
+          false,
+          9328
+        ],
+        [
+          724,
+          52,
+          false,
+          9314
+        ],
+        [
+          736,
+          53,
+          false,
+          9300
+        ],
+        [
+          748,
+          54,
+          false,
+          9300
+        ]
+      ],
+      "btm_bits": 1069547520,
+      "build_speed_bits": 4604480258916220928,
+      "cost": 700,
+      "country_bits": 1065353216,
+      "credits": 10000,
+      "defense": false,
+      "deposits": [],
+      "factory_count": 1,
+      "final": {
+        "balance": 0,
+        "credits": 9300,
+        "latch": true,
+        "on_hold": false,
+        "rate": 0,
+        "spent": 700,
+        "stage": 54,
+        "suspended": true,
+        "timer_duration": 0,
+        "timer_start": 748
+      },
+      "kind": "unit",
+      "last_frame": 780,
+      "max_speed_bits": 1061997773,
+      "min_speed_bits": 1056964608,
+      "multiple_factory_bits": 1061997773,
+      "naval": false,
+      "order_results": [
+        [
+          760,
+          "suspend",
+          false,
+          0,
+          748,
+          0,
+          54,
+          true
+        ],
+        [
+          770,
+          "resume",
+          false,
+          0,
+          748,
+          0,
+          54,
+          true
+        ]
+      ],
+      "orders": [
+        [
+          760,
+          "suspend"
+        ],
+        [
+          770,
+          "resume"
+        ]
+      ],
+      "penalty_bits": 1065353216,
+      "power_drain": 25,
+      "power_output": 600,
+      "time_to_build": 660,
+      "wall": false,
+      "wall_coefficient_bits": 4613937818241073152
+    },
+    {
+      "after_start": {
+        "balance": 700,
+        "credits": 100,
+        "latch": true,
+        "on_hold": false,
+        "rate": 12,
+        "spent": 0,
+        "stage": 0,
+        "started": true,
+        "suspended": false,
+        "timer_duration": 12,
+        "timer_start": 100
+      },
+      "attempts": [
+        [
+          112,
+          1,
+          false,
+          87
+        ],
+        [
+          124,
+          2,
+          false,
+          74
+        ],
+        [
+          136,
+          3,
+          false,
+          61
+        ],
+        [
+          148,
+          4,
+          false,
+          48
+        ],
+        [
+          160,
+          5,
+          false,
+          35
+        ],
+        [
+          172,
+          6,
+          false,
+          22
+        ],
+        [
+          184,
+          7,
+          false,
+          9
+        ],
+        [
+          196,
+          7,
+          true,
+          9
+        ],
+        [
+          208,
+          7,
+          true,
+          9
+        ],
+        [
+          220,
+          7,
+          true,
+          9
+        ],
+        [
+          232,
+          7,
+          true,
+          9
+        ],
+        [
+          244,
+          7,
+          true,
+          9
+        ],
+        [
+          362,
+          8,
+          false,
+          996
+        ],
+        [
+          374,
+          9,
+          false,
+          983
+        ],
+        [
+          386,
+          10,
+          false,
+          970
+        ],
+        [
+          398,
+          11,
+          false,
+          957
+        ],
+        [
+          410,
+          12,
+          false,
+          944
+        ],
+        [
+          422,
+          13,
+          false,
+          931
+        ],
+        [
+          434,
+          14,
+          false,
+          918
+        ],
+        [
+          446,
+          15,
+          false,
+          905
+        ],
+        [
+          458,
+          16,
+          false,
+          892
+        ],
+        [
+          470,
+          17,
+          false,
+          879
+        ],
+        [
+          482,
+          18,
+          false,
+          866
+        ],
+        [
+          494,
+          19,
+          false,
+          853
+        ],
+        [
+          506,
+          20,
+          false,
+          840
+        ],
+        [
+          518,
+          21,
+          false,
+          827
+        ],
+        [
+          530,
+          22,
+          false,
+          814
+        ],
+        [
+          542,
+          23,
+          false,
+          801
+        ],
+        [
+          554,
+          24,
+          false,
+          788
+        ],
+        [
+          566,
+          25,
+          false,
+          775
+        ],
+        [
+          578,
+          26,
+          false,
+          762
+        ],
+        [
+          590,
+          27,
+          false,
+          749
+        ],
+        [
+          602,
+          28,
+          false,
+          736
+        ],
+        [
+          614,
+          29,
+          false,
+          723
+        ],
+        [
+          626,
+          30,
+          false,
+          710
+        ],
+        [
+          638,
+          31,
+          false,
+          697
+        ],
+        [
+          650,
+          32,
+          false,
+          684
+        ],
+        [
+          662,
+          33,
+          false,
+          671
+        ],
+        [
+          674,
+          34,
+          false,
+          658
+        ],
+        [
+          686,
+          35,
+          false,
+          645
+        ],
+        [
+          698,
+          36,
+          false,
+          632
+        ],
+        [
+          710,
+          37,
+          false,
+          619
+        ],
+        [
+          722,
+          38,
+          false,
+          606
+        ],
+        [
+          734,
+          39,
+          false,
+          593
+        ],
+        [
+          746,
+          40,
+          false,
+          580
+        ],
+        [
+          758,
+          41,
+          false,
+          567
+        ],
+        [
+          770,
+          42,
+          false,
+          554
+        ],
+        [
+          782,
+          43,
+          false,
+          540
+        ],
+        [
+          794,
+          44,
+          false,
+          526
+        ],
+        [
+          806,
+          45,
+          false,
+          512
+        ],
+        [
+          818,
+          46,
+          false,
+          498
+        ],
+        [
+          830,
+          47,
+          false,
+          484
+        ],
+        [
+          842,
+          48,
+          false,
+          470
+        ],
+        [
+          854,
+          49,
+          false,
+          456
+        ],
+        [
+          866,
+          50,
+          false,
+          442
+        ],
+        [
+          878,
+          51,
+          false,
+          428
+        ],
+        [
+          890,
+          52,
+          false,
+          414
+        ],
+        [
+          902,
+          53,
+          false,
+          400
+        ],
+        [
+          914,
+          54,
+          false,
+          400
+        ]
+      ],
+      "btm_bits": 1069547520,
+      "build_speed_bits": 4604480258916220928,
+      "cost": 700,
+      "country_bits": 1065353216,
+      "credits": 100,
+      "defense": false,
+      "deposits": [
+        [
+          300,
+          1000
+        ]
+      ],
+      "factory_count": 1,
+      "final": {
+        "balance": 0,
+        "credits": 400,
+        "latch": true,
+        "on_hold": false,
+        "rate": 0,
+        "spent": 700,
+        "stage": 54,
+        "suspended": true,
+        "timer_duration": 0,
+        "timer_start": 914
+      },
+      "kind": "unit",
+      "last_frame": 1000,
+      "max_speed_bits": 1061997773,
+      "min_speed_bits": 1056964608,
+      "multiple_factory_bits": 1061997773,
+      "naval": false,
+      "order_results": [
+        [
+          250,
+          "suspend",
+          true,
+          0,
+          250,
+          0,
+          7,
+          true
+        ],
+        [
+          350,
+          "resume",
+          true,
+          12,
+          350,
+          12,
+          7,
+          false
+        ]
+      ],
+      "orders": [
+        [
+          250,
+          "suspend"
+        ],
+        [
+          350,
+          "resume"
+        ]
+      ],
       "penalty_bits": 1065353216,
       "power_drain": 25,
       "power_output": 600,
@@ -2675,6 +4775,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2723,6 +4824,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2771,6 +4873,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2819,6 +4922,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2867,6 +4971,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2915,6 +5020,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -2963,6 +5069,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3011,6 +5118,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3059,6 +5167,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3107,6 +5216,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3155,6 +5265,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3203,6 +5314,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3251,6 +5363,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,
@@ -3299,6 +5412,7 @@
       "min_speed_bits": 1056964608,
       "multiple_factory_bits": 1061997773,
       "naval": false,
+      "order_results": [],
       "penalty_bits": 1065353216,
       "power_drain": 100,
       "power_output": 100,

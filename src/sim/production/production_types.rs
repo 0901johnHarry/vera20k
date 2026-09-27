@@ -72,7 +72,6 @@ pub enum BuildDisabledReason {
     MissingPrerequisite(String),
     NoFactory,
     AtBuildLimit,
-    PlacementModeUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,7 +118,6 @@ pub enum ProductionCategory {
 pub enum BuildQueueState {
     Queued,
     Building,
-    NoFunds,
     Paused,
     Done,
 }
@@ -129,7 +127,6 @@ impl BuildQueueState {
         match self {
             Self::Queued => "Queued",
             Self::Building => "Building",
-            Self::NoFunds => "On Hold",
             Self::Paused => "Paused",
             Self::Done => "Done",
         }
@@ -173,12 +170,6 @@ impl BuildOption {
     pub fn visible_in_sidebar(&self) -> bool {
         self.enabled || self.reason == Some(BuildDisabledReason::AtBuildLimit)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum BuildMode {
-    Strict,
-    PrototypeRelaxed,
 }
 
 /// Player production state.
