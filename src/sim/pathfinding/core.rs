@@ -2742,6 +2742,7 @@ pub fn find_path_with_costs(
         goal,
         costs,
         entity_blocks,
+        None,
         movement_zone,
         resolved_terrain,
         entity_block_map,
@@ -2756,12 +2757,13 @@ pub fn find_path_with_costs(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn find_path_with_costs_marker(
+pub(crate) fn find_path_with_costs_marker(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
     costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+    hierarchy_gate: Option<HierarchyGate<'_>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_block_map: Option<&LayeredEntityBlockMap>,
@@ -2776,6 +2778,7 @@ pub fn find_path_with_costs_marker(
         &AStarOptions {
             terrain_costs: costs,
             entity_blocks,
+            hierarchy_gate,
             entity_block_map,
             marker_overlay,
             urgency: facts.urgency,
@@ -2788,97 +2791,6 @@ pub fn find_path_with_costs_marker(
         },
     )?;
     Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn find_path_with_costs_hierarchy_marker(
-    grid: &PathGrid,
-    start: (u16, u16),
-    goal: (u16, u16),
-    costs: Option<&TerrainCostGrid>,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    level0_zones: &ZoneLevelGraph,
-    marked_level0: &BTreeSet<ZoneId>,
-    blocker_neighbor_counts: &BlockerNeighborCounts,
-    movement_zone: Option<MovementZone>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    marker_overlay: Option<&SearchMarkerOverlay>,
-    facts: MoverSearchFacts<'_>,
-) -> Option<Vec<(u16, u16)>> {
-    let steps = astar_search(
-        grid,
-        start,
-        MovementLayer::Ground,
-        goal,
-        &AStarOptions {
-            terrain_costs: costs,
-            entity_blocks,
-            hierarchy_gate: Some(HierarchyGate {
-                level0_zones,
-                marked_level0,
-                blocker_neighbor_counts,
-            }),
-            entity_block_map,
-            marker_overlay,
-            urgency: facts.urgency,
-            mover_is_crusher: facts.mover_is_crusher,
-            is_infantry: facts.is_infantry,
-            search_cost_classifier: facts.wall_cost,
-            movement_zone,
-            resolved_terrain,
-            ..Default::default()
-        },
-    )?;
-    Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn find_layered_path_hierarchy_marker(
-    grid: &PathGrid,
-    ground_blocks: Option<&BTreeSet<(u16, u16)>>,
-    bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
-    start: (u16, u16),
-    start_layer: MovementLayer,
-    goal: (u16, u16),
-    terrain_costs: Option<&TerrainCostGrid>,
-    level0_zones: &ZoneLevelGraph,
-    marked_level0: &BTreeSet<ZoneId>,
-    blocker_neighbor_counts: &BlockerNeighborCounts,
-    movement_zone: Option<MovementZone>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    marker_overlay: Option<&SearchMarkerOverlay>,
-    facts: MoverSearchFacts<'_>,
-) -> Option<Vec<LayeredPathStep>> {
-    if !matches!(start_layer, MovementLayer::Ground | MovementLayer::Bridge) {
-        return None;
-    }
-    astar_search(
-        grid,
-        start,
-        start_layer,
-        goal,
-        &AStarOptions {
-            terrain_costs,
-            resolved_terrain,
-            entity_blocks: ground_blocks,
-            bridge_blocks,
-            hierarchy_gate: Some(HierarchyGate {
-                level0_zones,
-                marked_level0,
-                blocker_neighbor_counts,
-            }),
-            entity_block_map,
-            marker_overlay,
-            urgency: facts.urgency,
-            mover_is_crusher: facts.mover_is_crusher,
-            is_infantry: facts.is_infantry,
-            search_cost_classifier: facts.wall_cost,
-            movement_zone,
-            ..Default::default()
-        },
-    )
 }
 
 /// Resolve a gamemd foundation name into pathfinding footprint dimensions.
@@ -2955,6 +2867,7 @@ pub fn find_layered_path(
         goal,
         terrain_costs,
         None,
+        None,
         resolved_terrain,
         entity_block_map,
         None,
@@ -2968,7 +2881,7 @@ pub fn find_layered_path(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn find_layered_path_marker(
+pub(crate) fn find_layered_path_marker(
     grid: &PathGrid,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
@@ -2976,6 +2889,7 @@ pub fn find_layered_path_marker(
     start_layer: MovementLayer,
     goal: (u16, u16),
     terrain_costs: Option<&TerrainCostGrid>,
+    hierarchy_gate: Option<HierarchyGate<'_>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_block_map: Option<&LayeredEntityBlockMap>,
@@ -3001,6 +2915,7 @@ pub fn find_layered_path_marker(
             resolved_terrain,
             entity_blocks: ground_blocks,
             bridge_blocks,
+            hierarchy_gate,
             entity_block_map,
             marker_overlay,
             urgency: facts.urgency,
