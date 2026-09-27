@@ -104,6 +104,32 @@ fn one_command_turns_and_converts_all_stock_mcv_types() {
         }
     }
 }
+/// Deploy lifts the MCV (`Mark(UP)`, `0x00739670`) before the yard is built
+/// and marked. VERA lifts it after, at its UnInit; the cell the MCV stood on
+/// must still end like every other yard cell.
+#[test]
+fn the_cell_the_mcv_stood_on_ends_as_a_yard_cell() {
+    let (mut sim, rules, id) = fixture("AMCV", 128, 5, 4);
+    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    finish(&mut sim, &rules, id);
+    let yard = sim
+        .substrate
+        .entities
+        .values()
+        .find(|e| !e.dying && e.category == EntityCategory::Structure)
+        .unwrap()
+        .stable_id();
+    let bits = |cell: (u16, u16)| {
+        sim.substrate
+            .raw_cell_occupation
+            .ground_bits(cell.0, cell.1)
+    };
+    assert_ne!(bits((21, 22)), 0);
+    assert_eq!(bits((20, 22)), bits((21, 22)));
+    assert!(sim.substrate.occupancy.contains_entity(20, 22, yard));
+    assert!(!sim.substrate.occupancy.contains_entity(20, 22, id));
+}
+
 /// The yard an MCV deploys into in frame D builds up from its type's Buildup
 /// control and completes at D + 1 + (count - 1) * rate: Deploy's ready byte
 /// commences the queued Construction mission in D and its first visit is D+1

@@ -677,7 +677,11 @@ use crate::sim::world::Simulation;
 // Init's Set_ROT at 0x00442CA5), which a 229 save holds only for turreted ones.
 // The layout is unchanged, but a 229 save's turretless buildings would neither
 // aim their body nor turn it when hit, so reject it.
-const SNAPSHOT_VERSION: u32 = 230;
+// 230 -> 231: a computer house's MCV deploys through its own missions
+// (`sim::mcv_deploy`), so the AI player state loses its `mcv_deployed` latch,
+// and the build-site test (`sim::build_site`) replaces the terrain's derived
+// `build_blocked` cache, which the dynamic cell state no longer carries.
+const SNAPSHOT_VERSION: u32 = 231;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2394,7 +2398,6 @@ mod tests {
             base_yr_cell_land_type: 0,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: SpeedCostProfile::default(),
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,
@@ -3664,7 +3667,8 @@ mod tests {
         // 227 -> 228: FactoryPlant cost bonuses; no full-cost Balance copy.
         // 228 -> 229: the native production events; a user hold clears the rate.
         // 229 -> 230: every building's `+0x388` facing.
-        assert_eq!(super::SNAPSHOT_VERSION, 230);
+        // 230 -> 231: no AI `mcv_deployed` latch; no terrain `build_blocked`.
+        assert_eq!(super::SNAPSHOT_VERSION, 231);
     }
 
     #[test]

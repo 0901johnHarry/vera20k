@@ -232,6 +232,16 @@ pub(crate) fn try_to_deploy(
     }
     sim.foot_mark_put(id, Some(rules), None, registry);
     // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0).
+    //
+    // RESIDUAL: `UnitClass::Scatter @ 0x00743A50` runs through the shared
+    // compatibility adapter (`scatter_blocker`), which draws one random start
+    // among the eight neighbours. Native passes the MissionControl gate
+    // (`0x005B3A00`), searches with `0x0056DC20`, makes its own RandomRanged
+    // draws (`0x0065C7E0`) and may queue a mission (`0x00744053`) before
+    // SetDestination. Trigger: a computer MCV with no clear site among the 36
+    // and no destination. Effect: another destination cell and other Scenario
+    // draws. Frequency: uncommon (cramped starts, map edges). Owner: the Unit
+    // Scatter migration.
     if !has_destination(sim)
         && !sim
             .houses

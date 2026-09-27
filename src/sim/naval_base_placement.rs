@@ -268,7 +268,6 @@ mod tests {
             base_yr_cell_land_type: LandType::Water.as_index(),
             base_terrain_class: TerrainClass::Water,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

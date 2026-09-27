@@ -1159,7 +1159,6 @@ mod tests {
         assert_eq!(cell.terrain_object_occupation, None);
         assert!(!cell.terrain_object_blocks);
         assert!(!cell.ground_walk_blocked);
-        assert!(!cell.build_blocked);
         assert_eq!(cell.zone_type, zone_class::GROUND);
     }
 

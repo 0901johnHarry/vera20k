@@ -549,12 +549,21 @@ fn validate_and_stamp_candidate_inner(
         // `CellClass::Is_Clear_To_Build @ 0x0047C620` receives
         // `(cell, 1, 0, 0)` here. The crate caller already proved allocated,
         // in-playfield, and overlay-empty; with the null object argument the
-        // surviving admission is Track speed, not terrain-object/occupation.
-        let wall_passes = sim
-            .resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(cell.0, cell.1))
-            .is_some_and(|terrain_cell| terrain_cell.speed_costs.track != Some(0));
+        // surviving admission is the LandType's Track speed, not
+        // terrain-object/occupation.
+        let wall_passes = full_rules.is_some_and(|full_rules| {
+            sim.resolved_terrain.as_ref().is_some_and(|terrain| {
+                crate::sim::build_site::is_clear_to_build(
+                    sim,
+                    full_rules,
+                    Some(overlay_registry),
+                    terrain.native_cell_identity((cell.0 as i16, cell.1 as i16)),
+                    Some(SpeedType::Track),
+                    None,
+                    None,
+                )
+            })
+        });
         if !wall_passes {
             return AcceptedCellResult::Ghost;
         }
@@ -2250,12 +2259,13 @@ pub(crate) mod tests {
     #[test]
     fn wall_crate_mark_uses_building_passability_and_crate_never_overrides_data() {
         let registry = dense_registry(0, &[(0, "WALLCRATE", "Wall=yes\nLand=Wall\nCrate=yes\n")]);
-        let rules = CrateRules {
-            wood_crate_img: Some("WALLCRATE".to_owned()),
-            crate_img: Some("WALLCRATE".to_owned()),
-            water_crate_img: Some("WALLCRATE".to_owned()),
-            ..CrateRules::default()
-        };
+        // The ground's `[Clear]` row decides.
+        let rules = crate_ruleset_with_images(
+            "WALLCRATE",
+            "WALLCRATE",
+            "WALLCRATE",
+            "[Clear]\nTrack=100%\n",
+        );
         let cell = (12, 13);
         let mut visible = sim_with_grid(0x14_09_0002);
         visible
@@ -2269,7 +2279,7 @@ pub(crate) mod tests {
             .place_overlay(cell.0 + 1, cell.1, 0, 0);
 
         assert_eq!(
-            validate_and_stamp_candidate(
+            validate_and_stamp_candidate_with_rules(
                 &mut visible,
                 &rules,
                 &registry,
@@ -2283,18 +2293,12 @@ pub(crate) mod tests {
         assert_eq!(grid.cell(cell.0 + 1, cell.1).overlay_data, 0x08);
 
         let mut blocked = sim_with_grid(0x14_09_0003);
-        blocked
-            .resolved_terrain
-            .as_mut()
-            .unwrap()
-            .cell_mut(cell.0, cell.1)
-            .unwrap()
-            .speed_costs
-            .track = Some(0);
+        let trackless =
+            crate_ruleset_with_images("WALLCRATE", "WALLCRATE", "WALLCRATE", "[Clear]\nTrack=0%\n");
         assert_eq!(
-            validate_and_stamp_candidate(
+            validate_and_stamp_candidate_with_rules(
                 &mut blocked,
-                &rules,
+                &trackless,
                 &registry,
                 cell,
                 ForcedPostPrecheckFailure::None,
@@ -2687,7 +2691,6 @@ pub(crate) mod tests {
             .unwrap();
         assert!(origin_terrain.has_bridge_deck);
         assert!(!origin_terrain.bridge_walkable);
-        assert!(origin_terrain.build_blocked);
         assert_eq!(
             origin_terrain
                 .bridge_layer
@@ -3154,7 +3157,6 @@ pub(crate) mod tests {
             base_yr_cell_land_type: land_type,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

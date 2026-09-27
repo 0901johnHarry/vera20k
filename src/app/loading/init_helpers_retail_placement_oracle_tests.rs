@@ -64,7 +64,7 @@ fn rect_cells(origin: (u16, u16), width: u16, height: u16) -> Vec<(u16, u16)> {
 
 fn ordinary_surface_cell(resolved: &ResolvedTerrainGrid, rx: u16, ry: u16) -> bool {
     resolved.cell(rx, ry).is_some_and(|cell| {
-        !cell.build_blocked
+        !cell.base_build_blocked
             && !cell.overlay_blocks
             && !cell.terrain_object_blocks
             && !cell.has_bridge_deck

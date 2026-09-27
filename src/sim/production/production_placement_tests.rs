@@ -362,7 +362,6 @@ fn resolved_clear_grid_with_override(
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: clear_speed_costs,
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -2841,7 +2840,6 @@ fn place_ready_building_rejects_bridge_deck_cells() {
         .insert(americans, VecDeque::from([gapowr]));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 12 && cell.ry == 10 {
-            cell.build_blocked = true;
             cell.has_bridge_deck = true;
             cell.bridge_walkable = true;
             cell.bridge_transition = true;
@@ -2953,7 +2951,6 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
             cell.canonical_ramp = Some(RampDirection::West);
             cell.slope_type = 1;
             cell.ground_walk_blocked = false;
-            cell.build_blocked = true;
         }
     }));
 
@@ -2975,7 +2972,7 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
         sim.resolved_terrain
             .as_ref()
             .and_then(|terrain| terrain.cell(12, 10))
-            .is_some_and(|cell| !cell.ground_walk_blocked && cell.build_blocked),
+            .is_some_and(|cell| !cell.ground_walk_blocked),
         "canonical ramp fixture should stay movement-passable while rejecting placement"
     );
 }
@@ -2997,7 +2994,6 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
             cell.ground_walk_blocked = true;
             cell.is_water = true;
             cell.base_build_blocked = true;
-            cell.build_blocked = true;
             cell.has_bridge_deck = true;
             cell.bridge_walkable = true;
             cell.bridge_transition = true;
@@ -3043,7 +3039,6 @@ fn gsi_04_04_water_bound_building_rejects_beach_zone() {
             cell.zone_type = zone_class::BEACH;
             cell.terrain_class = TerrainClass::Water;
             cell.base_build_blocked = true;
-            cell.build_blocked = true;
         }
     }));
 
@@ -3079,7 +3074,6 @@ fn gsi_04_04_water_bound_building_accepts_water_zone() {
             cell.zone_type = zone_class::WATER;
             cell.terrain_class = TerrainClass::Water;
             cell.base_build_blocked = true;
-            cell.build_blocked = true;
         }
     }));
 

@@ -1527,12 +1527,15 @@ impl Simulation {
             //
             // RESIDUAL: a computer owner's refusal first runs
             // `BuildingTypeClass::Flush_For_Placement @ 0x0045EE70`
-            // (`0x0073950F..0x00739536`), which clears friendly units off the
-            // footprint. Trigger: a computer house's Unload-mission deploy of a
-            // further MCV onto a blocked site (the Hunt route tests the same
-            // site first and never calls Deploy on a refusal). Effect: its MCV
-            // retries from Guard without the blockers having been asked to
-            // move. Frequency: rare. Ported with its main consumer, the
+            // (`0x0073950F..0x00739536`), which scatters allied foot units off
+            // the footprint. Trigger: a computer owner's Deploy onto a taken
+            // footprint: the retry after the MCV's turn (retail yards keep
+            // `DeployFacing=` 0x80, so most MCVs turn first) once a unit has
+            // moved in, a Mission_Unload deploy, or a Slave Miner's
+            // (`0x006AFEF9`, `0x006AFF6D`). Effect: the blockers are not asked
+            // to move, so the MCV's mission tries again later, perhaps at
+            // another site. Frequency: uncommon; any unit, infantry or wall in
+            // the footprint refuses. Ported with its main consumer, the
             // computer's building placement.
             if !resource_gatherer {
                 self.sound_events
@@ -1625,6 +1628,10 @@ impl Simulation {
         // Native reaches the bounded post-deploy transaction only after the
         // target Building was created successfully. Keep the source MCV live
         // until target Unlimbo commits so a late placement rejection is atomic.
+        // Native lifts the MCV again first (Mark(UP), `0x00739670`); VERA lifts
+        // it at its UnInit instead, which leaves the same cells because the
+        // yard's building bit and cell-list entry are its own
+        // (`the_cell_the_mcv_stood_on_ends_as_a_yard_cell`).
         let owner_str = self.interner.resolve(owner_id).to_string();
         let Some(mut destination) = self
             .construct_runtime_techno(

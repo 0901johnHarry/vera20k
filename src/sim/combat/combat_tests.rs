@@ -9785,7 +9785,6 @@ fn flat_level_zero_terrain(
                 base_yr_cell_land_type: 0,
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: speed_costs,
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,

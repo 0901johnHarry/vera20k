@@ -312,7 +312,6 @@ pub struct ResolvedTerrainCell {
     /// on overlay removal so harvested ore cells revert to the original
     /// terrain's per-locomotor speed table.
     pub base_speed_costs: SpeedCostProfile,
-    pub build_blocked: bool,
     pub has_bridge_deck: bool,
     pub bridge_walkable: bool,
     pub bridge_transition: bool,
@@ -972,7 +971,6 @@ pub(crate) struct DynamicTerrainCellState {
     pub base_yr_cell_land_type: u8,
     pub base_terrain_class: TerrainClass,
     pub base_speed_costs: SpeedCostProfile,
-    pub build_blocked: bool,
     pub has_bridge_deck: bool,
     pub bridge_walkable: bool,
     pub bridge_transition: bool,
@@ -1022,7 +1020,6 @@ impl DynamicTerrainCellState {
             base_yr_cell_land_type: cell.base_yr_cell_land_type,
             base_terrain_class: cell.base_terrain_class,
             base_speed_costs: cell.base_speed_costs,
-            build_blocked: cell.build_blocked,
             has_bridge_deck: cell.has_bridge_deck,
             bridge_walkable: cell.bridge_walkable,
             bridge_transition: cell.bridge_transition,
@@ -1071,7 +1068,6 @@ impl DynamicTerrainCellState {
         cell.base_yr_cell_land_type = self.base_yr_cell_land_type;
         cell.base_terrain_class = self.base_terrain_class;
         cell.base_speed_costs = self.base_speed_costs;
-        cell.build_blocked = self.build_blocked;
         cell.has_bridge_deck = self.has_bridge_deck;
         cell.bridge_walkable = self.bridge_walkable;
         cell.bridge_transition = self.bridge_transition;
@@ -1772,10 +1768,6 @@ fn refresh_runtime_bridge_projection(cell: &mut ResolvedTerrainCell, structural_
         cell.has_bridge_deck = true;
         cell.bridge_walkable = !cell.terrain_object_blocks && !cell.overlay_blocks;
         cell.bridge_deck_level = cell.level.saturating_add(4);
-        cell.build_blocked = cell.base_build_blocked
-            || cell.terrain_object_blocks
-            || cell.overlay_blocks
-            || cell.bridge_walkable;
     } else if structural_removed
         || (facts.family != BridgeStampFamily::None
             && cell
@@ -1786,8 +1778,6 @@ fn refresh_runtime_bridge_projection(cell: &mut ResolvedTerrainCell, structural_
         cell.has_bridge_deck = false;
         cell.bridge_walkable = false;
         cell.bridge_deck_level = cell.level;
-        cell.build_blocked =
-            cell.base_build_blocked || cell.terrain_object_blocks || cell.overlay_blocks;
     }
     if facts.has_transition_flag() {
         cell.bridge_transition = true;
@@ -1978,7 +1968,6 @@ pub(crate) fn test_flat_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         base_yr_cell_land_type: 0,
         base_terrain_class: Default::default(),
         base_speed_costs: Default::default(),
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,
@@ -2409,7 +2398,6 @@ impl ResolvedTerrainGrid {
         let early_overlay_branch = source_flags.is_some_and(uses_early_recalc_land_branch);
         let mut finalized = overlay;
         let mut current_land_ground_blocked;
-        let mut current_land_build_blocked;
         let mut current_cliff_eligible;
         let mut base_cliff_eligible = cliff_back_normal_reclass_applies(snapshot.base_land_type);
         let run_lat;
@@ -2429,7 +2417,6 @@ impl ResolvedTerrainGrid {
                 flags.land_ground_blocked,
             );
             current_land_ground_blocked = flags.land_ground_blocked;
-            current_land_build_blocked = flags.land_build_blocked;
             // `CellClass::RecalcAttributes @ 0x0047D2B0` re-reads the current
             // pristine TMP slope before the early overlay branch validates a
             // sloped resource. A registered sparse/missing TMP yields flat 0;
@@ -2455,16 +2442,13 @@ impl ResolvedTerrainGrid {
             if state.cliff_back_impassability != 0 {
                 let behind_cliff = self.authored_load_cell_is_behind_cliff(index);
                 if behind_cliff && state.cliff_back_impassability == 2 {
-                    if let Some((ground_blocked, build_blocked)) = self
-                        .apply_authored_load_cliff_back_rock(
-                            state,
-                            index,
-                            base_cliff_eligible,
-                            current_cliff_eligible,
-                        )
-                    {
+                    if let Some(ground_blocked) = self.apply_authored_load_cliff_back_rock(
+                        state,
+                        index,
+                        base_cliff_eligible,
+                        current_cliff_eligible,
+                    ) {
                         current_land_ground_blocked = ground_blocked;
-                        current_land_build_blocked = build_blocked;
                     }
                 }
             }
@@ -2522,7 +2506,6 @@ impl ResolvedTerrainGrid {
                 cliff_back_normal_reclass_applies(self.cells[index].land_type)
             };
             current_land_ground_blocked = self.cells[index].base_ground_walk_blocked;
-            current_land_build_blocked = self.cells[index].base_build_blocked;
             run_lat = valid_entry;
         }
 
@@ -2572,10 +2555,8 @@ impl ResolvedTerrainGrid {
                     flags.land_ground_blocked,
                 );
                 current_land_ground_blocked = flags.land_ground_blocked;
-                current_land_build_blocked = flags.land_build_blocked;
             } else {
                 current_land_ground_blocked = self.cells[index].base_ground_walk_blocked;
-                current_land_build_blocked = self.cells[index].base_build_blocked;
             }
             base_cliff_eligible = if sparse_entry {
                 self.cells[index].base_land_type == LandType::Clear.as_index()
@@ -2675,16 +2656,13 @@ impl ResolvedTerrainGrid {
         if !early_overlay_branch && state.cliff_back_impassability != 0 {
             let behind_cliff = self.authored_load_cell_is_behind_cliff(index);
             if behind_cliff && state.cliff_back_impassability == 2 {
-                if let Some((ground_blocked, build_blocked)) = self
-                    .apply_authored_load_cliff_back_rock(
-                        state,
-                        index,
-                        base_cliff_eligible,
-                        current_cliff_eligible,
-                    )
-                {
+                if let Some(ground_blocked) = self.apply_authored_load_cliff_back_rock(
+                    state,
+                    index,
+                    base_cliff_eligible,
+                    current_cliff_eligible,
+                ) {
                     current_land_ground_blocked = ground_blocked;
-                    current_land_build_blocked = build_blocked;
                 }
             }
         }
@@ -2694,7 +2672,6 @@ impl ResolvedTerrainGrid {
             index,
             finalized,
             current_land_ground_blocked,
-            current_land_build_blocked,
         );
         let cell = &self.cells[index];
         Ok(LoadCellRecalcOutcome {
@@ -2782,7 +2759,7 @@ impl ResolvedTerrainGrid {
         index: usize,
         apply_base: bool,
         apply_current: bool,
-    ) -> Option<(bool, bool)> {
+    ) -> Option<bool> {
         if state.cliff_back_impassability != 2 || (!apply_base && !apply_current) {
             return None;
         }
@@ -2816,7 +2793,7 @@ impl ResolvedTerrainGrid {
             cell.is_rough = false;
             cell.is_road = false;
         }
-        apply_current.then_some((ground_blocked, build_blocked))
+        apply_current.then_some(ground_blocked)
     }
 
     fn finish_authored_load_cell_projection(
@@ -2825,7 +2802,6 @@ impl ResolvedTerrainGrid {
         index: usize,
         finalized: FinalizedOverlayCell,
         land_ground_blocked: bool,
-        land_build_blocked: bool,
     ) {
         let overlay_id = finalized.overlay_id();
         let flags = overlay_id.and_then(|overlay_id| state.overlay_types.flags(overlay_id));
@@ -2869,10 +2845,6 @@ impl ResolvedTerrainGrid {
         cell.bridge_transition = cell.bridge_facts.has_transition_flag();
         cell.ground_walk_blocked =
             land_ground_blocked || cell.terrain_object_blocks || cell.overlay_blocks;
-        cell.build_blocked = land_build_blocked
-            || cell.terrain_object_blocks
-            || cell.overlay_blocks
-            || cell.has_bridge_deck;
         cell.outside_playfield = state.playfield.is_some_and(|playfield| {
             !playfield.contains_raised(cell.rx, cell.ry, cell.level as i8, cell.slope_type)
         });
@@ -3031,10 +3003,6 @@ impl ResolvedTerrainGrid {
             && !cell.terrain_object_blocks
             && !cell.overlay_blocks;
         cell.bridge_deck_level = deck_level;
-        cell.build_blocked = cell.base_build_blocked
-            || cell.terrain_object_blocks
-            || cell.overlay_blocks
-            || cell.has_bridge_deck;
     }
 
     /// Project a direct `CellClass::OverlayData` write into the derived bridge
@@ -4508,10 +4476,6 @@ impl ResolvedTerrainGrid {
                 // the A* can switch Bridge→Ground mid-span and units clip
                 // through the bridge.
                 let bridge_transition = false;
-                let build_blocked = base_build_blocked
-                    || terrain_object_blocks
-                    || overlay_effects.overlay_blocks
-                    || overlay_effects.has_bridge_deck;
                 let stored_final_tile_index = if sparse_subtile_fallback {
                     0xFFFF
                 } else {
@@ -4568,7 +4532,6 @@ impl ResolvedTerrainGrid {
                     base_yr_cell_land_type,
                     base_terrain_class,
                     base_speed_costs,
-                    build_blocked,
                     has_bridge_deck: overlay_effects.has_bridge_deck,
                     bridge_walkable,
                     bridge_transition,
@@ -4673,10 +4636,6 @@ impl ResolvedTerrainGrid {
                 cell.has_bridge_deck = true;
                 cell.bridge_walkable = !cell.terrain_object_blocks && !cell.overlay_blocks;
                 cell.bridge_deck_level = cell.level.saturating_add(4);
-                cell.build_blocked = cell.base_build_blocked
-                    || cell.terrain_object_blocks
-                    || cell.overlay_blocks
-                    || cell.bridge_walkable;
             } else if facts.family != crate::map::bridge_facts::BridgeStampFamily::None
                 && cell
                     .bridge_layer
@@ -4686,8 +4645,6 @@ impl ResolvedTerrainGrid {
                 cell.has_bridge_deck = false;
                 cell.bridge_walkable = false;
                 cell.bridge_deck_level = cell.level;
-                cell.build_blocked =
-                    cell.base_build_blocked || cell.terrain_object_blocks || cell.overlay_blocks;
             }
 
             if facts.has_transition_flag() {
@@ -4854,10 +4811,6 @@ impl ResolvedTerrainGrid {
                         cell.ground_walk_blocked = rock_ground_blocked
                             || cell.terrain_object_blocks
                             || cell.overlay_blocks;
-                        cell.build_blocked = rock_build_blocked
-                            || cell.terrain_object_blocks
-                            || cell.overlay_blocks
-                            || cell.has_bridge_deck;
                         cell.zone_type = recalc_zone_type(
                             cell.outside_playfield,
                             cell.overlay_zone_type,
@@ -5673,7 +5626,6 @@ fn recalc_dynamic_tile_attributes(
     cell.base_terrain_class = metadata.terrain_class;
     cell.base_speed_costs = metadata.speed_costs;
     cell.ground_walk_blocked = metadata.ground_blocked || cell.terrain_object_blocks;
-    cell.build_blocked = metadata.build_blocked || cell.terrain_object_blocks;
     cell.zone_type = recalc_zone_type(
         cell.outside_playfield,
         None,
@@ -8705,7 +8657,6 @@ mod tests {
         assert!(!cell.is_cliff_like);
         assert!(!cell.base_ground_walk_blocked);
         assert!(!cell.ground_walk_blocked);
-        assert!(!cell.build_blocked);
         assert_eq!(cell.terrain_class, TerrainClass::Clear);
     }
 
@@ -9924,7 +9875,6 @@ NoUseTileLandType=no
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: Default::default(),
-                build_blocked: true,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -9941,7 +9891,6 @@ NoUseTileLandType=no
         let cell = grid.cell(0, 0).expect("resolved ramp cell");
         assert_eq!(cell.canonical_ramp, Some(RampDirection::North));
         assert!(!cell.ground_walk_blocked);
-        assert!(cell.build_blocked);
         assert_eq!(map.header.width, 4);
     }
 
@@ -10261,7 +10210,6 @@ NoUseTileLandType=no
             "copy-1 reclasses the claimed current land without widening the base gate"
         );
         assert!(early.cells[4].ground_walk_blocked);
-        assert!(early.cells[4].build_blocked);
         assert_eq!(early.cells[4].zone_type, zone_class::IMPASSABLE);
         assert!(!early.cells[4].base_build_blocked);
 
@@ -11311,7 +11259,6 @@ impl ResolvedTerrainCell {
             base_yr_cell_land_type: LandType::Clear.as_index(),
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

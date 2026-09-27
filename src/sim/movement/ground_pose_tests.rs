@@ -988,7 +988,6 @@ fn cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         base_yr_cell_land_type: 0,
         base_terrain_class: Default::default(),
         base_speed_costs: Default::default(),
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,

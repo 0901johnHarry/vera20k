@@ -320,7 +320,6 @@ pub(super) fn water_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
                     hover: Some(100),
                     ..crate::rules::terrain_rules::SpeedCostProfile::default()
                 },
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,

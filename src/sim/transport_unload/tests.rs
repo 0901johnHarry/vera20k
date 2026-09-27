@@ -102,7 +102,6 @@ fn clear_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         base_yr_cell_land_type: land_type,
         base_terrain_class: TerrainClass::Clear,
         base_speed_costs: clear_costs(),
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,

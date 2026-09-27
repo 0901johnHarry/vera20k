@@ -458,7 +458,16 @@ fn send_attack_wave(
         ) {
             continue;
         }
-        if production::is_harvester_type(rules, sim.interner.resolve(entity.type_ref())) {
+        let type_id = sim.interner.resolve(entity.type_ref());
+        if production::is_harvester_type(rules, type_id) {
+            continue;
+        }
+        // A unit that deploys into a building (the MCV) is on its own
+        // missions (`sim::mcv_deploy`), not an attacker.
+        if rules
+            .object(type_id)
+            .is_some_and(|object| object.deploys_into.is_some())
+        {
             continue;
         }
         // Check if unit has no movement target (idle).
@@ -873,13 +882,14 @@ mod tests {
     fn tick_ai_skips_defeated_house() {
         // A house flagged is_defeated must issue NO command (the Phase-8 defeat
         // gate). Baseline: a live house with a Construction Yard sends its idle
-        // MCV at the enemy base on an attack frame, so the empty result for the
+        // tank at the enemy base on an attack frame, so the empty result for the
         // defeated house proves the gate fired.
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[InfantryTypes]\n\
              [AircraftTypes]\n\
              [VehicleTypes]\n\
              0=TSTMCV\n\
+             1=TSTTNK\n\
              [BuildingTypes]\n\
              0=TSTCYRD\n\
              [TSTMCV]\n\
@@ -887,6 +897,11 @@ mod tests {
              DeploysInto=TSTCYRD\n\
              Speed=6\n\
              Strength=1000\n\
+             TechLevel=1\n\
+             Owner=Americans\n\
+             [TSTTNK]\n\
+             Speed=6\n\
+             Strength=400\n\
              TechLevel=1\n\
              Owner=Americans\n\
              [TSTCYRD]\n\
@@ -899,7 +914,7 @@ mod tests {
         ))
         .expect("rules parse");
 
-        // Build a sim holding one idle MCV and a Construction Yard for
+        // Build a sim holding one idle tank and a Construction Yard for
         // "Americans", and a Soviet structure to attack.
         let build_sim = || {
             let mut sim = Simulation::new();
@@ -907,7 +922,7 @@ mod tests {
             spawn_structure(&mut sim, 2, "Americans", "TSTCYRD", 8, 8);
             spawn_structure(&mut sim, 3, "Soviets", "TSTCYRD", 30, 30);
             let owner_id = sim.interner.intern("Americans");
-            let mcv_type = sim.interner.intern("TSTMCV");
+            let tank_type = sim.interner.intern("TSTTNK");
             let mut ge = crate::sim::game_entity::GameEntity::new_at_frame_zero_for_test(
                 1,
                 5,
@@ -915,8 +930,8 @@ mod tests {
                 0,
                 0,
                 owner_id,
-                Health { current: 1000 },
-                mcv_type,
+                Health { current: 400 },
+                tank_type,
                 EntityCategory::Unit,
                 0,
                 5,
@@ -927,7 +942,7 @@ mod tests {
             (sim, owner_id)
         };
 
-        // No house registered -> not defeated -> the MCV attacks.
+        // No house registered -> not defeated -> the tank attacks.
         let (sim, owner_id) = build_sim();
         let mut ai = vec![AiPlayerState::new(owner_id)];
         let live = tick_ai(&sim, &mut ai, &rules, None, None);

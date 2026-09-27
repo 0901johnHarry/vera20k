@@ -99,7 +99,6 @@ fn gsi_04_12_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
                 base_yr_cell_land_type: LandType::Clear.as_index(),
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: speed_costs,
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,

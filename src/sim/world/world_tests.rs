@@ -1503,7 +1503,6 @@ fn dynamic_navigation_publication_composes_structures_bibs_and_bridges() {
     {
         let cell = terrain.cell_mut(2, 1).expect("bridge body cell");
         cell.ground_walk_blocked = true;
-        cell.build_blocked = true;
         cell.base_build_blocked = true;
         cell.is_water = true;
         cell.bridge_walkable = true;
@@ -2334,7 +2333,6 @@ fn gsi_04_10_clear_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
         cell.base_yr_cell_land_type = LandType::Clear.as_index();
         cell.base_terrain_class = TerrainClass::Clear;
         cell.base_speed_costs = speed_costs;
-        cell.build_blocked = false;
     }
     terrain
 }
@@ -2736,7 +2734,6 @@ fn water_terrain_with_land_type(
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: speed_costs,
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -2800,7 +2797,6 @@ fn single_bridge_cell(rx: u16, ry: u16, deck_level: u8) -> ResolvedTerrainGrid {
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: Default::default(),
-                build_blocked: false,
                 has_bridge_deck: x == rx && y == ry,
                 bridge_walkable: x == rx && y == ry,
                 bridge_transition: x == rx && y == ry,
@@ -2846,7 +2842,6 @@ fn bridge_cell_with_ground_block(
     cell.ground_walk_blocked = ground_walk_blocked;
     cell.is_water = ground_walk_blocked;
     cell.base_build_blocked = ground_walk_blocked;
-    cell.build_blocked = true;
     terrain
 }
 
@@ -4259,7 +4254,6 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
                         base_yr_cell_land_type: 0,
                         base_terrain_class: Default::default(),
                         base_speed_costs: Default::default(),
-                        build_blocked: false,
                         has_bridge_deck: false,
                         bridge_walkable: false,
                         bridge_transition: false,
@@ -5363,7 +5357,6 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     resolved.cells[idx].bridge_transition = true;
     resolved.cells[idx].bridge_deck_level = 3;
     resolved.cells[idx].ground_walk_blocked = true;
-    resolved.cells[idx].build_blocked = true;
     install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
@@ -7791,7 +7784,6 @@ fn level_has_single_source_of_truth_for_vision_height_derivation() {
                 base_yr_cell_land_type: 0,
                 base_terrain_class: Default::default(),
                 base_speed_costs: Default::default(),
-                build_blocked: false,
                 has_bridge_deck: false,
                 bridge_walkable: false,
                 bridge_transition: false,
@@ -7851,7 +7843,6 @@ fn make_realistic_bridgehead_terrain() -> ResolvedTerrainGrid {
         },
         ResolvedTerrainCell {
             ground_walk_blocked: true,
-            build_blocked: true,
             base_build_blocked: true,
             base_land_type: 0,
             base_yr_cell_land_type: 0,
@@ -7933,7 +7924,6 @@ fn bridgehead_base_cell(rx: u16, ry: u16) -> crate::map::resolved_terrain::Resol
         base_yr_cell_land_type: 0,
         base_terrain_class: Default::default(),
         base_speed_costs: speed_costs,
-        build_blocked: false,
         has_bridge_deck: false,
         bridge_walkable: false,
         bridge_transition: false,

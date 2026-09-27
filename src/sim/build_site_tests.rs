@@ -173,12 +173,20 @@ fn a_wall_rebuilds_only_over_its_own_damaged_wall() {
     assert!(!a.cell_clear((10, 10), "GAWALL", None));
 }
 
+/// Ore is a `Tiberium=` overlay that some TiberiumType claims; without one,
+/// `OverlayToTiberiumIndex` answers -1 and the overlay refuses the fence too.
 #[test]
 fn a_laser_fence_may_stand_on_ore() {
-    let mut a = arena(CLEAR_BUILDABLE);
+    let mut a = arena(&format!(
+        "{CLEAR_BUILDABLE}[Tiberiums]\n0=Riparius\n[Riparius]\nImage=1\n"
+    ));
     a.overlay((10, 10), "TIB01", 3, None);
     assert!(a.cell_clear((10, 10), "GAFENCE", None));
     assert!(!a.cell_clear((10, 10), "GAPLUG", None));
+
+    let mut without = arena(CLEAR_BUILDABLE);
+    without.overlay((10, 10), "TIB01", 3, None);
+    assert!(!without.cell_clear((10, 10), "GAFENCE", None));
 }
 
 #[test]

@@ -296,13 +296,14 @@ fn overlay_admits(
         return true;
     }
     // A LaserFence type on the fence overlay or on ore
-    // (`OverlayToTiberiumIndex != -1`, which holds exactly for a
-    // `Tiberium=` overlay while a TiberiumType exists).
+    // (`OverlayToTiberiumIndex @ 0x005FDD20` != -1).
     if ty.laser_fence
         && (overlay_id == OVERLAY_LASER_FENCE
-            || registry
-                .and_then(|registry| registry.flags(overlay_id))
-                .is_some_and(|flags| flags.tiberium))
+            || registry.is_some_and(|registry| {
+                registry
+                    .tiberium_type_for_overlay(&rules.tiberium_types, overlay_id)
+                    .is_some()
+            }))
     {
         return flags & (FLAG_HIGH_BRIDGE | FLAG_BRIDGE_BODY) == 0 && slope == 0;
     }
