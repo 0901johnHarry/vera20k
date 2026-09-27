@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = [
 #     "mcp>=1.2.0,<2",
 # ]
@@ -34,6 +34,8 @@ from typing import Literal
 _SERVER_DIR = Path(__file__).resolve().parent
 # Repo root is two parents up from this file's directory.
 WORKSPACE = _SERVER_DIR.parents[1]
+sys.path.insert(0, str(WORKSPACE))
+from tools.cargo_run import resolve_binary
 
 # Reconfigure stdout to UTF-8; CSF strings and archive names contain non-ASCII.
 if hasattr(sys.stdout, "reconfigure"):
@@ -53,10 +55,7 @@ mcp = FastMCP("asset-browser")
 
 # --- Binary resolution -------------------------------------------------------
 
-_BINARY_NAME = "asset.exe" if os.name == "nt" else "asset"
-RELEASE_BINARY = WORKSPACE / "target" / "release" / _BINARY_NAME
-DEBUG_BINARY = WORKSPACE / "target" / "debug" / _BINARY_NAME
-BUILD_COMMAND = "cargo build --release -p vera20k --bin asset"
+BUILD_COMMAND = "python -m tools.cargo_run -- build --release -p vera20k --bin asset"
 
 # --- Timeouts ----------------------------------------------------------------
 #
@@ -85,29 +84,26 @@ def _resolve_binary() -> tuple[Path | None, list[str]]:
     the server is running is picked up without a restart. Returns the path plus
     any notes to attach to the result.
     """
-    if RELEASE_BINARY.is_file():
-        return RELEASE_BINARY, []
-    if DEBUG_BINARY.is_file():
-        return DEBUG_BINARY, [
-            f"Ran the DEBUG build at {DEBUG_BINARY} because no release binary exists. "
-            f"It is many times slower over the ~8000-entry retail corpus, and "
-            f"asset_scan/asset_parse_check may well time out. Build the fast one with: "
-            f"{BUILD_COMMAND}"
+    try:
+        binary, profile = resolve_binary(WORKSPACE, "asset")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        logger.warning("Cannot resolve owned asset build: %s", error)
+        return None, []
+    if profile == "debug":
+        return binary, [
+            f"Ran the DEBUG build at {binary}; corpus operations may time out. "
+            f"Build release with: {BUILD_COMMAND}"
         ]
-    return None, []
+    return binary, []
 
 
 def _missing_binary_hint() -> str:
     """Actionable text for the not-built case. Never raised, always returned."""
     return (
-        "The `asset` binary is not built, so no asset_* tool can run yet.\n"
-        f"Looked for:\n"
-        f"  {RELEASE_BINARY}   (preferred)\n"
-        f"  {DEBUG_BINARY}\n"
-        "Build it with:\n"
-        f"  {BUILD_COMMAND}\n"
-        f"run from {WORKSPACE}. Use the release profile — a debug build of this tool is "
-        "many times slower over the ~8000-entry retail corpus."
+        "No unchanged owned `asset` build is available for this checkout.\n"
+        f"Build it with:\n  {BUILD_COMMAND}\nrun from {WORKSPACE}. "
+        "The build runner records its emitted binary for this server; conventional "
+        "target/release files are not trusted. Use release for corpus operations."
     )
 
 

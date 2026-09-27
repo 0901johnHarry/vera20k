@@ -54,6 +54,10 @@ For anything large, ask on Discord or in an issue first.
 5. **Never commit game files:** no `.mix`, INI, art, audio, video or `.exe` from the game, and
    nothing from `ini/`. Git already ignores `ini/` and `config.toml`.
 
+For concurrent worktrees and preserved A/B builds, use the
+[repository build runner and tool index](tools/README.md). It owns waiting and
+binary provenance; no source-file touching or hand-written wait loops are needed.
+
 ## Your first pull request
 
 1. **Claim an issue** by commenting on it. One claim at a time; a claim with no update for 14
