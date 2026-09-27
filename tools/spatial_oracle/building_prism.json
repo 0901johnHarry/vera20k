@@ -54690,6 +54690,1686 @@
           }
         ]
       }
+    },
+    {
+      "frame0": 200,
+      "frames": [
+        {
+          "frame": 1,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 1,
+              "events": [
+                [
+                  "draw",
+                  0,
+                  2
+                ],
+                [
+                  "guard",
+                  15
+                ],
+                [
+                  "draws",
+                  1
+                ]
+              ],
+              "mission": "guard",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            },
+            "master": {
+              "count": 1,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  0
+                ],
+                [
+                  "recruit",
+                  "x"
+                ],
+                [
+                  "attack",
+                  1
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 27,
+              "events": [
+                [
+                  "draw",
+                  0,
+                  2
+                ],
+                [
+                  "guard",
+                  16
+                ],
+                [
+                  "draws",
+                  1
+                ]
+              ],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 2,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "expiry_error",
+                  0
+                ],
+                [
+                  "shot",
+                  "target",
+                  0,
+                  256
+                ]
+              ],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 27,
+              "events": [
+                [
+                  "fire_error",
+                  0
+                ],
+                [
+                  "arm"
+                ],
+                [
+                  "attack",
+                  1
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 26,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 3,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 26,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 25,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 4,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 25,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 24,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 5,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 24,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 23,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 6,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 23,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 22,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 7,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 22,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 21,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 8,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 21,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 20,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 9,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 20,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 19,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 10,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 19,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 18,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 11,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 18,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 17,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 12,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 17,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 16,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 13,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 16,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 15,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 14,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 15,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 14,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 15,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 14,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 13,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 16,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "guard",
+                  1
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 13,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 12,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 17,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 12,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 11,
+              "events": [
+                [
+                  "draw",
+                  0,
+                  2
+                ],
+                [
+                  "guard",
+                  15
+                ],
+                [
+                  "draws",
+                  1
+                ]
+              ],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 18,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 11,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 10,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 19,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 10,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 9,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 20,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 9,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 8,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 21,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 8,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 7,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 22,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 7,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 6,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 23,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 6,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 5,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 24,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 5,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 4,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 25,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 4,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 3,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 26,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 3,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 2,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 27,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 2,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 1,
+              "events": [],
+              "mission": "guard",
+              "mode": 2,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 28,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 1,
+              "countdown": 1,
+              "events": [],
+              "mission": "attack",
+              "mode": 1,
+              "rearm": [
+                100,
+                0
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "beam",
+                  [
+                    7001,
+                    7002,
+                    7003
+                  ]
+                ]
+              ],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                228,
+                45
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 29,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ],
+                [
+                  "expiry_error",
+                  0
+                ],
+                [
+                  "shot",
+                  "target",
+                  0,
+                  640
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                229,
+                45
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                228,
+                45
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 30,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                229,
+                45
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                228,
+                45
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 31,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "fire_error",
+                  3
+                ],
+                [
+                  "attack",
+                  2
+                ]
+              ],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                229,
+                45
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                228,
+                45
+              ],
+              "target": null
+            }
+          }
+        },
+        {
+          "frame": 32,
+          "towers": {
+            "m": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                202,
+                45
+              ],
+              "target": "target"
+            },
+            "master": {
+              "count": 0,
+              "countdown": 0,
+              "events": [],
+              "mission": "attack",
+              "mode": 0,
+              "rearm": [
+                229,
+                45
+              ],
+              "target": "target"
+            },
+            "x": {
+              "count": 0,
+              "countdown": 0,
+              "events": [
+                [
+                  "draw",
+                  0,
+                  2
+                ],
+                [
+                  "guard",
+                  16
+                ],
+                [
+                  "draws",
+                  1
+                ]
+              ],
+              "mission": "guard",
+              "mode": 0,
+              "rearm": [
+                228,
+                45
+              ],
+              "target": null
+            }
+          }
+        }
+      ],
+      "input": {
+        "events": [
+          [
+            2,
+            "acquire",
+            "m"
+          ]
+        ],
+        "frames": 32,
+        "master": {
+          "mission": "attack",
+          "target": true
+        },
+        "name": "k_shooter_rearms_before_a_later_walk",
+        "order": [
+          "m",
+          "master",
+          "x"
+        ],
+        "towers": [
+          {
+            "countdown": 2,
+            "mode": 1,
+            "name": "m",
+            "offset": [
+              512,
+              0,
+              0
+            ]
+          },
+          {
+            "name": "x",
+            "offset": [
+              0,
+              768,
+              0
+            ]
+          }
+        ]
+      }
     }
   ],
   "damage": [

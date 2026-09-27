@@ -955,7 +955,9 @@ pub struct ProjectilePayload {
     /// [`Self::UNSCALED`] (`0x00466546`) and only a Prism master's supported
     /// shot writes another value (`BuildingClass::ProcessDelayedFire`,
     /// `0x004504C7`). It scales only the damage handed to `Apply_area_damage`
-    /// ([`Self::area_damage`]).
+    /// ([`Self::area_damage`]) and the DirectRocker arm's damage
+    /// (`0x004697FC..0x0046980C`, not ported: dormant in retail, see
+    /// [`SpecialDetonationAction::DirectRocker`]).
     pub damage_multiplier: i32,
 }
 
@@ -965,8 +967,10 @@ impl ProjectilePayload {
 
     /// `BulletClass::DetonateAtCoord @ 0x004690B0` hands
     /// `(+0x150 * +0x6C) >> 8` to `Apply_area_damage` (`0x00469A56..0x00469A66`:
-    /// `imul` wraps in 32 bits, then `sar 8`). Every other consumer, such as
-    /// the explosion anim choice (`0x00469BBA`), reads the raw damage.
+    /// `imul` wraps in 32 bits, then `sar 8`). The unported DirectRocker arm
+    /// scales its own damage the same way (`0x004697FC..0x0046980C`); every
+    /// other consumer, such as the explosion anim choice (`0x00469BBA`), reads
+    /// the raw damage.
     pub fn area_damage(&self) -> i32 {
         self.damage_multiplier.wrapping_mul(self.base_damage) >> 8
     }

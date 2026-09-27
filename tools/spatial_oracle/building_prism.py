@@ -145,7 +145,13 @@ events in order: guard / attack [return] (MissionClass::AI after the handler,
 
 `reader` rows (E). RulesClass::ReadGeneral's [General] gate 0x66D53C..0x66D558
 and its Prism block 0x671130..0x6711FE, native on the building_body_rules INI
-fixture after the CRT float-scanner initializer 0x7C8F5E. Each pass supplies a
+fixture after the CRT float-scanner initializer 0x7C8F5E. FPCW 0x0E7F, the
+fixture's: the game's own ftol 0x7C5F00 loads [0x822D80] = 0x0E7F whenever the
+control word differs and never restores it, and tube_startup_capture records
+0x0E7F from the CRT initializers to WinMain, so ReadDouble's percent fmul
+(0x52857E) and the x100 fmul (0x67116E) round toward zero at 53 bits. No row's
+value is rounding-sensitive (a modded `35%` reads 34 here, 35 under a
+nearest-rounding control word). Each pass supplies a
 CCINIClass: a section index at +0x28 (native CRC 0x4A1DE0 keys, sorted)
 holding [General] when the pass has one, and the section's entry index at
 +0x2C holding the pass's keys; the reader's section cache (+0x4/+0x8) starts
@@ -840,6 +846,12 @@ def cadence_cases():
              events=acquire + [[31, 'out_of_range', 'master'], [32, 'in_range', 'master'], [32, 'stop', 'master']]),
         dict(name='j_range_kept_after_expiry', frames=40, towers=two,
              events=acquire + [[31, 'out_of_range', 'master']]),
+        # A tower ahead of the master in the Logic order ends its own delayed
+        # shot at frame 2: FireAt starts its rearm inside the visit
+        # (0x6FF2B2), so the master's walk later in the frame refuses it.
+        dict(name='k_shooter_rearms_before_a_later_walk', frames=32, master=dict(mission='attack', target=True),
+             towers=[dict(name='m', offset=[512, 0, 0], mode=1, countdown=2), dict(name='x', offset=[0, 768, 0])],
+             order=['m', 'master', 'x'], events=[[2, 'acquire', 'm']]),
     ]
 
 

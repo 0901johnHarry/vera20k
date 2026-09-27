@@ -55,8 +55,11 @@
 //!   the building, not precede them; the bullet still takes its first AI at
 //!   the tail of the same pass ([`Simulation::visit_combat_tail`]).
 //!   Frequency: every frame a building fires while a later object draws.
-//!   Downstream: the Scenario stream's order in that frame. Later owner:
-//!   FireAt moving into each object's Logic visit.
+//!   Downstream: the Scenario stream's order in that frame. The pass's one
+//!   reader of another building's rearm, the Prism walk, counts a requested
+//!   shot as rearming ([`prism_supporter`]); the support count the shot
+//!   clears (`0x004504CD`) is read only in its own tower's visits. Later
+//!   owner: FireAt moving into each object's Logic visit.
 //! - Gattling (D11): Mission_Guard's stage update (`0x004496C1..0x004496DF`),
 //!   Mission_Attack's charge and decay calls (`0x70DE70`, `0x70E000`) and
 //!   their `+0xC4` resets. Trigger: every `[YAGGUN]` visit. Effect: its
@@ -529,15 +532,22 @@ fn prism_arm(
 
 /// The Prism arm's walk (`0x0044B357..0x0044B4BD`) over the master's House's
 /// buildings (House+0x68) in vector order. A tower is admitted when it is
-/// alive (`+0x90`), of PrismType, its rearm timer has run out, it counts no
-/// delayed fire down (`+0x714 == 0`; the mode is not read), no Floating Disc
-/// drains it (`0x0070FEC0`), its mission (current, else queued) is not
-/// Attack, it is not the master, and its distance from the master
-/// (`Distance3D` of the two Locations: Sqrt_Approx, ftol) is at most the
-/// master's weapon 1 range (`vt+0x168(1)`, the Secondary `PrismSupport`'s
-/// 2048 in retail; inclusive, `0x0044B49A`). The nearest wins; a tie keeps
-/// the lower vector index (`0x0044B49E..0x0044B4AA`). Power, EMP, the
-/// tower's own target, a build-up or a sale are not asked.
+/// alive (`+0x90`), of PrismType (the master's own type), its rearm timer
+/// has run out, it counts no delayed fire down (`+0x714 == 0`; the mode is
+/// not read), no Floating Disc drains it (`0x0070FEC0`), its mission
+/// (current, else queued) is not Attack, it is not the master, and its
+/// distance from the master (`Distance3D` of the two Locations: Sqrt_Approx,
+/// ftol) is at most the master's weapon 1 range (`vt+0x168(1)`, the Secondary
+/// `PrismSupport`'s 2048 in retail; inclusive, `0x0044B49A`). The nearest
+/// wins; a tie keeps the lower vector index (`0x0044B49E..0x0044B4AA`).
+/// Power, EMP, the tower's own target, a build-up or a sale are not asked.
+///
+/// FireAt starts the shooter's rearm inside its visit
+/// (`0x006FF2B2..0x006FF2BB`), before the visits after it; VERA's combat
+/// phase starts it after the Logic pass (module doc), so a tower whose shot
+/// this pass has already asked for counts as rearming. That is FireAt's
+/// answer for every ROF above zero; a zero ROF, which native leaves run out,
+/// is not told apart.
 fn prism_supporter(
     sim: &Simulation,
     id: u64,
@@ -559,10 +569,9 @@ fn prism_supporter(
             continue;
         };
         let admitted = candidate.lifecycle.object_alive
-            && rules
-                .object(sim.interner.resolve(candidate.type_ref()))
-                .is_some_and(|candidate_obj| is_prism_type(rules, candidate_obj))
+            && candidate.type_ref() == master.type_ref()
             && candidate.rearm_timer.remaining(now) == 0
+            && !sim.fire_requests.buildings.contains_key(&candidate_id)
             && candidate
                 .pending_building_fire
                 .map_or(0, |pending| pending.remaining_ticks)
