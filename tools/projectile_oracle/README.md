@@ -2,7 +2,7 @@
 
 These tools execute the pinned retail `gamemd.exe` under Unicorn. See the
 [shared native runner](../native_oracle.md) for installation and executable
-identity. This page currently indexes the consolidated FireAt-tail fixture;
+identity. This page indexes the consolidated FireAt-tail and load-timer fixtures;
 other projectile fixture families remain separate and need their own inventory.
 
 ## FireAt tail and BulletFire
@@ -67,3 +67,32 @@ launch-tail arithmetic, not full FireAt admission, retail reader construction,
 world registration, downstream impact or whole-game parity. In particular,
 `bridge_render_flight` deliberately keeps its separate reader/constructor-backed
 fixture; collapsing it into this synthetic setup would discard upstream coverage.
+
+## Bullet timer save/load
+
+`python -m tools.projectile_oracle.load_timers --check` executes the original
+detector constructor, late Fire timer setup, pre-load check, Bullet Save, global
+frame-read prefix, Bullet Load, post-load check and five admission probes for each
+of 877 rows. Normal and optimized Python reproduce the same existing reference.
+The default is a read-only check; import/help do not load native bytes or write.
+`--write --output <candidate.json>` explicitly generates a candidate and sidecar.
+
+This fixture shares image identity, execution completion and golden publication
+with `tools.native_oracle`. Its native vtables, stream services and case matrix
+remain local: adjacent collision and trail fixtures have different state and
+coverage. Save executes outside assertions, and stream bounds, HRESULTs and byte
+counts remain checked under `python -O`. The shared runner owns all stop boundaries.
+
+The sidecar records current checked execution and its substitutions; it cannot
+recover the original reference's historical environment. The committed 877-row
+payload remains byte-identical. The Rust consumer is the ordinary library test
+`sim::projectile::tests::projectile_load_timers_match_original_fire_save_load_and_check`.
+It compares Arm timer state, proximity distances, watermarks and admission outputs;
+it does not assert every recorded first-timer, reference or return-status field.
+
+Coverage is bounded: upstream objects/INI inputs and three global stream DWORDs
+are supplied; no global Save executes. Bullet Load reuses the isolated allocation,
+with pointer registration/fixup services substituted. The global reader stops
+after its third read, before the HRESULT branch; admission stops before detonation
+or continuation effects. Timer writes are observed, but full save-game loading,
+world reconstruction, RNG/detach effects and scheduling parity are not established.
