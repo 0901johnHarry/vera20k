@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original ReadDouble percent product and the InfantryClass::ReceiveDamage prone head",
+  "assumptions": [
+    "ReadDouble 0x005283D0 executes whole after the CRT floating-scanner initializer 0x007C8F5E. Every row asserts one sscanf assignment, the percent arm (0x0052857A) exactly when the string holds a percent sign, no control-word load inside the call and an unchanged FPCW.",
+    "FPCW 0x0E7F is the game word: WinMain selects chop at 0x006BBFC1 and caches the word at 0x006BBFC9; Math__ftol 0x007C5F00 loads [0x00822D80] and never restores it. Rows under 0x027F are a rounding-mode control, not a game state.",
+    "Retail tokens come from a lexical scan of retail rulesmd.ini and serve only as inputs; the native body produces every recorded value.",
+    "The prone head runs from the real entry 0x00517FA0 to 0x00518016 with a zeroed InfantryClass (prone byte +0x6DB supplied) and a zeroed WarheadTypeClass (+0xF8 from the native reader, InfDeath +0x120 zero). FootClass::ReceiveDamage and everything after it are not executed."
+  ],
+  "substitutions": [
+    "building_body_rules.Fixture supplies the cached INI section, index and entry objects; no physical INI load.",
+    "An FSTP qword stub at the return address stores ReadDouble's ST0 result."
+  ],
+  "entry_points": {
+    "read_double": "0x005283D0",
+    "crt_float_init": "0x007C8F5E",
+    "ini_crc": "0x004A1DE0",
+    "infantry_receive_damage": "0x00517FA0",
+    "math_ftol": "0x007C5F00"
+  },
+  "payload_sha256": "dab57b2c84cf81b738613529130505058c3586b995cb985c1133a5f859cee93d"
+}

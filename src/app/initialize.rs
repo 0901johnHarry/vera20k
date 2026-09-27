@@ -521,6 +521,7 @@ impl App {
                     retail_screenshot_requested: false,
                 },
                 match_presentation: crate::app::presentation::state::MatchPresentationState {
+                    sinking_waterlines: Default::default(),
                     building_zshape: None,
                     power_bar_anim: crate::sidebar::PowerBarAnimState::new(),
                     sidebar_gadget_state: crate::sidebar::gadget_flash::SidebarGadgetState::new(),

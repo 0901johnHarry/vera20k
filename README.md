@@ -36,7 +36,7 @@ a placeholder AI.
 | Retail and random maps, original menus and sidebar | Aircraft attack runs and Carrier Hornets | Multiplayer (lockstep exists, no network) |
 | Building, power, tech tree, selling and repair | Mind control | The original AI (a placeholder for now) |
 | War, Chrono and Slave Miners | Crate pickup | Campaign and most map triggers |
-| Infantry, vehicle, naval and base-defense combat | Death effects (ship sinking and a few others missing) | Chrono Legionnaire, Crazy Ivan, Magnetron and other special weapons |
+| Infantry, vehicle, naval and base-defense combat | Death effects (Aegis sinking works; other cases remain) | Chrono Legionnaire, Crazy Ivan, Magnetron and other special weapons |
 | Attack dogs and Terror Drones | Bridge damage and Engineer hut repair | Gattling spin-up, Prism chaining, Tesla charging |
 | Garrisons, transports, engineers and cloaking | | Nuke, Chronosphere, Psychic Dominator, Spy Plane |
 | Lightning Storm, Iron Curtain and other support powers | | Movies and credits |

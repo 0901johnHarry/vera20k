@@ -287,7 +287,8 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
         }
     }
     // Para is instant, so a volley lands in its own frame, before Tanya goes
-    // prone (SSA's `ProneDamage=80%` then cuts later hits to 24).
+    // prone (SSA's `ProneDamage=80%`, one ulp below 0.8, then cuts later hits
+    // to 23).
     let (volley, damage) = first_volley.expect("the riders fire");
     println!("first volley: {volley} shots, {damage} damage");
     assert_eq!(

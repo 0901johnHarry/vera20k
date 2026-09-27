@@ -553,8 +553,18 @@ impl Simulation {
             .and_then(|e| e.locomotor.as_ref())
             .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk);
         let one = [stable_id];
-        let ground =
-            sim.process_ground_locomotor_one(stable_id, rules, path_grid, overlay_registry)?;
+        // Foot4DA81A bypasses Process and its adjacent SHP body cadence for
+        // +3CD. Keep the later Foot sound edge and Unit sinking suffix live.
+        let sinking = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.sinking.is_active());
+        let ground = if sinking {
+            GroundLocomotorOutcome::default()
+        } else {
+            sim.process_ground_locomotor_one(stable_id, rules, path_grid, overlay_registry)?
+        };
         let track_owned = ground.track_owned;
         outcome.movement.merge(ground.movement);
         outcome.bridge_state_changed |= ground.bridge_state_changed;
@@ -572,7 +582,7 @@ impl Simulation {
         // this object's locomotor Process, against the still-current
         // absolute binary frame. The global frame commits only after the
         // complete live-object pass.
-        if shp_vehicle_counter_admitted(tube_active_at_entry) {
+        if !sinking && shp_vehicle_counter_admitted(tube_active_at_entry) {
             let shp_vehicle_cadence = sim.substrate.entities.get(stable_id).and_then(|entity| {
                 if entity.category != EntityCategory::Unit || entity.is_voxel {
                     return None;
@@ -869,7 +879,11 @@ impl Simulation {
 
         sim.tick_move_sound_after_process(stable_id, before_movement, rules);
         if let Some(rules) = rules {
+            sim.sinking_edge_sounds(stable_id, rules);
             sim.crash_edge_sounds(stable_id, rules);
+            if sim.tick_ship_sinking(stable_id, rules) {
+                return Ok(outcome);
+            }
         }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);

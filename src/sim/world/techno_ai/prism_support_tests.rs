@@ -979,7 +979,7 @@ fn prism_cadence_matches_the_original() {
 fn prism_general_reader_matches_the_original() {
     let golden = golden();
     let reader = rows(&golden, "reader");
-    assert_eq!(reader.len(), 19);
+    assert_eq!(reader.len(), 22);
     let rules_of = |native: &Value| PrismSupportRules {
         modifier: native["modifier"].as_i64().unwrap() as i32,
         max: native["max"].as_i64().unwrap() as i32,

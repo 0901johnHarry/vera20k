@@ -658,6 +658,9 @@ pub(crate) fn commit_entities(
             }
         }
 
+        if reached_exact_zero && postmortem_candidate.is_none() {
+            world.begin_receiver_kill_record(target_id);
+        }
         // ObjectClass routes its kill callback while Health is exactly zero,
         // before Destroy's reference notification and before TechnoClass's
         // victim-house anger callback. `Record_The_Kill` awards the killer's
@@ -671,6 +674,12 @@ pub(crate) fn commit_entities(
                 attacker_owner,
                 rules,
             );
+        }
+        if reached_exact_zero && postmortem_candidate.is_none() {
+            // Techno702FF0 awards experience before the score/loss writes
+            // (703003..7031DC); Object5F57AF's Destroy observes all of them.
+            // Keep the separately owned PostMortem bookkeeping below intact.
+            world.record_destruction_once(target_id);
         }
         // ObjectClass::ReceiveDamage 0x005F5765..0x005F57AF: after the kill
         // callback the exact-zero arm runs Destroy = Detach_All(1), so every
@@ -1523,8 +1532,12 @@ fn finish_concrete_death(
     // (`get_xrefs_to 0x00738680`; the `type+0x73C` operand scan), and
     // infantry death anims come from `InfDeath`/`DeathAnims`.
     match category {
-        EntityCategory::Unit if !world.unit_sinks_on_death(rules, dead_id) => {
-            world.unit_death_explosion(rules, dead_id, &mut effects.explosion_effects)
+        EntityCategory::Unit => {
+            if world.unit_sinks_on_death(rules, dead_id) {
+                world.begin_ship_sinking(dead_id, rules);
+            } else {
+                world.unit_death_explosion(rules, dead_id, &mut effects.explosion_effects);
+            }
         }
         EntityCategory::Aircraft => {
             world.aircraft_death_explosion(rules, dead_id, &mut effects.explosion_effects)
@@ -1568,7 +1581,13 @@ fn finish_concrete_death(
         );
         concrete_smudge_plans.push(ConcreteDeathSmudgePlan::Infantry(postlude));
         effects.despawned_ids.push(dead_id);
-    } else if has_animation {
+    } else if has_animation
+        && !world
+            .substrate
+            .entities
+            .get(dead_id)
+            .is_some_and(|entity| entity.sinking.is_active())
+    {
         // Non-Infantry SHP lifetime remains on its existing path.
         if let Some(entity) = world.substrate.entities.get_mut(dead_id) {
             entity.dying = true;
@@ -1599,6 +1618,16 @@ fn finish_concrete_death(
         // `UnitClass::ReceiveDamage` (`0x00738457..0x00738475`): an airborne
         // `Crashable=` unit crashes (`Crash(0)`, no attacker) instead of its
         // UnInit, and falls to its impact (a Jumpjet: `jumpjet_crash_impact`).
+        effects.despawned_ids.push(dead_id);
+    } else if category == EntityCategory::Unit
+        && world
+            .substrate
+            .entities
+            .get(dead_id)
+            .is_some_and(|entity| entity.sinking.is_active())
+    {
+        // Unit738493 checks +3CD after Mark(UP), passenger/crew handling and
+        // Crashable. A sinking hull retains Alive and its Logic/display slot.
         effects.despawned_ids.push(dead_id);
     } else {
         effects.immediate_uninit_ids.push(dead_id);

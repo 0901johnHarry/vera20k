@@ -893,9 +893,29 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         );
     }
     let soviets = sim.interner.intern("Soviets");
+    // Object5F579A records the transport before Destroy5F57AF; Unit's +E0
+    // dispatch744720 calls Techno702D40 (object_health.json pins callback
+    // order; naval_lifetime_controls.json executes the actual score owner).
+    // Unit737FAB then kills both riders: each gets RecordKill707CFF before
+    // UnInit707D09. Later Crash73846D sees HP0 and skips another RecordKill
+    // at Foot4DEBCD, as the shared FootCrash dead_seed1 execution records.
+    let native = oracle();
+    let dead_crash = native["crash"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["input"]["name"] == "dead_seed1")
+        .unwrap();
+    assert!(
+        dead_crash["calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|call| call["call"] != "record_kill")
+    );
     assert_eq!(
-        sim.houses[&soviets].stats.units_killed, 2,
-        "the riders' kills go to the shooter; the wreck's comes at its UnInit"
+        sim.houses[&soviets].stats.units_killed, 3,
+        "the transport and both riders are credited before the wreck falls"
     );
 
     // The kill's Stop_Moving searched from the hover cell, which the victim's
@@ -944,7 +964,10 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         1000,
         "an Explosion= anim deals no damage"
     );
-    assert_eq!(sim.houses[&soviets].stats.units_killed, 3);
+    assert_eq!(
+        sim.houses[&soviets].stats.units_killed, 3,
+        "impact UnInit does not repeat the transport's fatal callback"
+    );
 }
 
 /// A `BalloonHover=` wreck (the Kirov) fires its current weapon as its death

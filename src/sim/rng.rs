@@ -214,38 +214,20 @@ impl SimRng {
         self.next_range_u32_inclusive(0, max_exclusive - 1)
     }
 
-    /// Inclusive ranged draw in gamemd's *scaled* (multiply-high) `RandomRanged`
-    /// shape — the variant used by the map-gen / bridge-tile RNG path, distinct
-    /// from `next_range_u32_inclusive` (which masks the LOW bits and rejects).
+    /// Take the high two bits of one raw draw, returning `0..=3`.
     ///
-    /// gamemd computes `lo + ftol(raw · range · (2^-32 + 2^-64))` with the FPU
-    /// in truncate-toward-zero mode, then loops while the result exceeds `hi`.
-    /// The scale `2^-32 + 2^-64` equals `(2^32 + 1) / 2^64`, so the truncated
-    /// product is exactly the integer `(raw · range · (2^32 + 1)) >> 64`, which
-    /// is provably in `0..=range-1` for every `raw` (max raw maps to range-1).
-    /// The original's rejection branch is therefore unreachable for this exact
-    /// integer form and is omitted.
+    /// This is the bridge walkers' MapGen `598030(0,3)` operation under the
+    /// original startup PC53/chop mode. Unlike the Scenario range helper, it
+    /// neither masks the low bits nor rejection-samples. A disabled stream
+    /// still receives its one Next call, which returns zero without advancing.
+    /// Native boundary values and complete states: `tools/spatial_oracle/mapgen_range`.
     ///
-    /// For the inclusive `(0, 3)` bridge-repair-variant range this reduces to
-    /// the high two bits of one draw (`raw >> 30`). Verified bit-identical to
-    /// the binary for that range; wider ranges (only reachable from the
-    /// random-map generator, which this engine does not run) are not separately
-    /// validated against the original's double-precision rounding.
-    ///
-    /// Unlike `next_range_u32_inclusive`, this consumes one draw even for equal
-    /// bounds — matching the binary, which has no equal-bounds early-out here.
-    pub fn next_range_u32_inclusive_scaled(&mut self, low: u32, high: u32) -> u32 {
-        let (lo, hi) = if low <= high {
-            (low, high)
-        } else {
-            (high, low)
-        };
-        let range = u64::from(hi - lo) + 1;
-        // (2^-32 + 2^-64) == (2^32 + 1) / 2^64
-        const SCALE_NUMERATOR: u128 = (1u128 << 32) + 1;
-        let raw = u128::from(self.next_u32());
-        let scaled = ((raw * u128::from(range) * SCALE_NUMERATOR) >> 64) as u32;
-        lo + scaled
+    /// This deliberately exposes only the operation our repair caller needs.
+    /// Wider/reversed native intervals and disturbed ambient FPU modes can
+    /// round or retry differently; the former generic integer approximation
+    /// was not valid for those inputs. RMG has its own range implementation.
+    pub(crate) fn next_high_two_bits(&mut self) -> u8 {
+        (self.next_u32() >> 30) as u8
     }
 
     /// Signed form of `Random__RandomRanged @ 0x0065C7E0`. The native compares
@@ -350,6 +332,60 @@ impl SimRng {
 #[cfg(test)]
 mod tests {
     use super::SimRng;
+
+    #[test]
+    fn high_two_bits_match_original_mapgen_range_and_all_retained_words() {
+        fn retained(hex: &str) -> SimRng {
+            let bytes: Vec<_> = hex
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+                .collect();
+            assert_eq!(bytes.len(), 0x3f4);
+            let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+            SimRng {
+                disabled: bytes[0],
+                index_a: word(4) as i32,
+                index_b: word(8) as i32,
+                state: (0..250).map(|i| word(12 + i * 4)).collect(),
+            }
+        }
+        let corpus: serde_json::Value =
+            serde_json::from_str(include_str!("../../tools/spatial_oracle/mapgen_range.json"))
+                .unwrap();
+        let mut compared = 0;
+        for row in corpus["cases"].as_array().unwrap() {
+            for call in row["calls"].as_array().unwrap() {
+                // The generic native helper's other ranges and disturbed
+                // incoming precision/rounding are deliberate negative controls,
+                // outside the operation exposed by this Rust API.
+                if call["low"] != 0
+                    || call["high"] != 3
+                    || call["before_control"]["fpcw"].as_u64().unwrap() & 0xf00 != 0xe00
+                {
+                    continue;
+                }
+                let mut rng = retained(call["before_state_hex"].as_str().unwrap());
+                let after = retained(call["after_state_hex"].as_str().unwrap());
+                assert_eq!(
+                    u64::from(rng.next_high_two_bits()),
+                    call["result"].as_u64().unwrap(),
+                    "{}",
+                    row["input"]["name"]
+                );
+                assert_eq!(
+                    rng.logical_state(),
+                    after.logical_state(),
+                    "{}",
+                    row["input"]["name"]
+                );
+                assert_eq!(call["raw_draw_count"], 1);
+                assert_eq!(call["state_advance_count"], u64::from(rng.disabled == 0));
+                compared += 1;
+            }
+        }
+        assert_eq!(compared, 72, "all startup-mode bridge range requests");
+    }
 
     #[test]
     fn sim_rng_logical_view_and_state_expose_all_250_words_without_mutation() {

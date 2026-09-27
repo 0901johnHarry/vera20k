@@ -208,6 +208,10 @@ fn destination_edit(
 mod terrain_ground_gpu_tests;
 
 #[cfg(test)]
+#[path = "naval_sinking_gpu_tests.rs"]
+mod naval_sinking_gpu_tests;
+
+#[cfg(test)]
 #[path = "projectile_shape_gpu_tests.rs"]
 mod projectile_shape_gpu_tests;
 
