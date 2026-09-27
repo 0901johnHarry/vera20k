@@ -10,6 +10,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Run all Python tool and source-skill tests | `python -m tools.run_tests` (below) |
 | Wait for builds; test, check, lint or build the current checkout; preserve A/B binaries | `python -m tools.cargo_run` (below) |
 | Inspect/extract/render assets | [asset browser](asset_browser/README.md), `asset` binary |
+| Reproduce FireAt-tail launch goldens | [projectile fixture family](projectile_oracle/README.md) |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |
