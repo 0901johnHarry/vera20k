@@ -653,7 +653,10 @@ use crate::sim::world::Simulation;
 // 224 -> 225: Prism forwarding. A building's delayed fire carries a support
 // beam mode, buildings keep a support count, bullets a damage multiplier and
 // houses their building list (House+0x68), which a 224 save never filled.
-const SNAPSHOT_VERSION: u32 = 225;
+// 225 -> 226: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
+// armed when a build starts (`0x004C9EA0`), and the stored sidebar build-time
+// estimates go. The factory and queue-entry schemas change.
+const SNAPSHOT_VERSION: u32 = 226;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3603,7 +3606,9 @@ mod tests {
         // 222 -> 223: no group speed cap on Move orders.
         // 223 -> 224: live Infantry movement/repair and structural side consumers.
         // 224 -> 225: Prism forwarding.
-        assert_eq!(super::SNAPSHOT_VERSION, 225);
+        // 225 -> 226: the factory step timer is the CDTimer a build start arms;
+        // no stored build-time estimates.
+        assert_eq!(super::SNAPSHOT_VERSION, 226);
     }
 
     #[test]

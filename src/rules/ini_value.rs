@@ -17,7 +17,7 @@
 
 use crate::rules::ini_parser::IniSection;
 use crate::rules::locomotor_type::SpeedType;
-use crate::util::native_x87::NativeF64Bits;
+use crate::util::native_x87::{MaskedX87Chop53, NativeF32Bits, NativeF64Bits};
 
 /// 0x20 = ASCII space; gamemd `strtrim` strips bytes <= 0x20 (space + all ASCII
 /// control) at BOTH ends — NOT Unicode whitespace.
@@ -62,6 +62,24 @@ impl IniSection {
     /// returns zero rather than importing that non-portable accident.
     pub fn read_double(&self, key: &str, default: f64) -> f64 {
         self.fold_rules_values(key, default, |_current, raw| parse_read_double(raw))
+    }
+
+    /// ReadDouble into a double field, keeping the stored bits.
+    pub fn read_double_bits(&self, key: &str, current: NativeF64Bits) -> NativeF64Bits {
+        NativeF64Bits::from_bits(
+            self.read_double(key, f64::from_bits(current.bits()))
+                .to_bits(),
+        )
+    }
+
+    /// ReadDouble into a float field: `FLD dword` widens the field into the
+    /// default and `FSTP dword` stores the result back under the process's
+    /// chop control word.
+    pub fn read_double_to_float(&self, key: &str, current: NativeF32Bits) -> NativeF32Bits {
+        MaskedX87Chop53::store_f32_masked_chop(MaskedX87Chop53::load_f64(self.read_double_bits(
+            key,
+            NativeF64Bits::from_bits(f64::from(f32::from_bits(current.bits())).to_bits()),
+        )))
     }
 
     /// ReadString (P5, P18): copy at most `capacity - 1` bytes, force the final
@@ -413,12 +431,11 @@ pub(crate) fn parse_read_double(raw: &str) -> f64 {
 /// chopped at 53 bits, one ulp below the nearest-rounded product for values
 /// such as `70%` (0.7's own double) or `90%` (the double below 0.9).
 pub(crate) fn scale_percent(value: f64) -> f64 {
-    use crate::util::native_x87::MaskedX87Chop53 as X87;
-    let scaled = X87::mul(
-        X87::load_f64(NativeF64Bits::from_bits(value.to_bits())),
-        X87::load_f64(PERCENT_SCALE),
+    let scaled = MaskedX87Chop53::mul(
+        MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(value.to_bits())),
+        MaskedX87Chop53::load_f64(PERCENT_SCALE),
     );
-    f64::from_bits(X87::store_f64_masked_chop(scaled).bits())
+    f64::from_bits(MaskedX87Chop53::store_f64_masked_chop(scaled).bits())
 }
 
 /// Byte-wise `strncpy` truncation. A cut that would land inside a multi-byte
