@@ -47,6 +47,19 @@ fn move_fv(
     deck: bool,
 ) -> u64 {
     let id = spawn(scene, owner, "FV", start).expect("ordinary FV bank/road placement");
+    move_existing_fv(scene, owner, id, destination, stop_at, deck);
+    id
+}
+fn move_existing_fv(
+    scene: &mut HeadlessScenario,
+    owner: InternedId,
+    id: u64,
+    destination: (u16, u16),
+    stop_at: (u16, u16),
+    deck: bool,
+) {
+    let position = &scene.sim().entities().get(id).unwrap().position;
+    let start = (position.rx, position.ry);
     let now = scene.sim().session.binary_frame;
     scene
         .runtime
@@ -103,7 +116,7 @@ fn move_fv(
                 e.position.exact_z_leptons,
                 tick + 1
             );
-            return id;
+            return;
         }
     }
     panic!("FV{id} failed normal Move {start:?}->{destination:?}, stop{stop_at:?}");
@@ -276,8 +289,8 @@ fn main() {
         if scene
             .sim()
             .projectiles
-            .values()
-            .all(|projectile| projectile.source_id != attacker)
+            .iter()
+            .all(|(_, projectile)| projectile.source_id != attacker)
         {
             break;
         }
@@ -287,8 +300,8 @@ fn main() {
         scene
             .sim()
             .projectiles
-            .values()
-            .all(|projectile| projectile.source_id != attacker),
+            .iter()
+            .all(|(_, projectile)| projectile.source_id != attacker),
         "the original attack must finish before repair"
     );
     let hut = scene
@@ -371,7 +384,9 @@ fn main() {
         saved_approach && repaired,
         "ordinary Engineer must approach, enter and repair"
     );
-    let witness = move_fv(&mut scene, owner, (64, 72), (64, 69), (64, 69), true);
-    println!("FV{witness} entered the repaired side deck through normal navigation");
+    // The stopped attacker still occupies the bank. Reuse that live object;
+    // spawning a second FV onto its occupied cell must correctly be refused.
+    move_existing_fv(&mut scene, owner, attacker, (64, 69), (64, 69), true);
+    println!("FV{attacker} entered the repaired side deck through normal navigation");
     save(&scene, &prefix, "repaired-deck-occupied");
 }

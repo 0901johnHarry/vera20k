@@ -552,17 +552,21 @@ fn theater_parse_allow_tiberium_defaults_false() {
 }
 
 #[test]
-fn parse_general_int_finds_bridge_middle_keys() {
+fn general_reader_finds_bridge_middle_keys() {
     let ini = "[General]\nBridgeSet=5\nBridgeMiddle1=7\nBridgeMiddle2=12\n\n[TileSet0000]\nTilesInSet=1\nFileName=clear\n";
-    assert_eq!(super::parse_general_int(ini, "BridgeMiddle1"), Some(7));
-    assert_eq!(super::parse_general_int(ini, "BridgeMiddle2"), Some(12));
+    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
+    let general = parsed.section("General");
+    assert_eq!(super::read_general_u16(general, "BridgeMiddle1"), Some(7));
+    assert_eq!(super::read_general_u16(general, "BridgeMiddle2"), Some(12));
 }
 
 #[test]
-fn parse_general_int_missing_bridge_middle_returns_none() {
+fn general_reader_missing_bridge_middle_returns_none() {
     let ini = "[General]\nBridgeSet=5\n\n[TileSet0000]\nTilesInSet=1\nFileName=clear\n";
-    assert_eq!(super::parse_general_int(ini, "BridgeMiddle1"), None);
-    assert_eq!(super::parse_general_int(ini, "BridgeMiddle2"), None);
+    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
+    let general = parsed.section("General");
+    assert_eq!(super::read_general_u16(general, "BridgeMiddle1"), None);
+    assert_eq!(super::read_general_u16(general, "BridgeMiddle2"), None);
 }
 
 fn bridge_piece_values(keys: super::TheaterBridgePieceKeys) -> [Option<u16>; 10] {
@@ -609,8 +613,10 @@ BridgeBottomLeft2=18\n\
 BridgeMiddle1=19\n\
 BridgeMiddle2=20\n";
 
+    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
+    let general = parsed.section("General");
     assert_eq!(
-        bridge_piece_values(super::parse_bridge_piece_keys(ini)),
+        bridge_piece_values(super::read_bridge_piece_keys(general)),
         [
             Some(11),
             Some(12),
@@ -636,8 +642,10 @@ BridgeBottomLeft1=6\n\
 BridgeMiddle1=256\n\
 BridgeMiddle2=70000\n";
 
+    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
+    let general = parsed.section("General");
     assert_eq!(
-        bridge_piece_values(super::parse_bridge_piece_keys(ini)),
+        bridge_piece_values(super::read_bridge_piece_keys(general)),
         [
             None,
             None,
@@ -651,6 +659,172 @@ BridgeMiddle2=70000\n";
             None,
         ]
     );
+}
+
+fn native_general_corpus() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../tools/rules_oracle/theater_general_reader.json"
+    ))
+    .expect("executed 545150 General reader corpus")
+}
+
+#[test]
+fn general_helpers_match_original_reader_and_signed_repair_keys() {
+    use crate::map::bridge_rim_tiles::HighBridgeRimTiles;
+
+    let corpus = native_general_corpus();
+    for case in corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(corpus["physical"].as_array().unwrap())
+    {
+        let name = case["name"]
+            .as_str()
+            .or_else(|| case["file"].as_str())
+            .unwrap();
+        let text = case["input_text"]
+            .as_str()
+            .or_else(|| case["general_text"].as_str())
+            .unwrap();
+        let ini = IniFile::from_bytes(text.as_bytes()).unwrap();
+        let general = ini.section("General");
+        for read in corpus["read_contract"].as_array().unwrap() {
+            let key = read["key"].as_str().unwrap();
+            let default = i32::try_from(read["default"].as_i64().unwrap()).unwrap();
+            assert_eq!(
+                i64::from(general.map_or(default, |section| section.read_int(key, default))),
+                case["values"][key].as_i64().unwrap(),
+                "{name}: original General/{key} at {}",
+                read["call"]
+            );
+        }
+        for key in [
+            "BridgeSet",
+            "WoodBridgeSet",
+            "SlopeSetPieces",
+            "SlopeSetPieces2",
+            "Tunnels",
+            "TrackTunnels",
+            "DirtTunnels",
+            "DirtTrackTunnels",
+        ] {
+            assert_eq!(
+                read_general_u16(general, key),
+                u16::try_from(case["values"][key].as_i64().unwrap()).ok(),
+                "{name}: bounded {key} ordinal"
+            );
+        }
+        let rim = HighBridgeRimTiles::from_ini(0, text.as_bytes());
+        let signed_pieces = [
+            rim.top_left,
+            rim.bottom_right,
+            rim.top_right,
+            rim.bottom_left,
+            rim.middle,
+        ]
+        .concat();
+        let projected = bridge_piece_values(read_bridge_piece_keys(general));
+        // Compare the two consumer representations with the same original
+        // signed DWORDs; oversized/negative repair identities must survive.
+        for (index, key) in [
+            "BridgeTopLeft1",
+            "BridgeTopLeft2",
+            "BridgeBottomRight1",
+            "BridgeBottomRight2",
+            "BridgeTopRight1",
+            "BridgeTopRight2",
+            "BridgeBottomLeft1",
+            "BridgeBottomLeft2",
+            "BridgeMiddle1",
+            "BridgeMiddle2",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let native = case["values"][key].as_i64().unwrap();
+            assert_eq!(
+                i64::from(signed_pieces[index]),
+                native,
+                "{name}: signed {key}"
+            );
+            assert_eq!(
+                projected[index],
+                u16::try_from(native).ok(),
+                "{name}: projected {key}"
+            );
+        }
+    }
+}
+
+#[test]
+fn general_roles_match_original_ordinal_publication() {
+    let corpus = native_general_corpus();
+    for case in corpus["projection_cases"].as_array().unwrap() {
+        let native = &case["ordinal_projection"];
+        let ordinal = native["supplied_ordinal"].as_u64().unwrap() as usize;
+        let Ok(base) = u16::try_from(native["supplied_cumulative_base"].as_i64().unwrap()) else {
+            // The corpus also records native DWORD widths beyond the loader's
+            // checked u16 capacity; those are not representable tile fixtures.
+            continue;
+        };
+        let ini = IniFile::from_bytes(case["input_text"].as_str().unwrap().as_bytes()).unwrap();
+        let general = ini.section("General");
+        let mut lookup = parse_tileset_ini(b"", "tem").unwrap();
+        lookup.tileset_bounds = vec![TilesetBounds { start: 0, count: 0 }; ordinal + 1];
+        lookup.tileset_bounds[ordinal].start = base;
+        let cliffs = resolve_cliff_ranges(
+            &lookup,
+            general,
+            read_general_u16(general, "BridgeSet"),
+            read_general_u16(general, "WoodBridgeSet"),
+        );
+        let rmg = resolve_rmg_tile_keys(&lookup, general);
+        for (key, actual) in [
+            ("BridgeSet", cliffs.bridge_set),
+            ("WoodBridgeSet", cliffs.wood_bridge_set),
+            ("CliffSet", cliffs.cliff_set),
+            ("CliffRamps", cliffs.cliff_ramps),
+            ("WaterCliffs", cliffs.water_cliffs),
+            ("DestroyableCliffs", cliffs.destroyable_cliffs),
+            ("WaterCaves", cliffs.water_caves),
+            ("WaterfallEast", cliffs.waterfall_east),
+            ("WaterfallWest", cliffs.waterfall_west),
+            ("WaterfallNorth", cliffs.waterfall_north),
+            ("WaterfallSouth", cliffs.waterfall_south),
+            ("ClearTile", rmg.clear_tile),
+            ("RampBase", rmg.ramp_base),
+            ("RampSmooth", rmg.ramp_smooth),
+            ("RoughTile", rmg.rough_tile),
+            ("SandTile", rmg.sand_tile),
+            ("GreenTile", rmg.green_tile),
+            ("ClearToRoughLat", rmg.clear_to_rough_lat),
+            ("ClearToSandLat", rmg.clear_to_sand_lat),
+            ("ClearToGreenLat", rmg.clear_to_green_lat),
+            ("ClearToPaveLat", rmg.clear_to_pave_lat),
+            ("PaveTile", rmg.pave_tile),
+            ("WaterSet", rmg.water_set),
+            ("ShorePieces", rmg.shore_pieces),
+            ("WaterBridge", rmg.water_bridge),
+            ("MiscPaveTile", rmg.misc_pave_tile),
+            ("PavedRoads", rmg.paved_roads),
+            ("PavedRoadEnds", rmg.paved_road_ends),
+            ("Medians", rmg.medians),
+        ] {
+            let read_ordinal = case["values"][key].as_i64().unwrap();
+            if read_ordinal >= 0 && read_ordinal < ordinal as i64 {
+                // Each native control executes one loop ordinal, not earlier
+                // rows. Those other rows have no supplied cumulative bases.
+                continue;
+            }
+            assert_eq!(
+                actual,
+                u16::try_from(native["values"][key].as_i64().unwrap()).ok(),
+                "{}: {key}",
+                case["name"]
+            );
+        }
+    }
 }
 
 #[test]
@@ -679,21 +853,36 @@ fn active_retail_automatic_shell_corpus_is_exact() {
     let mut positives = BTreeSet::new();
     let mut missing_assets = BTreeSet::new();
     let mut variant_assets = BTreeSet::new();
-    let expected_bridge_pieces = [
-        Some(1),
-        Some(2),
-        Some(3),
-        Some(3),
-        Some(4),
-        Some(5),
-        Some(6),
-        Some(6),
-        Some(7),
-        Some(12),
-    ];
+    let corpus = native_general_corpus();
     for theater_name in ["TEMPERATE", "SNOW", "URBAN", "NEWURBAN", "DESERT", "LUNAR"] {
         let theater = load_theater(&mut assets, theater_name)
             .unwrap_or_else(|| panic!("load active retail theater {theater_name}"));
+        let expected = corpus["physical"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["file"].as_str() == Some(theater_def(theater_name).unwrap().ini_name))
+            .unwrap();
+        let mut digest = crate::util::sha256::Sha256::new();
+        digest.update(&theater.ini_data);
+        assert_eq!(
+            crate::util::sha256::digest_hex(digest.finalize()),
+            expected["sha256"].as_str().unwrap(),
+            "{theater_name}: executed physical INI"
+        );
+        let expected_bridge_pieces = [
+            "BridgeTopLeft1",
+            "BridgeTopLeft2",
+            "BridgeBottomRight1",
+            "BridgeBottomRight2",
+            "BridgeTopRight1",
+            "BridgeTopRight2",
+            "BridgeBottomLeft1",
+            "BridgeBottomLeft2",
+            "BridgeMiddle1",
+            "BridgeMiddle2",
+        ]
+        .map(|key| u16::try_from(expected["values"][key].as_i64().unwrap()).ok());
         assert_eq!(
             loaded_bridge_piece_values(&theater),
             expected_bridge_pieces,
@@ -736,9 +925,8 @@ fn active_retail_automatic_shell_corpus_is_exact() {
                     missing_assets.insert(format!("{theater_name}/{filename}"));
                     continue;
                 };
-                let tmp = TmpFile::from_bytes(&bytes).unwrap_or_else(|error| {
-                    panic!("parse {theater_name}/{filename}: {error}")
-                });
+                let tmp = TmpFile::from_bytes(&bytes)
+                    .unwrap_or_else(|error| panic!("parse {theater_name}/{filename}: {error}"));
                 loaded_assets += 1;
                 for (subtile, tile) in tmp.tiles.iter().enumerate() {
                     let Some(tile) = tile else {
@@ -824,11 +1012,11 @@ fn cliff_ranges_resolve_ordinals_to_cumulative_tile_starts() {
                 [TileSet0002]\nTilesInSet=4\nFileName=cliff\nSetName=Anything\n";
     let lookup = super::parse_tileset_ini(ini, "tem").unwrap();
 
-    assert_eq!(super::resolve_tileset_start(&lookup, Some(0)), Some(0));
-    assert_eq!(super::resolve_tileset_start(&lookup, Some(1)), Some(2));
-    assert_eq!(super::resolve_tileset_start(&lookup, Some(2)), Some(5));
-    assert_eq!(super::resolve_tileset_start(&lookup, Some(-1)), None);
-    assert_eq!(super::resolve_tileset_start(&lookup, Some(99)), None);
+    assert_eq!(super::resolve_tileset_start(&lookup, 0), Some(0));
+    assert_eq!(super::resolve_tileset_start(&lookup, 1), Some(2));
+    assert_eq!(super::resolve_tileset_start(&lookup, 2), Some(5));
+    assert_eq!(super::resolve_tileset_start(&lookup, -1), None);
+    assert_eq!(super::resolve_tileset_start(&lookup, 99), None);
 }
 
 #[test]
@@ -839,8 +1027,8 @@ fn gsi_04_03a_rmg_tile_keys_parse_ramp_smooth_and_resolve_ordinals() {
                 [TileSet0001]\nTilesInSet=3\nFileName=water\nSetName=Water\n\n\
                 [TileSet0002]\nTilesInSet=4\nFileName=green\nSetName=Green\n";
     let lookup = super::parse_tileset_ini(ini_bytes, "tem").unwrap();
-    let ini_text = String::from_utf8_lossy(ini_bytes);
-    let keys = super::resolve_rmg_tile_keys(&lookup, &ini_text);
+    let ini = IniFile::from_bytes(ini_bytes).unwrap();
+    let keys = super::resolve_rmg_tile_keys(&lookup, ini.section("General"));
 
     assert_eq!(keys.clear_tile, Some(0));
     assert_eq!(keys.ramp_base, Some(2));
@@ -951,9 +1139,11 @@ fn gsi_04_03a_lunar_theater_zeroing_clears_special_terrain_globals() {
         ));
     }
     let lookup = super::parse_tileset_ini(ini.as_bytes(), "lun").unwrap();
-    let mut bridge_set = super::parse_general_int(&ini, "BridgeSet");
-    let mut wood_bridge_set = super::parse_general_int(&ini, "WoodBridgeSet");
-    let mut ranges = super::resolve_cliff_ranges(&lookup, &ini, bridge_set, wood_bridge_set);
+    let parsed = IniFile::from_bytes(ini.as_bytes()).unwrap();
+    let general = parsed.section("General");
+    let mut bridge_set = super::read_general_u16(general, "BridgeSet");
+    let mut wood_bridge_set = super::read_general_u16(general, "WoodBridgeSet");
+    let mut ranges = super::resolve_cliff_ranges(&lookup, general, bridge_set, wood_bridge_set);
     let mut rmg_tiles = RmgTileKeys {
         water_set: Some(17),
         ..RmgTileKeys::default()

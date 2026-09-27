@@ -108,7 +108,7 @@ The initial integrated run passes: Engineer entry and repair occur 76 frames
 after dispatch (zero-based trace frame75); both restored continuations also
 pass. This is Rust production evidence, not native timing or full route parity.
 The saved receipt is `engineer-entry-followup/hills-side-consumers.log`.
-Release/render validation remains pending.
+Visible render validation remains pending.
 
 After integrating `main` at `c5451c8992964fe465b852de3e6c3ccae0498222`,
 the legal Hills approach and both restore continuations pass again
@@ -127,12 +127,30 @@ constructor-side tests, including the six native admission answers through
 `72a17ff359ebab7b88f9a2649f24beb0ff3846e8f47de48763803ad22dce3e03`;
 logs are `engineer-entry-followup/side-fixtures-{radar,constructor}.log`.
 
-The final candidate integrated with `main` at
+The pre-theater-refactor candidate integrated with `main` at
 `945d16234f5fa1536c679dae7eee63bbc06140c3` passes the full retail-required
 library suite: **9,572 passed, zero failures, 177 ignored**. The retained binary
 SHA256 is `c7cda151f8a6c28e51b222545af46cc2ad02a17c5400bfb5d2cdccf37e9fa219`;
 the log is `engineer-entry-followup/engineer-main945-readiness.log`.
 Snapshot version222 rejects earlier movement continuations.
+Retail-required `cargo clippy -p vera20k --lib` also exits successfully; its
+warnings are retained in `engineer-entry-followup/engineer-main945-clippy.log`.
+
+The release-built `bridge_target_layer_scene` loads physical Hills.mmx and
+passes the full firing/collapse/repair/traversal sequence. Its52 ordinary IFV
+projectiles collapse the span after1400 frames. After Stop and real projectile
+drain, ENGINEER1079 enters CABHUT917 and repairs in78 frames. The stopped
+attacker FV963 then takes21 frames to reach the repaired overlayless side deck
+at `(64,69)`, with OnBridge=true and Z=1040. These timings describe this Rust
+composition, not full native scene timing. The runner reuses the live attacker:
+ordinary placement correctly rejects a second FV on its occupied bank cell.
+
+The example binary SHA256 is
+`0b68a4bf0020b8f1d4632bae9d06569276b5651e2172f7eec92538ace425fa83`;
+the release app is
+`8dadcfe87815e5d36b2d80f5cb4cb595b461cc13a51c8f49584d0b494c7963c3`.
+`engineer-entry-followup/engineer-v222-scene-final.log` records the map/rules
+hashes and all five saved phases, including approach, repair and deck occupancy.
 
 Four structural-collapse tests previously mixed direct overlay0xDC with raw
 structural0x100. Original57D530 changes the overlay without the structural flag
@@ -186,3 +204,23 @@ Ghidra corrections are saved and read back: PerCell519CA3/519B3E/51A010,
 AStar429E54/42A18B/42A4B6, InfantryType5236AA, and Cell483480 now named
 `CellClass__Uncloak_Ground_Objects`. The previous redraw name hid a simulation
 side effect. Exact receipts are retained with the Engineer follow-up evidence.
+
+Theater loading now parses TileSet rows and General keys through one `IniFile`,
+removing the repeated case-insensitive text scanner and its `str::parse` integer
+rules. [Executed native General reads](../rules_oracle/theater_general_reader.md)
+pin all56 read defaults/order,34 edge controls and six physical theater files.
+The production helper/rim test compares all read results and both signed repair
+and checked tile-index projections. The ordinal-publication test binds the
+representable native controls to cliff/RMG consumers. The large native DWORD
+controls remain outside the loader's existing checked u16 capacity.
+
+Focused theater tests pass48 with2 ignored. Explicitly running
+`active_retail_automatic_shell_corpus_is_exact` passes across all six theaters,
+checking physical INI hashes and bridge keys against that native corpus as well
+as the existing TMP tube corpus. Retained binary SHA256:
+`79e281d73cdcf644b9dd7e44d61b12a8e69f76161eb8ce0e7f693abcda53686f`.
+Logs are `engineer-entry-followup/theater-general-native.log` and
+`theater-general-retail-six.log`. General-block comments545535/545978/545B4D/
+545CEF were saved and read back, with their original instruction-span hashes
+matched to the executed corpus. Full readiness and visible validation follow
+this broader parser correction; earlier results are not its final validation.
