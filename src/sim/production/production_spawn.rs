@@ -37,9 +37,7 @@ pub(super) enum ProductionDeliveryKind {
     Standard,
     /// `BuildingClass::ExitObject_Main @ 0x00443C60`'s produced-Unit
     /// `!Refinery && !Weeder && WeaponsFactory && Naval` branch.
-    NavalUnit {
-        producer_rally: Option<(u16, u16)>,
-    },
+    NavalUnit,
 }
 
 pub fn find_spawn_cell_for_owner(
@@ -186,7 +184,7 @@ pub(super) fn find_spawn_selection_for_owner_with_type(
             return Some(ProductionSpawnSelection {
                 producer_id: *producer_id,
                 cell,
-                delivery: ProductionDeliveryKind::NavalUnit { producer_rally },
+                delivery: ProductionDeliveryKind::NavalUnit,
             });
         }
         if !require_water && exact_land_vehicle_exit_factory(rules, structure_id) {

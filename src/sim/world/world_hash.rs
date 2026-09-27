@@ -3408,6 +3408,20 @@ mod state_hash_field_tests {
     use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
     use crate::sim::game_entity::GameEntity;
 
+    /// A factory's rally point is its ArchiveTarget cell, folded with the
+    /// base-defence state.
+    #[test]
+    fn factory_rally_point_changes_state_hash() {
+        let factory = GameEntity::test_default(1, "GAWEAP", "Americans", 10, 10);
+        let mut rallied = factory.clone();
+        rallied.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(30, 31)));
+        let mut sim_a = Simulation::new();
+        let mut sim_b = Simulation::new();
+        sim_a.substrate.entities.insert(factory);
+        sim_b.substrate.entities.insert(rallied);
+        assert_ne!(sim_a.state_hash(), sim_b.state_hash());
+    }
+
     #[test]
     fn drive_locomotion_state_changes_state_hash() {
         let mut sim_a = Simulation::new();

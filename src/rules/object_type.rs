@@ -1678,7 +1678,9 @@ impl ObjectType {
         self.cyborg && self.category == ObjectCategory::Infantry
     }
 
-    /// Whether this type participates in selected factory rally-line visuals.
+    /// `BuildingClass` vt+0x284 (`0x00455DA0`, HasRallyPoint): a
+    /// Factory=UnitType or InfantryType, UnitRepair or Cloning building. The
+    /// rally click archives only on these, and their rally lines draw.
     pub fn has_rally_line(&self) -> bool {
         matches!(
             self.factory,

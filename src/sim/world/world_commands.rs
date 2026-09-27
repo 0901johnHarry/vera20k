@@ -2404,13 +2404,26 @@ impl Simulation {
     /// `EventClass::Execute @ 0x004C6DAA` runs `Set_ArchiveTarget @
     /// 0x0070C610`, so the factory archives the cell (its only store).
     ///
-    /// Residual: SetRallyPoint first moves the clicked cell to
-    /// `Find_Nearby_Passable_Cell` (the building type's speed and movement
-    /// zone, the zone of the building's cell); VERA archives the clicked cell.
-    /// Trigger: a rally click on a cell the factory's units cannot enter.
-    /// Effect: the rally line and the produced units' move end at the clicked
-    /// cell instead of the nearest passable one. Frequency: occasional.
-    /// Downstream: the unit stops where its path search gives up.
+    /// Residuals (instruction reading; not ported):
+    /// - SetRallyPoint first moves the clicked cell to
+    ///   `Find_Nearby_Passable_Cell` (the building type's speed and movement
+    ///   zone, the zone of the building's cell); when that finds no cell, a
+    ///   building other than a Construction Yard sends no event
+    ///   (`0x0044395E..0x00443977`, `0x00443A7B`) and keeps its old rally.
+    ///   VERA archives the clicked cell. Trigger: a rally click on a cell the
+    ///   factory's units cannot enter. Effect: the rally line and the
+    ///   produced units' move end at the clicked cell. Frequency:
+    ///   occasional. Downstream: the unit stops where its path search gives
+    ///   up.
+    /// - Stop clears a factory's rally: StopCommandClass sends event 6 for a
+    ///   selected HasRallyPoint building not under EMP
+    ///   (`0x00730EC3..0x00730EEB`, vt+0xA0 = `0x0044F5C0`); the IDLE arm's
+    ///   `Assign_Destination(0, 1)` (`0x004C75ED`) reaches `BuildingClass`
+    ///   vt+0x480 (`0x00455D50`), which archives the destination on a
+    ///   HasRallyPoint or ConstructionYard building unless it is Selling.
+    ///   VERA's Stop leaves the archive. Trigger: Stop with a factory
+    ///   selected. Effect: the rally line stays and new units keep taking
+    ///   it. Frequency: occasional. Downstream: none beyond the rally.
     fn set_rally_point_for_producers(
         &mut self,
         command_owner: &str,

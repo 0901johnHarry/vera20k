@@ -106,8 +106,10 @@ fn default_base_plan_type_index() -> i32 {
 }
 
 /// Persistent TechnoClass state used by the active House base-defence
-/// responder. The two admission bytes are constructor-true; archive/cooldown
-/// writes occur only after a responder assignment or strict budget overshoot.
+/// responder. The two admission bytes are constructor-true; cooldown writes
+/// occur only after a responder assignment or strict budget overshoot. The
+/// ArchiveTarget (`+0x218`) stored here is the general Techno field, which
+/// responders, miners, the slave manager and the rally click all write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BaseDefenseResponseState {
     pub(crate) recruitable_a: bool,

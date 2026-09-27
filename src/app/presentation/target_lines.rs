@@ -2,7 +2,7 @@
 //!
 //! Selected action lines are short-lived app-layer feedback resolved from live
 //! simulation movement/attack state. Factory rally lines are app-layer visuals
-//! over deterministic per-producer rally target state.
+//! over each factory's rally point, its ArchiveTarget.
 //!
 //! ## Dependency rules
 //! - Part of the app layer - reads sim state but never mutates it.

@@ -384,7 +384,7 @@ fn tick_production_impl(
         };
 
         let spawned = match spawn_delivery {
-            ProductionDeliveryKind::NavalUnit { .. } => unlimbo_held_naval_unit(
+            ProductionDeliveryKind::NavalUnit => unlimbo_held_naval_unit(
                 sim,
                 rules,
                 &owner_str,
@@ -467,18 +467,35 @@ fn tick_production_impl(
             // Auto-move newly produced unit to rally point (if set).
             // Skip for aircraft docked on helipad — they wait for orders.
             if helipad_airfield.is_none() && !hunting {
-                // `ExitObject_Main @ 0x00443C60` hands the leaving object
-                // its own factory's ArchiveTarget (`+0x218`, the rally point).
-                let rally = match spawn_delivery {
-                    ProductionDeliveryKind::NavalUnit { producer_rally, .. } => producer_rally,
-                    ProductionDeliveryKind::Standard => spawn_producer_id
-                        .and_then(|producer_id| sim.substrate.entities.get(producer_id))
-                        .and_then(|producer| producer.rally_cell()),
-                };
-                let naval_rally =
-                    matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit { .. })
-                        .then_some(rally)
-                        .flatten();
+                // `ExitObject_Main @ 0x00443C60` reads the factory's own
+                // ArchiveTarget (`+0x218`, the rally point) for the object
+                // leaving it; the naval arm reads it after Unlimbo
+                // (`0x0044441A`).
+                //
+                // Residual (instruction reading; not ported): the non-naval
+                // arms also copy it into the leaving object's own archive
+                // (`0x0044498E`, `0x00444492`), which the Unit's exit arms
+                // consume: a human house's unit drives to it
+                // (`0x0073AAA1..0x0073AABB`), a computer house's
+                // WeaponsFactory unit instead takes the cell of HouseClass
+                // `0x00500200`, archives it and queues AreaGuard
+                // (`0x0073A9DE..0x0073AA9C`); `0x00500200` draws Scenario
+                // `RandomRanged(1, 4)` (`0x0050023B`) when the unit's vt+0x2D4,
+                // +0x2D8 and +0x2DC sum is nonzero. VERA gives the rally move
+                // here and writes no unit archive. Trigger: every produced
+                // unit. Effect: a computer house's units stay at the factory
+                // instead of spreading to posts; a unit's archive reads None
+                // where native holds the rally cell (a harvester may also
+                // take the Harvest exit arm, `0x0073AAE6`, unchecked); one
+                // Scenario draw per armed computer war-factory unit is
+                // missing. Frequency: every build. Downstream: the Scenario
+                // RNG stream after computer unit production.
+                let rally = spawn_producer_id
+                    .and_then(|producer_id| sim.substrate.entities.get(producer_id))
+                    .and_then(|producer| producer.rally_cell());
+                let naval_rally = matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit)
+                    .then_some(rally)
+                    .flatten();
                 if let Some((tx, ty)) = naval_rally {
                     if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
                         // BuildingClass::ExitObject_Main @ 0x0044442B calls
@@ -561,7 +578,7 @@ fn tick_production_impl(
                         );
                     }
                 }
-                if matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit { .. })
+                if matches!(spawn_delivery, ProductionDeliveryKind::NavalUnit)
                     && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
                 {
                     // Native +0x124/+0x1B4/+0x124 success tail writes the

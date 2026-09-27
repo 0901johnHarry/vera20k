@@ -292,6 +292,26 @@ fn a_produced_unit_takes_its_own_factorys_rally_point() {
     );
 }
 
+/// `TechnoClass::ChangeOwner @ 0x007014A0` clears the ArchiveTarget
+/// (`0x0070151A`), so a captured factory loses its rally point.
+#[test]
+fn a_captured_factory_loses_its_rally_point() {
+    let (mut sim, rules, _) = world(0xfac7_0022);
+    let command = crate::sim::command::Command::SetRally {
+        rx: 40,
+        ry: 12,
+        producer_ids: vec![1],
+    };
+    assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().rally_cell(),
+        Some((40, 12))
+    );
+    let russians = sim.interner.intern("Russians");
+    sim.change_owner_with_rules(1, russians, &rules);
+    assert_eq!(sim.substrate.entities.get(1).unwrap().rally_cell(), None);
+}
+
 #[test]
 fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     let (mut sim, rules, owner) = world(0xfac7_0011);
