@@ -1100,9 +1100,11 @@ mod tests {
         let rules = RuleSet::from_rules_layers(&layers).expect("ordered rules parse");
         // C4Delay is minutes: ticks = minutes * 60 * 15 => .06 -> 54.
         assert_eq!(rules.c4_delay_ticks, 54);
-        // BuildSpeed consumer — assert the deterministic x1000 field, not the
-        // f32 mirror: map override 1 -> 1000 (base .7 would be 700).
-        assert_eq!(rules.production.build_speed_x1000, 1000);
+        // BuildSpeed: the map's 1 overrides the base .7.
+        assert_eq!(
+            rules.production.build_speed,
+            crate::util::native_x87::NativeF64Bits::ONE
+        );
     }
 
     /// AT-9 inverse: a map with no rules-shaped sections changes nothing.
@@ -1117,10 +1119,7 @@ mod tests {
         let a = RuleSet::from_rules_layers(&with_map).expect("parse");
         let b = RuleSet::from_ini(&IniFile::from_str(RULES_BASE)).expect("parse");
         assert_eq!(a.c4_delay_ticks, b.c4_delay_ticks);
-        assert_eq!(
-            a.production.build_speed_x1000,
-            b.production.build_speed_x1000
-        );
+        assert_eq!(a.production.build_speed, b.production.build_speed);
         assert_eq!(
             a.object("E1").map(|o| o.strength),
             b.object("E1").map(|o| o.strength)
@@ -1144,7 +1143,11 @@ mod tests {
             Some("1500")
         );
         let rules = RuleSet::from_processed_rules(&processed).expect("processed rules parse");
-        assert_eq!(rules.production.build_speed_x1000, 580);
+        // ReadDouble scans into a float and widens it.
+        assert_eq!(
+            rules.production.build_speed,
+            crate::util::native_x87::NativeF64Bits::from_bits(f64::from(0.58_f32).to_bits())
+        );
     }
 
     /// The match load's rules path over in-memory layers: cold startup, then
@@ -1356,8 +1359,11 @@ mod tests {
         );
         assert_eq!(rules.general.growth_rate_minutes, 2.0, "GrowthRate");
 
-        // [General] BuildSpeed -> deterministic x1000 field (1.0 -> 1000).
-        assert_eq!(rules.production.build_speed_x1000, 1000, "BuildSpeed 1.0");
+        assert_eq!(
+            rules.production.build_speed,
+            crate::util::native_x87::NativeF64Bits::ONE,
+            "BuildSpeed 1.0"
+        );
 
         // [CombatDamage] C4Delay .03 min -> 27 ticks.
         assert_eq!(rules.c4_delay_ticks, 27, "C4Delay .03 min -> 27 ticks");

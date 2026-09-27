@@ -4,8 +4,8 @@
 
 use crate::sim::intern::InternedId;
 use crate::sim::production::{
-    BuildOption, BuildQueueState, ProducerFocusView, ProductionCategory, QueueItemView,
-    ReadyBuildingView,
+    BuildOption, BuildQueueState, PRODUCTION_STEPS, ProducerFocusView, ProductionCategory,
+    QueueItemView, ReadyBuildingView,
 };
 use crate::sim::superweapon::SuperWeaponView;
 
@@ -601,10 +601,7 @@ fn collect_build_entries(
                     .find(|item| {
                         item.type_id == opt.type_id && item.queue_category == opt.queue_category
                     })
-                    .map(|item| {
-                        let total = item.total_ms.max(1) as f32;
-                        (total - item.remaining_ms as f32) / total
-                    })
+                    .map(|item| f32::from(item.progress) / f32::from(PRODUCTION_STEPS))
                     .unwrap_or(0.0)
                     .clamp(0.0, 1.0);
                 BuildEntry {
@@ -807,7 +804,7 @@ mod tests {
 
     #[test]
     fn retained_entries_drive_tabs_and_fallback_restores_parked_scroll() {
-        use super::{build_sidebar_view_with_spec, SidebarChromeLayoutSpec};
+        use super::{SidebarChromeLayoutSpec, build_sidebar_view_with_spec};
         let mut interner = StringInterner::new();
         let options: Vec<_> = (0..30)
             .map(|i| {
@@ -1013,8 +1010,7 @@ mod tests {
             display_name: id.to_string(),
             queue_category: ProductionCategory::Building,
             state,
-            remaining_ms: 5_000,
-            total_ms: 10_000,
+            progress: 27,
         }
     }
 
@@ -1039,15 +1035,14 @@ mod tests {
         id: &str,
         category: ProductionCategory,
         state: BuildQueueState,
-        remaining_ms: u32,
+        progress: u16,
     ) -> QueueItemView {
         QueueItemView {
             type_id: interner.intern(id),
             display_name: id.to_string(),
             queue_category: category,
             state,
-            remaining_ms,
-            total_ms: 10_000,
+            progress,
         }
     }
 
@@ -1070,7 +1065,7 @@ mod tests {
             "DEST",
             ProductionCategory::Ship,
             BuildQueueState::Paused,
-            5_000,
+            27,
         )];
         // A land producer may coexist, but the one live Ship queue is the
         // unambiguous context for both app-local controls.
@@ -1133,14 +1128,14 @@ mod tests {
                 "MTNK",
                 ProductionCategory::Vehicle,
                 BuildQueueState::Building,
-                9_000,
+                6,
             ),
             categorized_queue_item(
                 &mut interner,
                 "DEST",
                 ProductionCategory::Ship,
                 BuildQueueState::Done,
-                0,
+                54,
             ),
         ];
         let focus = vec![
@@ -1182,7 +1177,7 @@ mod tests {
         assert_eq!(dest.queue_category, ProductionCategory::Ship);
         assert!(mtnk.is_building_this_type);
         assert!(!dest.is_building_this_type);
-        approx_eq(mtnk.progress, 0.1);
+        approx_eq(mtnk.progress, 6.0 / 54.0);
         approx_eq(dest.progress, 1.0);
         assert_eq!(mtnk.queued_count, 1);
         assert_eq!(dest.queued_count, 1);

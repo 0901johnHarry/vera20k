@@ -1075,7 +1075,6 @@ fn conyard_redeploy_ui_hides_while_building_queue_busy() {
         crate::sim::production::ProductionCategory::Building,
         type_id,
         1,
-        100,
         0,
     );
     assert!(started);

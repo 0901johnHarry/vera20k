@@ -52,10 +52,6 @@ pub(super) struct ObjectAiOutcome {
     pub(super) bridge_state_changed: bool,
 }
 
-// P3 oracle probe import — used only by the `#[cfg(test)]` factory_oracle_step_trace.
-#[cfg(test)]
-use crate::sim::production::StepOutcome;
-
 impl Simulation {
     pub(crate) fn clear_active_wave_link(&mut self, wave_id: u64) {
         self.active_wave_links
@@ -1698,76 +1694,6 @@ impl Simulation {
                 t.structure_id,
             );
         }
-    }
-
-    /// Test-only P3 oracle probe: walk live Structures in LogicVector order and, for
-    /// each, step a CLONE of its owner's factories against a CLONE of the owner's
-    /// economy — exercising `set_rate` + `advance_one_step` on throwaways. READ-ONLY
-    /// w.r.t. all hashed state: it writes only local clones, NEVER the registry, the
-    /// wallet, or any entity. The `EntityCategory::Structure` arm stays a no-op; this
-    /// is the "proof beside the no-op" shape (FIT option a) and the P5 precursor (the
-    /// flip swaps the arm body, not the iteration source). The full per-building
-    /// Primary_For* routing is a later slice — the probe uses a bounded per-owner
-    /// scope (every factory the visited Structure's owner holds), hash-neutral
-    /// regardless of routing precision.
-    #[cfg(test)]
-    pub(crate) fn factory_oracle_step_trace(&self) -> Vec<(u64, StepOutcome)> {
-        let mut out: Vec<(u64, StepOutcome)> = Vec::new();
-        for id in self.live_object_order_snapshot() {
-            let Some(entity) = self.substrate.entities.get(id) else {
-                continue;
-            };
-            if entity.dying || entity.category != EntityCategory::Structure {
-                continue;
-            }
-            let owner = entity.owner;
-            // Clone the owner's economy (the oracle wallet); default if no house.
-            let mut oracle_econ = self
-                .houses
-                .get(&owner)
-                .map(|h| h.economy.clone())
-                .unwrap_or_default();
-            // Bounded scope: step a CLONE of each of this owner's factories. The
-            // registry is a LOOKUP (FIT a); we read it, never mutate it.
-            for factory in self.production.factory_shadow.iter_insertion_ordered() {
-                if factory.owner != owner || factory.object.is_none() {
-                    continue;
-                }
-                let mut oracle_factory = factory.clone();
-                // Exercise SetRate (build-step total is a placeholder until the
-                // GetBuildStepTime pipeline lands; original_balance is a stand-in
-                // input — the probe proves the step machine runs, not the rate value).
-                oracle_factory.set_rate(oracle_factory.original_balance);
-                let outcome = oracle_factory.advance_one_step(&mut oracle_econ);
-                out.push((id, outcome));
-                // local clones dropped here; nothing written back.
-            }
-        }
-        out
-    }
-
-    /// Test-only dormant probe (P5a): prove the C7 delivery -> start_next_queued
-    /// mechanics on a CLONE of the registry (NEVER the hashed shadow). Returns, per
-    /// factory, (owner, category, popped-front-after-a-simulated-delivery). NO
-    /// authoritative call site — a later slice binds start_next_queued to the real
-    /// delivery commit; this only proves the post-delivery pop end-to-end.
-    #[cfg(test)]
-    pub(crate) fn factory_delivery_probe(
-        &self,
-    ) -> Vec<(
-        crate::sim::intern::InternedId,
-        crate::sim::production::ProductionCategory,
-        Option<crate::sim::intern::InternedId>,
-    )> {
-        let mut out = Vec::new();
-        for factory in self.production.factory_shadow.iter_insertion_ordered() {
-            let mut d = factory.clone();
-            d.object = None; // simulate the delivery commit
-            d.suspended = false;
-            let popped = d.start_next_queued(0, 0);
-            out.push((factory.owner, factory.category, popped));
-        }
-        out
     }
 }
 

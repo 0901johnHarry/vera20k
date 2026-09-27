@@ -14,8 +14,6 @@ use crate::sim::production::factory::FactoryRegistry;
 
 /// Initial credits for the local player.
 pub const STARTING_CREDITS: i32 = 5000;
-/// Fixed-point precision for dynamic production-rate application.
-pub(super) const PRODUCTION_RATE_SCALE: u64 = 1_000_000;
 
 /// One queued item formatted for UI rendering.
 #[derive(Debug, Clone)]
@@ -24,8 +22,9 @@ pub struct QueueItemView {
     pub display_name: String,
     pub queue_category: ProductionCategory,
     pub state: BuildQueueState,
-    pub remaining_ms: u32,
-    pub total_ms: u32,
+    /// Factory progress in steps (`0..=PRODUCTION_STEPS`, Factory `+0x24`, read by
+    /// the sidebar through `0x004CA120`); `0` for a queued item.
+    pub progress: u16,
 }
 
 /// One completed building waiting for placement.

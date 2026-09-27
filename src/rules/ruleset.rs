@@ -42,6 +42,7 @@ use crate::rules::voxel_anim_type::{VoxelAnimType, VoxelAnimTypeId};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SIM_ONE, SimFixed, sim_from_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
@@ -68,6 +69,12 @@ pub struct CountryRules {
     pub armor_aircraft_mult: f32,
     pub armor_buildings_mult: f32,
     pub armor_defenses_mult: f32,
+    /// `BuildTimeInfantryMult=`, `BuildTimeUnitsMult=`, `BuildTimeAircraftMult=`,
+    /// `BuildTimeBuildingsMult=` and `BuildTimeDefensesMult=` (HouseType
+    /// `+0x134..+0x144`): ReadDouble into floats (`0x00511C70..0x00511CEC`),
+    /// the constructor's 1.0 (`0x005114D8..0x005114F0`) as default, no clamp.
+    /// No retail country sets them.
+    pub build_time_mults: [NativeF32Bits; 5],
     /// `ROF=` (HouseType `+0xE8`; constructor 1.0 at `0x00511457`, ReadDouble
     /// at `0x00511A0C`). `HouseClass::SetDifficulty` multiplies it into the
     /// house's ROF bias outside campaigns. No retail country sets it.
@@ -98,6 +105,7 @@ impl Default for CountryRules {
             armor_aircraft_mult: 1.0,
             armor_buildings_mult: 1.0,
             armor_defenses_mult: 1.0,
+            build_time_mults: [NativeF32Bits::ONE; 5],
             rof: 1.0,
             ui_name: None,
             name: None,
@@ -121,6 +129,14 @@ impl CountryRules {
             armor_aircraft_mult: section.get_f32("ArmorAircraftMult").unwrap_or(1.0),
             armor_buildings_mult: section.get_f32("ArmorBuildingsMult").unwrap_or(1.0),
             armor_defenses_mult: section.get_f32("ArmorDefensesMult").unwrap_or(1.0),
+            build_time_mults: [
+                "BuildTimeInfantryMult",
+                "BuildTimeUnitsMult",
+                "BuildTimeAircraftMult",
+                "BuildTimeBuildingsMult",
+                "BuildTimeDefensesMult",
+            ]
+            .map(|key| section.read_double_to_float(key, NativeF32Bits::ONE)),
             rof: section.read_double("ROF", 1.0),
             ui_name: section
                 .get("UIName")
@@ -150,61 +166,39 @@ const TYPE_REGISTRIES: &[(&str, ObjectCategory)] = &[
     ("BuildingTypes", ObjectCategory::Building),
 ];
 
-/// Production timing rules parsed from `[General]`.
-///
-/// The `_ppm` (parts-per-million) fields are pre-computed at INI parse time from the
-/// corresponding f32 fields so that sim code can use pure integer arithmetic.
-/// 1_000_000 = 1.0×. The f32 originals are kept for logging/debugging.
+/// The `[General]` keys `TechnoClass::Time_To_Build @ 0x006F47A0` reads,
+/// stored as the RulesClass fields hold them. The reader (`0x0066D530`) reads
+/// each with `INIClass::ReadDouble @ 0x005283D0`, the field's current value as
+/// default and no clamp; the values below are the constructor's
+/// (`RulesClass @ 0x00665650`).
 #[derive(Debug, Clone, Copy)]
 pub struct ProductionRules {
-    /// Minutes to build an object that costs 1000 credits before per-object modifiers.
-    pub build_speed: f32,
-    /// Time multiplier applied for each extra matching factory.
-    pub multiple_factory: f32,
-    /// Severity of the low-power speed penalty.
-    pub low_power_penalty_modifier: f32,
-    /// Lower bound on production speed while low power is active.
-    pub min_low_power_production_speed: f32,
-    /// Upper bound on production speed while low power is active.
-    pub max_low_power_production_speed: f32,
-    // -- Pre-computed integer-scaled values for deterministic sim math --
-    /// `multiple_factory` scaled to PPM (e.g., 0.8 → 800_000).
-    pub multiple_factory_ppm: u64,
-    /// `low_power_penalty_modifier` scaled to PPM.
-    pub low_power_penalty_modifier_ppm: u64,
-    /// `min_low_power_production_speed` scaled to PPM.
-    pub min_low_power_production_speed_ppm: u64,
-    /// `max_low_power_production_speed` scaled to PPM.
-    pub max_low_power_production_speed_ppm: u64,
-    /// `build_speed` pre-scaled ×1000 for deterministic build-time computation.
-    pub build_speed_x1000: u64,
-    /// Speed coefficient applied to wall building production after all other
-    /// queue time scaling. Parsed from `WallBuildSpeedCoefficient=` in [General].
-    pub wall_build_speed_coefficient: f32,
-}
-
-/// PPM scale constant (1_000_000 = 1.0×) used for f32→integer conversion at parse time.
-const PRODUCTION_PPM: u64 = 1_000_000;
-
-/// Convert an f32 value clamped to `[min, ∞)` into PPM u64 at parse time only.
-fn f32_to_ppm(val: f32, min: f32) -> u64 {
-    (val.max(min) as f64 * PRODUCTION_PPM as f64) as u64
+    /// `BuildSpeed=`: minutes to build a 1000-credit object (`+0x1748`, double;
+    /// 1.0).
+    pub build_speed: NativeF64Bits,
+    /// `MultipleFactory=`: the time factor per extra factory (`+0x57C`, float;
+    /// 1.0).
+    pub multiple_factory: NativeF32Bits,
+    /// `LowPowerPenaltyModifier=` (`+0x578`, float; 1.0).
+    pub low_power_penalty_modifier: NativeF32Bits,
+    /// `MinLowPowerProductionSpeed=` (`+0x570`, float; 0.5).
+    pub min_low_power_production_speed: NativeF32Bits,
+    /// `MaxLowPowerProductionSpeed=` (`+0x574`, float; 0.9).
+    pub max_low_power_production_speed: NativeF32Bits,
+    /// `WallBuildSpeedCoefficient=`: a wall's time factor (`+0x758`, double;
+    /// 0.5).
+    pub wall_build_speed_coefficient: NativeF64Bits,
 }
 
 impl Default for ProductionRules {
     fn default() -> Self {
         Self {
-            build_speed: 1.0,
-            multiple_factory: 0.8,
-            low_power_penalty_modifier: 1.0,
-            min_low_power_production_speed: 0.5,
-            max_low_power_production_speed: 0.9,
-            multiple_factory_ppm: f32_to_ppm(0.8, 0.01),
-            low_power_penalty_modifier_ppm: f32_to_ppm(1.0, 0.0),
-            min_low_power_production_speed_ppm: f32_to_ppm(0.5, 0.0),
-            max_low_power_production_speed_ppm: f32_to_ppm(0.9, 0.0),
-            build_speed_x1000: (1.0f64 * 1000.0) as u64,
-            wall_build_speed_coefficient: 1.0,
+            build_speed: NativeF64Bits::ONE,
+            multiple_factory: NativeF32Bits::ONE,
+            low_power_penalty_modifier: NativeF32Bits::ONE,
+            min_low_power_production_speed: NativeF32Bits::from_bits(0.5_f32.to_bits()),
+            max_low_power_production_speed: NativeF32Bits::from_bits(0x3F66_6666),
+            wall_build_speed_coefficient: NativeF64Bits::HALF,
         }
     }
 }
@@ -2828,40 +2822,33 @@ impl GeneralRules {
 }
 
 impl ProductionRules {
+    /// The RulesClass `[General]` reads, in native order: the four floats
+    /// (`0x0066EB5B..0x0066EBC9`), then `BuildSpeed=` (`0x00670D23`) and
+    /// `WallBuildSpeedCoefficient=` (`0x0067187F`). An absent section skips
+    /// them all (the section test `0x00526810` jumps to `0x00671E8E`).
     fn from_ini(ini: &IniFile) -> Self {
+        let mut rules = Self::default();
         let Some(general) = ini.section("General") else {
-            return Self::default();
+            return rules;
         };
-
-        // Fallback for an absent key matches the engine's constructor default
-        // (BuildSpeed 1.0). Retail rulesmd.ini always supplies its own value
-        // (.7), so this fallback fires only for a non-retail INI missing the key.
-        let bs = general.get_f32("BuildSpeed").unwrap_or(1.0);
-        let mf = general.get_f32("MultipleFactory").unwrap_or(0.8);
-        let lpp = general.get_f32("LowPowerPenaltyModifier").unwrap_or(1.0);
-        let min_lp = general.get_f32("MinLowPowerProductionSpeed").unwrap_or(0.5);
-        let max_lp = general.get_f32("MaxLowPowerProductionSpeed").unwrap_or(0.9);
-        let wall_coeff = general.get_f32("WallBuildSpeedCoefficient").unwrap_or(1.0);
-        let result = Self {
-            build_speed: bs,
-            multiple_factory: mf,
-            low_power_penalty_modifier: lpp,
-            min_low_power_production_speed: min_lp,
-            max_low_power_production_speed: max_lp,
-            multiple_factory_ppm: f32_to_ppm(mf, 0.01),
-            low_power_penalty_modifier_ppm: f32_to_ppm(lpp, 0.0),
-            min_low_power_production_speed_ppm: f32_to_ppm(min_lp, 0.0),
-            max_low_power_production_speed_ppm: f32_to_ppm(max_lp.max(min_lp), 0.0),
-            build_speed_x1000: (bs.max(0.01) as f64 * 1000.0).round() as u64,
-            wall_build_speed_coefficient: wall_coeff,
-        };
-        log::info!(
-            "ProductionRules: BuildSpeed={}, MultipleFactory={}, LowPowerPenalty={}",
-            result.build_speed,
-            result.multiple_factory,
-            result.low_power_penalty_modifier,
+        rules.min_low_power_production_speed = general.read_double_to_float(
+            "MinLowPowerProductionSpeed",
+            rules.min_low_power_production_speed,
         );
-        result
+        rules.max_low_power_production_speed = general.read_double_to_float(
+            "MaxLowPowerProductionSpeed",
+            rules.max_low_power_production_speed,
+        );
+        rules.low_power_penalty_modifier = general
+            .read_double_to_float("LowPowerPenaltyModifier", rules.low_power_penalty_modifier);
+        rules.multiple_factory =
+            general.read_double_to_float("MultipleFactory", rules.multiple_factory);
+        rules.build_speed = general.read_double_bits("BuildSpeed", rules.build_speed);
+        rules.wall_build_speed_coefficient = general.read_double_bits(
+            "WallBuildSpeedCoefficient",
+            rules.wall_build_speed_coefficient,
+        );
+        rules
     }
 }
 
@@ -4341,6 +4328,26 @@ impl RuleSet {
         }
     }
 
+    /// `HouseClass @ 0x0050C0A0` for a house of country `id`: its
+    /// `BuildTime*Mult=` for `object`'s class (a `BuildCat=Combat` building
+    /// takes the defenses one), 1.0 for an unknown country.
+    pub(crate) fn country_build_time_mult_for_type(
+        &self,
+        id: &str,
+        object: &ObjectType,
+    ) -> NativeF32Bits {
+        let Some(country) = self.country_rules(id) else {
+            return NativeF32Bits::ONE;
+        };
+        country.build_time_mults[match object.category {
+            ObjectCategory::Infantry => 0,
+            ObjectCategory::Vehicle => 1,
+            ObjectCategory::Aircraft => 2,
+            ObjectCategory::Building if object.build_cat == Some(BuildCategory::Combat) => 4,
+            ObjectCategory::Building => 3,
+        }]
+    }
+
     /// Resolve a country name to its stable `[Countries]` registration index.
     pub fn country_index(&self, id: &str) -> Option<CountryIdx> {
         self.country_indices.get(&id.to_ascii_uppercase()).copied()
@@ -5521,13 +5528,55 @@ CellSpread=0
         assert_eq!(rules.aircraft_ids.len(), 0);
         assert_eq!(rules.building_ids.len(), 1);
         assert_eq!(rules.object_count(), 4); // E1, E2, MTNK, GAPOWR
-        assert!((rules.production.build_speed - 0.75).abs() < 0.0001);
-        assert!((rules.production.multiple_factory - 0.7).abs() < 0.0001);
-        assert!((rules.production.low_power_penalty_modifier - 1.25).abs() < 0.0001);
-        assert!((rules.production.min_low_power_production_speed - 0.4).abs() < 0.0001);
-        assert!((rules.production.max_low_power_production_speed - 0.85).abs() < 0.0001);
+        // ReadDouble scans a float and widens it; float fields store it back.
+        let float = |value: f32| NativeF32Bits::from_bits(value.to_bits());
+        assert_eq!(
+            rules.production.build_speed,
+            NativeF64Bits::from_bits(f64::from(0.75_f32).to_bits())
+        );
+        assert_eq!(rules.production.multiple_factory, float(0.7));
+        assert_eq!(rules.production.low_power_penalty_modifier, float(1.25));
+        assert_eq!(rules.production.min_low_power_production_speed, float(0.4));
+        assert_eq!(rules.production.max_low_power_production_speed, float(0.85));
         assert_eq!(rules.bridge_rules.strength, 1000);
         assert!(rules.bridge_rules.destroyable_by_default);
+    }
+
+    /// `HouseClass @ 0x0050C0A0` takes the country's build-time multiplier by
+    /// WhatAmI: infantry `+0x134`, units `+0x138`, aircraft `+0x13C`, and a
+    /// building's `+0x140`, or `+0x144` when its BuildCat is 5, Combat
+    /// (`0x0050C0F0`). An absent key or an unknown country gives 1.0.
+    #[test]
+    fn country_build_time_mults_follow_the_native_slots() {
+        let ini = IniFile::from_str(
+            "[Countries]\n0=T\n1=U\n\
+             [T]\nBuildTimeInfantryMult=0.5\nBuildTimeUnitsMult=0.75\n\
+             BuildTimeAircraftMult=1.25\nBuildTimeBuildingsMult=1.5\n\
+             BuildTimeDefensesMult=2.0\n\
+             [U]\nBuildTimeUnitsMult=0.8\n\
+             [InfantryTypes]\n0=I\n[VehicleTypes]\n0=V\n[AircraftTypes]\n0=A\n\
+             [BuildingTypes]\n0=B\n1=D\n2=P\n\
+             [I]\nStrength=1\n[V]\nStrength=1\n[A]\nStrength=1\n[B]\nStrength=1\n\
+             [D]\nStrength=1\nBuildCat=Combat\n[P]\nStrength=1\nBuildCat=Power\n",
+        );
+        let rules = RuleSet::from_ini(&ini).expect("country fixture parses");
+        let float = |value: f32| NativeF32Bits::from_bits(value.to_bits());
+        let mult = |country: &str, object: &str| {
+            rules.country_build_time_mult_for_type(country, rules.object(object).unwrap())
+        };
+        for (object, expected) in [
+            ("I", 0.5),
+            ("V", 0.75),
+            ("A", 1.25),
+            ("B", 1.5),
+            ("D", 2.0),
+            ("P", 1.5),
+        ] {
+            assert_eq!(mult("T", object), float(expected), "{object}");
+        }
+        assert_eq!(mult("U", "V"), float(0.8));
+        assert_eq!(mult("U", "I"), NativeF32Bits::ONE);
+        assert_eq!(mult("Nowhere", "V"), NativeF32Bits::ONE);
     }
 
     #[test]
@@ -5791,7 +5840,10 @@ MutateWarhead=MyMutate\n\
         assert_eq!(e1.strength, 125);
         assert_eq!(e1.category, ObjectCategory::Infantry);
         assert_eq!(e1.primary, Some("M60".to_string()));
-        assert!((e1.build_time_multiplier - 1.15).abs() < 0.0001);
+        assert_eq!(
+            e1.build_time_multiplier,
+            NativeF32Bits::from_bits(1.15_f32.to_bits())
+        );
 
         let mtnk: &ObjectType = rules.object("MTNK").expect("MTNK exists");
         assert_eq!(mtnk.cost, 700);

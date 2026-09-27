@@ -363,6 +363,14 @@ fn cameo_status_text<'a>(
     }
 }
 
+/// Whether a cameo draws the build clock. gamemd's strip draw sets its clock
+/// flag whenever the cameo's factory exists (`StripClass::Draw`,
+/// `0x006A9812..0x006A981D`) and draws frame `progress + 1`, so a build shows
+/// its clock from the frame it starts, before its first step.
+fn shows_build_clock(item: &crate::sidebar::SidebarItem) -> bool {
+    !item.is_ready && (item.is_building_this_type || item.is_on_hold || item.progress > 0.0)
+}
+
 /// Map an alpha-cropped source rectangle through its original canvas into a
 /// sidebar slot. Rounding both crop edges from the shared canvas transform
 /// keeps the base art and full-canvas overlays on the same pixel boundaries.
@@ -481,7 +489,7 @@ pub(crate) fn build_sidebar_cameo_instances(
         ) else {
             continue;
         };
-        let is_building = !item.is_ready && item.progress > 0.0;
+        let is_building = shows_build_clock(item);
 
         if is_building {
             // Full cameo quad (normal tint — GCLOCK2 overlay handles darkening).
@@ -803,6 +811,46 @@ mod tests {
         // Ready wins when a slot somehow reports both.
         item.is_ready = true;
         assert_eq!(cameo_status_text(&item, "Ready", "On Hold"), Some("Ready"));
+    }
+
+    /// A build shows its clock from its start frame, at progress 0, and while
+    /// it is on hold; a queued-only or ready cameo does not.
+    #[test]
+    fn build_clock_shows_from_the_start_of_a_build() {
+        use super::shows_build_clock;
+
+        let mut item = crate::sidebar::SidebarItem {
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 60.0,
+                h: 48.0,
+            },
+            type_id: "MTNK".to_string(),
+            display_name: "MTNK".to_string(),
+            cost: Some(700),
+            has_cameo_art: true,
+            queue_category: crate::sim::production::ProductionCategory::Vehicle,
+            enabled: true,
+            progress: 0.0,
+            queued_count: 1,
+            is_building_this_type: false,
+            is_ready: false,
+            is_on_hold: false,
+            is_armed: false,
+            is_superweapon: false,
+            super_weapon_section: None,
+        };
+        assert!(!shows_build_clock(&item), "queued behind another build");
+        item.is_building_this_type = true;
+        assert!(shows_build_clock(&item), "started, no step yet");
+        item.is_building_this_type = false;
+        item.is_on_hold = true;
+        assert!(shows_build_clock(&item), "on hold at progress 0");
+        item.is_on_hold = false;
+        item.is_ready = true;
+        item.progress = 1.0;
+        assert!(!shows_build_clock(&item), "ready");
     }
 
     #[test]

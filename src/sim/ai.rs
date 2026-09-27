@@ -1234,8 +1234,7 @@ mod tests {
             display_name: id.to_string(),
             queue_category,
             state: production::BuildQueueState::Building,
-            remaining_ms: 500,
-            total_ms: 1_000,
+            progress: 27,
         }
     }
 

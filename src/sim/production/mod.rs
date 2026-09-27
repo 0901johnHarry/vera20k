@@ -27,9 +27,9 @@ mod war_factory_exit;
 
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
-    BuildEligibility, BuildStepTimeInputs, CancelOutcome, Factory, FactoryRegistry, FactoryView,
-    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome,
-    build_step_time, category_for_object,
+    BuildEligibility, CancelOutcome, Factory, FactoryRegistry, FactoryView, PRODUCTION_STEPS,
+    PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome, TimeToBuildInputs,
+    category_for_object, time_to_build,
 };
 pub use self::factory_lifecycle::{cancel_by_type_for_owner, cancel_last_for_owner, enqueue_by_type};
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
@@ -74,13 +74,6 @@ pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;
 pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
 pub(in crate::sim) use self::production_spawn::produced_unit_unlimbo_entry_at_resolved_cell;
-
-// Re-exports used by test sub-modules (via `super::` in test files).
-#[cfg(test)]
-pub(in crate::sim) use self::production_tech::{
-    build_time_base_frames, effective_progress_rate_ppm_for_type,
-    effective_time_to_build_frames_for_type,
-};
 
 #[cfg(test)]
 #[path = "production_tests.rs"]
