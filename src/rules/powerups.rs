@@ -14,7 +14,7 @@
 //! | 1 | `0x0081DA8C` | `i32[19]` | `strtrim` then `atoi` |
 //! | 2 | `0x0081DAD8` | `i32[19]` | `strtrim` then `AnimTypeClass::Find_Index @ 0x00422B20` |
 //! | 3 | `0x0089ECC0` | `u8[19]` | `strtrim`, then exact `"yes"`/`"no"` compare |
-//! | 4 | `0x0089EC28` | `f64[19]` | `atof`, scaled by `0.01` when the token contains `%` |
+//! | 4 | `0x0089EC28` | `f64[19]` | `atof`; with a `%`, untrimmed and times the double 0.01 (`0x00673FAF`, chopped) |
 //!
 //! A missing token leaves that slot's previous value untouched — so the stock
 //! rows that stop after three tokens (`HealBase`, `Reveal`, `Veteran`, `Unit`,
@@ -29,7 +29,7 @@
 //! Part of `rules/` — INI parsing and rule data only.
 
 use crate::rules::ini_parser::IniFile;
-use crate::rules::ini_value::{strtrim_ascii, truncate_bytes};
+use crate::rules::ini_value::{parse_leading_f64, scale_percent, strtrim_ascii, truncate_bytes};
 use crate::util::native_x87::NativeF64Bits;
 
 /// Slots in the hardcoded name table at `0x007E523C`. The loop bound is
@@ -207,12 +207,13 @@ impl PowerupsAccumulator {
                 }
             }
             if let Some(token) = tokens.next() {
-                // The percent branch skips `strtrim` and scales by 0.01; the
-                // plain branch trims first. Both then run the same `atof`.
+                // The percent branch skips `strtrim` and scales by 0.01 as
+                // ReadDouble does; the plain branch trims first. Both then run
+                // the same `atof`.
                 let value = if token.contains('%') {
-                    native_atof(token) * 0.01
+                    scale_percent(parse_leading_f64(token))
                 } else {
-                    native_atof(strtrim_ascii(token))
+                    parse_leading_f64(strtrim_ascii(token))
                 };
                 self.0.magnitudes[slot] = NativeF64Bits::from_bits(value.to_bits());
             }
@@ -253,40 +254,6 @@ fn native_atoi(token: &str) -> i32 {
     } else {
         value
     }
-}
-
-/// CRT `atof`: the longest leading floating-point prefix, or zero.
-fn native_atof(token: &str) -> f64 {
-    let token = token.trim_start();
-    let bytes = token.as_bytes();
-    let mut end = 0;
-    if matches!(bytes.first(), Some(b'+' | b'-')) {
-        end = 1;
-    }
-    while matches!(bytes.get(end), Some(byte) if byte.is_ascii_digit()) {
-        end += 1;
-    }
-    if matches!(bytes.get(end), Some(b'.')) {
-        end += 1;
-        while matches!(bytes.get(end), Some(byte) if byte.is_ascii_digit()) {
-            end += 1;
-        }
-    }
-    // CRT `atof` also accepts an exponent, but only when at least one digit
-    // follows it; otherwise the prefix ends before the `e`.
-    if matches!(bytes.get(end), Some(b'e' | b'E')) {
-        let mut exponent = end + 1;
-        if matches!(bytes.get(exponent), Some(b'+' | b'-')) {
-            exponent += 1;
-        }
-        if matches!(bytes.get(exponent), Some(byte) if byte.is_ascii_digit()) {
-            while matches!(bytes.get(exponent), Some(byte) if byte.is_ascii_digit()) {
-                exponent += 1;
-            }
-            end = exponent;
-        }
-    }
-    token[..end].parse::<f64>().unwrap_or(0.0)
 }
 
 #[cfg(test)]
@@ -456,6 +423,28 @@ mod tests {
         );
         assert_eq!(parsed.anims[POWERUP_ARMOR].as_deref(), Some("ARMOR"));
         assert!(parsed.over_water[POWERUP_ARMOR]);
+    }
+
+    /// Every integer percent reads the double native ReadDouble's executed
+    /// sweep stored (`tools/rules_oracle/read_double_percent.json`): `atof` of
+    /// an integer is the widened float, and `0x00673FAF` is the same chopped
+    /// `fmul qword [0x007E3808]` as ReadDouble's `0x0052857E`.
+    #[test]
+    fn percent_magnitude_is_the_chopped_native_product() {
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/rules_oracle/read_double_percent.json"
+        ))
+        .unwrap();
+        let sweep = native["reader"]["percent_sweep"].as_array().unwrap();
+        assert_eq!(sweep.len(), 1001);
+        for (percent, bits) in sweep.iter().enumerate() {
+            let parsed = table(&format!("[Powerups]\nArmor=1,ARMOR,yes, {percent}%\n"));
+            assert_eq!(
+                parsed.magnitudes[POWERUP_ARMOR].bits(),
+                u64::from_str_radix(bits.as_str().unwrap(), 16).unwrap(),
+                "{percent}%"
+            );
+        }
     }
 
     /// Token three recognises exactly two literals; anything else is inert.

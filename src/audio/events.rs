@@ -483,11 +483,16 @@ impl GameSoundEvent {
 /// device-free decision module and `sim/` never learns about audio.
 ///
 /// **Still absent on the voice side.** `VoiceDeploy=`/`VoiceUndeploy=`
-/// (deploy/unload orders) and `VoiceSinking=`/`VoiceFalling=` are not parsed,
+/// (deploy/unload orders) and `VoiceFalling=` are not parsed,
 /// and taunts reach an empty match arm. The native consumers of those slots
 /// were not isolated, so no mapping is asserted.
 /// - Player effect: those orders and states stay silent.
-/// - Frequency: deploy orders are common; sinking lines need a ship kill.
+/// - Frequency: deploy orders are common.
+///
+/// `VoiceSinking=`/`SinkingSound=` are resolved against fixed SOUNDMD by the
+/// Rules process owner. Foot's +3CD/+3CE edge (4DABC7) emits the positional
+/// voice then the object's held sound, with the AudioVisual fallback. The
+/// retained hull updates that handle's coordinate while it descends.
 ///
 /// `VoiceCrashing=` and `CrashingSound=` are landed: `FootClass::AI`'s crash
 /// edge (`0x004DACDD`) plays the voice as a [`GameSoundEvent::VocAt`] for a

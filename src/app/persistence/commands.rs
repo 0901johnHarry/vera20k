@@ -61,12 +61,20 @@ fn save(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let bytes = crate::sim::snapshot::GameSnapshot::save_validated(
+    let mut sinking_waterlines = state
+        .match_state
+        .match_presentation
+        .sinking_waterlines
+        .borrow()
+        .saved();
+    sinking_waterlines.retain(|(id, _)| sim.entities().contains(*id));
+    let bytes = crate::sim::snapshot::GameSnapshot::save_validated_with_sinking_waterlines(
         sim,
         map_hash,
         runtime.resources.rules.simulation_config_hash(),
         name.unwrap_or(&sim.session.map_name),
         now,
+        &sinking_waterlines,
     );
     let tick = sim.session.tick;
     if let Some(path) = overwrite {

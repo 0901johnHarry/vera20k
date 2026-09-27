@@ -402,6 +402,16 @@ pub(crate) fn cell_visibility_for_local_owner(
     }
 }
 
+/// Object5F4B10 -> CoordsToClient2 6D2140 admits this inclusive padding before
+/// invoking a body draw. Both coordinates and tactical dimensions are in world
+/// pixels. Set_View_Dimensions4A89B8 / Scenario687620 copy the tactical rectangle
+/// through6D5F60; the sidebar and bottom strip are outside that rectangle.
+/// Native Unit boundaries and retained sinking history: naval_sinking_clip.py.
+pub(super) fn projection_admitted(point: [f32; 2], camera: [f32; 2], viewport: [f32; 2]) -> bool {
+    let [x, y] = [point[0] - camera[0], point[1] - camera[1]];
+    x >= -360.0 && x <= viewport[0] + 360.0 && y >= -180.0 && y <= viewport[1] + 180.0
+}
+
 /// Viewport frustum cull check: is the entity's bounding box visible on screen?
 pub(crate) fn in_view(
     x: f32,

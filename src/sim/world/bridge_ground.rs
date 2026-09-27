@@ -167,9 +167,15 @@ mod tests {
             1 + repeat["rng_draws"].as_u64().unwrap() as usize,
             "initial fatal receiver plus the native zero-HP successor revisit"
         );
+        // Object5F579A calls RecordKill before Destroy5F57AF; Infantry's
+        // original vtable7EB058 +E0 is Techno702D40, whose UnitsLost store is
+        // 7031AC. object_health.json executes the exact-zero E0/DC order and
+        // the entry-HP0 no-callback arm; the Infantry repeat above reaches
+        // only its later death tail. Both first deaths therefore count now,
+        // including TERROR while its Die2 sequence remains in Logic.
         assert_eq!(
-            sim.houses[&owner].stats.units_lost, 1,
-            "the retired GI is counted once; Terrorist still has its death sequence"
+            sim.houses[&owner].stats.units_lost, 2,
+            "both fatal callbacks count; the zero-health GI revisit adds no loss"
         );
         assert_eq!(
             sim.houses[&owner].stats.units_killed, 1,
@@ -179,29 +185,30 @@ mod tests {
         assert!(!sim.live_object_order_snapshot().contains(&gi));
         let head = sim.substrate.entities.get(terror).unwrap();
         assert!(head.infantry_terminal.is_some());
-        assert!(!head.destruction_recorded);
+        assert!(head.destruction_recorded);
+        assert!(sim.live_object_order_snapshot().contains(&terror));
         // The rules catalog supplies a default Die2 even without art input.
-        // Drive its normal terminal visits through retirement before checking
-        // the eventual total; this test does not assert animation duration.
+        // Drive its normal terminal visits through retirement and confirm
+        // UnInit does not count either fatal callback again. This test does
+        // not assert animation duration (completion calls UnInit520CAD).
         for _ in 0..120 {
             if sim
                 .substrate
                 .entities
                 .get(terror)
                 .unwrap()
-                .destruction_recorded
+                .infantry_terminal
+                .is_none()
             {
                 break;
             }
             assert!(sim.visit_infantry_terminal(terror, Some(&rules), Default::default()));
         }
-        assert!(
-            sim.substrate
-                .entities
-                .get(terror)
-                .unwrap()
-                .destruction_recorded
-        );
+        let head = sim.substrate.entities.get(terror).unwrap();
+        assert!(head.infantry_terminal.is_none());
+        assert!(!head.lifecycle.object_alive);
+        assert!(head.destruction_recorded);
+        assert!(!sim.live_object_order_snapshot().contains(&terror));
         assert_eq!(sim.houses[&owner].stats.units_lost, 2);
         assert_eq!(sim.houses[&owner].stats.units_killed, 1);
     }

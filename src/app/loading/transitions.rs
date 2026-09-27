@@ -166,6 +166,12 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state
         .match_state
         .match_presentation
+        .sinking_waterlines
+        .borrow_mut()
+        .clear();
+    state
+        .match_state
+        .match_presentation
         .line_trails
         .clear_on_load();
     // A new simulation is a new scenario for `SidebarClass::AddCameo`'s

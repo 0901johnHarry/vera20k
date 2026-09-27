@@ -519,7 +519,9 @@ pub(crate) fn build_occupant_pip_instances(
     // rank draws for every visible object, selected or not. It blits at
     // `pLoc + (5, 2)` for infantry and `pLoc + (10, 6)` otherwise.
     for e in sim.entities().values() {
-        if e.category == EntityCategory::Structure {
+        // Techno6F5190 returns before every DrawExtras consumer while +3CD
+        // is set (naval_sinking_clip.json). ObjectSelect remains permitted.
+        if e.category == EntityCategory::Structure || e.sinking.is_active() {
             continue;
         }
         // Rookie draws nothing: native's rookie frame is the flagged variant,
@@ -580,7 +582,7 @@ pub(crate) fn build_occupant_pip_instances(
 /// The Crazy Ivan bomb clock, `TechnoClass::DrawExtras @ 0x006F5190`
 /// (0x006F519B..0x006F524E): over a carrier being drawn (DrawExtras is reached
 /// only from the tactical render loop, `0x006D9153`, so never in limbo or a
-/// transport) that is not sinking (`+0x3CD`, which VERA never sets), whose
+/// transport) that is not sinking (`+0x3CD`), whose
 /// BombVisible (`+0x68`) holds for the local player and whose cell is not
 /// shrouded (`0x00487950`), BOMBCURS.SHP frame `BombClass::GetClockFrame`
 /// centered (flags `0xE00`) on the render point (`vt+0xAC`: a building's art
@@ -617,7 +619,10 @@ pub(crate) fn build_bomb_clock_instances(
         let Some(bomb) = entity.bomb else {
             continue;
         };
-        if entity.lifecycle.in_limbo || entity.passenger_role.is_inside_transport() {
+        if entity.lifecycle.in_limbo
+            || entity.passenger_role.is_inside_transport()
+            || entity.sinking.is_active()
+        {
             continue;
         }
         if !ignore_visibility {
@@ -777,7 +782,7 @@ pub(crate) fn build_unit_status_bg_instances(
     let hovered_unit_id = unit_health_hover_target(state, local_owner.as_deref());
     let mut instances = Vec::new();
     for e in sim.entities().values() {
-        if e.category == EntityCategory::Structure {
+        if e.category == EntityCategory::Structure || e.sinking.is_active() {
             continue;
         }
         if e.passenger_role.is_inside_transport() {
@@ -873,7 +878,7 @@ pub(crate) fn build_unit_status_fill_instances(
     let hovered_unit_id = unit_health_hover_target(state, local_owner.as_deref());
     let mut instances = Vec::new();
     for e in sim.entities().values() {
-        if e.category == EntityCategory::Structure {
+        if e.category == EntityCategory::Structure || e.sinking.is_active() {
             continue;
         }
         if e.passenger_role.is_inside_transport() {
@@ -1035,7 +1040,7 @@ pub(crate) fn build_cargo_pip_instances(state: &AppState, sw: f32, sh: f32) -> V
     let pip_uv_size: [f32; 2] = overlay.tiberium_pip_uv_size();
 
     for e in sim.entities().values() {
-        if e.category == EntityCategory::Structure {
+        if e.category == EntityCategory::Structure || e.sinking.is_active() {
             continue;
         }
         if e.passenger_role.is_inside_transport() {

@@ -1562,7 +1562,7 @@ fn bridge_repair_ns_high_destroyed_anchor_consumes_mapgen_only() {
         "bridge repair must draw the MapGen stream"
     );
     let mut expected_mapgen = crate::sim::rng::SimRng::new(0);
-    let first_variant = expected_mapgen.next_range_u32_inclusive_scaled(0, 3);
+    let first_variant = expected_mapgen.next_high_two_bits();
     assert_eq!(first_variant, 1);
     assert_eq!(
         sim.mapgen_rng.state(),
@@ -1590,7 +1590,7 @@ fn bridge_repair_ns_high_destroyed_anchor_consumes_mapgen_only() {
 /// the cell never repairs. Instead we reuse the full 3-cell 0xE7 strip that
 /// TEST A already proves repairs cleanly, run it under many seeds, and look for
 /// a seed whose repaired overlays are NOT all-0xCD. The production draw is
-/// `next_range_u32_inclusive_scaled(0, 3)` spanning variants 0..=3, so some
+/// `next_high_two_bits()` spanning variants 0..=3, so some
 /// seed varies; we don't predict exact per-cell values (cell processing order
 /// is unclear) — the differential "not all base" + "in range" is the robust
 /// proof, and the `assert!(found)` makes a regression to hardcoded-0 fail loud.
@@ -1680,7 +1680,7 @@ fn generated_map_bridge_repair_continues_post_rmg_mapgen_stream() {
         )
     };
     let mut expected = crate::sim::rng::SimRng::from_mapgen_continuation(continuation());
-    let expected_variant = expected.next_range_u32_inclusive_scaled(0, 3) as u8;
+    let expected_variant = expected.next_high_two_bits();
 
     let (mut sim, _rules, _heights) = build_sim();
     seed_destroyed_bridge(&mut sim);
