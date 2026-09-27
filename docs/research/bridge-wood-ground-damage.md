@@ -162,6 +162,16 @@ pinned executable mapping. The [loader compatibility proof](../../tools/spatial_
 compares all mapped bytes and preserves the original native execution identities;
 that metadata refresh does not claim a new native game-function replay.
 
+PR779 then consolidated the shared oracle owners without changing any of the
+1,243 Rust source files. Its sole merge conflict was the Anytown aggregate
+receipt. The upstream checked publisher replays all twelve Anytown witnesses
+and both Rust projections before refreshing source identities, preserving
+original payloads and historical receipts. The independent check and repeated
+full retail suite/Clippy results are recorded separately in the validation
+receipt. All 225 Shrapnel source pins still match; sixteen independent import
+closures contain no changed helper, so no Shrapnel replay is attributed to this
+integration. The earlier loader pins remain reproducible at Git `318e5ae3`.
+
 The offscreen witness uses the production overlay builder, active SNOW atlas and
 GPU submission. It checks source-art color/depth, camera/fog admission and
 simulation-hash independence. This proves output from the selected source art,

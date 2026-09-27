@@ -105,39 +105,46 @@ def at_path(value, path):
     return value
 
 
-def verify_source_maps(value):
+def verify_source_maps(value, read_bytes):
     if isinstance(value, dict):
         for key, item in value.items():
             if (key.startswith('tools/') and key.endswith('.py')
                     and isinstance(item, str) and len(item) == 64):
-                assert digest((ROOT / key).read_bytes()) == item, key
-            verify_source_maps(item)
+                assert digest(read_bytes(key)) == item, key
+            verify_source_maps(item, read_bytes)
     elif isinstance(value, list):
         for item in value:
-            verify_source_maps(item)
+            verify_source_maps(item, read_bytes)
 
 
-def verify_pins():
-    """Check current artifacts and historical facts without gameplay execution."""
-    receipt = json.loads((HERE / 'loader_compatibility_receipt.json').read_bytes())
-    assert digest((ROOT / SOURCE).read_bytes()) == VERSIONS[1][2]
+def verify_pins(commit=None):
+    """Check one explicit working-tree or Git snapshot; never fall back."""
+    def read_bytes(path):
+        if commit is None:
+            return (ROOT / path).read_bytes()
+        return subprocess.check_output(['git', 'show', commit + ':' + path], cwd=ROOT)
+
+    receipt_path = (HERE / 'loader_compatibility_receipt.json').relative_to(ROOT).as_posix()
+    receipt = json.loads(read_bytes(receipt_path))
+    assert digest(read_bytes(SOURCE)) == VERSIONS[1][2]
     for group in ('proof_artifacts', 'refreshed_artifacts', 'immutable_artifacts'):
         for path, expected in receipt[group].items():
-            assert digest((ROOT / path).read_bytes()) == expected, (group, path)
+            assert digest(read_bytes(path)) == expected, (group, path)
     for path in receipt['refreshed_artifacts']:
-        verify_source_maps(json.loads((ROOT / path).read_bytes()))
+        verify_source_maps(json.loads(read_bytes(path)), read_bytes)
     for row in receipt['original_pin_files']:
         original = subprocess.check_output(['git', 'show', receipt['pre_refresh_commit'] + ':' + row['path']], cwd=ROOT)
         assert digest(original) == row['sha256'], row['path']
         old = json.loads(original)
-        current = json.loads((ROOT / row['path']).read_bytes())
+        current = json.loads(read_bytes(row['path']))
         for path in row['source_pin_paths']:
             assert at_path(old, path) == VERSIONS[0][2], (row['path'], path)
             assert at_path(current, path) == VERSIONS[1][2], (row['path'], path)
     for row in receipt['preserved_historical_nodes']:
-        current = json.loads((ROOT / row['file']).read_bytes())
+        current = json.loads(read_bytes(row['file']))
         assert at_path(current, row['path']) == row['value'], row
-    print('PASS current source/artifact pins, immutable results and original execution identities; no game-function replay')
+    location = 'current working tree' if commit is None else 'Git snapshot ' + commit
+    print(f'PASS source/artifact pins at {location}, immutable results and original execution identities; no game-function replay')
 
 
 def main():
@@ -146,7 +153,20 @@ def main():
     mode.add_argument('--write', action='store_true')
     mode.add_argument('--check', action='store_true')
     parser.add_argument('--verify-pins', action='store_true')
+    parser.add_argument('--pins-at-ref', metavar='REF',
+                        help='verify pins only from this Git commit; requires --verify-pins')
     args = parser.parse_args()
+    if args.pins_at_ref is not None and not args.verify_pins:
+        parser.error('--pins-at-ref requires --verify-pins')
+    commit = None
+    if args.pins_at_ref is not None:
+        resolved = subprocess.run(
+            ['git', 'rev-parse', '--verify', '--end-of-options', args.pins_at_ref + '^{commit}'],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if resolved.returncode:
+            parser.error('--pins-at-ref is not a known commit: ' + args.pins_at_ref)
+        commit = resolved.stdout.strip()
     result = generate()
     output = HERE / 'loader_compatibility.json'
     if args.write:
@@ -156,7 +176,7 @@ def main():
         assert json.loads(output.read_bytes()) == result, 'Loader comparison changed'
         print('PASS loader_compatibility.json; 10485760 mapped bytes identical; no game-function replay')
     if args.verify_pins:
-        verify_pins()
+        verify_pins(commit)
 
 
 if __name__ == '__main__':

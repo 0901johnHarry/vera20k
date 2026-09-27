@@ -38,6 +38,12 @@ The receipt intentionally excludes `bridge_wood_validation.json`, whose owner
 records the final integrated Rust/production candidate separately. This loader
 proof does not establish compatibility for other binary or harness changes.
 
+The receipt's source and artifact pins describe the integration preserved at
+`318e5ae3`. Later source changes, including Anytown's checked receipt publisher
+from PR779, have their own current provenance. The loader receipt and comparison
+JSON remain unchanged historical evidence; their hashes are not advanced to
+describe those later changes.
+
 ## Reproduce
 
 Run from the repository root with Python 3.10+, Unicorn and the pinned original
@@ -47,14 +53,22 @@ obtain those Git objects first. No extracted maps, INIs, TMPs or copied VM are
 needed for the loader comparison.
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m tools.spatial_oracle.shrapnel_damage.loader_compatibility --check --verify-pins
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m tools.spatial_oracle.shrapnel_damage.loader_compatibility --check --verify-pins --pins-at-ref 318e5ae3
 ```
 
 Omitting `--check` also checks. Explicit `--write` updates only the loader
 comparison JSON, with fixed source/binary/mapped-image identities enforced.
-`--verify-pins` additionally verifies original metadata from Git, current source
-pins, current artifact hashes, unchanged result bytes and preserved historical
-nodes. The receipt records a separate write and independent check.
+`--verify-pins --pins-at-ref REF` resolves the reference once to an exact Git
+commit and reads the receipt, source maps and artifacts from that snapshot.
+The result prints the resolved commit. Original pre-refresh metadata still
+comes from the receipt's recorded earlier commit. A missing reference is an
+error; no working-tree fallback occurs. `--pins-at-ref` requires `--verify-pins`.
+
+Omitting `--pins-at-ref` keeps strict verification of the current working tree,
+which intentionally fails when later source or artifact hashes have changed.
+The ordinary `--check` always executes the two declared Python PE loaders and
+checks the saved mapping comparison, independently of the optional pin snapshot.
+The receipt records the original separate write and independent check.
 
 For the Anytown aggregate, with its already documented local retail inputs:
 
