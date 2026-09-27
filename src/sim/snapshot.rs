@@ -656,7 +656,14 @@ use crate::sim::world::Simulation;
 // 225 -> 226: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
 // armed when a build starts (`0x004C9EA0`), and the stored sidebar build-time
 // estimates go. The factory and queue-entry schemas change.
-const SNAPSHOT_VERSION: u32 = 226;
+// 226 -> 227: Techno+3CD/+3CE retain surface-ship sinking and its Foot sound
+// edge. Fatal naval receivers now retain the hull through Unit AI's exact-Z
+// fall, terminal RecordKill and UnInit; the new fields change the bincode layout.
+// The envelope also preserves the presentation-owned Techno+3CA waterline
+// shorts, outside Simulation and its deterministic state hash.
+// House MatchStatistics now persists and hashes its existing live totals;
+// an active-sinking save must retain its first RecordKill before the terminal one.
+const SNAPSHOT_VERSION: u32 = 227;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -685,6 +692,11 @@ pub struct GameSnapshot {
     pub map_name: String,
     /// The full authoritative simulation state (caches excluded via serde skip).
     pub sim: Simulation,
+    /// Presentation-owned Techno+3CA waterline shorts by stable entity ID.
+    /// Original AbstractLoad410380 reads the raw object, then FootLoad4DB60D
+    /// and no-init Foot4D3540 preserve this short (naval_lifetime_controls).
+    /// Kept in the neutral envelope so sim never depends on a render owner.
+    pub(crate) sinking_waterlines: Vec<(u64, i16)>,
 }
 
 /// Lightweight header extracted from a save file without deserializing the
@@ -906,6 +918,7 @@ struct GameSnapshotRef<'a> {
     save_timestamp: u64,
     map_name: String,
     sim: &'a Simulation,
+    sinking_waterlines: &'a [(u64, i16)],
 }
 
 impl GameSnapshot {
@@ -916,6 +929,7 @@ impl GameSnapshot {
         map_name: &str,
         description: &str,
         save_timestamp: u64,
+        sinking_waterlines: &[(u64, i16)],
     ) -> Vec<u8> {
         // Retail provenance: Save_Game_To_File @ 0x0067CEF0 supplies a distinct
         // outer file identity; Write_Savegame_Metadata_To_Storage @ 0x006812E0
@@ -934,6 +948,7 @@ impl GameSnapshot {
             save_timestamp,
             map_name: map_name.to_string(),
             sim,
+            sinking_waterlines,
         };
         bincode::serialize(&snapshot).expect("snapshot serialization should not fail")
     }
@@ -951,6 +966,26 @@ impl GameSnapshot {
         description: &str,
         save_timestamp: u64,
     ) -> Vec<u8> {
+        Self::save_validated_with_sinking_waterlines(
+            sim,
+            map_hash,
+            rules_hash,
+            description,
+            save_timestamp,
+            &[],
+        )
+    }
+
+    /// Save the app's retained waterlines alongside the simulation. A headless
+    /// caller uses `save_validated`, whose presentation supplement is empty.
+    pub fn save_validated_with_sinking_waterlines(
+        sim: &Simulation,
+        map_hash: u64,
+        rules_hash: u64,
+        description: &str,
+        save_timestamp: u64,
+        sinking_waterlines: &[(u64, i16)],
+    ) -> Vec<u8> {
         Self::serialize(
             sim,
             map_hash,
@@ -958,6 +993,7 @@ impl GameSnapshot {
             &sim.session.map_name,
             description,
             save_timestamp,
+            sinking_waterlines,
         )
     }
 
@@ -977,6 +1013,7 @@ impl GameSnapshot {
             map_name,
             map_name,
             save_timestamp,
+            &[],
         )
     }
 
@@ -1989,6 +2026,7 @@ impl Simulation {
         // and bite timers: a bite is due at once and suppression is dropped.
         let frame = self.session.binary_frame;
         for id in self.substrate.entities.keys_sorted() {
+            self.restore_sinking_sound_state_after_load(id);
             if let Some(parasite) = self
                 .substrate
                 .entities
@@ -3608,7 +3646,8 @@ mod tests {
         // 224 -> 225: Prism forwarding.
         // 225 -> 226: the factory step timer is the CDTimer a build start arms;
         // no stored build-time estimates.
-        assert_eq!(super::SNAPSHOT_VERSION, 226);
+        // 226 -> 227: retained surface-ship sinking and its sound edge.
+        assert_eq!(super::SNAPSHOT_VERSION, 227);
     }
 
     #[test]

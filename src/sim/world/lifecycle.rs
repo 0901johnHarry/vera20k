@@ -2704,8 +2704,9 @@ impl Simulation {
         self.object_conceal_with_context(stable_id, context)
     }
 
-    /// The UnInit-time score record (a destroyed object's loss, its killer's
-    /// kill and award), exactly once. The house counts move elsewhere:
+    /// Consume the captured kill exactly once. Object's exact-zero callback
+    /// calls this before Destroy; UnInit remains the fallback for destruction
+    /// paths outside ReceiveDamage (including Temporal). House counts move elsewhere:
     /// Removed_From_Game with the Limbo, Remove_Tracking at the drain.
     pub(crate) fn record_destruction_once(&mut self, stable_id: u64) {
         let Some((owner, category, already_recorded, destroyed, killed_by, award, dont_score)) =
@@ -2738,14 +2739,42 @@ impl Simulation {
         }
     }
 
-    /// Score-screen bookkeeping for one destroyed object: a loss for its owner, a
+    /// Object5F5765 invokes RecordKill for each actual exact-zero callback.
+    /// A retained Health1 hull can reach this again with a different attacker;
+    /// stale attribution and the prior UnInit guard must not swallow it.
+    /// The receiver then captures this hit's credit, awards experience
+    /// (702FF0), and consumes the score record (703003..7031DC) before Destroy.
+    pub(crate) fn begin_receiver_kill_record(&mut self, id: u64) {
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            debug_assert_eq!(entity.health.current, 0);
+            entity.destruction_recorded = false;
+            entity.killed_by = None;
+            entity.kill_award_points = 0;
+        }
+    }
+
+    /// UnitAI736500 calls RecordKill(NULL) again before UnInit. Executed
+    /// naval_sink_tick terminal rows retain Health1 and increment UnitsLost
+    /// from one to two. This is separate from the once-only UnInit recorder;
+    /// no second killer or score award is invented.
+    pub(crate) fn record_sinking_terminal_kill(&mut self, id: u64) {
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return;
+        };
+        if !entity.dont_score {
+            self.record_match_kill_and_loss(entity.owner(), entity.category, None, 0);
+        }
+    }
+
+    /// Score-screen bookkeeping for one RecordKill callback: a loss for its owner, a
     /// kill for the house credited with destroying it, and that house's score
     /// award.
     ///
-    /// This runs at the single destruction record (`record_destruction_once`)
-    /// rather than in the damage loop so it fires exactly once per object, but it does NOT
-    /// re-derive the killer here — `killed_by` was captured at the instant of
-    /// destruction, which is where gamemd records it.
+    /// The lifecycle guard suppresses an extra UnInit record after an actual
+    /// exact-zero damage callback. A retained sinking hull can receive another
+    /// fatal hit and gets a final attacker-free record at its terminal depth.
+    /// Attribution is captured at each native-equivalent callback, not derived
+    /// from the object's later state here.
     ///
     /// A `DontScore=` victim never reaches this recorder at all — its loss is
     /// suppressed alongside its kill and points, matching the single early return
@@ -3092,6 +3121,17 @@ impl Simulation {
         crate::sim::radio::broadcast_break(self, stable_id, None);
         crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
         crate::sim::spawn_manager::clear_all_spawn_targets(self, stable_id);
+        // Unit737E58 repeats Stun after restoring Health1/+3CD. Its
+        // Techno6FCD9B Detach_All(1) cannot use the Health0 elision above:
+        // self and other pointer-expiry callbacks observe the restored hull.
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.sinking.is_active())
+        {
+            self.object_destroy_callback(stable_id, context);
+        }
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.selected = false;
         }

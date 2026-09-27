@@ -126,6 +126,13 @@ pub(crate) enum PreparedLoadError {
 pub(crate) struct PreparedLoad {
     simulation: Simulation,
     map_restore: SnapshotMapRestoreOutput,
+    sinking_waterlines: Vec<(u64, i16)>,
+}
+
+/// Presentation changes released only after the validated world commits.
+pub(crate) struct CommittedLoadPresentation {
+    pub(crate) occupied_overlays: Vec<crate::map::overlay::OverlayEntry>,
+    pub(crate) sinking_waterlines: Vec<(u64, i16)>,
 }
 
 /// Immutable production input to an in-scenario load transaction.
@@ -193,18 +200,14 @@ impl PreparedLoad {
             .repository
             .read(path)
             .map_err(PreparedLoadError::ReadFile)?;
-        let (simulation, map_restore) = Self::prepare_candidate(
+        Self::prepare_candidate(
             &bytes,
             view.current_simulation,
             view.expected_map_hash,
             view.rules,
             view.terrain_template,
             view.overlay_registry,
-        )?;
-        Ok(Self {
-            simulation,
-            map_restore,
-        })
+        )
     }
 
     /// Perform every fallible validation and restoration step against owned
@@ -217,7 +220,7 @@ impl PreparedLoad {
         rules: Option<&RuleSet>,
         terrain_template: Option<&ResolvedTerrainGrid>,
         overlay_registry: Option<&OverlayTypeRegistry>,
-    ) -> Result<(Simulation, SnapshotMapRestoreOutput), PreparedLoadError> {
+    ) -> Result<Self, PreparedLoadError> {
         let current_simulation =
             current_simulation.ok_or(PreparedLoadError::MissingCurrentSimulation)?;
         let expected_map_hash = expected_map_hash.ok_or(PreparedLoadError::MissingMapHash)?;
@@ -263,7 +266,16 @@ impl PreparedLoad {
         simulation.restore_move_sound_handles_after_load(rules)?;
         simulation.rebuild_lighting_sources_after_load(rules);
 
-        Ok((simulation, map_restore))
+        // A render cache can retain an outgoing ID until its next sweep. Only
+        // restored entity identities may re-enter the new presentation owner;
+        // do not infer +3CA from current height or from the sinking byte.
+        let mut sinking_waterlines = snapshot.sinking_waterlines;
+        sinking_waterlines.retain(|(id, _)| simulation.entities().contains(*id));
+        Ok(Self {
+            simulation,
+            map_restore,
+            sinking_waterlines,
+        })
     }
 
     pub(crate) fn native_tiberium_stats(
@@ -277,7 +289,7 @@ impl PreparedLoad {
     pub(crate) fn commit_into(
         mut self,
         runtime: &mut crate::sim::runtime::SimRuntime,
-    ) -> Vec<crate::map::overlay::OverlayEntry> {
+    ) -> CommittedLoadPresentation {
         // Commit the candidate's post-Resize fields and subsequent lookup
         // effects onto the live process identity only after all checks pass.
         // Resetting here would make its already-built hierarchy disagree.
@@ -285,7 +297,10 @@ impl PreparedLoad {
         live_dummy.adopt_prepared_load_state(&self.simulation.effective_shared_cell_dummy());
         self.simulation.bind_shared_cell_dummy(live_dummy);
         runtime.replace_simulation(self.simulation);
-        self.map_restore.occupied_overlays
+        CommittedLoadPresentation {
+            occupied_overlays: self.map_restore.occupied_overlays,
+            sinking_waterlines: self.sinking_waterlines,
+        }
     }
 }
 
@@ -775,6 +790,7 @@ mod tests {
     mod factory_restore_tests;
     mod infantry_terminal_restore_tests;
     mod rule_cache_restore_tests;
+    mod sinking_waterline_restore_tests;
 
     include!("tube_hierarchy_restore_tests.rs");
 
@@ -1327,7 +1343,7 @@ mod tests {
 
         let mut current = load_fixture_simulation(false);
         current.overlay_grid = Some(OverlayGrid::new_with_retained_wall_plane(1, 1));
-        let (restored, _) = PreparedLoad::prepare_candidate(
+        let restored = PreparedLoad::prepare_candidate(
             &bytes,
             Some(&current),
             Some(LOAD_FIXTURE_MAP_HASH),
@@ -1335,7 +1351,8 @@ mod tests {
             Some(&translated_template),
             Some(&registry),
         )
-        .expect("full persistence prepare/serde/rebuild/restore route");
+        .expect("full persistence prepare/serde/rebuild/restore route")
+        .simulation;
 
         let restored_cell = restored
             .resolved_terrain

@@ -37,6 +37,7 @@ RefundPercent=50%
 3=DEPOT
 [Warheads]
 0=KILLWH
+1=Super
 [E1]
 Strength=125
 Speed=4
@@ -120,6 +121,14 @@ Explosion=EXPA,EXPB
 DestroyAnim=DESTA
 [KILLWH]
 Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
+[Super]
+Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
+Tiberium=yes
+ProneDamage=100%
+Sparky=no
+InfDeath=2
+PenetratesBunker=yes
+AnimList=XGRYSML1,XGRYSML2,EXPLOSML,XGRYMED1,XGRYMED2,EXPLOMED,EXPLOLRG,TWLT070
 ";
 
 const ART: &str = "\
@@ -493,6 +502,11 @@ fn a_killed_building_draws_its_death_anims_before_its_survivors() {
 fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
     use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
+    let controls: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/naval_lifetime_controls.json"
+    ))
+    .unwrap();
+    let repeat = &controls["repeat_fatal"];
     let rules = rules();
     let open = SpeedCostProfile {
         foot: Some(100),
@@ -545,6 +559,106 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
         let played: Vec<_> = anims(&sim).into_iter().map(|anim| anim.0).collect();
         if sinks {
             assert!(played.is_empty(), "{kind}: {played:?}");
+            // Original Unit ReceiveDamage737E33..737E5E restores the ship
+            // after the fatal receiver and retains it for Unit AI's sinking
+            // suffix. Native executions: naval_occupants, water-neighbor rows.
+            let retained = sim.substrate.entities.get(ship).expect("retained hull");
+            assert_eq!(
+                retained.health.current, 1,
+                "a sinking hull retains native Health 1 until its terminal AI visit"
+            );
+            assert!(retained.lifecycle.object_alive);
+            assert!(!retained.lifecycle.in_limbo);
+            assert!(retained.in_logic_vector);
+            assert!(!sim.substrate.pending_delete.contains(&ship));
+            assert!(
+                !retained.lifecycle.cell_marked,
+                "native737F7A still unmarks the hull"
+            );
+            let owner = retained.owner();
+            assert_eq!(sim.houses[&owner].stats.units_lost, 1);
+            // An area dispatch rejects the now-unmarked hull (489A80).
+            // The native repeated-hit packet is a direct Unit737C90 call.
+            let before_area = sim.rng_state();
+            kill(&mut sim, &rules, ship);
+            assert_eq!(sim.houses[&owner].stats.units_lost, 1);
+            assert_eq!(sim.rng_state(), before_area);
+            assert_eq!(sim.scenario_rng.state(), replay.state());
+
+            // Match the native control's complete ambient streams after
+            // setup. The physical Super section above is parsed by the same
+            // production reader; ignoreDefenses bypasses armor calculation.
+            sim.main_rng = SimRng::new(1);
+            sim.scenario_rng = SimRng::new(1);
+            sim.mapgen_rng = SimRng::new(1);
+            replay = sim.scenario_rng.clone();
+            for (stream, rng) in [
+                ("main", &sim.main_rng),
+                ("scenario", &sim.scenario_rng),
+                ("mapgen", &sim.mapgen_rng),
+            ] {
+                assert_eq!(
+                    rng.native_state_hex(),
+                    repeat["rng_before"][stream].as_str().unwrap()
+                );
+            }
+            let input = &repeat["input"];
+            let retained = sim.substrate.entities.get(ship).unwrap();
+            assert_eq!(i64::from(retained.health.current), input["initial_health"]);
+            assert_eq!(
+                u64::from(retained.sinking.is_active()),
+                input["initial_sinking"]
+            );
+            assert!(input["attacker"].is_null());
+            assert!(input["house"].is_null());
+            let warhead = sim
+                .interner
+                .intern(repeat["calls"][0]["warhead"].as_str().unwrap());
+            let direct_hit = EntityDamageEvent::direct_receiver(
+                ship,
+                i32::try_from(input["c4_damage"].as_i64().unwrap()).unwrap(),
+                i32::try_from(input["distance"].as_i64().unwrap()).unwrap(),
+                RAD_NO_ATTACKER,
+                None,
+                warhead,
+                ReceiverCallFlags {
+                    ignore_defenses: input["ignore_defenses"].as_bool().unwrap(),
+                    arg6: input["arg6"].as_bool().unwrap(),
+                },
+            );
+            sim.commit_direct_damage_receiver(&rules, None, direct_hit);
+            let retained = sim.substrate.entities.get(ship).unwrap();
+            assert_eq!(i64::from(retained.health.current), repeat["health"]);
+            assert_eq!(u64::from(retained.lifecycle.object_alive), repeat["alive"]);
+            assert_eq!(u64::from(retained.sinking.is_active()), repeat["sinking"]);
+            assert_eq!(
+                u64::from(sim.houses[&owner].stats.units_lost),
+                repeat["losses"]
+            );
+            assert!(!retained.lifecycle.cell_marked);
+            assert!(retained.in_logic_vector);
+            for (stream, rng) in [
+                ("main", &sim.main_rng),
+                ("scenario", &sim.scenario_rng),
+                ("mapgen", &sim.mapgen_rng),
+            ] {
+                assert_eq!(
+                    rng.native_state_hex(),
+                    repeat["rng_after"][stream].as_str().unwrap()
+                );
+            }
+            // Terminal UnitAI records a null-source loss before shared
+            // UnInit. Its later once-only recorder must not count it twice.
+            sim.substrate
+                .entities
+                .get_mut(ship)
+                .unwrap()
+                .position
+                .exact_z_leptons = Some(-400);
+            assert!(sim.tick_ship_sinking(ship, &rules));
+            assert_eq!(sim.houses[&owner].stats.units_lost, 3);
+            assert!(sim.substrate.pending_delete.contains(&ship));
+            assert!(!sim.substrate.entities.get(ship).unwrap().in_logic_vector);
         } else {
             assert_eq!(
                 played,

@@ -41,13 +41,10 @@
 //!   receiver changes damaged art. Frequency: routine. The fix is to
 //!   construct each object at its call (the plan's next destruction item).
 //! - Unit NowDead gates ahead of `Death_Explosion` (`0x00737DA7..0x00737F6F`):
-//!   - The ship sink (`0x00737DE2..0x00737E5E`) is gated, so no pick is drawn,
-//!     but the sink is absent: native sets Health 1, IsAlive, the sinking
-//!     byte `+0x3CD`, calls `vt+0x3A0`, and the hull goes down in
-//!     `UnitClass::AI` before removal; VERA removes it at once with no anim.
-//!     Trigger: stock DEST, AEGIS, CARRIER, DRED, VLAD, CRUISE and CDEST
-//!     killed on water. Effect: the hull vanishes and its cell frees early.
-//!     Frequency: every such naval death.
+//!   - The ship sink (`0x00737DE2..0x00737E5E`) skips these explosion draws.
+//!     `world::sinking` retains Health 1/Alive/+3CD through its second Stun,
+//!     then the receiver unmarks the cell. Unit AI lowers the retained hull
+//!     and finally calls RecordKill/UnInit; cell removal is immediate in both.
 //!   - `DeathFrames=` (`+0xE20` > 0) defers the explosion to `UnitClass::AI`
 //!     (`0x00736381`) when the death frames end. No stock type sets it and
 //!     VERA does not parse it.
@@ -187,7 +184,7 @@ impl Simulation {
     /// LandType water (`+0xEC == 2`), and not being warped (`+0x271`, set by
     /// the Chronosphere at `0x0065F1F4` and the Teleport locomotor at
     /// `0x00719579`/`0x007198DA`). Such a unit sinks and never reaches
-    /// `Death_Explosion`; the sink itself is a module residual. VERA has no
+    /// `Death_Explosion`; `world::sinking` owns its retained lifetime. VERA has no
     /// Chronosphere unit warp, so a teleport in flight stands in for the byte.
     pub(crate) fn unit_sinks_on_death(&self, rules: &RuleSet, unit_id: u64) -> bool {
         let Some(entity) = self.substrate.entities.get(unit_id) else {

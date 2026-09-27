@@ -2,6 +2,7 @@
 //! Coordinates, lifetime and Display order stay with the simulation; this
 //! read-only adapter resolves the current bridge surface and emits draw pieces.
 
+use super::helpers::projection_admitted;
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
     NativeDisplayOrder, ObjectPieceInstance, ObjectTexture, PlannedObjectInstance,
@@ -73,11 +74,6 @@ fn ground_probe(terrain: &ResolvedTerrainGrid, coord: ProjectileCoord) -> (i32, 
     (ground, cell.flags & 0x100 != 0)
 }
 
-fn projection_admitted(point: [f32; 2], camera: [f32; 2], viewport: [f32; 2]) -> bool {
-    let [x, y] = [point[0] - camera[0], point[1] - camera[1]];
-    x >= -360.0 && x <= viewport[0] + 360.0 && y >= -180.0 && y <= viewport[1] + 180.0
-}
-
 pub(crate) fn build_projectile_visual_instances(
     state: &AppState,
     objects: &mut Vec<PlannedObjectInstance>,
@@ -95,8 +91,9 @@ pub(crate) fn build_projectile_visual_instances(
     };
     let rules = &rt.resources.rules;
     let input = &state.match_state.input;
-    let width = state.render_width() as f32 / input.zoom_level;
-    let height = state.render_height() as f32 / input.zoom_level;
+    let (_, _, width, height) = crate::app::input::camera::tactical_viewport_px(state);
+    let width = width as f32 / input.zoom_level;
+    let height = height as f32 / input.zoom_level;
     let axis = super::helpers::depth_axis(state);
     for (_, projectile) in sim.projectiles.iter() {
         let Some(type_id) = rules

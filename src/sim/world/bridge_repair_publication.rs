@@ -246,10 +246,7 @@ impl OrdinaryRepairHost for LiveRepair<'_, '_> {
         self.live.retain_real_write(cell);
     }
     fn variant(&mut self) -> u8 {
-        self.live
-            .sim
-            .mapgen_rng
-            .next_range_u32_inclusive_scaled(0, 3) as u8
+        self.live.sim.mapgen_rng.next_high_two_bits()
     }
     fn redraw(&mut self, _: Cell) {}
     fn radar(&mut self, p: CellCoord) {

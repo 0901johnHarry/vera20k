@@ -631,6 +631,8 @@ mod tests {
             move_sound: None,
             crashing_sound: None,
             voice_crashing: None,
+            sinking_sound: None,
+            voice_sinking: None,
             impact_water_sound: None,
             impact_land_sound: None,
             voice_feedback: None,

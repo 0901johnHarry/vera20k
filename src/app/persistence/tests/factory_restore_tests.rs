@@ -318,12 +318,10 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
             .cloned()
             .collect();
         let ready = saved.production.ready_by_owner.clone();
-        // MatchStatistics is skipped by the existing snapshot format; this
-        // admission change preserves the serialized counts and wallet only.
         let counts = saved
             .houses
             .get(&owner)
-            .map(|house| (house.tracking.clone(), house.economy.credits));
+            .map(|house| (house.tracking.clone(), house.economy.credits, house.stats));
         let identities: Vec<_> = saved
             .substrate
             .entities
@@ -367,10 +365,11 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         );
         assert_eq!(restored.production.ready_by_owner, ready, "{label}");
         assert_eq!(
-            restored
-                .houses
-                .get(&owner)
-                .map(|house| (house.tracking.clone(), house.economy.credits)),
+            restored.houses.get(&owner).map(|house| (
+                house.tracking.clone(),
+                house.economy.credits,
+                house.stats
+            )),
             counts,
             "{label}"
         );

@@ -33,7 +33,13 @@ pub(crate) fn commit_prepared_load(
         .expect("prepared load requires a live runtime");
     // The close above reads the outgoing tick and its pre-recorded replay only;
     // it never observes the shared CellClass dummy reconstructed by this commit.
-    let occupied_overlays = prepared.commit_into(runtime);
+    let committed = prepared.commit_into(runtime);
+    state
+        .match_state
+        .match_presentation
+        .sinking_waterlines
+        .borrow_mut()
+        .restore(committed.sinking_waterlines);
     crate::app::loading::transitions::sync_in_game_options_speed_from_sim(state);
     state.match_state.match_presentation.combat_lights.clear();
     state
@@ -51,7 +57,7 @@ pub(crate) fn commit_prepared_load(
         .reset_cameo_seed();
     crate::app::match_runtime::sim_tick::upsert_occupied_overlay_render_entries(
         state,
-        occupied_overlays,
+        committed.occupied_overlays,
     );
 
     // F10: the fog view cache was discarded with the load (nonserialized) —

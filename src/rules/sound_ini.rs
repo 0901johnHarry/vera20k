@@ -420,6 +420,23 @@ impl SoundRegistry {
         self.entries.get(&sound_id.to_ascii_uppercase())
     }
 
+    /// Read a Rules sound reference against the fixed SOUNDMD catalog.
+    /// TechnoType712FF1/7130A5 and Rules6699C8 use ReadString128 followed by
+    /// Voc FindIndex7514D0. Missing, empty and unknown names retain the
+    /// previous signed ID (constructor -1); later rules passes do not erase
+    /// an earlier valid selection. Names here represent that resolved ID.
+    pub(crate) fn read_rules_reference(&self, section: &IniSection, key: &str) -> Option<String> {
+        let resolve = |value: &str| {
+            let name = strtrim_ascii(truncate_bytes(value, 127));
+            self.get(name).map(|entry| entry.id.clone())
+        };
+        if let Some(values) = section.projected_values(key) {
+            values.iter().filter_map(|value| resolve(value)).last()
+        } else {
+            section.get(key).and_then(resolve)
+        }
+    }
+
     /// The `[Defaults]` values this registry was read with.
     pub fn defaults(&self) -> &SoundDefaults {
         &self.defaults
