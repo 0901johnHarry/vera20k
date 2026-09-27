@@ -19,7 +19,7 @@ use super::cell_entry::{
 };
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::ZoneLevelGraph;
-use super::zone_map::{ZONE_INVALID, ZoneId};
+use super::zone_map::ZoneId;
 use crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
 use crate::map::map_file::MapCell;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -788,11 +788,6 @@ pub struct AStarOptions<'a> {
     /// Code-2 urgency escalation (0 = look-ahead chain walk, 1 = traffic penalty,
     /// 2 = route around). Matches gamemd.exe PathfinderClass+0x3C.
     pub urgency: u8,
-    /// Zone corridor restriction — only expand cells in these zones.
-    pub corridor: Option<(
-        &'a super::zone_map::ZoneMap,
-        &'a BTreeSet<super::zone_map::ZoneId>,
-    )>,
     /// Binary-style hierarchy marker gate. Present only when blocker-neighbor
     /// counts are also available for the same search.
     pub(crate) hierarchy_gate: Option<HierarchyGate<'a>>,
@@ -1343,14 +1338,6 @@ pub fn astar_search(
                     }
                 }
 
-                // Zone corridor filter
-                if let Some((zone_map, allowed)) = options.corridor {
-                    let cell_zone = zone_map.zone_at(nx, ny, MovementLayer::Ground);
-                    if cell_zone != ZONE_INVALID && !allowed.contains(&cell_zone) {
-                        continue;
-                    }
-                }
-
                 // The land-type × SpeedType row, read as a **passability
                 // predicate only**: zero closes the cell, any non-zero value
                 // opens it and weighs exactly the same as any other.
@@ -1531,13 +1518,6 @@ pub fn astar_search(
                     if nx < grid.width() && ny < grid.height() {
                         let n_idx = ny as usize * w + nx as usize;
                         if !ground_closed[n_idx] {
-                            if let Some((zone_map, allowed)) = options.corridor {
-                                let cell_zone = zone_map.zone_at(nx, ny, MovementLayer::Ground);
-                                if cell_zone != ZONE_INVALID && !allowed.contains(&cell_zone) {
-                                    continue;
-                                }
-                            }
-
                             let neighbor_cell = grid.cell(nx, ny).unwrap_or(&DEFAULT_BLOCKED_CELL);
                             let neighbor_height = neighbor_cell.ground_level;
                             let tube_steps = i32::try_from(path_len).unwrap_or(1).max(1);
@@ -2796,44 +2776,6 @@ pub fn find_path_with_costs_marker(
         &AStarOptions {
             terrain_costs: costs,
             entity_blocks,
-            entity_block_map,
-            marker_overlay,
-            urgency: facts.urgency,
-            mover_is_crusher: facts.mover_is_crusher,
-            is_infantry: facts.is_infantry,
-            search_cost_classifier: facts.wall_cost,
-            movement_zone,
-            resolved_terrain,
-            ..Default::default()
-        },
-    )?;
-    Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn find_path_with_costs_corridor_marker(
-    grid: &PathGrid,
-    start: (u16, u16),
-    goal: (u16, u16),
-    costs: Option<&TerrainCostGrid>,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    zone_map: &super::zone_map::ZoneMap,
-    allowed_zones: &BTreeSet<super::zone_map::ZoneId>,
-    movement_zone: Option<MovementZone>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    marker_overlay: Option<&SearchMarkerOverlay>,
-    facts: MoverSearchFacts<'_>,
-) -> Option<Vec<(u16, u16)>> {
-    let steps = astar_search(
-        grid,
-        start,
-        MovementLayer::Ground,
-        goal,
-        &AStarOptions {
-            terrain_costs: costs,
-            entity_blocks,
-            corridor: Some((zone_map, allowed_zones)),
             entity_block_map,
             marker_overlay,
             urgency: facts.urgency,

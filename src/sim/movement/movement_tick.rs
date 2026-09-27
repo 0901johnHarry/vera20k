@@ -1096,9 +1096,8 @@ fn advance_ordinary_mover(
         }
         // Drive4B0A79 / Ship6A0142 (and the track-end continuation 4B0647):
         // Process_Movement runs at the Simulation; see `track_fresh`.
-        let native_path_inputs = resolved_terrain.is_some()
-            && ctx.zone_grid.is_some_and(ZoneGrid::has_native_topology)
-            && playfield_bounds.is_some();
+        let native_path_inputs =
+            resolved_terrain.is_some() && ctx.zone_grid.is_some() && playfield_bounds.is_some();
         if native_path_inputs
             && rules.is_some()
             && let Some(family) = entities.get(entity_id).and_then(native_track_route)
@@ -1139,14 +1138,13 @@ fn advance_ordinary_mover(
             prone_crawls,
         }
     };
-    // Without native map cells, native zone topology and playfield bounds
+    // Without native map cells, zone topology and playfield bounds
     // (component fixtures) the synchronous Find_Path owner cannot run its
     // precheck, Can_Enter_Cell or failure receiver; the former inline search
     // below keeps those fixtures on their pinned path. Production installs all
-    // three (world::navigation builds the native topology).
-    let native_path_inputs = resolved_terrain.is_some()
-        && ctx.zone_grid.is_some_and(ZoneGrid::has_native_topology)
-        && playfield_bounds.is_some();
+    // three (world::navigation builds the zones).
+    let native_path_inputs =
+        resolved_terrain.is_some() && ctx.zone_grid.is_some() && playfield_bounds.is_some();
     if !resumed_path_request
         && native_path_inputs
         && let Some(destination) = entities.get(entity_id).and_then(no_queue_path_request)

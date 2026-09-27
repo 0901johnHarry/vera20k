@@ -2,6 +2,7 @@
 // Production fallback itself is separately covered by bridge_base_native_tests.
 use super::super::zone_map_tests::terrain_from_zone_classes;
 use super::*;
+use crate::rules::locomotor_type::MovementZone;
 
 #[test]
 fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publication() {
@@ -51,14 +52,13 @@ fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publi
         let path = PathGrid::from_resolved_terrain(&terrain);
         let mut zones = ZoneGrid::build_with_native_bridge_geometry(
             &path,
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             &[],
             width,
             width,
             Some(size),
         );
-        let base = zones.base_topology_mut().unwrap();
+        let base = zones.base_topology_mut();
         base.zone_ids = ids.clone();
         base.zone_count = ids.iter().copied().max().unwrap();
         let row0: Vec<_> = input["row0"]
@@ -74,7 +74,7 @@ fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publi
         // Native fixture supplies those IDs and rows, not a56C510 invocation.
         let base = base.clone();
         for &movement in MovementZone::all_ground() {
-            let (map, _) = super::super::zone_build::build_zone_map_from_base_topology(
+            let map = super::super::zone_build::build_zone_map_from_base_topology(
                 &base, movement, width, width,
             );
             *zones.map_mut(movement).unwrap() = map;
@@ -99,7 +99,7 @@ fn retained_base_repair_matches_native_selectors_and_adoption_without_live_publi
             &terrain,
             &[],
         );
-        let after = zones.base_topology_mut().unwrap();
+        let after = zones.base_topology_mut();
         assert_eq!(after.movement_classes, classes, "{label}: retained classes");
         assert_eq!(after.levels, levels, "{label}: retained heights");
         assert_eq!(

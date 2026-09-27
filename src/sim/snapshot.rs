@@ -3129,7 +3129,7 @@ mod tests {
         for &mz in MovementZone::all_ground() {
             let map_a = a.map_for(mz).expect("zone map exists for movement zone");
             let map_b = b.map_for(mz).expect("zone map exists for movement zone");
-            assert_eq!(map_a.zone_count, map_b.zone_count);
+            assert_eq!(map_a.zone_count(), map_b.zone_count());
             for y in 0..a.height {
                 for x in 0..a.width {
                     assert_eq!(
@@ -3143,19 +3143,6 @@ mod tests {
                         "bridge zone mismatch for {mz:?} at ({x},{y})"
                     );
                 }
-            }
-            let adj_a = a
-                .adjacency_for(mz)
-                .expect("zone adjacency exists for movement zone");
-            let adj_b = b
-                .adjacency_for(mz)
-                .expect("zone adjacency exists for movement zone");
-            for zone in 0..=map_a.zone_count {
-                assert_eq!(
-                    adj_a.neighbors_of(zone),
-                    adj_b.neighbors_of(zone),
-                    "adjacency mismatch for {mz:?} zone {zone}"
-                );
             }
         }
     }

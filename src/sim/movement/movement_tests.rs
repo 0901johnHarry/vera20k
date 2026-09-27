@@ -40,7 +40,7 @@ fn ordinary_drive_retires_selector_before_entering_an_explicit_tube() {
         vec![TubeFact::explicit((1, 0), (5, 0), 2, vec![2, 2, 2, 2])],
     );
     let grid = PathGrid::from_resolved_terrain(&terrain);
-    let zones = ZoneGrid::build(&grid, &Default::default(), 6, 1);
+    let zones = ZoneGrid::build_with_terrain(&grid, &terrain, &[], 6, 1);
     let mut sim = Simulation::with_seed(71);
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 0, 0);
     entity.owner = sim.intern("Americans");
@@ -1397,12 +1397,7 @@ fn gsi_04_05_production_finish_promotes_endpoint_without_clearing_bit() {
 fn split_corridor_fixture() -> (PathGrid, crate::sim::pathfinding::zone_map::ZoneGrid) {
     let mut grid = PathGrid::new(5, 1);
     grid.set_blocked(2, 0, true);
-    let zone_grid = crate::sim::pathfinding::zone_map::ZoneGrid::build(
-        &grid,
-        &std::collections::BTreeMap::new(),
-        5,
-        1,
-    );
+    let zone_grid = crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&grid);
     (grid, zone_grid)
 }
 
@@ -1526,12 +1521,7 @@ fn techno_playfield_false_mover_uses_flat_astar_instead_of_hierarchy_abort() {
     assert!(bounds.contains_height_aware_packed(4, 0, 0, 0));
     let mut reduced = PathGrid::new(5, 1);
     reduced.set_blocked(2, 0, true);
-    let zone_grid = crate::sim::pathfinding::zone_map::ZoneGrid::build(
-        &reduced,
-        &std::collections::BTreeMap::new(),
-        5,
-        1,
-    );
+    let zone_grid = crate::sim::pathfinding::zone_map::ZoneGrid::following_path_grid(&reduced);
     assert!(!zone_grid.can_reach(
         MovementZone::Normal,
         (0, 0),
