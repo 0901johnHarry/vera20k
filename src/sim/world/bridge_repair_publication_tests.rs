@@ -75,7 +75,6 @@ pub(super) fn fixture_with_rules(
     let path = PathGrid::from_resolved_terrain(&terrain);
     let zones = ZoneGrid::build_with_native_map_context(
         &path,
-        &BTreeMap::new(),
         &terrain,
         bridges.endpoint_records(),
         Some((16, 16)),
@@ -469,13 +468,7 @@ fn command_repair_fixture(with_aircraft: bool, with_team: bool) {
                 .level
         );
     }
-    assert!(
-        sim.zone_grid
-            .as_mut()
-            .unwrap()
-            .base_topology_mut()
-            .is_some()
-    );
+    assert!(sim.zone_grid.is_some());
     assert!(sim.terrain_costs.contains_key(&SpeedType::Foot));
     if with_aircraft {
         let id = aircraft.expect("fixture must install the landed Fly before PerCell");
@@ -1414,11 +1407,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         assert!(replay.path_grid.is_none());
         assert!(replay.zone_grid.is_none());
         assert!(replay.terrain_costs.is_empty());
-        replay.rebuild_caches_after_load(
-            map_terrain,
-            sim.terrain_speed_config.clone(),
-            &rules,
-        );
+        replay.rebuild_caches_after_load(map_terrain, sim.terrain_speed_config.clone(), &rules);
         replay
             .restore_map_authority_after_snapshot_load(&rules, &registry)
             .unwrap();
@@ -1739,17 +1728,17 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
         if ordered {
             // Infantry's accepted Foot setter4D96C2..9707 runs after Jumpjet
             // MoveTo: reset timers/latch while preserving the retry dword.
-            sim.substrate
+            let path_runtime = &mut sim
+                .substrate
                 .entities
                 .get_mut(rocketeer)
                 .unwrap()
                 .navigation
-                .path_runtime = crate::sim::components::FootPathRuntime {
-                movement_timer: crate::sim::timer::CdTimer::from_raw(-1, 7),
-                blocked_timer: crate::sim::timer::CdTimer::from_raw(-1, 31),
-                path_blocked: true,
-                retries_left: 256,
-            };
+                .path_runtime;
+            path_runtime.movement_timer = crate::sim::timer::CdTimer::from_raw(-1, 7);
+            path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(-1, 31);
+            path_runtime.path_blocked = true;
+            path_runtime.retries_left = 256;
             let grid = sim.path_grid_snapshot();
             assert!(sim.apply_command_with_overlays(
                 "Americans",
@@ -1766,6 +1755,11 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                 Some(&registry)
             ));
             drop(grid);
+            let mut expected_runtime =
+                crate::sim::components::FootPathRuntime::at_frame(sim.session.binary_frame);
+            expected_runtime.blocked_timer =
+                crate::sim::timer::CdTimer::started(sim.session.binary_frame as i32, 60);
+            expected_runtime.retries_left = 256;
             assert_eq!(
                 sim.substrate
                     .entities
@@ -1773,18 +1767,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     .unwrap()
                     .navigation
                     .path_runtime,
-                crate::sim::components::FootPathRuntime {
-                    movement_timer: crate::sim::timer::CdTimer::started(
-                        sim.session.binary_frame as i32,
-                        0
-                    ),
-                    blocked_timer: crate::sim::timer::CdTimer::started(
-                        sim.session.binary_frame as i32,
-                        60
-                    ),
-                    path_blocked: false,
-                    retries_left: 256,
-                }
+                expected_runtime
             );
             let state = sim
                 .substrate

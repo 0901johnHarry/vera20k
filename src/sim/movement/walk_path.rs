@@ -286,9 +286,16 @@ impl Simulation {
     ///75B085..75B2BA, reached only with a preexisting zero retry count.
     ///The two Map56D100 calls share the Foot navigation/bridge-layer query
     ///owner but deliberately bypass+2CC's MZ/Cell0 early exits. No RNG draw.
-    ///Residual: Foot+68A ScoldSound is not represented (same absent latch as
-    ///Drive/Ship); its optional sound and latch clear precede these reads.
+    ///The optional ScoldSound and unconditional latch clear precede these reads.
     fn finish_exhausted_walk_retry(&mut self, id: u64, rules: &RuleSet) -> Result<(), String> {
+        self.play_foot_path_scold(id, rules);
+        self.substrate
+            .entities
+            .get_mut(id)
+            .ok_or("retired exhausted Walk actor")?
+            .navigation
+            .path_runtime
+            .clear_scold_latch(); //75B0A9, even when the guard was zero.
         let actor = self
             .substrate
             .entities

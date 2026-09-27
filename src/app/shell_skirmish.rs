@@ -1,32 +1,10 @@
 use super::*;
 use crate::ui::skirmish_shell::SkirmishShellDialog;
 
-/// Where Skirmish Back leads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SkirmishBackOutcome {
-    /// The shell continues (a teardown slide or an immediate close).
-    Leaving,
-    /// The developer-only Skirmish launch has no shell to return to.
-    ExitApp,
-}
-
 impl App {
-    pub(super) fn dev_skirmish_shell_enabled() -> bool {
-        std::env::var(DEV_SKIRMISH_SHELL_ENV)
-            .ok()
-            .is_some_and(|value| {
-                let value = value.trim();
-                !value.is_empty()
-                    && value != "0"
-                    && !value.eq_ignore_ascii_case("false")
-                    && !value.eq_ignore_ascii_case("off")
-                    && !value.eq_ignore_ascii_case("no")
-            })
-    }
-
     pub(super) fn native_skirmish_shell_active(state: &AppState) -> bool {
         state.frontend.screen == GameScreen::MainMenu
-            && (state.frontend.shell_route.skirmish() || state.frontend.dev_skirmish_shell_enabled)
+            && state.frontend.shell_route.skirmish()
     }
     fn skirmish_shell_layout(state: &AppState) -> crate::ui::skirmish_shell::SkirmishShellLayout {
         crate::ui::skirmish_shell::compute_layout(state.render_width(), state.render_height())
@@ -68,7 +46,6 @@ impl App {
     fn close_native_skirmish_shell(state: &mut AppState) {
         state.frontend.shell_route = crate::app::shell_route::ShellRoute::MainMenu;
         state.frontend.shell_first_paint_slide = None;
-        state.frontend.dev_skirmish_shell_enabled = false;
         state.frontend.skirmish_shell_state.choose_map_modal = None;
         state.frontend.skirmish_shell_state.validation_modal = None;
         state.frontend.skirmish_shell_state.open_combo_dropdown = None;
@@ -199,9 +176,8 @@ impl App {
 
     /// Skirmish Back (`0x5C0`): the proc packs the session like Start does
     /// (`0x006ACEE0`), then the runner tears the dialog down. From the Single
-    /// Player route that is the teardown slide back to `0x100`; the developer
-    /// routes close at once.
-    pub(super) fn handle_skirmish_back(state: &mut AppState) -> SkirmishBackOutcome {
+    /// Player route that is the teardown slide back to `0x100`.
+    pub(super) fn handle_skirmish_back(state: &mut AppState) {
         match crate::ui::skirmish_shell::pack_launch_session_without_start_validation(
             &state.frontend.skirmish_shell_state,
             state.frontend.scenario_catalog.shell_maps(),
@@ -237,14 +213,9 @@ impl App {
                 state,
                 crate::app::frontend::shell_transition::ShellExitThen::SkirmishBack,
             );
-            SkirmishBackOutcome::Leaving
-        } else if Self::native_skirmish_shell_active(state) {
+        } else {
             Self::close_native_skirmish_shell(state);
             state.frontend.offline_skirmish_runtime.persist_snapshot();
-            SkirmishBackOutcome::Leaving
-        } else {
-            state.frontend.offline_skirmish_runtime.persist_snapshot();
-            SkirmishBackOutcome::ExitApp
         }
     }
 
@@ -280,25 +251,6 @@ impl App {
         crate::ui::skirmish_shell::blur_player_name_edit(&mut state.frontend.skirmish_shell_state);
         state.frontend.skirmish_shell_last_painted_pressed_button = None;
         state.frontend.skirmish_preview_texture = None;
-    }
-
-    pub(super) fn start_selected_skirmish(state: &mut AppState) {
-        let map_name = state
-            .frontend.available_maps
-            .get(state.frontend.skirmish_settings.selected_map_idx)
-            .map(|m| m.file_name.clone())
-            .unwrap_or_else(|| "auto".to_string());
-        state.frontend.skirmish_shell_state.pressed_owner_draw_button = None;
-        state.frontend.skirmish_shell_last_painted_pressed_button = None;
-        state.frontend.shell_route = crate::app::shell_route::ShellRoute::MainMenu;
-        state.frontend.shell_first_paint_slide = None;
-        let request = crate::app::loading::pump::LoadingRequest::generic_map_load(
-            map_name,
-            state.frontend.skirmish_settings.clone(),
-        );
-        crate::app::loading::pump::begin_loading(state, request);
-        state.match_state.input.zoom_level = 1.0;
-        state.match_state.input.zoom_target = 1.0;
     }
 
     fn start_skirmish_session(
@@ -388,7 +340,6 @@ impl App {
     pub(super) fn handle_skirmish_shell_action(
         state: &mut AppState,
         action: crate::ui::skirmish_shell::SkirmishShellAction,
-        event_loop: &ActiveEventLoop,
     ) {
         let action = crate::ui::skirmish_shell::apply_action(
             &mut state.frontend.skirmish_shell_state,
@@ -401,9 +352,7 @@ impl App {
                 Self::start_game_from_shell(state);
             }
             crate::ui::skirmish_shell::SkirmishShellAction::BackOrExit => {
-                if Self::handle_skirmish_back(state) == SkirmishBackOutcome::ExitApp {
-                    event_loop.exit();
-                }
+                Self::handle_skirmish_back(state);
             }
             crate::ui::skirmish_shell::SkirmishShellAction::ChooseMap => {
                 // `0x102` slides out (not torn down) before `0x6B` runs.
@@ -1200,10 +1149,7 @@ impl App {
         }
     }
 
-    pub(super) fn handle_skirmish_shell_mouse_up(
-        state: &mut AppState,
-        event_loop: &ActiveEventLoop,
-    ) {
+    pub(super) fn handle_skirmish_shell_mouse_up(state: &mut AppState) {
         if Self::route_validation_modal_mouse_up(state)
             || Self::handle_choose_map_eject_mouse_up(state)
         {
@@ -1236,7 +1182,7 @@ impl App {
                 crate::ui::skirmish_shell::handle_option_mouse_up(&mut state.frontend.skirmish_shell_state);
                 Self::drain_skirmish_shell_ui_sounds(state);
                 let action = crate::ui::skirmish_shell::action_for_owner_draw_button(button);
-                Self::handle_skirmish_shell_action(state, action, event_loop);
+                Self::handle_skirmish_shell_action(state, action);
                 return;
             }
         }
@@ -1256,7 +1202,7 @@ impl App {
         }
 
         let action = crate::ui::skirmish_shell::hit_test(&layout, x, y);
-        Self::handle_skirmish_shell_action(state, action, event_loop);
+        Self::handle_skirmish_shell_action(state, action);
     }
 
     pub(super) fn handle_skirmish_shell_mouse_move(state: &mut AppState) {

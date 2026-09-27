@@ -55,6 +55,7 @@ Scalar bodies and caller fragments do not prove full native route equality.
 | [AStar Infantry entry](astar_capture_neighbor.py) | Fifteen concrete51BF90→429830→429FEA controls on supplied interior search frames; fifth Infantry argument remains unread |
 | [Walk Infantry entry](walk_capture_entry.py) | Original75B59C coordinate/height/query producer through concrete51BF90, stopping at head/refusal boundary |
 | [Walk response](walk_prehead_response.md) | Supplied result classes0..7, timers, actual cloak and obstacle callbacks, and bounded recursive continuations |
+| [Foot failure-sound byte](foot_scold_latch.md) | Original construction and raw-load retention, three Walk guards, thirty paid/idle tails and twelve Drive/Ship guard controls; sound requests stop before audio playback |
 | [Engineer admission](engineer_repair_admission.py) | Twenty-two original PerCell prefix controls; runtime object-iteration-disabled is separately labelled |
 | [Bridge family](engineer_family_selector.py) | Fourteen original selector controls, including exclusive wood bound, Y-major scan and shared Dummy behavior |
 | [Structural side cells](bridge_side_admission.md) | Original constructor25 topology through six Walk/Infantry controls and two radar branches; deck admission does not require an own overlay |
@@ -106,6 +107,14 @@ pass. This is Rust production evidence, not native timing or full route parity.
 The saved receipt is `engineer-entry-followup/hills-side-consumers.log`.
 Release/render validation and final PR readiness remain pending.
 
+After integrating `main` at `c5451c8992964fe465b852de3e6c3ccae0498222`,
+the legal Hills approach and both restore continuations pass again
+(`engineer-entry-followup/hills-main-integrated.log`, retained test binary
+SHA256 `c6389fb550ec64ca301ad0d311ecc48c5aa79d7b7e937ff2539bf4665653808d`).
+The synthetic Capture detour needed its missing raw bridge-transition0x200
+flag: its PathGrid already marked those cells as transitions. Live Foot
+admission exposed that inconsistent fixture; route expectations were retained.
+
 Focused validation before integrating current `main`: movement696 passed,
 world-orders4 passed, pathfinding core126 passed, lifecycle15 passed and one
 ignored, borrowed UnInit1 passed, SpeedType3 passed and all124 Walk response
@@ -135,6 +144,17 @@ records the full state where it does. Timer writes and same-visit retries are
 listed in the response report. Repair has its existing native damage/rebuild
 effects and detachment owners; preserving these through production and restore
 is part of this chain's pending integration validation.
+
+Foot's path owner now retains the exact failure-sound byte at native+68A.
+Ordinary construction clears it, while original raw Load and no-init Foot
+construction preserve supplied1 and255. The existing sound consumer receives
+the rules-named centred request; Walk's clear points follow the reached native
+branches. Drive/Ship's first rejection can retry before clearing and therefore
+does not consume the byte when merely requesting the sound. Hash feature218
+adds only a nonzero tagged suffix; previous zero-state hashes stay unchanged.
+No ordinary gameplay arming writer has been established. The direct/alias
+scan is bounded and does not prove global unreachability; this remains an
+audit item. No speculative command-side arming behavior was introduced.
 
 Ghidra corrections are saved and read back: PerCell519CA3/519B3E/51A010,
 AStar429E54/42A18B/42A4B6, InfantryType5236AA, and Cell483480 now named

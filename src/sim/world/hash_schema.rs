@@ -167,6 +167,10 @@ pub(super) enum HashFeature {
     /// guided Bullet phase independently of Rust handles. This schema also
     /// introduces retained fallback-cell Land for impact animation selection.
     NativeRuntimeIdentity = 217,
+    /// Foot+68A is a retained byte, even though its sound guard only tests
+    /// nonzero. A tagged suffix for nonzero values preserves the former
+    /// zero-byte streams; earlier projections omit this byte entirely.
+    FootScoldLatch = 218,
 }
 
 impl HashSchema {
@@ -207,6 +211,7 @@ impl HashSchema {
                     | HashFeature::AiSellable
                     | HashFeature::BuildingRepair
                     | HashFeature::NativeRuntimeIdentity
+                    | HashFeature::FootScoldLatch
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

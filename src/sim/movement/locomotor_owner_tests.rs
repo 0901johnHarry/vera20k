@@ -348,12 +348,11 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         if stale_fields {
             supply_drive_state(entity);
         }
-        let path_runtime = crate::sim::components::FootPathRuntime {
-            movement_timer: crate::sim::timer::CdTimer::from_raw(-1, -7),
-            blocked_timer: crate::sim::timer::CdTimer::from_raw(i32::MAX - 2, 31),
-            path_blocked: true,
-            retries_left: u32::MAX,
-        };
+        let mut path_runtime = crate::sim::components::FootPathRuntime::at_frame(0);
+        path_runtime.movement_timer = crate::sim::timer::CdTimer::from_raw(-1, -7);
+        path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(i32::MAX - 2, 31);
+        path_runtime.path_blocked = true;
+        path_runtime.retries_left = u32::MAX;
         entity.navigation.path_runtime = path_runtime;
         entity.order_intent = Some(crate::sim::components::OrderIntent::Unloading);
         let before = owned_state(entity);

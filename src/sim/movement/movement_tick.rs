@@ -1166,9 +1166,8 @@ fn advance_ordinary_mover(
         }
         // Drive4B0A79 / Ship6A0142 (and the track-end continuation 4B0647):
         // Process_Movement runs at the Simulation; see `track_fresh`.
-        let native_path_inputs = resolved_terrain.is_some()
-            && ctx.zone_grid.is_some_and(ZoneGrid::has_native_topology)
-            && playfield_bounds.is_some();
+        let native_path_inputs =
+            resolved_terrain.is_some() && ctx.zone_grid.is_some() && playfield_bounds.is_some();
         if native_path_inputs
             && rules.is_some()
             && let Some(family) = entities.get(entity_id).and_then(native_track_route)
@@ -1210,14 +1209,13 @@ fn advance_ordinary_mover(
             walk_retry_allowed: true,
         }
     };
-    // Without native map cells, native zone topology and playfield bounds
+    // Without native map cells, zone topology and playfield bounds
     // (component fixtures) the synchronous Find_Path owner cannot run its
     // precheck, Can_Enter_Cell or failure receiver; the former inline search
     // below keeps those fixtures on their pinned path. Production installs all
-    // three (world::navigation builds the native topology).
-    let native_path_inputs = resolved_terrain.is_some()
-        && ctx.zone_grid.is_some_and(ZoneGrid::has_native_topology)
-        && playfield_bounds.is_some();
+    // three (world::navigation builds the zones).
+    let native_path_inputs =
+        resolved_terrain.is_some() && ctx.zone_grid.is_some() && playfield_bounds.is_some();
     if !resumed_path_request
         && native_path_inputs
         && let Some(destination) = entities.get(entity_id).and_then(no_queue_path_request)
@@ -2737,7 +2735,16 @@ fn prepare_movement_pass(
     let mut movers: Vec<u64> = Vec::new();
     let mut mover_owners: BTreeSet<crate::sim::intern::InternedId> = BTreeSet::new();
     for &id in entity_order {
-        if let Some(entity) = entities.get(id) {
+        if let Some(entity) = entities.get_mut(id) {
+            // An ordinary idle Walk still executes75BCE3. It has no route
+            //adapter, so it would otherwise be omitted from this mover pass.
+            //Entry-active Tube movement owns its entire visit instead.
+            if !tube_processed.contains(&id)
+                && entity.is_active()
+                && entity.movement_target.is_none()
+            {
+                super::walk_step::finish_idle(entity);
+            }
             if entity.navigation.pending_arrival_clear {
                 mover_owners.insert(entity.owner());
             }

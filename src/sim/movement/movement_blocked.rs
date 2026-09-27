@@ -363,18 +363,17 @@ mod native_walk_timer_tests {
                 final_goal: Some((10, 12)),
                 ..Default::default()
             };
-            let mut path_runtime = crate::sim::components::FootPathRuntime {
-                path_blocked: b("already_blocked"),
-                blocked_timer: crate::sim::timer::CdTimer::from_raw(
-                    n("grace_start") as i32,
-                    n("grace_duration") as i32,
-                ),
-                movement_timer: crate::sim::timer::CdTimer::from_raw(
-                    n("movement_start") as i32,
-                    n("movement_duration") as i32,
-                ),
-                retries_left: 10,
-            };
+            let mut path_runtime = crate::sim::components::FootPathRuntime::at_frame(0);
+            path_runtime.path_blocked = b("already_blocked");
+            path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(
+                n("grace_start") as i32,
+                n("grace_duration") as i32,
+            );
+            path_runtime.movement_timer = crate::sim::timer::CdTimer::from_raw(
+                n("movement_start") as i32,
+                n("movement_duration") as i32,
+            );
+            path_runtime.retries_left = 10;
             let mut facing = 64;
             let mut stats = MovementTickStats::default();
             let mut finished = Vec::new();

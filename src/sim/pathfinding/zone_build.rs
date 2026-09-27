@@ -1,6 +1,6 @@
-//! Zone map construction: flood-fill, adjacency extraction, zone info computation.
+//! Zone map construction: the native base topology, its per-row projection,
+//! the bridge redirect and the route-selection hierarchy.
 //!
-//! Extracted from zone_map.rs to keep each file under ~400 lines.
 //! This module is private to sim/ — public API lives in zone_map.rs.
 //!
 //! ## Dependency rules
@@ -11,14 +11,12 @@ use std::collections::VecDeque;
 
 use super::PathGrid;
 use super::passability;
-use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::{ZoneEdgeRecord, ZoneHierarchy, ZoneLevelGraph, ZoneRecord};
-use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneId, ZoneInfo, ZoneMap};
+use super::zone_map::{ZONE_INVALID, ZoneId, ZoneMap};
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::bridge_state::BridgeEndpointRecord;
-use crate::sim::movement::locomotor::MovementLayer;
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
 /// 8-directional neighbor offsets: (dx, dy, is_diagonal).
@@ -44,10 +42,6 @@ pub(crate) struct BaseZoneTopology {
     /// 56CB90 and hierarchy flood consume these, not current PathGrid heights.
     pub(crate) levels: Vec<u8>,
     pub(crate) zone_ids: Vec<ZoneId>,
-    // Retained as exact base-topology state for incremental-repair parity
-    // fixtures; current production projections consume the derived rows.
-    pub(crate) zone_count: ZoneId,
-    pub(crate) adjacency: ZoneAdjacency,
     /// Raw `MapClass+0x18[row][base_cluster]` values. Label 1 and `0xffff`
     /// remain represented here even though the flattened compatibility maps
     /// expose both as an invalid cell zone.
@@ -138,128 +132,16 @@ impl BaseEdgeBuckets {
         }
     }
 
-    fn into_adjacency(self, zone_count: ZoneId) -> ZoneAdjacency {
+    /// Each base cluster's bordering clusters (1-indexed), in discovery order.
+    fn into_adjacency(self, zone_count: ZoneId) -> Vec<Vec<ZoneId>> {
         let mut adjacency = vec![Vec::new(); zone_count as usize + 1];
         for bucket in self.buckets {
             for (neighbor, current) in bucket {
                 add_adjacency(&mut adjacency, neighbor, current);
             }
         }
-        ZoneAdjacency::new(adjacency)
+        adjacency
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BridgeRecordFilter {
-    /// The bridge loop inside `MapClass::RebuildZoneConnectivity @ 0x0056C510`
-    /// gates only on the record's active byte at `+8` and never reads the kind
-    /// field at `+0xC`.
-    AllActive,
-    /// `MapClass::FindBridgeRecord @ 0x0056DA10` skips records where
-    /// `bridge_kind != 0`.
-    ///
-    /// **The `active` term [`bridge_record_matches`] prefixes is VERA-internal
-    /// and gamemd has none** — `FindBridgeRecord` tests only the kind field and
-    /// deliberately ignores whether the bridge is intact. Trigger: a query
-    /// against a destroyed high bridge. Player effect: gamemd still redirects
-    /// through the record; VERA would not, refusing a move retail accepts.
-    /// Frequency: zero today — this variant is dead, and the live equivalent
-    /// `find_high_bridge_record` correctly ignores activity. Downstream risk:
-    /// it becomes a bridge move-refusal the moment anything wires this up.
-    HighActiveOnly,
-}
-
-fn bridge_record_matches(record: &BridgeEndpointRecord, filter: BridgeRecordFilter) -> bool {
-    record.active
-        && match filter {
-            BridgeRecordFilter::AllActive => true,
-            BridgeRecordFilter::HighActiveOnly => record.is_high(),
-        }
-}
-
-/// Build a zone map and adjacency graph for one MovementZone.
-#[cfg(test)]
-pub(crate) fn build_zone_map(
-    path_grid: &PathGrid,
-    cost_grid: Option<&TerrainCostGrid>,
-    mz: MovementZone,
-    width: u16,
-    height: u16,
-) -> (ZoneMap, ZoneAdjacency) {
-    build_zone_map_with_terrain(path_grid, cost_grid, None, mz, width, height)
-}
-
-/// Build a zone map using shared base-zone semantics when resolved terrain is available.
-/// Falls back to the older direct passable-cell flood-fill when resolved terrain is not
-/// available (primarily tests and non-terrain-aware call sites).
-pub(crate) fn build_zone_map_with_terrain(
-    path_grid: &PathGrid,
-    cost_grid: Option<&TerrainCostGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    mz: MovementZone,
-    width: u16,
-    height: u16,
-) -> (ZoneMap, ZoneAdjacency) {
-    if let Some(terrain) = resolved_terrain {
-        let base = build_base_zone_topology(path_grid, terrain, &[], width, height, None);
-        return build_zone_map_from_base_topology(&base, mz, width, height);
-    }
-
-    let total = width as usize * height as usize;
-
-    // -- Ground layer flood-fill --
-    let mut zone_ids = vec![ZONE_INVALID; total];
-    let mut next_zone: ZoneId = 1;
-
-    // Row-major scan for deterministic zone assignment.
-    for ry in 0..height {
-        for rx in 0..width {
-            let idx = ry as usize * width as usize + rx as usize;
-            if zone_ids[idx] != ZONE_INVALID {
-                continue;
-            }
-            if !is_passable(
-                rx,
-                ry,
-                mz,
-                path_grid,
-                cost_grid,
-                resolved_terrain,
-                MovementLayer::Ground,
-            ) {
-                continue;
-            }
-            // BFS flood-fill from this cell.
-            flood_fill(
-                rx,
-                ry,
-                next_zone,
-                &mut zone_ids,
-                width,
-                height,
-                mz,
-                path_grid,
-                cost_grid,
-                resolved_terrain,
-                MovementLayer::Ground,
-            );
-            next_zone += 1;
-        }
-    }
-
-    let zone_count = next_zone - 1;
-
-    // -- Extract adjacency (ground only; bridge edges injected by caller) --
-    let adj = extract_adjacency(&zone_ids, width, height, zone_count);
-
-    let zone_info = compute_zone_info(&zone_ids, width, height, zone_count);
-
-    let zone_map = ZoneMap::new(
-        zone_ids, None, // bridge_redirect set by caller
-        width, height, zone_count, zone_info,
-    );
-
-    (zone_map, adj)
 }
 
 /// Build the one native base topology shared by every MovementZone projection.
@@ -318,7 +200,7 @@ pub(crate) fn rebuild_base_zone_topology(
             &movement_classes,
             &zone_ids,
             zone_count,
-            &adjacency.neighbors,
+            &adjacency,
             MovementZone::all_ground()[row],
         )
     });
@@ -328,8 +210,6 @@ pub(crate) fn rebuild_base_zone_topology(
         movement_classes,
         levels,
         zone_ids,
-        zone_count,
-        adjacency,
         raw_zone_ids_by_row,
     }
 }
@@ -349,7 +229,7 @@ pub(crate) fn build_zone_map_from_base_topology(
     movement_zone: MovementZone,
     width: u16,
     height: u16,
-) -> (ZoneMap, ZoneAdjacency) {
+) -> ZoneMap {
     let row_index = movement_zone
         .matrix_row()
         .expect("ZoneGrid builds only the 13 concrete movement rows");
@@ -367,18 +247,12 @@ pub(crate) fn build_zone_map_from_base_topology(
                 .unwrap_or(ZONE_INVALID)
         })
         .collect();
-    let zone_count = zone_ids.iter().copied().max().unwrap_or(ZONE_INVALID);
-
-    // Exact derived IDs already are the reachability components. Distinct IDs
-    // must not be reconnected by a second flat cell-boundary graph.
-    let adj = ZoneAdjacency::new(vec![Vec::new(); zone_count as usize + 1]);
-    let zone_info = compute_zone_info(&zone_ids, width, height, zone_count);
-    let zone_map = ZoneMap::new(
+    // Exact derived IDs already are the reachability components; no graph
+    // reconnects distinct IDs.
+    ZoneMap::new(
         zone_ids, None, // bridge_redirect set by caller
-        width, height, zone_count, zone_info,
-    );
-
-    (zone_map, adj)
+        width, height,
+    )
 }
 
 pub(crate) fn movement_class_for_cell(
@@ -711,206 +585,6 @@ fn rebuild_zone_ids_for_movement_zone(
     zone_id_by_node
 }
 
-/// Check if a cell is passable for a given MovementZone.
-///
-/// This helper is still the direct passable-cell check used by the fallback and legacy
-/// incremental paths. Terrain-aware full rebuilds now go through `MovementClass8` +
-/// `nodeIndex` reconstruction instead.
-pub(crate) fn is_passable(
-    x: u16,
-    y: u16,
-    mz: MovementZone,
-    path_grid: &PathGrid,
-    cost_grid: Option<&TerrainCostGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    _layer: MovementLayer,
-) -> bool {
-    // Buildings and static obstacles block ground movement regardless of land
-    // type. Fly uses matrix row 9 and should not inherit ground PathGrid blocks.
-    // Water zones skip this check since water cells are typically blocked in PathGrid.
-    if !mz.is_water_mover() && mz != MovementZone::Fly && !path_grid.is_walkable(x, y) {
-        return false;
-    }
-
-    // Primary check: passability matrix using land_type from resolved terrain.
-    // Uses MovementZone (not SpeedType) for the passability lookup — this matches
-    // the original engine's Can_Enter_Cell logic where MovementZone determines
-    // which cells are passable, while SpeedType only affects movement speed.
-    // Critical: SpeedType::Float maps to zone 9 (hover — everything passable),
-    // but MovementZone::Water maps to zone 10 (water cells only).
-    if let Some(terrain) = resolved_terrain {
-        if let Some(cell) = terrain.cell(x, y) {
-            if mz.is_water_mover() {
-                return super::cell_entry::is_water_surface_cell_passable(cell, mz);
-            }
-            return passability::is_passable_for_zone(cell.zone_type, mz);
-        }
-    }
-
-    if mz == MovementZone::Fly {
-        return true;
-    }
-
-    // Fallback: TerrainCostGrid-based check (pre-matrix behavior).
-    if mz.is_water_mover() {
-        if let Some(cg) = cost_grid {
-            cg.cost_at(x, y) > 0
-        } else {
-            false
-        }
-    } else {
-        if let Some(cg) = cost_grid {
-            cg.cost_at(x, y) > 0
-        } else {
-            true
-        }
-    }
-}
-
-/// BFS flood-fill on the ground layer.
-///
-/// Assigns `zone_id` to all passable cells reachable from `(start_x, start_y)`.
-/// Height continuity: adjacent cells with ground_level difference > 1 form zone
-/// boundaries (matches original engine flood-fill behavior).
-pub(crate) fn flood_fill(
-    start_x: u16,
-    start_y: u16,
-    zone_id: ZoneId,
-    zone_ids: &mut [ZoneId],
-    width: u16,
-    height: u16,
-    mz: MovementZone,
-    path_grid: &PathGrid,
-    cost_grid: Option<&TerrainCostGrid>,
-    resolved_terrain: Option<&ResolvedTerrainGrid>,
-    layer: MovementLayer,
-) {
-    let mut queue = VecDeque::new();
-    let start_idx = start_y as usize * width as usize + start_x as usize;
-    zone_ids[start_idx] = zone_id;
-    queue.push_back((start_x, start_y));
-
-    while let Some((cx, cy)) = queue.pop_front() {
-        for &(dx, dy, is_diagonal) in &NEIGHBORS {
-            let nx = cx as i32 + dx;
-            let ny = cy as i32 + dy;
-            if nx < 0 || ny < 0 || nx >= width as i32 || ny >= height as i32 {
-                continue;
-            }
-            let nx = nx as u16;
-            let ny = ny as u16;
-            let n_idx = ny as usize * width as usize + nx as usize;
-
-            if zone_ids[n_idx] != ZONE_INVALID {
-                continue;
-            }
-            if !is_passable(nx, ny, mz, path_grid, cost_grid, resolved_terrain, layer) {
-                continue;
-            }
-
-            // Diagonal corner-cutting: both adjacent cardinals must be passable.
-            if is_diagonal {
-                let ax = (cx as i32 + dx) as u16;
-                let ay = cy;
-                let bx = cx;
-                let by = (cy as i32 + dy) as u16;
-                if !is_passable(ax, ay, mz, path_grid, cost_grid, resolved_terrain, layer)
-                    || !is_passable(bx, by, mz, path_grid, cost_grid, resolved_terrain, layer)
-                {
-                    continue;
-                }
-            }
-
-            // Height continuity: original engine enforces abs(h_diff) <= 1 in zone
-            // flood-fill. Height jumps > 1 create zone boundaries so the zone system
-            // never claims two cells are mutually reachable when A* would fail due to
-            // a cliff. Only checked on the ground layer for land-based categories.
-            if layer == MovementLayer::Ground {
-                if let (Some(cur), Some(nbr)) = (path_grid.cell(cx, cy), path_grid.cell(nx, ny)) {
-                    if (cur.ground_level as i16 - nbr.ground_level as i16).abs() > 1 {
-                        continue;
-                    }
-                }
-            }
-
-            zone_ids[n_idx] = zone_id;
-            queue.push_back((nx, ny));
-        }
-    }
-}
-
-/// Compute per-zone centroid and cell count from the ground zone ID array.
-pub(crate) fn compute_zone_info(
-    zone_ids: &[ZoneId],
-    width: u16,
-    _height: u16,
-    zone_count: u16,
-) -> Vec<ZoneInfo> {
-    let mut sums: Vec<(u64, u64, u32)> = vec![(0, 0, 0); zone_count as usize];
-    for (idx, &zid) in zone_ids.iter().enumerate() {
-        if zid != ZONE_INVALID {
-            let x = (idx % width as usize) as u64;
-            let y = (idx / width as usize) as u64;
-            let entry = &mut sums[zid as usize - 1];
-            entry.0 += x;
-            entry.1 += y;
-            entry.2 += 1;
-        }
-    }
-    sums.iter()
-        .map(|&(sx, sy, count)| {
-            if count == 0 {
-                ZoneInfo::default()
-            } else {
-                ZoneInfo {
-                    center: (
-                        u16::try_from(sx / count as u64).unwrap_or(u16::MAX),
-                        u16::try_from(sy / count as u64).unwrap_or(u16::MAX),
-                    ),
-                    cell_count: count,
-                }
-            }
-        })
-        .collect()
-}
-
-/// Extract adjacency from ground zone ID array (ground-layer only).
-///
-/// Bridge cross-zone edges are injected separately via `inject_bridge_adjacency`.
-pub(crate) fn extract_adjacency(
-    ground_zones: &[ZoneId],
-    width: u16,
-    height: u16,
-    zone_count: u16,
-) -> ZoneAdjacency {
-    let mut adj_sets: Vec<Vec<ZoneId>> = vec![Vec::new(); zone_count as usize + 1];
-    let w = width as usize;
-
-    for ry in 0..height {
-        for rx in 0..width {
-            let idx = ry as usize * w + rx as usize;
-            let z = ground_zones[idx];
-            if z == ZONE_INVALID {
-                continue;
-            }
-            for &(dx, dy) in &[(1i32, 0i32), (0, 1), (1, 1), (1, -1)] {
-                let nx = rx as i32 + dx;
-                let ny = ry as i32 + dy;
-                if nx < 0 || ny < 0 || nx >= width as i32 || ny >= height as i32 {
-                    continue;
-                }
-                let n_idx = ny as usize * w + nx as usize;
-                let nz = ground_zones[n_idx];
-                if nz != ZONE_INVALID && nz != z {
-                    add_adjacency(&mut adj_sets, z, nz);
-                }
-            }
-        }
-    }
-
-    ZoneAdjacency::new(adj_sets)
-}
-
 /// Native bridge-record consumer inside RebuildZoneConnectivity56C510:
 /// reverse records, signed clamped native node lookup, canonical zone pair.
 /// See PHASE3_CELL_ITERATION_BRIDGE_RECORDS_20260910.md and native vectors.
@@ -993,55 +667,6 @@ pub(crate) fn projected_zone_record_index(
         (i32::from(coord.0), i32::from(coord.1))
     };
     base_record_index(x, y, width, height)
-}
-
-/// Inject bridge adjacency edges into an existing adjacency graph.
-///
-/// For each active bridge endpoint record, connects the ground zones at
-/// endpoint_a and endpoint_b — one undirected pair in the flat per-MovementZone
-/// [`ZoneAdjacency`]. The native counterpart is the bridge loop inside
-/// `MapClass::RebuildZoneConnectivity` @ `0x0056C510`.
-///
-/// It is **not** `MapClass::AddBridgeZoneEdges` @ `0x005851B0`, despite the
-/// similar name: that one writes the three-level hierarchy graph at
-/// `MapClass+0x90` in 0x24-byte zone records, and inserts six directed edges
-/// per level from three cell pairs — (A, B), (A+dir, B+dir), (A−dir, B−dir) —
-/// with flag byte 0. Porting this function against that citation would inject
-/// spurious hierarchy edges and merge zones that are not connected.
-pub(crate) fn inject_bridge_adjacency(
-    adj: &mut ZoneAdjacency,
-    ground_zones: &[ZoneId],
-    bridge_records: &[BridgeEndpointRecord],
-    width: u16,
-    filter: BridgeRecordFilter,
-) {
-    let w = width as usize;
-    for record in bridge_records {
-        if !bridge_record_matches(record, filter) {
-            continue;
-        }
-        let (ax, ay) = record.endpoint_a;
-        let (bx, by) = record.endpoint_b;
-
-        let a_idx = ay as usize * w + ax as usize;
-        let b_idx = by as usize * w + bx as usize;
-
-        if a_idx >= ground_zones.len() || b_idx >= ground_zones.len() {
-            continue;
-        }
-
-        let za = ground_zones[a_idx];
-        let zb = ground_zones[b_idx];
-
-        if za != ZONE_INVALID && zb != ZONE_INVALID && za != zb {
-            if !adj.neighbors[za as usize].contains(&zb) {
-                adj.neighbors[za as usize].push(zb);
-            }
-            if !adj.neighbors[zb as usize].contains(&za) {
-                adj.neighbors[zb as usize].push(za);
-            }
-        }
-    }
 }
 
 /// Starting at `start_index`, return the first high-bridge record whose axis
@@ -1229,6 +854,7 @@ mod tests {
     use crate::map::resolved_terrain::ResolvedTerrainCell;
     use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::bridge_state::{BridgeEndpointRecord, BridgeRecordKind};
+    use crate::sim::movement::locomotor::MovementLayer;
 
     // Existing projection regressions now invoke the sole production owner.
     // No configured bounds in these synthetic fixtures means membership is supplied.
@@ -1326,13 +952,13 @@ mod tests {
     fn hierarchy_base(movement_classes: Vec<u8>, zone_ids: Vec<ZoneId>) -> BaseZoneTopology {
         assert_eq!(movement_classes.len(), zone_ids.len());
         let zone_count = zone_ids.iter().copied().max().unwrap_or(ZONE_INVALID);
-        let adjacency = ZoneAdjacency::new(vec![Vec::new(); zone_count as usize + 1]);
+        let adjacency = vec![Vec::new(); zone_count as usize + 1];
         let raw_zone_ids_by_row = std::array::from_fn(|row| {
             rebuild_zone_ids_for_movement_zone(
                 &movement_classes,
                 &zone_ids,
                 zone_count,
-                &adjacency.neighbors,
+                &adjacency,
                 MovementZone::all_ground()[row],
             )
         });
@@ -1341,8 +967,6 @@ mod tests {
             levels: vec![0; movement_classes.len()],
             movement_classes,
             zone_ids,
-            zone_count,
-            adjacency,
             raw_zone_ids_by_row,
         }
     }
@@ -1448,7 +1072,7 @@ mod tests {
         assert_eq!(redirect[4], Some((4, 0)));
         assert_eq!(redirect[5], None);
 
-        let zone_map = ZoneMap::new(vec![9, 1, 1, 1, 7, 5], Some(redirect), 6, 1, 9, vec![]);
+        let zone_map = ZoneMap::new(vec![9, 1, 1, 1, 7, 5], Some(redirect), 6, 1);
         assert_eq!(zone_map.zone_at(3, 0, MovementLayer::Bridge), 9);
         assert_eq!(zone_map.zone_at(4, 0, MovementLayer::Bridge), 7);
         assert_eq!(zone_map.zone_at(5, 0, MovementLayer::Bridge), ZONE_INVALID);
@@ -1499,14 +1123,7 @@ mod tests {
         assert_eq!(redirect[7], None);
         assert_eq!(redirect[8], None);
 
-        let zone_map = ZoneMap::new(
-            vec![9, 1, 1, 7, 4, 4, 5, 5, 5],
-            Some(redirect),
-            9,
-            1,
-            9,
-            vec![],
-        );
+        let zone_map = ZoneMap::new(vec![9, 1, 1, 7, 4, 4, 5, 5, 5], Some(redirect), 9, 1);
         assert_eq!(zone_map.zone_at(3, 0, MovementLayer::Bridge), 7);
         for rx in 6..=8 {
             assert_eq!(
@@ -2145,19 +1762,11 @@ mod tests {
             2,
             2,
         );
-        let base = BaseZoneTopology {
-            native_bridge_source_size: None,
-            adjacency: edge_buckets.into_adjacency(zone_count),
-            levels: retained_levels_from_path(&grid, 2, 2),
-            movement_classes,
-            zone_ids,
-            zone_count,
-            raw_zone_ids_by_row: std::array::from_fn(|_| Vec::new()),
-        };
+        let adjacency = edge_buckets.into_adjacency(zone_count);
 
-        assert_eq!(base.zone_ids, vec![1, 1, 2, 2]);
-        assert_eq!(base.zone_count, 2);
-        assert!(base.adjacency.are_adjacent(1, 2));
+        assert_eq!(zone_ids, vec![1, 1, 2, 2]);
+        assert_eq!(zone_count, 2);
+        assert!(adjacency[1].contains(&2));
     }
 
     #[test]
@@ -2173,7 +1782,7 @@ mod tests {
 
         assert_eq!(zone_ids, vec![1, 1, 2, 2]);
         assert_eq!(zone_count, 2);
-        assert!(!adjacency.are_adjacent(1, 2));
+        assert!(!adjacency[1].contains(&2));
     }
 
     #[test]
@@ -2220,40 +1829,6 @@ mod tests {
         let redirect = build_bridge_redirect(&grid, None, &records, 5, 1);
 
         assert!(redirect.is_none());
-    }
-
-    #[test]
-    fn bridge_adjacency_filter_all_active_includes_low_records() {
-        let ground_zones = [1, ZONE_INVALID, ZONE_INVALID, ZONE_INVALID, 2];
-        let records = [bridge_record(BridgeRecordKind::Low)];
-        let mut adj = ZoneAdjacency::new(vec![vec![], vec![], vec![]]);
-
-        inject_bridge_adjacency(
-            &mut adj,
-            &ground_zones,
-            &records,
-            5,
-            BridgeRecordFilter::AllActive,
-        );
-
-        assert!(adj.are_adjacent(1, 2));
-    }
-
-    #[test]
-    fn bridge_adjacency_filter_high_active_only_skips_low_records() {
-        let ground_zones = [1, ZONE_INVALID, ZONE_INVALID, ZONE_INVALID, 2];
-        let records = [bridge_record(BridgeRecordKind::Low)];
-        let mut adj = ZoneAdjacency::new(vec![vec![], vec![], vec![]]);
-
-        inject_bridge_adjacency(
-            &mut adj,
-            &ground_zones,
-            &records,
-            5,
-            BridgeRecordFilter::HighActiveOnly,
-        );
-
-        assert!(!adj.are_adjacent(1, 2));
     }
 
     /// OPEN: accepted raw path tokens can address native process data outside

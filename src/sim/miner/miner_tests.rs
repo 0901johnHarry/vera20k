@@ -411,7 +411,6 @@ fn native_zones_split_at(sim: &mut Simulation, size: u16, wall_x: u16) {
     sim.zone_grid = Some(
         crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_map_context(
             &path,
-            &BTreeMap::new(),
             &terrain,
             &[],
             Some((i32::from(size), i32::from(size))),
@@ -2375,7 +2374,6 @@ fn scan_skips_cell_occupied_by_other_miner() {
 #[test]
 fn scan_ring_0_allows_harvesters_own_cell() {
     use crate::sim::pathfinding::zone_map::ZoneGrid;
-    use std::collections::BTreeMap;
 
     let mut sim = Simulation::new();
 
@@ -2383,7 +2381,7 @@ fn scan_ring_0_allows_harvesters_own_cell() {
     let rules = miner_rules();
 
     let grid = PathGrid::new(32, 32);
-    let zone_grid = ZoneGrid::build(&grid, &BTreeMap::new(), 32, 32);
+    let zone_grid = ZoneGrid::following_path_grid(&grid);
     sim.zone_grid = Some(zone_grid);
 
     // Miner on ore at (10, 10). Register itself as occupant — ring 0
@@ -2916,7 +2914,7 @@ fn refinery_selection_skips_unreachable_zone_refinery() {
     for y in 0..32 {
         grid.set_blocked(12, y, true);
     }
-    sim.zone_grid = Some(ZoneGrid::build(&grid, &BTreeMap::new(), 32, 32));
+    sim.zone_grid = Some(ZoneGrid::following_path_grid(&grid));
 
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 5, 10);
     // Nearer, but across the wall (dock cell (17, 11)).

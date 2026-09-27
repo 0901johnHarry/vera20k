@@ -58,8 +58,8 @@ fn native_bridge_base_edges_match_original_executable() {
         assert_eq!(serde_json::json!(actual), case["pairs"], "{}", case["name"]);
         let adjacency = buckets.into_adjacency(*zones.iter().max().unwrap());
         for pair in actual {
-            assert!(adjacency.neighbors[pair[0] as usize].contains(&pair[1]));
-            assert!(adjacency.neighbors[pair[1] as usize].contains(&pair[0]));
+            assert!(adjacency[pair[0] as usize].contains(&pair[1]));
+            assert!(adjacency[pair[1] as usize].contains(&pair[0]));
         }
     }
 }

@@ -481,6 +481,9 @@ impl Simulation {
                 //the wall cell when the cell holds none.
                 self.track_override_blocker(call, cell);
                 //4B3C67..4B3C81: code != 7 retires the selector.
+                if let Some(actor) = self.substrate.entities.get_mut(id) {
+                    actor.navigation.path_runtime.clear_scold_latch();
+                }
                 self.track_retire_selector(id);
                 Ok(false)
             }
@@ -507,9 +510,10 @@ impl Simulation {
                 Ok(false)
             }
             FreshDispatch::FirstOtherBlocked { retry } => {
-                //4B3607 then 4B3AA1..4B3ACE: the ScoldSound latch Foot+68A
-                //has no writer in the program, so no voice is represented.
+                //4B3607 then4B3AA1..4B3ACE / 6A30F3..6A311D. The sound
+                //guard is NOT cleared before the possible code7 recursion.
                 self.clear_track_head_of(id);
+                self.play_foot_path_scold(id, rules);
                 if retry.is_some() {
                     //4B3BF6..4B3C21 then 4B4541.
                     self.clear_path_head(id);
@@ -531,10 +535,13 @@ impl Simulation {
     }
 
     /// 0x4B3607 then 0x4B3AA1..0x4B3C81 for a code other than 2/4/5/7: clear
-    /// the head; the ScoldSound latch Foot+68A has no writer, so no voice;
-    /// Foot+68A = 0 and the selector retires.
+    /// the head; Foot+68A = 0 and the selector retires. This is a silent
+    /// exit, distinct from the code7 sound/retry corridor.
     fn track_first_rejected_tail(&mut self, id: u64) {
         self.clear_track_head_of(id);
+        if let Some(actor) = self.substrate.entities.get_mut(id) {
+            actor.navigation.path_runtime.clear_scold_latch();
+        }
         self.track_retire_selector(id);
     }
 
@@ -866,6 +873,7 @@ impl Simulation {
         //4B460C..4B4659: +63C = -1 (the shift's terminator), +558 = the
         //candidate's cell, Foot+68A = 0, class +5C = 0, then the head clears.
         let reference = candidate.map_or((0, 0), coord_cell);
+        actor.navigation.path_runtime.clear_scold_latch();
         clear_track_head(actor);
         let Some(candidate) = candidate else {
             actor.navigation.path_replay.reference_cell = Some(reference);
@@ -1103,8 +1111,8 @@ impl Simulation {
         }
     }
 
-    /// Class selector +58 = -1 (Foot+68A, cleared beside it, has no
-    /// nonzero writer in the program).
+    /// Class selector +58 = -1. Only the first-rejection/fresh-finalize
+    /// callers also clear Foot+68A; second-candidate retries retain it.
     fn track_retire_selector(&mut self, id: u64) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;

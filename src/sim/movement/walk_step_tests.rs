@@ -76,3 +76,101 @@ fn paid_walk_matches_original_numeric_facing_and_boundary_vectors() {
         assert!(!entity.navigation.path_runtime.path_blocked);
     }
 }
+
+#[test]
+fn idle_walk_scold_tails_match_original_through_ordinary_process() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_scold_latch.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for row in corpus["paid_tails"].as_array().unwrap() {
+        let initial_speed = match row["case"].as_str().unwrap() {
+            "no_head_speed_zero" => SIM_ZERO,
+            "no_head_speed_positive" => SimFixed::lit("0.75"),
+            _ => continue,
+        };
+        let mut sim = crate::sim::world::Simulation::new();
+        sim.interner = crate::sim::intern::test_interner();
+        let mut actor = GameEntity::test_default(1, "E1", "Americans", 9, 10);
+        actor.category = EntityCategory::Infantry;
+        actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+        if let crate::sim::movement::locomotion::LocomotorRuntimePayload::Walk(state) =
+            &mut actor.locomotor.as_mut().unwrap().runtime_payload
+        {
+            // Supplied retained byte at the native tail boundary.
+            state.animation_moving = true;
+        }
+        actor.foot_speed.applied_fraction = initial_speed;
+        actor
+            .navigation
+            .path_runtime
+            .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+        sim.substrate.entities.insert(actor);
+
+        // No movement adapter is needed for this native Process corridor.
+        sim.process_ground_locomotor_for_test(1, None, None, None)
+            .unwrap();
+        let actor = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            u64::from(actor.navigation.path_runtime.scold_latch_raw()),
+            row["final_byte"].as_u64().unwrap(),
+            "{row}"
+        );
+        assert_eq!(
+            actor.foot_speed.applied_fraction,
+            SimFixed::from_num(row["speed_fraction"].as_f64().unwrap()),
+            "{row}"
+        );
+        assert_eq!(
+            actor.locomotor.as_ref().unwrap().walk_animation_moving(),
+            Some(row["motion"] == 1),
+            "{row}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 6);
+}
+
+#[test]
+fn same_cell_paid_walk_scold_clear_matches_original_commit_tail() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_scold_latch.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for row in corpus["paid_tails"].as_array().unwrap() {
+        if row["case"] != "same_cell_commit" {
+            continue;
+        }
+        let mut actor = GameEntity::test_default(1, "E1", "Americans", 9, 10);
+        actor.category = EntityCategory::Infantry;
+        actor.position.sub_x = SimFixed::from_num(186);
+        actor.position.sub_y = SimFixed::from_num(64);
+        actor.position.exact_z_leptons = Some(104);
+        actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+        actor
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_step_head(Some(DriveCoord {
+                x: 2544,
+                y: 2624,
+                z: 104,
+            }));
+        actor
+            .navigation
+            .path_runtime
+            .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+        advance(&mut actor, SimFixed::from_num(90), None, 100, None, None);
+        let position = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
+        assert_eq!((position.x / 256, position.y / 256), (9, 10));
+        assert_eq!(
+            u64::from(actor.navigation.path_runtime.scold_latch_raw()),
+            row["final_byte"].as_u64().unwrap(),
+            "{row}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 3);
+}

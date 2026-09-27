@@ -3,8 +3,8 @@
 //! recursive CanEnter uses the live caller's real direction/height producer.
 //! Shared Scatter, mission, setters, uncloaking and head owners execute. Empty
 //! scatter/gate lists, ordinary Type+D94=false and Infantry are the corpus bounds.
-//! Compare all represented outputs and full Scenario RNG, excluding only native
-//! timer padding and Foot+68A (no retained Rust ScoldSound-latch owner).
+//! Compare all represented outputs, the retained Foot+68A byte and full
+//! Scenario RNG, excluding only native timer padding.
 use super::tests::fixture_with_rules;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -66,6 +66,8 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     rules.general.path_delay = input["path_delay"].as_f64().unwrap_or(0.01);
     rules.general.blockage_path_delay_ticks = input["blockage_delay"].as_i64().unwrap_or(22) as i32;
     rules.general.close_enough = input["close_enough"].as_i64().unwrap_or(128) as i32;
+    // This decoder corpus executes the native750920 quiet return (index-1).
+    rules.general.scold_sound = None;
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 0);
     house.player_control = true;
@@ -118,7 +120,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
             .shared_cell_dummy()
             .test_set_land_type(input["dummy_land"].as_i64().unwrap() as i32);
     }
-    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut().unwrap();
+    let base = sim.zone_grid.as_mut().unwrap().base_topology_mut();
     base.native_bridge_source_size = Some((8, 8));
     base.zone_ids.fill(0);
     for row in &mut base.raw_zone_ids_by_row {
@@ -195,6 +197,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     );
     p.path_blocked = before["blocked"] == 1;
     p.retries_left = before["retries"].as_i64().unwrap() as u32;
+    p.set_scold_latch_for_test(before["flag68a"].as_u64().unwrap() as u8);
     e.movement_target = Some(MovementTarget {
         path: vec![(9, 10), (10, 10), (11, 11), (11, 12), (10, 13)],
         path_layers: vec![MovementLayer::Ground; 5],
@@ -296,6 +299,7 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         ),
         ("blocked", json!(u8::from(p.path_blocked))),
         ("retries", json!(p.retries_left as i32)),
+        ("flag68a", json!(p.scold_latch_raw())),
         ("nav", json!(nav(e.navigation.nav_com))),
         (
             "target",
@@ -506,5 +510,92 @@ fn ordinary_and_recursive_walk_responses_match_original_decoder() {
         assert_eq!(unused, 0, "unused native answers: {input}");
         assert_eq!(calls, expected_calls(&row, other), "call order: {input}");
         compare(&sim, id, other, &row["after"], &row);
+    }
+}
+
+#[test]
+fn exhausted_walk_retry_emits_native_retained_scold_request() {
+    // Compose the actual failed-search continuation from the124-row corpus
+    // with the native0/1/255 guard controls and valid MenuScold binding. This
+    // checks production Walk reaches the sound owner before clearing its byte;
+    // sound_dispatch separately checks the centred registered-Voc consumer.
+    let native: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_scold_latch.json"
+    ))
+    .unwrap();
+    let row = corpus()
+        .into_iter()
+        .find(|row| {
+            let input = &row["input"];
+            input["failed_retry_probe"] == true
+                && input["retries"] == 0
+                && input.get("in_playfield").is_none()
+                && input.get("attack_target").is_none()
+        })
+        .unwrap();
+    for guard in native["scold_guard"].as_array().unwrap() {
+        let (mut sim, mut rules, registry, id, _) = fixture(&row);
+        let sound = native["sound"]["resolved_name"].as_str().unwrap();
+        rules.general.scold_sound = Some(sound.into());
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .navigation
+            .path_runtime
+            .set_scold_latch_for_test(guard["supplied_byte"].as_u64().unwrap() as u8);
+        let current = crate::sim::movement::ground_pose::position_world_coord(
+            &sim.substrate.entities.get(id).unwrap().position,
+        );
+        fresh_oracle_seam::install_with_live_effects(vec![], vec![SuppliedPath::Failed]);
+        let request = sim
+            .replay_walk_admission_response(
+                id,
+                true,
+                DriveCoord {
+                    x: current.x + 256,
+                    ..current
+                },
+                7,
+                &rules,
+                Some(&registry),
+            )
+            .unwrap()
+            .unwrap();
+        let result = sim.run_walk_path_request(&request, None, Some(&rules), None, Some(&registry));
+        let (_, unused) = fresh_oracle_seam::finish();
+        assert!(!result.unwrap());
+        assert_eq!(unused, 0);
+        assert_eq!(
+            json!(
+                sim.substrate
+                    .entities
+                    .get(id)
+                    .unwrap()
+                    .navigation
+                    .path_runtime
+                    .scold_latch_raw()
+            ),
+            guard["final_byte"]
+        );
+        let actual: Vec<&str> = sim
+            .sound_events
+            .iter()
+            .filter_map(|event| match event {
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let calls = guard["sound_entry_calls"].as_array().unwrap();
+        assert_eq!(actual, vec![sound; calls.len()]);
+        for call in calls {
+            assert_eq!(
+                call["sound_index"],
+                native["sound"]["resolved_index_fixture_relative"]
+            );
+            assert_eq!(call["pan"], 0x2000);
+            assert_eq!(call["volume_bits"], "0x3f800000");
+            assert_eq!(call["trailing"], 0);
+        }
     }
 }

@@ -145,6 +145,7 @@ impl Simulation {
             } else {
                 //75BCC0..75BCD5: failed subcell selection only zeros speed.
                 actor.foot_speed.applied_fraction = SIM_ZERO;
+                actor.navigation.path_runtime.clear_scold_latch();
             }
             return Ok(None);
         }
@@ -217,6 +218,8 @@ impl Simulation {
                 if let Some(loco) = actor.locomotor.as_mut() {
                     loco.stop_walk();
                 }
+                //75BB84/75BB90: both override/Stop exits clear the byte.
+                actor.navigation.path_runtime.clear_scold_latch();
                 super::retain_committed_movement(actor);
                 Ok(None)
             }

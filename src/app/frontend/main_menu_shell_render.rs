@@ -306,7 +306,7 @@ pub(crate) fn ensure_movie_for_current_layout(
     clear_ra2ts_movie_session(state);
 
     let Some(assets) = state.process_assets.manager() else {
-        state.frontend.main_menu_shell_failed = true;
+        state.frontend.main_menu_shell_error.get_or_insert_with(|| "Game archives are unavailable.".to_owned());
         return Ok(());
     };
     let asset_name = layout.movie_base.asset_name();
@@ -326,7 +326,7 @@ pub(crate) fn ensure_movie_for_current_layout(
         .map(|bytes| (bytes, RA2_SHELL_MOVIE_ARCHIVE));
     let Some((bytes, source)) = preferred.or_else(|| assets.get_with_source_ref(asset_name)) else {
         log::warn!("Missing main-menu RA2TS movie asset {asset_name}");
-        state.frontend.main_menu_shell_failed = true;
+        state.frontend.main_menu_shell_error = Some(format!("Missing menu movie: {asset_name}"));
         return Ok(());
     };
     if !source.eq_ignore_ascii_case(RA2_SHELL_MOVIE_ARCHIVE) {
@@ -345,7 +345,7 @@ pub(crate) fn ensure_movie_for_current_layout(
         Ok(movie) => movie,
         Err(err) => {
             log::warn!("Failed to load main-menu RA2TS movie {asset_name} from {source}: {err:#}");
-            state.frontend.main_menu_shell_failed = true;
+            state.frontend.main_menu_shell_error = Some(format!("Could not load {asset_name} from {source}: {err:#}"));
             return Ok(());
         }
     };
@@ -461,8 +461,8 @@ fn render_main_menu_shell_to_target_inner(
     if !backdrop {
         ensure_movie_for_current_layout(state, Ra2tsDialogOwner::MainMenu0xE2)?;
     }
-    if state.frontend.main_menu_shell_failed || state.frontend.main_menu_shell_chrome.is_none() {
-        state.frontend.main_menu_shell_failed = true;
+    if state.frontend.main_menu_shell_error.is_some() || state.frontend.main_menu_shell_chrome.is_none() {
+        state.frontend.main_menu_shell_error.get_or_insert_with(|| "Required game-menu artwork is unavailable.".to_owned());
         return Ok(MainMenuShellRenderResult::Fallback);
     }
 
@@ -482,7 +482,7 @@ fn render_main_menu_shell_to_target_inner(
         state.frontend.main_menu_movie_last_step = now;
         if let Err(err) = movie.step(&state.renderer.gpu, elapsed) {
             log::warn!("Failed to step main-menu RA2TS movie: {err:#}");
-            state.frontend.main_menu_shell_failed = true;
+            state.frontend.main_menu_shell_error = Some(format!("Could not play the menu movie: {err:#}"));
             return Ok(MainMenuShellRenderResult::Fallback);
         }
     }

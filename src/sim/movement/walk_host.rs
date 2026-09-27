@@ -236,6 +236,11 @@ impl Simulation {
         ));
         e.navigation.path_runtime.path_blocked = false;
         self.foot_mark_put(id, rules, fallback, registry);
+        //75C1EA: the boundary placement tail clears +68A after Mark(PUT).
+        //This is not the post-PerCell dead/limbo/falling exit at75C1F1.
+        if let Some(e) = self.substrate.entities.get_mut(id) {
+            e.navigation.path_runtime.clear_scold_latch();
+        }
     }
 
     pub(crate) fn run_completed_walk_step(
@@ -338,6 +343,11 @@ impl Simulation {
             }
         })?;
         self.foot_mark_put(id, rules, fallback, registry);
+        //75BF77 follows the final Mark(PUT). The earlier post-PerCell exits
+        //jump to75C1F1 and must retain the byte on a surviving object.
+        if let Some(e) = self.substrate.entities.get_mut(id) {
+            e.navigation.path_runtime.clear_scold_latch();
+        }
         Ok(changed)
     }
 }

@@ -1564,8 +1564,7 @@ mod tests {
         let path_grid = PathGrid::from_resolved_terrain(terrain);
         let zone_grid = ZoneGrid::build_with_terrain(
             &path_grid,
-            &BTreeMap::new(),
-            Some(terrain),
+            terrain,
             &[],
             terrain.width(),
             terrain.height(),
@@ -1857,8 +1856,7 @@ mod tests {
         let path_grid = PathGrid::from_resolved_terrain(&terrain);
         let zone_grid = ZoneGrid::build_with_terrain(
             &path_grid,
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             &[],
             terrain.width(),
             terrain.height(),
@@ -1924,10 +1922,9 @@ mod tests {
         let terrain = flat_terrain(2, 2);
         let (path_grid, mut zone_grid) = square_zone_grid(&terrain);
         {
-            let base = zone_grid.base_topology_mut().unwrap();
+            let base = zone_grid.base_topology_mut();
             base.movement_classes = vec![0; 4];
             base.zone_ids = vec![2, 3, 4, 5];
-            base.zone_count = 5;
             let row = MovementZone::Normal.matrix_row().unwrap();
             base.raw_zone_ids_by_row[row].resize(6, 0);
             base.raw_zone_ids_by_row[row][0] = 10;
@@ -1955,10 +1952,9 @@ mod tests {
         let mut terrain = flat_terrain(2, 2);
         let (path_grid, mut zone_grid) = square_zone_grid(&terrain);
         {
-            let base = zone_grid.base_topology_mut().unwrap();
+            let base = zone_grid.base_topology_mut();
             base.movement_classes = vec![0; 4];
             base.zone_ids = vec![2, 3, 4, 5];
-            base.zone_count = 5;
             let row = MovementZone::Normal.matrix_row().unwrap();
             base.raw_zone_ids_by_row[row].resize(6, 0);
             base.raw_zone_ids_by_row[row][3] = 77;
@@ -1979,13 +1975,13 @@ mod tests {
         assert_eq!(terrain.dummy_cell_requested_coord(), (1, 0));
 
         let row = MovementZone::Normal.matrix_row().unwrap();
-        zone_grid.base_topology_mut().unwrap().raw_zone_ids_by_row[row][3] = 1;
+        zone_grid.base_topology_mut().raw_zone_ids_by_row[row][3] = 1;
         assert!(
             !check(77, &zone_grid),
             "raw reserved label 1 stays distinct"
         );
         assert_eq!(terrain.dummy_cell_requested_coord(), (1, 0));
-        zone_grid.base_topology_mut().unwrap().raw_zone_ids_by_row[row][3] = u16::MAX;
+        zone_grid.base_topology_mut().raw_zone_ids_by_row[row][3] = u16::MAX;
         assert!(!check(77, &zone_grid), "raw 0xffff stays distinct");
         assert_eq!(
             terrain.dummy_cell_requested_coord(),
@@ -1995,33 +1991,10 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_01_cellrect_required_zone_fails_without_native_topology() {
-        let terrain = flat_terrain(2, 2);
-        let path_grid = PathGrid::from_resolved_terrain(&terrain);
-        let compatibility_zones = ZoneGrid::build(
-            &path_grid,
-            &BTreeMap::new(),
-            terrain.width(),
-            terrain.height(),
-        );
-        let compatibility_zone = compatibility_zones
-            .map_for(MovementZone::Normal)
-            .unwrap()
-            .zone_at(0, 0, MovementLayer::Ground);
-        let mut ctx = clear_passability_context(CellRect::single(0, 0), Some(&terrain));
-        ctx.path_grid = Some(&path_grid);
-        ctx.zone_grid = Some(&compatibility_zones);
-        ctx.required_zone_id = Some(compatibility_zone);
-        assert!(
-            !check_passability_rect(ctx),
-            "terrain-backed required-zone checks must not fall back to a flattened ZoneMap"
-        );
-    }
-
-    #[test]
     fn gsi_04_01_cellrect_pathgrid_only_required_zone_keeps_compatibility_projection() {
-        let path_grid = PathGrid::new(2, 1);
-        let compatibility_zones = ZoneGrid::build(&path_grid, &BTreeMap::new(), 2, 1);
+        let terrain = flat_terrain(2, 1);
+        let path_grid = PathGrid::from_resolved_terrain(&terrain);
+        let compatibility_zones = ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], 2, 1);
         let zone = compatibility_zones
             .map_for(MovementZone::Normal)
             .unwrap()
@@ -2037,10 +2010,10 @@ mod tests {
     fn gsi_04_01_bridge_required_zone_uses_raw_labels_and_missing_record_dword() {
         let mut terrain = flat_terrain(2, 2);
         let (path_grid, mut zone_grid) = square_zone_grid(&terrain);
-        let cluster = zone_grid.base_topology_mut().unwrap().zone_ids[0] as usize;
+        let cluster = zone_grid.base_topology_mut().zone_ids[0] as usize;
         let row = MovementZone::Normal.matrix_row().unwrap();
-        zone_grid.base_topology_mut().unwrap().raw_zone_ids_by_row[row].resize(cluster + 1, 0);
-        zone_grid.base_topology_mut().unwrap().raw_zone_ids_by_row[row][cluster] = 91;
+        zone_grid.base_topology_mut().raw_zone_ids_by_row[row].resize(cluster + 1, 0);
+        zone_grid.base_topology_mut().raw_zone_ids_by_row[row][cluster] = 91;
         let check = |terrain: &ResolvedTerrainGrid, zones: &ZoneGrid, required, bridge| {
             let mut ctx = clear_passability_context(CellRect::single(0, 0), Some(terrain));
             ctx.path_grid = Some(&path_grid);
@@ -2053,7 +2026,7 @@ mod tests {
         //Cell still returns its raw row, without the flattened-map projection.
         assert!(check(&terrain, &zone_grid, 91, true));
         assert!(!check(&terrain, &zone_grid, 92, true));
-        zone_grid.base_topology_mut().unwrap().raw_zone_ids_by_row[row][cluster] = u16::MAX;
+        zone_grid.base_topology_mut().raw_zone_ids_by_row[row][cluster] = u16::MAX;
         assert!(check(&terrain, &zone_grid, u16::MAX, true));
         terrain.cells[0].bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL;
         assert_eq!(

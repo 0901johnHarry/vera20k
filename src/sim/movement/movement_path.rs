@@ -1,7 +1,7 @@
 //! Movement path management — path computation, repath-after-block, and bridge pathing support.
 //!
 //! Wraps the A* pathfinder for use by the movement tick: computes initial paths,
-//! retries after blockages with zone-aware corridor search, and determines whether
+//! retries after blockages through the zone-aware search, and determines whether
 //! an entity's locomotor supports layered bridge pathing.
 
 use std::collections::BTreeSet;
@@ -866,7 +866,6 @@ mod tests {
     use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
     use crate::sim::pathfinding::passability::LandType;
     use crate::sim::pathfinding::zone_map::ZoneGrid;
-    use std::collections::BTreeMap;
 
     fn make_resolved_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
@@ -1031,7 +1030,7 @@ mod tests {
             vec![TubeFact::explicit((0, 0), (4, 0), 2, vec![2, 2, 2, 2])],
         );
         let grid = PathGrid::from_resolved_terrain(&terrain);
-        let zone_grid = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 1);
+        let zone_grid = ZoneGrid::build_with_terrain(&grid, &terrain, &[], 5, 1);
 
         let (path, layers) = find_move_path(
             PathfindingContext {
@@ -1117,7 +1116,7 @@ mod tests {
         for y in 0..16 {
             reduced.set_blocked(7, y, true);
         }
-        let zone_grid = ZoneGrid::build(&reduced, &BTreeMap::new(), 16, 16);
+        let zone_grid = ZoneGrid::following_path_grid(&reduced);
         assert!(!zone_grid.can_reach(
             MovementZone::Normal,
             (6, 6),
@@ -1469,7 +1468,6 @@ mod tests {
     fn a_wall_line_that_disconnects_the_map_is_refused_before_the_cost_class_runs() {
         use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
         use crate::rules::ini_parser::IniFile;
-        use std::collections::BTreeMap;
 
         let mut cells = Vec::with_capacity(15);
         for ry in 0..3u16 {
@@ -1487,7 +1485,7 @@ mod tests {
         let terrain = ResolvedTerrainGrid::from_cells(5, 3, cells);
         let grid = PathGrid::from_resolved_terrain(&terrain);
         let costs = TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Track);
-        let zone_grid = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 3);
+        let zone_grid = ZoneGrid::build_with_terrain(&grid, &terrain, &[], 5, 3);
         let counts = crate::sim::pathfinding::BlockerNeighborCounts::new(5, 3);
 
         let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(

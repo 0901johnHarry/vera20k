@@ -1,9 +1,11 @@
 //! Tests for zone-aware pathfinding wrappers.
 
 use super::super::zone_hierarchy::{ZoneEdgeRecord, ZoneHierarchy, ZoneLevelGraph, ZoneRecord};
-use super::super::zone_map::{ZoneAdjacency, ZoneGrid, ZoneInfo, ZoneMap};
+use super::super::zone_map::{ZONE_INVALID, ZoneGrid, ZoneId};
 use super::*;
-use crate::map::bridge_facts::{BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL};
+use crate::map::bridge_facts::{
+    BRIDGE_FLAG_DIRECTION_ZERO, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
+};
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
 use crate::rules::ini_parser::IniFile;
@@ -18,7 +20,6 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
 use crate::sim::miner::miner_system::{issue_move_if_idle, issue_stock_miner_drive_move};
-use crate::sim::miner::{CargoBale, MinerConfig, MinerState, ResourceType};
 use crate::sim::movement::{issue_move_command_with_layered, tick_movement_with_grids};
 use crate::sim::occupancy::{CellOccupationGrid, OccupancyGrid};
 use crate::sim::pathfinding::PathGrid;
@@ -181,7 +182,7 @@ fn hierarchy_endpoint_zone_grid() -> ZoneGrid {
     for y in 0..16 {
         reduced.set_blocked(7, y, true);
     }
-    ZoneGrid::build(&reduced, &BTreeMap::new(), 16, 16)
+    ZoneGrid::following_path_grid(&reduced)
 }
 
 fn hierarchy_endpoint_path(
@@ -324,14 +325,7 @@ fn playfield_hierarchy_bridge_projection_tracks_intact_and_destroyed_records() {
         active: true,
         bridge_kind: BridgeRecordKind::High,
     };
-    let intact = ZoneGrid::build_with_terrain(
-        &grid,
-        &BTreeMap::new(),
-        Some(&terrain),
-        &[record.clone()],
-        16,
-        16,
-    );
+    let intact = ZoneGrid::build_with_terrain(&grid, &terrain, &[record.clone()], 16, 16);
     let (intact_start, _, intact_inside) = resolve_hierarchy_endpoint_contract(
         Some(&intact),
         Some(&terrain),
@@ -352,14 +346,7 @@ fn playfield_hierarchy_bridge_projection_tracks_intact_and_destroyed_records() {
         active: false,
         ..record
     };
-    let destroyed = ZoneGrid::build_with_terrain(
-        &grid,
-        &BTreeMap::new(),
-        Some(&terrain),
-        &[destroyed_record],
-        16,
-        16,
-    );
+    let destroyed = ZoneGrid::build_with_terrain(&grid, &terrain, &[destroyed_record], 16, 16);
     let (destroyed_start, _, destroyed_inside) = resolve_hierarchy_endpoint_contract(
         Some(&destroyed),
         Some(&terrain),
@@ -434,7 +421,7 @@ fn zoned_path_reachable_returns_path() {
         .....
     ",
     );
-    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 3);
+    let zg = ZoneGrid::following_path_grid(&grid);
     let path = find_path_zoned(
         &grid,
         (0, 0),
@@ -465,7 +452,7 @@ fn zoned_path_unreachable_returns_none_instantly() {
         ..#..
     ",
     );
-    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 3);
+    let zg = ZoneGrid::following_path_grid(&grid);
     // (0,0) and (4,0) are in different disconnected zones.
     let path = find_path_zoned(
         &grid,
@@ -519,7 +506,7 @@ fn zoned_path_same_cell() {
         .....
     ",
     );
-    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 1);
+    let zg = ZoneGrid::following_path_grid(&grid);
     let path = find_path_zoned(
         &grid,
         (2, 0),
@@ -548,7 +535,7 @@ fn zoned_path_entity_blocks_respected() {
         ...
     ",
     );
-    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 3, 3);
+    let zg = ZoneGrid::following_path_grid(&grid);
     // Block the direct path with entities.
     let mut blocks = BTreeSet::new();
     blocks.insert((1, 0));
@@ -575,78 +562,6 @@ fn zoned_path_entity_blocks_respected() {
     // But the path would need to go around — with a 3x3 grid fully blocked
     // in column 1, there's no way around.
     assert!(path.is_none());
-}
-
-fn test_zone_map() -> (ZoneMap, ZoneAdjacency) {
-    let zone_map = ZoneMap::new(
-        vec![1, 2, 3, 4],
-        None,
-        4,
-        1,
-        4,
-        vec![
-            ZoneInfo {
-                center: (0, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (1, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (0, 1),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (2, 0),
-                cell_count: 1,
-            },
-        ],
-    );
-    let adjacency =
-        ZoneAdjacency::new(vec![vec![], vec![2, 3], vec![1, 3, 4], vec![1, 2], vec![2]]);
-    (zone_map, adjacency)
-}
-
-fn equal_cost_zone_map(adjacency_order: Vec<ZoneId>) -> (ZoneMap, ZoneAdjacency) {
-    let zone_map = ZoneMap::new(
-        vec![1, 2, 3, 4, 5],
-        None,
-        5,
-        1,
-        5,
-        vec![
-            ZoneInfo {
-                center: (0, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (1, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (1, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (0, 1),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (2, 0),
-                cell_count: 1,
-            },
-        ],
-    );
-    let adjacency = ZoneAdjacency::new(vec![
-        vec![],
-        adjacency_order,
-        vec![1, 5],
-        vec![1, 5],
-        vec![],
-        vec![2, 3],
-    ]);
-    (zone_map, adjacency)
 }
 
 fn linear_level0_hierarchy(zones: Vec<ZoneId>, edges: &[(ZoneId, ZoneId)]) -> ZoneHierarchy {
@@ -685,7 +600,7 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
     let astar_grid = PathGrid::new(3, 1);
     let mut reduced_grid = PathGrid::new(3, 1);
     reduced_grid.set_blocked(1, 0, true);
-    let mut zg = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 3, 1);
+    let mut zg = ZoneGrid::following_path_grid(&reduced_grid);
     zg.set_hierarchy(linear_level0_hierarchy(vec![1, 2, 3], &[(1, 2), (2, 3)]));
     assert!(
         !zg.can_reach(
@@ -695,7 +610,7 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
             (2, 0),
             MovementLayer::Ground
         ),
-        "fixture must prove the old reduced SuperZoneMap would abort"
+        "fixture must put the endpoints in different reduced zones"
     );
 
     let blocker_counts = BlockerNeighborCounts::new(3, 1);
@@ -729,7 +644,7 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
 #[test]
 fn zone_precheck_failed_hierarchy_keeps_zone_map_same_zone_fallback() {
     let astar_grid = PathGrid::new(3, 1);
-    let mut zg = ZoneGrid::build(&astar_grid, &BTreeMap::new(), 3, 1);
+    let mut zg = ZoneGrid::following_path_grid(&astar_grid);
     zg.set_hierarchy(linear_level0_hierarchy(
         vec![ZONE_INVALID, ZONE_INVALID, ZONE_INVALID],
         &[],
@@ -770,7 +685,7 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
 
     let mut reduced_grid = PathGrid::new(5, 1);
     reduced_grid.set_blocked(2, 0, true);
-    let mut zone_grid = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 5, 1);
+    let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
     zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
     assert!(
         !zone_grid.can_reach(
@@ -893,7 +808,12 @@ fn caller_count_bridge_detour(
         path.set_cell_for_test(x, 2, 0, true, true);
         let cell = terrain.cell_mut(x, 2).unwrap();
         cell.level = 0;
-        cell.bridge_facts.raw_flags = BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO;
+        // Keep the native Cell flags consistent with PathCell.transition.
+        // Foot4D9C60 requires raw200 for both the height4 -> deck entry and
+        // subsequent deck candidates. Original unit_entry_traversal rows
+        // 58/59 pin clear0 with raw300 versus refusal7 with raw100 alone.
+        cell.bridge_facts.raw_flags =
+            BRIDGE_FLAG_STRUCTURAL | BRIDGE_FLAG_DIRECTION_ZERO | BRIDGE_FLAG_TRANSITION;
         cell.has_bridge_deck = true;
         cell.bridge_walkable = true;
         cell.bridge_transition = true;
@@ -905,8 +825,7 @@ fn caller_count_bridge_detour(
     // hierarchy below remains the separate Cell+122 caller-count witness.
     let mut zones = ZoneGrid::build_with_native_bridge_geometry(
         &path,
-        &BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         &[BridgeEndpointRecord {
             endpoint_a: (1, 2),
             endpoint_b: (5, 2),
@@ -1245,6 +1164,51 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         crate::sim::movement::infantry_entry::InfantryEntryClass::Clear
     );
 
+    let destination = sim
+        .substrate
+        .entities
+        .get(engineer_id)
+        .unwrap()
+        .locomotor
+        .as_ref()
+        .unwrap()
+        .walk_destination()
+        .unwrap();
+    assert!(
+        sim.foot_path_zone_precheck(engineer_id, destination, &rules)
+            .expect("native source and destination row query"),
+        "the live Foot precheck admits the supplied map/zone inputs"
+    );
+    // REPAIR above deliberately bypasses height/direction checks. Exercise
+    // AStar's explicit previous-Cell inputs as well: the marked bridge detour
+    // must be physically traversable through the same live +1AC owner.
+    for (previous, candidate, direction) in [
+        ((1, 0), (1, 1), 4),
+        ((1, 2), (2, 2), 2),
+        ((2, 2), (3, 2), 2),
+        ((3, 2), (4, 2), 2),
+        ((4, 2), (5, 2), 2),
+        ((5, 1), (5, 0), 0),
+    ] {
+        let terrain = sim.resolved_terrain.as_ref().unwrap();
+        assert_eq!(
+            sim.foot_can_enter(
+                engineer_id,
+                terrain.native_cell_identity(candidate),
+                crate::sim::movement::infantry_entry::InfantryEntryArgs {
+                    direction,
+                    height: 4,
+                    previous_cell: Some(terrain.native_cell_identity(previous)),
+                },
+                &rules,
+                None,
+            )
+            .expect("live Capture corridor admission"),
+            0,
+            "physical corridor {previous:?} -> {candidate:?}"
+        );
+    }
+
     // Execute the real no-head Process with live blockers and canonical grids.
     sim.process_ground_locomotor_for_test(engineer_id, Some(&rules), None, None)
         .expect("Capture Process retains the fixture's native map inputs");
@@ -1295,7 +1259,7 @@ fn gsi_04_12_attack_pursuit_entry_threads_exact_blocker_counts() {
 
     let mut reduced_grid = PathGrid::new(5, 1);
     reduced_grid.set_blocked(2, 0, true);
-    let mut zone_grid = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 5, 1);
+    let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
     zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
     assert!(
         !zone_grid.can_reach(
@@ -1365,7 +1329,7 @@ fn gsi_04_12_phase_six_order_resume_threads_exact_blocker_counts() {
 
     let mut reduced_grid = PathGrid::new(5, 1);
     reduced_grid.set_blocked(2, 0, true);
-    let mut zone_grid = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 5, 1);
+    let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
     zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
     assert!(
         !zone_grid.can_reach(
@@ -1447,7 +1411,7 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
 
     let mut reduced_grid = PathGrid::new(5, 1);
     reduced_grid.set_blocked(2, 0, true);
-    let mut zone_grid = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 5, 1);
+    let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
     zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
     assert!(
         !zone_grid.can_reach(
@@ -1558,7 +1522,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     let make_sim = || {
         let mut reduced_grid = PathGrid::new(5, 1);
         reduced_grid.set_blocked(2, 0, true);
-        let mut zone_grid = ZoneGrid::build(&reduced_grid, &BTreeMap::new(), 5, 1);
+        let mut zone_grid = ZoneGrid::following_path_grid(&reduced_grid);
         zone_grid.set_hierarchy(linear_level0_hierarchy(vec![1, 3, 1, 4, 2], &[(1, 2)]));
         assert!(
             !zone_grid.can_reach(
@@ -1633,123 +1597,6 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     );
 }
 
-#[test]
-fn zone_corridor_equal_cost_ties_keep_adjacency_order() {
-    let (zone_map, adjacency) = equal_cost_zone_map(vec![3, 2]);
-    let excluded_edges = BTreeSet::new();
-
-    let corridor = find_zone_corridor(&zone_map, &adjacency, 1, 5, &excluded_edges)
-        .expect("equal-cost corridor should exist");
-
-    assert_eq!(
-        corridor,
-        vec![1, 3, 5],
-        "equal-cost zone ties must keep adjacency discovery order, not lower ZoneId"
-    );
-}
-
-#[test]
-fn zone_corridor_equal_cost_ties_follow_reversed_adjacency_order() {
-    let (zone_map, adjacency) = equal_cost_zone_map(vec![2, 3]);
-    let excluded_edges = BTreeSet::new();
-
-    let corridor = find_zone_corridor(&zone_map, &adjacency, 1, 5, &excluded_edges)
-        .expect("equal-cost corridor should exist");
-
-    assert_eq!(corridor, vec![1, 2, 5]);
-}
-
-#[test]
-fn zone_corridor_retry_excludes_edges_not_zones() {
-    let (zone_map, adjacency) = test_zone_map();
-    let mut excluded_edges = BTreeSet::new();
-
-    let first =
-        find_zone_corridor(&zone_map, &adjacency, 1, 4, &excluded_edges).expect("initial corridor");
-    assert_eq!(first, vec![1, 2, 4]);
-
-    excluded_edges.insert(ZoneEdge::new(1, 2).unwrap());
-    let second = find_zone_corridor(&zone_map, &adjacency, 1, 4, &excluded_edges)
-        .expect("alternate corridor should reuse zone 2 through another edge");
-    assert_eq!(second, vec![1, 3, 2, 4]);
-}
-
-#[test]
-fn zone_edge_exclusions_are_undirected() {
-    let zone_map = ZoneMap::new(
-        vec![1, 2],
-        None,
-        2,
-        1,
-        2,
-        vec![
-            ZoneInfo {
-                center: (0, 0),
-                cell_count: 1,
-            },
-            ZoneInfo {
-                center: (1, 0),
-                cell_count: 1,
-            },
-        ],
-    );
-    let adjacency = ZoneAdjacency::new(vec![vec![], vec![2], vec![1]]);
-    let mut excluded_edges = BTreeSet::new();
-    excluded_edges.insert(ZoneEdge::new(1, 2).unwrap());
-
-    assert!(find_zone_corridor(&zone_map, &adjacency, 2, 1, &excluded_edges).is_none());
-}
-
-#[test]
-fn zone_cost_estimate_matches_precheck_and_alternate_margin() {
-    let grid = grid_from_str(
-        "
-        .....
-        .....
-    ",
-    );
-    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 2);
-
-    let estimate = zone_cost_estimate(
-        &zg,
-        MovementZone::Normal,
-        (0, 0),
-        crate::sim::movement::locomotor::MovementLayer::Ground,
-        (4, 1),
-        crate::sim::movement::locomotor::MovementLayer::Ground,
-    );
-    assert_eq!(estimate, 4);
-    assert!(accepts_blocked_destination_alternate(
-        estimate,
-        (4, 1),
-        (0, 1)
-    ));
-    assert!(!accepts_blocked_destination_alternate(
-        i32::MAX,
-        (4, 1),
-        (0, 1)
-    ));
-
-    let blocked_grid = grid_from_str(
-        "
-        ..#..
-        ..#..
-    ",
-    );
-    let blocked_zg = ZoneGrid::build(&blocked_grid, &BTreeMap::new(), 5, 2);
-    assert_eq!(
-        zone_cost_estimate(
-            &blocked_zg,
-            MovementZone::Normal,
-            (0, 0),
-            crate::sim::movement::locomotor::MovementLayer::Ground,
-            (4, 0),
-            crate::sim::movement::locomotor::MovementLayer::Ground,
-        ),
-        i32::MAX
-    );
-}
-
 /// GSI-06.02 G2: gamemd gates every MovementZone row — `Can_Reach_Zone`
 /// short-circuits only on `mzRow == -1`, and the A*-entry precheck reads
 /// whatever row `MovementZone=` gives. Stock rulesmd puts every main battle tank
@@ -1793,7 +1640,7 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
     use crate::map::tube_facts::TubeFact;
     let (width, height) = (40, 3);
     let grid = PathGrid::new(width, height);
-    let mut zones = ZoneGrid::build(&grid, &BTreeMap::new(), width, height);
+    let mut zones = ZoneGrid::following_path_grid(&grid);
     let labels = (0..height)
         .flat_map(|y| {
             (0..width).map(move |x| {
@@ -1910,8 +1757,7 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
     let mut terrain = gsi_04_12_terrain(2, 2);
     let mut zones = ZoneGrid::build_with_native_bridge_geometry(
         &grid,
-        &BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         &[BridgeEndpointRecord {
             endpoint_a: (0, 0),
             endpoint_b: (1, 0),
@@ -1925,9 +1771,8 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
     );
     let row = MovementZone::Normal.matrix_row().unwrap();
     {
-        let base = zones.base_topology_mut().unwrap();
+        let base = zones.base_topology_mut();
         base.zone_ids = vec![2, 3, 2, 3];
-        base.zone_count = 3;
         base.raw_zone_ids_by_row[row] = vec![0, 0, 1, u16::MAX];
     }
     {
@@ -1987,7 +1832,7 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
         "distinct native invalid labels must reject before a connected graph"
     );
     {
-        let base = zones.base_topology_mut().unwrap();
+        let base = zones.base_topology_mut();
         base.raw_zone_ids_by_row[row][2] = 2;
         base.raw_zone_ids_by_row[row][3] = 3;
     }
@@ -2080,15 +1925,14 @@ fn tube_hierarchy_dword_zone_query_matches_original_executable() {
             .collect::<Vec<_>>();
         let mut zones = ZoneGrid::build_with_native_bridge_geometry(
             &PathGrid::new(width, height),
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             &records,
             width,
             height,
             Some((8, 8)),
         );
         {
-            let base = zones.base_topology_mut().unwrap();
+            let base = zones.base_topology_mut();
             base.zone_ids.fill(1);
             for record in &records {
                 if !record.active {
@@ -2159,8 +2003,7 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
     assert!(bridges.endpoint_records().is_empty());
     let mut zones = ZoneGrid::build_with_native_bridge_geometry(
         &grid,
-        &BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         bridges.endpoint_records(),
         16,
         16,
@@ -2278,14 +2121,13 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
             .collect();
         let mut zones = ZoneGrid::build_with_native_bridge_geometry(
             &grid,
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             &records,
             width,
             height,
             Some((8, 8)),
         );
-        let base = zones.base_topology_mut().unwrap();
+        let base = zones.base_topology_mut();
         base.zone_ids.fill(1);
         base.raw_zone_ids_by_row[MovementZone::Normal.matrix_row().unwrap()] = vec![0, 2];
         let b = &case["bounds"];

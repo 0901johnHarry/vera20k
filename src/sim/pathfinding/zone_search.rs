@@ -63,38 +63,31 @@
 //!   skirmish, but not zero. Team6EC300 can perform mode1 waypoint lookups
 //!   before endpoint membership, changing shared dummy state. Its Team+7F and
 //!   action3 authority/order remain open; the current bool is supplied externally.
-//! - **The corridor-Dijkstra fallback defines its corridor differently.**
-//!   gamemd's corridor is the set of zones `Zone_precheck` stamped, widened by
-//!   the per-cell `+0x122` escape (point 5). When VERA has no level-0 hierarchy
-//!   or no blocker counts it instead builds a Dijkstra zone corridor, expands
-//!   it by one ring, and retries up to [`MAX_CORRIDOR_RETRIES`] excluding
-//!   corridor edges. The count coincides with gamemd's 5, but gamemd's retries
-//!   re-run `UpdateHierarchicalEdges` and re-precheck rather than excluding
-//!   edges. The former explicit-Tube bypass was removed with582D70 delivery.
-//!   Every production caller supplies blocker counts (`movement_tick`,
-//!   `world_commands`, the miner system, the production queue) and the
-//!   production `ZoneGrid` always carries levels 0/1/2; fallback availability
-//!   remains for incomplete callers. Player effect: a corridor excluding a route
-//!   can make the unit refuse to move where retail walks it. No current live
-//!   missing-cache trigger is established here. Downstream risk: it is a whole
-//!   alternative search; replacing it is row GSI-06.03's work, not this row's.
+//! - **Without blocker counts there is no hierarchy search.** Every
+//!   production search supplies blocker counts (`movement_tick`,
+//!   `world_commands`, the miner system, the production queue), and every
+//!   `ZoneGrid` carries levels 0/1/2. A caller without counts gets the plain
+//!   cell A* once the zone test passes, where gamemd would run the
+//!   hierarchy-marked search. No live trigger is established here.
+//! - **gamemd's precheck retries are not modelled.** Its budget is
+//!   `param_6 != -1 ? 1 : 5`, each retry re-running `UpdateHierarchicalEdges`
+//!   and `Zone_precheck` (point 6); VERA runs one precheck.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/zone_map, sim/pathfinding, sim/locomotor.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, BinaryHeap};
+use std::collections::BTreeSet;
 
 use super::{BlockerNeighborCounts, LayeredEntityBlockMap, MoverSearchFacts, SearchMarkerOverlay};
 
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_hierarchy::{ZonePrecheckExclusions, ZonePrecheckOutcome, zone_precheck_flat};
-use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneGrid, ZoneId, ZoneMap};
+use super::zone_hierarchy::{
+    ZoneLevelGraph, ZonePrecheckExclusions, ZonePrecheckOutcome, zone_precheck_flat,
+};
+use super::zone_map::{ZoneGrid, ZoneId};
 use super::{
-    LayeredPathStep, PathGrid, find_layered_path_hierarchy_marker, find_layered_path_marker,
-    find_path_with_costs_corridor_marker, find_path_with_costs_hierarchy_marker,
-    find_path_with_costs_marker,
+    HierarchyGate, LayeredPathStep, PathGrid, find_layered_path_marker, find_path_with_costs_marker,
 };
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::tube_facts::TubeSource;
@@ -116,34 +109,6 @@ pub enum PathSearchFailure {
     CompatibilityZoneRejected,
     ///The existing cell search ran and returned no route.
     CellSearchExhausted,
-    ///The compatibility corridor retry policy exhausted its alternatives.
-    CompatibilityCorridorExhausted,
-}
-
-/// Maximum corridor Dijkstra attempts with zone-edge exclusions.
-/// The recovered path entry contract uses a default total attempt cap of 5.
-const MAX_CORRIDOR_RETRIES: u8 = 5;
-
-#[cfg(test)]
-const BLOCKED_DESTINATION_ALTERNATE_MARGIN: i32 = 6;
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-pub(super) struct ZoneEdge {
-    a: ZoneId,
-    b: ZoneId,
-}
-
-impl ZoneEdge {
-    pub(super) fn new(a: ZoneId, b: ZoneId) -> Option<Self> {
-        if a == ZONE_INVALID || b == ZONE_INVALID || a == b {
-            return None;
-        }
-        Some(if a < b {
-            Self { a, b }
-        } else {
-            Self { a: b, b: a }
-        })
-    }
 }
 
 /// Whether the path entry may answer reachability from the reduced per-row zone
@@ -238,11 +203,140 @@ fn native_path_zone_equality(
 
 include!("native_path_entry.rs");
 
-/// Zone-aware path search for flat (ground-only) paths.
-///
-/// Uses zone reachability plus a corridor-Dijkstra approximation, then runs A*
-/// restricted to that corridor. If the bounded hierarchical attempts are
-/// exhausted, the search fails rather than running an unrestricted fallback.
+/// The level-0 corridor a passed `Zone_precheck` hands the cell A*
+/// (`AStar_main_loop @ 0x00429A90`'s last argument, `allowHS`).
+struct HierarchyCorridor<'a> {
+    level0_zones: &'a ZoneLevelGraph,
+    marked_level0: BTreeSet<ZoneId>,
+    blocker_neighbor_counts: &'a BlockerNeighborCounts,
+}
+
+impl HierarchyCorridor<'_> {
+    fn gate(&self) -> HierarchyGate<'_> {
+        HierarchyGate {
+            level0_zones: self.level0_zones,
+            marked_level0: &self.marked_level0,
+            blocker_neighbor_counts: self.blocker_neighbor_counts,
+        }
+    }
+}
+
+/// The endpoints one search asks the zone ladder about. The flat and layered
+/// searches share the ladder and differ only in these layers: the flat search
+/// compares a ground start with a ground goal, and without native labels falls
+/// back to the goal cell's structural-bridge flag; the layered search uses the
+/// mover's layer and the goal's live `Flags & 0x100` (`0x0042C9B7`) throughout.
+struct ZoneLadderQuery<'e> {
+    start: (u16, u16),
+    start_layer: MovementLayer,
+    goal: (u16, u16),
+    goal_layer: MovementLayer,
+    /// The goal's layer when the zones are compared without native labels.
+    fallback_goal_layer: MovementLayer,
+    entry: &'e NativePathEntry,
+}
+
+/// Zone admission for one path search, after `prepare_native_path_entry`:
+/// `Ok(None)` runs the plain cell A*, `Ok(Some(corridor))` the hierarchy-marked
+/// one, and `Err` no cell A* at all.
+fn admit_zone_search<'a>(
+    zone_grid: Option<&'a ZoneGrid>,
+    mz: MovementZone,
+    movement_zone: Option<MovementZone>,
+    resolved_terrain: Option<&ResolvedTerrainGrid>,
+    blocker_neighbor_counts: Option<&'a BlockerNeighborCounts>,
+    query: &ZoneLadderQuery<'_>,
+) -> Result<Option<HierarchyCorridor<'a>>, PathSearchFailure> {
+    let entry = query.entry;
+    if !can_use_reduced_zone_precheck(movement_zone) {
+        return Ok(None);
+    }
+    let Some(zg) = zone_grid.filter(|_| entry.endpoints_in_playfield) else {
+        return Ok(None);
+    };
+    let Some(zone_map) = zg.map_for(mz) else {
+        return Ok(None);
+    };
+    // Raw results were captured before retained-cell projection/playfield.
+    let zones_match = entry.raw_equal.unwrap_or_else(|| {
+        zone_map.zone_at(query.start.0, query.start.1, query.start_layer)
+            == zone_map.zone_at(query.goal.0, query.goal.1, query.fallback_goal_layer)
+    });
+
+    if let Some(blocker_neighbor_counts) = blocker_neighbor_counts
+        && let Some(hierarchy) = zg.hierarchy_for(mz)
+        && let Some(level0_zones) = hierarchy.level(0)
+    {
+        //42CB22..42CB3F rejects unequal native base labels before precheck.
+        if !zones_match {
+            return Err(if entry.raw_equal.is_some() {
+                PathSearchFailure::NativeEntryRejected
+            } else {
+                PathSearchFailure::CompatibilityZoneRejected
+            });
+        }
+        let start_zone = zg
+            .hierarchy_zone_at_native(0, entry.hierarchy_start)
+            .ok_or(PathSearchFailure::MissingHierarchyCell)?;
+        let goal_zone = zg
+            .hierarchy_zone_at_native(0, entry.hierarchy_goal)
+            .ok_or(PathSearchFailure::MissingHierarchyCell)?;
+        return Ok(
+            match zone_precheck_flat(
+                hierarchy,
+                start_zone,
+                goal_zone,
+                movement_zone.unwrap_or(mz),
+                &ZonePrecheckExclusions::default(),
+            ) {
+                ZonePrecheckOutcome::Passed(result) => {
+                    let [marked_level0, ..] = result.marked;
+                    Some(HierarchyCorridor {
+                        level0_zones,
+                        marked_level0,
+                        blocker_neighbor_counts,
+                    })
+                }
+                // The zones match, so a failed precheck clears allowHS and
+                // still runs the cell A*.
+                ZonePrecheckOutcome::Failed => None,
+            },
+        );
+    }
+
+    // Same-zone precheck failures still run cell A*; a cross-zone one aborts
+    // unless an explicit tube joins the endpoints.
+    if zg.can_reach(
+        mz,
+        query.start,
+        query.start_layer,
+        query.goal,
+        query.goal_layer,
+    ) || zones_match
+        || can_reach_through_explicit_tube(
+            zg,
+            mz,
+            query.start,
+            query.start_layer,
+            query.goal,
+            resolved_terrain,
+        )
+    {
+        return Ok(None);
+    }
+    log::trace!(
+        "zone_search: unreachable {:?} ({:?} layer={:?} -> {:?}), skipping A*",
+        mz,
+        query.start,
+        query.start_layer,
+        query.goal,
+    );
+    Err(PathSearchFailure::CompatibilityZoneRejected)
+}
+
+/// The flat (ground-only) zone-aware search without a marker overlay, blocker
+/// counts or playfield bounds: the zone test gates a plain cell A*, and no
+/// hierarchy-marked search runs without counts.
 ///
 /// TODO(RE): terrain-aware nodeIndex connectivity can still be a little looser than
 /// final movement legality because the recovered node flood-fill is 8-neighbor while
@@ -359,20 +453,14 @@ pub(crate) fn find_path_zoned_marker_detailed(
         allow_zone_hierarchy,
         playfield_bounds,
     );
-    find_path_zoned_marker_inner_detailed(
+    find_flat_path_after_entry(
         grid,
         start,
         goal,
-        entry.hierarchy_start,
-        entry.hierarchy_goal,
-        entry.raw_equal,
+        &entry,
         costs,
         entity_blocks,
-        if entry.endpoints_in_playfield {
-            zone_grid
-        } else {
-            None
-        },
+        zone_grid,
         mz,
         movement_zone,
         resolved_terrain,
@@ -383,6 +471,7 @@ pub(crate) fn find_path_zoned_marker_detailed(
     )
 }
 
+/// The flat search with the native entry's facts given directly (tests).
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 fn find_path_zoned_marker_inner(
@@ -405,13 +494,18 @@ fn find_path_zoned_marker_inner(
     is_infantry: bool,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
 ) -> Option<Vec<(u16, u16)>> {
-    find_path_zoned_marker_inner_detailed(
+    let entry = NativePathEntry {
+        raw_equal: native_zone_equal,
+        goal_bridge: false,
+        hierarchy_start,
+        hierarchy_goal,
+        endpoints_in_playfield: true,
+    };
+    find_flat_path_after_entry(
         grid,
         start,
         goal,
-        hierarchy_start,
-        hierarchy_goal,
-        native_zone_equal,
+        &entry,
         costs,
         entity_blocks,
         zone_grid,
@@ -432,13 +526,12 @@ fn find_path_zoned_marker_inner(
     .ok()
 }
 
-fn find_path_zoned_marker_inner_detailed(
+#[allow(clippy::too_many_arguments)]
+fn find_flat_path_after_entry(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
-    hierarchy_start: (u16, u16),
-    hierarchy_goal: (u16, u16),
-    native_zone_equal: Option<bool>,
+    entry: &NativePathEntry,
     costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_grid: Option<&ZoneGrid>,
@@ -450,259 +543,41 @@ fn find_path_zoned_marker_inner_detailed(
     facts: MoverSearchFacts<'_>,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
 ) -> Result<Vec<(u16, u16)>, PathSearchFailure> {
-    if !can_use_reduced_zone_precheck(movement_zone) {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    }
-
-    let Some(zg) = zone_grid else {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    };
-
-    let Some(zone_map) = zg.map_for(mz) else {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    };
-    let start_zone = zone_map.zone_at(start.0, start.1, MovementLayer::Ground);
-    let goal_bridge = resolved_terrain
+    let goal_structural_bridge = resolved_terrain
         .and_then(|terrain| terrain.cell(goal.0, goal.1))
         .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
-    let goal_zone = zone_map.zone_at(
-        goal.0,
-        goal.1,
-        if goal_bridge {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        },
-    );
-    let zones_match = native_zone_equal.unwrap_or(start_zone == goal_zone);
-
-    let hierarchy_counts_available = blocker_neighbor_counts.is_some();
-    if hierarchy_counts_available
-        && let Some(hierarchy) = zg.hierarchy_for(mz)
-        && let Some(level0_zones) = hierarchy.level(0)
-    {
-        //42CB22..42CB3F rejects unequal native base labels before precheck.
-        if !zones_match {
-            return Err(if native_zone_equal.is_some() {
-                PathSearchFailure::NativeEntryRejected
-            } else {
-                PathSearchFailure::CompatibilityZoneRejected
-            });
-        }
-        let hierarchy_start_zone = zg
-            .hierarchy_zone_at_native(0, hierarchy_start)
-            .ok_or(PathSearchFailure::MissingHierarchyCell)?;
-        let hierarchy_goal_zone = zg
-            .hierarchy_zone_at_native(0, hierarchy_goal)
-            .ok_or(PathSearchFailure::MissingHierarchyCell)?;
-        match zone_precheck_flat(
-            hierarchy,
-            hierarchy_start_zone,
-            hierarchy_goal_zone,
-            movement_zone.unwrap_or(mz),
-            &ZonePrecheckExclusions::default(),
-        ) {
-            ZonePrecheckOutcome::Passed(result) => {
-                return find_path_with_costs_hierarchy_marker(
-                    grid,
-                    start,
-                    goal,
-                    costs,
-                    entity_blocks,
-                    level0_zones,
-                    &result.marked[0],
-                    blocker_neighbor_counts.expect("checked above"),
-                    movement_zone,
-                    resolved_terrain,
-                    entity_block_map,
-                    marker_overlay,
-                    facts,
-                );
-            }
-            ZonePrecheckOutcome::Failed if zones_match => {
-                return find_path_with_costs_marker(
-                    grid,
-                    start,
-                    goal,
-                    costs,
-                    entity_blocks,
-                    movement_zone,
-                    resolved_terrain,
-                    entity_block_map,
-                    marker_overlay,
-                    facts,
-                );
-            }
-            ZonePrecheckOutcome::Failed => {
-                return Err(PathSearchFailure::CompatibilityZoneRejected);
-            }
-        }
-    }
-
-    let zone_precheck_passed = zg.can_reach(
+    let corridor = admit_zone_search(
+        zone_grid,
         mz,
+        movement_zone,
+        resolved_terrain,
+        blocker_neighbor_counts,
+        &ZoneLadderQuery {
+            start,
+            start_layer: MovementLayer::Ground,
+            goal,
+            goal_layer: MovementLayer::Ground,
+            fallback_goal_layer: if goal_structural_bridge {
+                MovementLayer::Bridge
+            } else {
+                MovementLayer::Ground
+            },
+            entry,
+        },
+    )?;
+    find_path_with_costs_marker(
+        grid,
         start,
-        MovementLayer::Ground,
         goal,
-        MovementLayer::Ground,
-    );
-
-    // Same-zone precheck failures disable hierarchy and still run cell A*.
-    if !zone_precheck_passed && zones_match {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    }
-
-    // Cross-zone precheck failure aborts without cell A*.
-    if !zone_precheck_passed {
-        if can_reach_through_explicit_tube(
-            zg,
-            mz,
-            start,
-            MovementLayer::Ground,
-            goal,
-            resolved_terrain,
-        ) {
-            return find_path_with_costs_marker(
-                grid,
-                start,
-                goal,
-                costs,
-                entity_blocks,
-                movement_zone,
-                resolved_terrain,
-                entity_block_map,
-                marker_overlay,
-                facts,
-            );
-        }
-        log::trace!(
-            "zone_search: unreachable {:?} ({:?}→{:?}), skipping A*",
-            mz,
-            start,
-            goal,
-        );
-        return Err(PathSearchFailure::CompatibilityZoneRejected);
-    }
-
-    let Some(adjacency) = zg.adjacency_for(mz) else {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    };
-
-    let start_zone = zone_map.zone_at(start.0, start.1, MovementLayer::Ground);
-    let goal_zone = zone_map.zone_at(goal.0, goal.1, MovementLayer::Ground);
-
-    // Same zone — no corridor needed, run A* directly.
-    if start_zone == goal_zone && start_zone != ZONE_INVALID {
-        return find_path_with_costs_marker(
-            grid,
-            start,
-            goal,
-            costs,
-            entity_blocks,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    }
-
-    // Try corridor-restricted A* with retry on failure.
-    let mut excluded_edges: BTreeSet<ZoneEdge> = BTreeSet::new();
-    for attempt in 0..MAX_CORRIDOR_RETRIES {
-        if let Some(corridor_zones) =
-            find_zone_corridor(zone_map, adjacency, start_zone, goal_zone, &excluded_edges)
-        {
-            // Expand corridor by one ring of neighbor zones for flexibility.
-            let allowed = expand_corridor(&corridor_zones, adjacency);
-            match find_path_with_costs_corridor_marker(
-                grid,
-                start,
-                goal,
-                costs,
-                entity_blocks,
-                zone_map,
-                &allowed,
-                movement_zone,
-                resolved_terrain,
-                entity_block_map,
-                marker_overlay,
-                facts,
-            ) {
-                Ok(path) => return Ok(path),
-                Err(PathSearchFailure::CellSearchExhausted) => {}
-                Err(error) => return Err(error),
-            }
-            // Corridor A* failed — exclude all corridor zones and retry.
-            log::trace!(
-                "zone_search: corridor A* failed attempt {} ({} zones), retrying with exclusions",
-                attempt + 1,
-                corridor_zones.len(),
-            );
-            if !exclude_corridor_edges(&corridor_zones, &mut excluded_edges) {
-                break;
-            }
-        } else {
-            break; // Dijkstra couldn't find alternative route
-        }
-    }
-
-    Err(PathSearchFailure::CompatibilityCorridorExhausted)
+        costs,
+        entity_blocks,
+        corridor.as_ref().map(HierarchyCorridor::gate),
+        movement_zone,
+        resolved_terrain,
+        entity_block_map,
+        marker_overlay,
+        facts,
+    )
 }
 
 #[cfg(test)]
@@ -798,145 +673,21 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
     } else {
         MovementLayer::Ground
     };
-    let hierarchy_start = entry.hierarchy_start;
-    let hierarchy_goal = entry.hierarchy_goal;
-    let zone_grid = if entry.endpoints_in_playfield {
-        zone_grid
-    } else {
-        None
-    };
-    if !can_use_reduced_zone_precheck(movement_zone) {
-        return find_layered_path_marker(
-            grid,
-            ground_blocks,
-            bridge_blocks,
+    let corridor = admit_zone_search(
+        zone_grid,
+        mz,
+        movement_zone,
+        resolved_terrain,
+        blocker_neighbor_counts,
+        &ZoneLadderQuery {
             start,
-            start_layer,
+            start_layer: source_layer,
             goal,
-            terrain_costs,
-            movement_zone,
-            resolved_terrain,
-            entity_block_map,
-            marker_overlay,
-            facts,
-        );
-    }
-
-    if let Some(zg) = zone_grid {
-        // Raw results were captured before retained-cell projection/playfield.
-        let zones_match = entry.raw_equal.unwrap_or_else(|| {
-            zg.map_for(mz).is_some_and(|zone_map| {
-                zone_map.zone_at(start.0, start.1, source_layer)
-                    == zone_map.zone_at(goal.0, goal.1, goal_layer)
-            })
-        });
-
-        if blocker_neighbor_counts.is_some()
-            && resolved_terrain.is_some()
-            && let Some(hierarchy) = zg.hierarchy_for(mz)
-            && let Some(level0_zones) = hierarchy.level(0)
-        {
-            if !zones_match {
-                return Err(if entry.raw_equal.is_some() {
-                    PathSearchFailure::NativeEntryRejected
-                } else {
-                    PathSearchFailure::CompatibilityZoneRejected
-                });
-            }
-            match zone_precheck_flat(
-                hierarchy,
-                zg.hierarchy_zone_at_native(0, hierarchy_start)
-                    .ok_or(PathSearchFailure::MissingHierarchyCell)?,
-                zg.hierarchy_zone_at_native(0, hierarchy_goal)
-                    .ok_or(PathSearchFailure::MissingHierarchyCell)?,
-                movement_zone.unwrap_or(mz),
-                &ZonePrecheckExclusions::default(),
-            ) {
-                ZonePrecheckOutcome::Passed(result) => {
-                    return find_layered_path_hierarchy_marker(
-                        grid,
-                        ground_blocks,
-                        bridge_blocks,
-                        start,
-                        start_layer,
-                        goal,
-                        terrain_costs,
-                        level0_zones,
-                        &result.marked[0],
-                        blocker_neighbor_counts.expect("checked above"),
-                        movement_zone,
-                        resolved_terrain,
-                        entity_block_map,
-                        marker_overlay,
-                        facts,
-                    );
-                }
-                ZonePrecheckOutcome::Failed if zones_match => {
-                    return find_layered_path_marker(
-                        grid,
-                        ground_blocks,
-                        bridge_blocks,
-                        start,
-                        start_layer,
-                        goal,
-                        terrain_costs,
-                        movement_zone,
-                        resolved_terrain,
-                        entity_block_map,
-                        marker_overlay,
-                        facts,
-                    );
-                }
-                ZonePrecheckOutcome::Failed => {
-                    return Err(PathSearchFailure::CompatibilityZoneRejected);
-                }
-            }
-        }
-
-        if !zg.can_reach(mz, start, source_layer, goal, goal_layer) {
-            if zones_match {
-                return find_layered_path_marker(
-                    grid,
-                    ground_blocks,
-                    bridge_blocks,
-                    start,
-                    start_layer,
-                    goal,
-                    terrain_costs,
-                    movement_zone,
-                    resolved_terrain,
-                    entity_block_map,
-                    marker_overlay,
-                    facts,
-                );
-            }
-            if can_reach_through_explicit_tube(zg, mz, start, start_layer, goal, resolved_terrain) {
-                return find_layered_path_marker(
-                    grid,
-                    ground_blocks,
-                    bridge_blocks,
-                    start,
-                    start_layer,
-                    goal,
-                    terrain_costs,
-                    movement_zone,
-                    resolved_terrain,
-                    entity_block_map,
-                    marker_overlay,
-                    facts,
-                );
-            }
-            log::trace!(
-                "zone_search: layered unreachable {:?} ({:?} layer={:?} -> {:?}), skipping A*",
-                mz,
-                start,
-                start_layer,
-                goal,
-            );
-            return Err(PathSearchFailure::CompatibilityZoneRejected);
-        }
-    }
-
+            goal_layer,
+            fallback_goal_layer: goal_layer,
+            entry: &entry,
+        },
+    )?;
     find_layered_path_marker(
         grid,
         ground_blocks,
@@ -945,222 +696,13 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
         start_layer,
         goal,
         terrain_costs,
+        corridor.as_ref().map(HierarchyCorridor::gate),
         movement_zone,
         resolved_terrain,
         entity_block_map,
         marker_overlay,
         facts,
     )
-}
-
-// ---------------------------------------------------------------------------
-// Hierarchical zone Dijkstra
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-struct ZoneQueueEntry {
-    cost: i32,
-    sequence: u32,
-    zone: ZoneId,
-}
-
-impl Ord for ZoneQueueEntry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .cmp(&self.cost)
-            .then_with(|| other.sequence.cmp(&self.sequence))
-    }
-}
-
-impl PartialOrd for ZoneQueueEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-/// Find the cheapest coarse route through the zone adjacency graph.
-/// Returns an ordered sequence of zone IDs from start to goal.
-///
-/// Edge cost still uses Rust's centroid Manhattan approximation, but equal-cost
-/// ties follow gamemd.exe `Zone_precheck`: adjacency discovery order wins and
-/// `ZoneId` is not a tie key.
-pub(super) fn find_zone_corridor(
-    zone_map: &ZoneMap,
-    adjacency: &ZoneAdjacency,
-    start_zone: ZoneId,
-    goal_zone: ZoneId,
-    excluded_edges: &BTreeSet<ZoneEdge>,
-) -> Option<Vec<ZoneId>> {
-    if start_zone == ZONE_INVALID || goal_zone == ZONE_INVALID {
-        return None;
-    }
-    if start_zone == goal_zone {
-        return Some(vec![start_zone]);
-    }
-
-    // Dijkstra on the zone graph with stable insertion-order ties.
-    let zone_count = zone_map.zone_count as usize;
-    let mut dist: Vec<i32> = vec![i32::MAX; zone_count + 1]; // 1-indexed
-    let mut prev: Vec<ZoneId> = vec![ZONE_INVALID; zone_count + 1];
-    let mut heap: BinaryHeap<ZoneQueueEntry> = BinaryHeap::new();
-    let mut next_sequence: u32 = 1;
-
-    dist[start_zone as usize] = 0;
-    heap.push(ZoneQueueEntry {
-        cost: 0,
-        sequence: 0,
-        zone: start_zone,
-    });
-
-    while let Some(ZoneQueueEntry { cost, zone, .. }) = heap.pop() {
-        if zone == goal_zone {
-            // Reconstruct path.
-            let mut path = Vec::new();
-            let mut cur = goal_zone;
-            while cur != ZONE_INVALID {
-                path.push(cur);
-                cur = prev[cur as usize];
-            }
-            path.reverse();
-            return Some(path);
-        }
-        if cost > dist[zone as usize] {
-            continue; // stale entry
-        }
-        for &neighbor in adjacency.neighbors_of(zone) {
-            if ZoneEdge::new(zone, neighbor).is_some_and(|edge| excluded_edges.contains(&edge)) {
-                continue;
-            }
-            let Some(n_info) = zone_map.info_for(neighbor) else {
-                continue;
-            };
-            // Edge cost: Manhattan distance between zone centers.
-            let edge_cost = manhattan(
-                zone_map.info_for(zone).map(|i| i.center).unwrap_or((0, 0)),
-                n_info.center,
-            );
-            let new_cost = cost + edge_cost;
-            if new_cost < dist[neighbor as usize] {
-                dist[neighbor as usize] = new_cost;
-                prev[neighbor as usize] = zone;
-                heap.push(ZoneQueueEntry {
-                    cost: new_cost,
-                    sequence: next_sequence,
-                    zone: neighbor,
-                });
-                next_sequence = next_sequence.wrapping_add(1);
-            }
-        }
-    }
-
-    None // No route through zone graph
-}
-
-pub(super) fn exclude_corridor_edges(
-    corridor: &[ZoneId],
-    excluded_edges: &mut BTreeSet<ZoneEdge>,
-) -> bool {
-    let mut inserted_any = false;
-    for pair in corridor.windows(2) {
-        if let Some(edge) = ZoneEdge::new(pair[0], pair[1]) {
-            inserted_any |= excluded_edges.insert(edge);
-        }
-    }
-    inserted_any
-}
-
-/// Manhattan distance between two cell coordinates.
-fn manhattan(a: (u16, u16), b: (u16, u16)) -> i32 {
-    (a.0 as i32 - b.0 as i32).abs() + (a.1 as i32 - b.1 as i32).abs()
-}
-
-#[cfg(test)]
-fn chebyshev(a: (u16, u16), b: (u16, u16)) -> i32 {
-    (a.0 as i32 - b.0 as i32)
-        .abs()
-        .max((a.1 as i32 - b.1 as i32).abs())
-}
-
-#[cfg(test)]
-pub(crate) fn zone_cost_estimate(
-    zg: &ZoneGrid,
-    mz: MovementZone,
-    start: (u16, u16),
-    start_layer: MovementLayer,
-    goal: (u16, u16),
-    goal_layer: MovementLayer,
-) -> i32 {
-    if !zg.can_reach(mz, start, start_layer, goal, goal_layer) {
-        return i32::MAX;
-    }
-
-    let Some(zone_map) = zg.map_for(mz) else {
-        return chebyshev(start, goal);
-    };
-    let start_zone = zone_map.zone_at(start.0, start.1, start_layer);
-    let goal_zone = zone_map.zone_at(goal.0, goal.1, goal_layer);
-    if start_zone == ZONE_INVALID || goal_zone == ZONE_INVALID {
-        return i32::MAX;
-    }
-    if start_zone == goal_zone {
-        return chebyshev(start, goal);
-    }
-
-    let Some(adjacency) = zg.adjacency_for(mz) else {
-        return chebyshev(start, goal);
-    };
-    let empty_exclusions = BTreeSet::new();
-    let Some(corridor) = find_zone_corridor(
-        zone_map,
-        adjacency,
-        start_zone,
-        goal_zone,
-        &empty_exclusions,
-    ) else {
-        return i32::MAX;
-    };
-
-    let Some(start_center) = zone_map.info_for(start_zone).map(|info| info.center) else {
-        return i32::MAX;
-    };
-    let Some(goal_center) = zone_map.info_for(goal_zone).map(|info| info.center) else {
-        return i32::MAX;
-    };
-
-    let mut estimate = chebyshev(start, start_center);
-    for pair in corridor.windows(2) {
-        let Some(from) = zone_map.info_for(pair[0]).map(|info| info.center) else {
-            return i32::MAX;
-        };
-        let Some(to) = zone_map.info_for(pair[1]).map(|info| info.center) else {
-            return i32::MAX;
-        };
-        estimate = estimate.saturating_add(chebyshev(from, to));
-    }
-    estimate.saturating_add(chebyshev(goal_center, goal))
-}
-
-#[cfg(test)]
-pub(crate) fn accepts_blocked_destination_alternate(
-    helper_result: i32,
-    original: (u16, u16),
-    alternate: (u16, u16),
-) -> bool {
-    helper_result != i32::MAX
-        && helper_result <= chebyshev(original, alternate) + BLOCKED_DESTINATION_ALTERNATE_MARGIN
-}
-
-/// Expand a corridor by adding all 1-hop neighbor zones.
-/// This gives A* flexibility to route through cells near corridor boundaries.
-fn expand_corridor(corridor: &[ZoneId], adjacency: &ZoneAdjacency) -> BTreeSet<ZoneId> {
-    let mut allowed: BTreeSet<ZoneId> = corridor.iter().copied().collect();
-    for &zone in corridor {
-        for &neighbor in adjacency.neighbors_of(zone) {
-            allowed.insert(neighbor);
-        }
-    }
-    allowed
 }
 
 #[cfg(test)]

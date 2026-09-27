@@ -1441,6 +1441,11 @@ mod tests {
         let modproc_id = sim.interner.intern("MODPROC");
         let modbarr_id = sim.interner.intern("MODBARR");
         let modfact_id = sim.interner.intern("MODFACT");
+        let americans = sim.interner.intern("Americans");
+        sim.houses.insert(
+            americans,
+            crate::sim::house_state::HouseState::new(americans, 0, None, false, 50_000, 10),
+        );
         spawn_structure(&mut sim, 1, "Americans", "MODCYRD", 10, 10);
 
         let first = decide_next_building(&sim, "Americans", &rules, 1).expect("power build");

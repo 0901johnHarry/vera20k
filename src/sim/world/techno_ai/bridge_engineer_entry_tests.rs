@@ -97,7 +97,7 @@ impl Simulation {
 fn zone_snapshot(sim: &Simulation, name: &str) -> Value {
     let zones = sim.zone_grid.as_ref().unwrap();
     let mut copied = zones.clone();
-    let base = copied.base_topology_mut().unwrap();
+    let base = copied.base_topology_mut();
     let terrain = sim.resolved_terrain.as_ref().unwrap();
     let bridges = sim.bridge_state.as_ref().unwrap();
     let records: Vec<_> = zones
@@ -136,7 +136,8 @@ fn zone_snapshot(sim: &Simulation, name: &str) -> Value {
         "classes": base.movement_classes, "levels": base.levels, "records": records,
         "records_match_bridge_authority": zones.bridge_records() == bridges.endpoint_records(),
         "bridge_authority_records": bridges.endpoint_records(),
-        "rust": {"base_ids":base.zone_ids,"raw_rows":base.raw_zone_ids_by_row,"zone_count":base.zone_count},
+        "rust": {"base_ids":base.zone_ids,"raw_rows":base.raw_zone_ids_by_row,
+            "zone_count":base.raw_zone_ids_by_row[0].len().saturating_sub(1)},
         "cells": cells,
         "dummy": format!("{:?}", terrain.shared_cell_dummy().snapshot()),
     })

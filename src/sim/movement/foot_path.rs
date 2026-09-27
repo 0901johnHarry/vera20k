@@ -198,6 +198,24 @@ pub(crate) enum FootPathOutcome {
 }
 
 impl Simulation {
+    /// Shared Foot+68A sound guard read by Walk75B085 and the Drive/Ship
+    /// failure callers. The constructor clears it; native Load can retain a
+    /// nonzero byte. No gameplay arming writer is established. Original
+    /// 750920 receives Rules ScoldSound, centered pan0x2000, volume1 and0.
+    /// Clearing is caller-owned: Drive4B3AC9/Ship6A3118 can recurse before
+    /// their later clear. Evidence: tools/spatial_oracle/foot_scold_latch.
+    pub(crate) fn play_foot_path_scold(&mut self, id: u64, rules: &RuleSet) {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return;
+        };
+        if actor.navigation.path_runtime.scold_latch_raw() != 0
+            && let Some(sound_id) = rules.general.scold_sound.clone()
+        {
+            self.sound_events
+                .push(crate::sim::world::SimSoundEvent::VocCentered { sound_id });
+        }
+    }
+
     /// Run a suspended Walk no-queue request (Walk75AFC5, continuation
     /// 0x75AFD3); `held` is the owner block sets the pending pass holds.
     /// Drive/Ship requests are made inside their Process_Movement
@@ -469,9 +487,6 @@ impl Simulation {
             }
             Err(MovePathFailure::Search(Search::CompatibilityZoneRejected)) => {
                 Ok(Err(CoreRefusal::VeraOnly("CompatibilityZoneRejected")))
-            }
-            Err(MovePathFailure::Search(Search::CompatibilityCorridorExhausted)) => {
-                Ok(Err(CoreRefusal::VeraOnly("CompatibilityCorridorExhausted")))
             }
             Err(MovePathFailure::BridgeOnlyGoal) => {
                 Ok(Err(CoreRefusal::VeraOnly("BridgeOnlyGoal")))

@@ -397,6 +397,13 @@ pub struct FootPathRuntime {
     pub path_blocked: bool,
     /// Foot+64C, a dword decremented only while nonzero.
     pub retries_left: u32,
+    /// Foot+68A: the pending path-failure sound byte. Ordinary construction
+    /// clears it (0x004D33B4); raw Load (0x004103CD) and the no-init Foot
+    /// constructor (0x004D3540) preserve the exact byte, including 255.
+    /// No ordinary gameplay writer that arms it has been established.
+    /// Evidence: `tools/spatial_oracle/foot_scold_latch.{py,json,md}`.
+    #[serde(default)]
+    scold_latch: u8,
 }
 
 impl Default for FootPathRuntime {
@@ -412,7 +419,25 @@ impl FootPathRuntime {
             blocked_timer: crate::sim::timer::CdTimer::started(frame as i32, 0),
             path_blocked: false,
             retries_left: 10,
+            scold_latch: 0,
         }
+    }
+
+    /// Native Foot checksum 0x004DBCFE reads the byte without normalizing it.
+    pub(crate) const fn scold_latch_raw(&self) -> u8 {
+        self.scold_latch
+    }
+
+    /// Walk 0x0075B085..0x0075B0B0 tests nonzero, then clears unconditionally.
+    /// Callers decide whether that branch requests a sound before clearing.
+    pub(crate) fn clear_scold_latch(&mut self) -> bool {
+        std::mem::replace(&mut self.scold_latch, 0) != 0
+    }
+
+    /// Supply native retained inputs without inventing a gameplay arming edge.
+    #[cfg(test)]
+    pub(crate) fn set_scold_latch_for_test(&mut self, raw: u8) {
+        self.scold_latch = raw;
     }
 
     /// Original Foot timers retain the binary frame; repeated Process calls

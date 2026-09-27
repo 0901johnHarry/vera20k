@@ -462,8 +462,7 @@ fn bridge_hierarchy_native_world_endpoint_lookup_retains_boundary_zone() {
     let path = PathGrid::from_resolved_terrain(&terrain);
     let mut zones = super::super::zone_map::ZoneGrid::build_with_native_bridge_geometry(
         &path,
-        &std::collections::BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         &records,
         width,
         width,
@@ -546,7 +545,7 @@ fn live_world_navigation_and_sentinel_repair_match_native_hierarchy_graphs() {
             continue;
         }
         if name.starts_with("sentinel") {
-            zones.base_topology_mut().unwrap().movement_classes[10 * 16 + 10] = zone_class::OUTSIDE;
+            zones.base_topology_mut().movement_classes[10 * 16 + 10] = zone_class::OUTSIDE;
             // This stale projection must not preempt the actual mode-one query.
             terrain.cell_mut(10, 10).unwrap().outside_playfield = true;
         }

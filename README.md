@@ -54,6 +54,14 @@ cp config.toml.example config.toml   # then set ra2_dir to your game folder
 cargo run --release --bin vera20k    # always --release: debug builds are too slow to play
 ```
 
+The retail menu is the only match-setup interface. If the game files or menu
+resources cannot load, startup shows the failure and the searched asset directory.
+`config.toml` is read from the launch directory first, then beside the executable;
+relative `ra2_dir` paths are relative to that config file. Without a config, assets
+are searched beside the executable. For a macOS `.app`, put the config beside the
+binary in `Contents/MacOS/` so Finder launches work independently of the working
+directory. Keep this machine-specific config out of Git.
+
 `cargo test -p vera20k --lib` runs the tests, no game needed. More setup details are in
 [CONTRIBUTING.md](CONTRIBUTING.md#set-up).
 

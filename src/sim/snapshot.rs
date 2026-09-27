@@ -633,7 +633,12 @@ use crate::sim::world::Simulation;
 // cell-query order; low/high flight reads live physical height. Layout is
 // unchanged, but an old save can acquire different targets and evolve its
 // shared Dummy differently on the next scan, so reject mixed continuations.
-const SNAPSHOT_VERSION: u32 = 219;
+// 219 -> 220: Infantry uses its native Foot SpeedType default, live AStar/Walk
+// cell admission and ordered Walk responses. Engineer hut entry and repaired
+// structural side-cell consumers consequently change saved continuations.
+// Foot+68A now retains its exact path-failure sound byte through a snapshot.
+// Existing valid SpeedType variant tags and zero-latch hash streams are preserved.
+const SNAPSHOT_VERSION: u32 = 220;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3139,7 +3144,7 @@ mod tests {
         for &mz in MovementZone::all_ground() {
             let map_a = a.map_for(mz).expect("zone map exists for movement zone");
             let map_b = b.map_for(mz).expect("zone map exists for movement zone");
-            assert_eq!(map_a.zone_count, map_b.zone_count);
+            assert_eq!(map_a.zone_count(), map_b.zone_count());
             for y in 0..a.height {
                 for x in 0..a.width {
                     assert_eq!(
@@ -3153,19 +3158,6 @@ mod tests {
                         "bridge zone mismatch for {mz:?} at ({x},{y})"
                     );
                 }
-            }
-            let adj_a = a
-                .adjacency_for(mz)
-                .expect("zone adjacency exists for movement zone");
-            let adj_b = b
-                .adjacency_for(mz)
-                .expect("zone adjacency exists for movement zone");
-            for zone in 0..=map_a.zone_count {
-                assert_eq!(
-                    adj_a.neighbors_of(zone),
-                    adj_b.neighbors_of(zone),
-                    "adjacency mismatch for {mz:?} zone {zone}"
-                );
             }
         }
     }
@@ -3590,7 +3582,8 @@ mod tests {
         // 216 -> 217: native constructor IDs and signed guided control state.
         // 217 -> 218: a passenger's `+0x82`; no open-transport weapon override.
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
-        assert_eq!(super::SNAPSHOT_VERSION, 219);
+        // 219 -> 220: live Infantry movement/repair and structural side consumers.
+        assert_eq!(super::SNAPSHOT_VERSION, 220);
     }
 
     #[test]

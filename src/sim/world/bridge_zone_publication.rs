@@ -33,9 +33,6 @@ impl LivePublication<'_> {
             .zone_grid
             .as_mut()
             .ok_or("repair has no live zone owner")?;
-        if zones.base_topology_mut().is_none() {
-            return Err("repair connectivity has no retained native node attributes".into());
-        }
         zones.rebuild_base_connectivity_preserving_hierarchy(
             path,
             terrain,
@@ -95,9 +92,7 @@ impl ZoneBatchHost for LivePublication<'_> {
             .zone_grid
             .as_mut()
             .ok_or("zone batch has no live zone owner")?;
-        let (base, hierarchy) = zones
-            .base_and_hierarchy_mut()
-            .ok_or("zone batch has no retained hierarchy")?;
+        let (base, hierarchy) = zones.base_and_hierarchy_mut();
         hierarchy.levels_mut()[0]
             .set_native_zone_at(coord, base.native_bridge_source_size, 0)
             .ok_or_else(|| "zone batch coordinate has no native zone storage".into())
@@ -138,8 +133,8 @@ impl ZoneBatchHost for LivePublication<'_> {
             sim.playfield_bounds,
             terrain,
             bridges.endpoint_records(),
-        )
-        .ok_or_else(|| "zone batch has no retained hierarchy".into())
+        );
+        Ok(())
     }
 }
 
@@ -216,8 +211,7 @@ mod tests {
         });
         sim.zone_grid = Some(ZoneGrid::build_with_native_bridge_geometry(
             &path,
-            &sim.terrain_costs,
-            sim.resolved_terrain.as_ref(),
+            sim.resolved_terrain.as_ref().unwrap(),
             bridges.endpoint_records(),
             16,
             16,

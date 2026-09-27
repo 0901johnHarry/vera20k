@@ -239,6 +239,12 @@ pub(super) fn dispatch_sim_sound_events(
                     source: Some(SoundSource::new((sx, sy), (rx, ry))),
                 }
             }
+            SimSoundEvent::VocCentered { sound_id } => GameSoundEvent::VocAt {
+                sound_id,
+                // The existing Voc path resolves registered sounds only;
+                // its absent source selects centre pan and full volume.
+                source: None,
+            },
             SimSoundEvent::VocAt {
                 sound_id,
                 audible_to,
@@ -1318,6 +1324,44 @@ mod tests {
         assert!(
             matches!(&events[0], GameSoundEvent::WeaponFired { sound_id, .. } if sound_id == "Shot")
         );
+    }
+
+    #[test]
+    fn centered_voc_preserves_order_without_listener_or_random_gates() {
+        // Walk75B085..75B0B0 calls 750920 with centre pan, volume1 and no handle.
+        // The existing registered Voc consumer maps source=None to those
+        // gains without a positional shroud/distance test.
+        let rules = dispatch_rules();
+        let sim = Simulation::new();
+        for local_owner in [None, Some("DifferentOwner")] {
+            let mut random = ScriptedRandom::default();
+            let mut output = SoundEventQueue::new();
+            dispatch_sim_sound_events(
+                [
+                    SimSoundEvent::VocCentered {
+                        sound_id: "MenuScold".into(),
+                    },
+                    SimSoundEvent::VocCentered {
+                        sound_id: "OtherRulesSound".into(),
+                    },
+                ],
+                &sim,
+                &rules,
+                local_owner,
+                Some(&mut random),
+                &mut |_| panic!("centred Voc has no radar admission"),
+                &mut output,
+            );
+            let events = output.drain();
+            assert!(matches!(
+                events.as_slice(),
+                [
+                    GameSoundEvent::VocAt { sound_id: first, source: None },
+                    GameSoundEvent::VocAt { sound_id: second, source: None },
+                ] if first == "MenuScold" && second == "OtherRulesSound"
+            ));
+            assert!(random.calls.is_empty());
+        }
     }
 
     #[test]

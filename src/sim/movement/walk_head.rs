@@ -130,6 +130,7 @@ pub(super) fn finish_fresh_head(
         entity.facing_target = None;
         entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
     }
+    entity.navigation.path_runtime.clear_scold_latch(); //75BCB2.
     true
 }
 

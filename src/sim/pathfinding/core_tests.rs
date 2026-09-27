@@ -2595,15 +2595,17 @@ fn astar_hierarchy_marker_follows_the_marked_straight_path() {
     let marked_zones = BTreeSet::from([1, 2, 3, 4]);
     let blocker_counts = BlockerNeighborCounts::new(4, 1);
 
-    let path = find_path_with_costs_hierarchy_marker(
+    let path = find_path_with_costs_marker(
         &grid,
         (0, 0),
         (3, 0),
         None,
         None,
-        &level0_zones,
-        &marked_zones,
-        &blocker_counts,
+        Some(HierarchyGate {
+            level0_zones: &level0_zones,
+            marked_level0: &marked_zones,
+            blocker_neighbor_counts: &blocker_counts,
+        }),
         Some(MovementZone::Normal),
         None,
         None,
