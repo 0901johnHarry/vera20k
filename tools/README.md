@@ -13,6 +13,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Run retail corpus checks or export a decoder-baseline candidate | [retail corpus](retail_corpus.md) |
 | Inspect/extract/render assets | [asset browser](asset_browser/README.md), `asset` binary |
 | Reproduce FireAt-tail launch goldens | [projectile fixture family](projectile_oracle/README.md) |
+| Read/disassemble native VAs; scan callers, fields and bytes | [native inspection](native_inspect.md), `python -m tools.native_inspect` |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |

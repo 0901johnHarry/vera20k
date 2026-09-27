@@ -1,5 +1,9 @@
 # Native comparison workflow
 
+For original byte reads, disassembly and whole-code scans, use the indexed
+[native inspection tool](native_inspect.md). It shares this runner's executable
+identity and PE owner; static inspection is separate from checked execution.
+
 Native comparison guidance; adapt as useful and distinguish findings from hypotheses.
 
 Use original `gamemd.exe` instructions to produce reference outputs, then compare
@@ -10,8 +14,10 @@ represents the game's active path.
 
 ### Capstone
 
-Python `capstone` is also installed in this development environment. Use it when
-helpful for native binary analysis; consult its documentation as needed.
+Static inspection uses Capstone **5.0.7**, pinned in `tools/requirements-test.txt`.
+Install those dependencies for the [shared inspection CLI](native_inspect.md) and
+its portable tests. Mechanism-specific runtime-memory consumers retain their own
+interpretation; a static file scan does not observe initialized memory.
 
 ## Run an existing comparison
 
