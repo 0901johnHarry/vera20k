@@ -122,15 +122,16 @@ class TitleDifferentialTests(unittest.TestCase):
         self.assertEqual(arguments.command_name, "title-differential")
 
     @unittest.skipUnless(
-        SEALED_GUARD.is_file()
-        and ORACLE_RUNS.is_dir()
-        and CURRENT_CAPTURE.is_dir()
-        and os.name == "nt",
-        "sealed local title evidence is unavailable",
+        os.environ.get("VERA20K_TEST_RETAIL") == "1",
+        "optional sealed Windows title evidence; run tools.run_tests --retail",
     )
     def test_current_sealed_evidence_is_red_but_predictive_transform_is_exact(
         self,
     ) -> None:
+        self.assertEqual(os.name, "nt", "sealed title evidence requires its Windows profile")
+        self.assertTrue(SEALED_GUARD.is_file(), f"missing sealed guard: {SEALED_GUARD}")
+        self.assertTrue(ORACLE_RUNS.is_dir(), f"missing native runs: {ORACLE_RUNS}")
+        self.assertTrue(CURRENT_CAPTURE.is_dir(), f"missing current capture: {CURRENT_CAPTURE}")
         report = build_title_differential_report(
             CURRENT_CAPTURE, SEALED_GUARD, ORACLE_RUNS
         )

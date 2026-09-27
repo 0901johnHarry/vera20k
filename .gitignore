@@ -15,6 +15,7 @@ Thumbs.db
 *.png
 *.log
 *.txt
+!tools/requirements-test.txt
 *.tmp
 *.map
 *_todo.md

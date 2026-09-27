@@ -30,7 +30,7 @@ class CoreTests(unittest.TestCase):
 
     def test_regular_snapshot_detects_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary).absolute() / "input.bin"
+            path = Path(temporary).resolve() / "input.bin"
             path.write_bytes(b"first")
             before = require_regular_file(path, "input")
             path.write_bytes(b"second")
@@ -39,7 +39,7 @@ class CoreTests(unittest.TestCase):
 
     def test_exclusive_outputs_fsync_and_never_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary).absolute()
+            directory = Path(temporary).resolve()
             binary = directory / "value.bin"
             report = directory / "value.json"
             write_bytes_exclusive(binary, b"immutable")
@@ -53,7 +53,7 @@ class CoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "absolute"):
             reject_reparse_ancestors(Path("relative"), "test")
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary).absolute()
+            directory = Path(temporary).resolve()
             target = directory / "target"
             target.mkdir()
             link = directory / "link"

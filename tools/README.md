@@ -1,12 +1,13 @@
 # Repository tools
 
 Start here before writing a session-local helper. Run commands from the checkout
-root with Python 3.11 or newer. Individual native tools also require Unicorn;
+root with Python 3.12 or newer (the build runner alone supports 3.11). Individual native tools also require Unicorn;
 see [native setup](native_oracle.md). This index currently covers the shared entry
 points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 
 | Job | Owner / entry point |
 | --- | --- |
+| Run all Python tool and source-skill tests | `python -m tools.run_tests` (below) |
 | Wait for builds; test, check, lint or build the current checkout; preserve A/B binaries | `python -m tools.cargo_run` (below) |
 | Inspect/extract/render assets | [asset browser](asset_browser/README.md), `asset` binary |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
@@ -69,3 +70,40 @@ release/debug executables from the per-checkout record in
 successful builds, and discovery verifies executable bytes. Cross-target and
 custom-profile builds still support explicit paths/labels; they are not auto-run
 by host tooling. Conventional target paths are not a fallback.
+
+## Python regression suite
+
+```sh
+python -m pip install -r tools/requirements-test.txt
+python -m tools.run_tests --list
+python -m tools.run_tests
+```
+
+Requires Python 3.12+ (including Windows junction detection). The runner finds
+`test_*.py` recursively under `tools/` and authoritative `.agents/skills/`, including
+folders without `__init__.py`; it excludes generated `.claude` mirrors and the
+machine-local `ghidra-up` skill. It prints every module and its test count, fails
+on import errors or empty test modules, and propagates test failures. Focus a
+module with ordinary `python -m unittest <module> -v` when investigating a failure.
+The same complete synthetic suite and skill-mirror check run on Linux, macOS and
+Windows for every PR and push to main. No Cargo, game executable, GPU or retail
+install is needed; Unicorn exercises synthetic x86 in the runner failure tests.
+This protects native execution contracts; it does not reproduce retail goldens.
+
+Two existing checks require private sealed evidence and are explicitly skipped
+by default, even when a local `config.toml` happens to exist:
+
+- Tactical environment preflight: the pinned archive and font from
+  `tactical_certification/profiles/soviet-radar-online-v2.json`, a project `config.toml`,
+  and that profile's Windows environment. Set `VERA20K_TEST_PROJECT_DIR` to the
+  configured checkout (defaults to this checkout).
+- Historical title differential: Windows plus `VERA20K_SHELL_GUARD`,
+  `VERA20K_ORACLE_RUNS` and `VERA20K_SHELL_CAPTURE`, pointing to the original sealed
+  title comparison evidence described in the shell-certification tests. Its
+  expected mismatch counts describe that specific historical capture.
+
+`python -m tools.run_tests --retail` opts into **both** checks; missing inputs fail
+instead of silently passing or skipping. For just one, set `VERA20K_TEST_RETAIL=1`
+and run its fully qualified unittest name. Platform-unavailable symlink creation
+may also skip its rejection test with an explicit OS reason. The generated matrix
+check now creates its own artifact, so it runs without a session-local target file.

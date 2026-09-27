@@ -1,0 +1,3 @@
+# Python >= 3.12. Native-runner failure tests execute synthetic x86 bytes only.
+# Keep aligned with tools/native_oracle.md and saved native-run provenance.
+unicorn==2.1.4
