@@ -10,9 +10,29 @@ palette whose channels each enumerate every byte value.
 Install Python 3 and `unicorn==2.1.4`, then, from the repository root:
 
 ```powershell
-python tools/palette_oracle/oracle.py --exe 'C:/path/to/gamemd.exe' --output .local/palette-oracle
-python tools/palette_oracle/check.py --generated .local/palette-oracle
+python -m tools.palette_oracle.oracle --check --exe 'C:/path/to/gamemd.exe'
+python -O -m tools.palette_oracle.oracle --check
+python -m tools.palette_oracle.oracle --write --output .local/palette-oracle
+python -m tools.palette_oracle.check --generated .local/palette-oracle
 ```
+
+Set `VERA20K_GAMEMD_EXE` (or `RA2_DIR`) for commands without `--exe`.
+Imports and help are inert. Default/`--check` executes the original image and
+compares all 14 Rust fixture hashes without writing. Explicit `--write --output`
+exports the full checked candidate and `checked-run.json` to a **new** directory;
+existing directories are rejected before execution. Generation and comparisons
+finish before publication; missing parent directories are created at export time.
+Source and historical provenance identities are captured before replay and must
+remain unchanged through the publication gate. The verifier alone checks hashes, not native execution.
+Direct-script entry points remain supported with the same flags.
+
+The shared `tools.native_oracle` owns binary identity, PE mapping and completion
+checks for every native region/function. Early stops, instruction/time exhaustion
+and faults abort; comparison gates remain active under `python -O`. Live and cached
+x87 state retain their original chronology. All 14 historical fixture bytes,
+including CRLF in `ground-level.json`, remain unchanged. `checked-run.json` records
+fresh checked execution and source identities separately from the immutable
+historical `fixtures/provenance.json`; it does not refresh its runtime observations.
 
 `oracle.py` validates 2,001 x87 base scales, complete scalar/CMOV/MMX
 LightConvert tables, ordinary Convert tables, 832 SHP/VXL scanline samples and
@@ -39,9 +59,10 @@ allocation; its binary record layout is recorded in the provenance manifest.
 Rust regression and real production shader readback checks:
 
 ```powershell
-cargo test -p vera20k --lib render::palette_light::
-cargo test -p vera20k --lib native_palette_tables_match_all_ordinary_shader_pixels -- --ignored --nocapture
-cargo test -p vera20k --lib native_shp_loader_atlas_palette_indices_reach_production_pixels -- --ignored --nocapture
+python -m tools.cargo_run -- test -p vera20k --lib render::palette_light::
+python -m tools.cargo_run -- test -p vera20k --lib map::lighting::tests::native_
+python -m tools.cargo_run -- test -p vera20k --lib native_palette_tables_match_all_ordinary_shader_pixels -- --ignored --nocapture
+python -m tools.cargo_run -- test -p vera20k --lib native_shp_loader_atlas_palette_indices_reach_production_pixels -- --ignored --nocapture
 ```
 
 Follow the repository's compiler-slot and machine-local asset requirements
@@ -55,3 +76,7 @@ These isolated fixtures do not certify a retail scene,
 non-clear A-buffer composition, alpha blending, or every palette producer.
 
 See the [native evidence and boundaries](../../docs/research/LIGHTCONVERT_ROW_RGB565_ORACLE_2026_09_09.md).
+
+Portable lifecycle and failure gates run in `python -m tools.run_tests`; native replay
+requires the enrolled executable, and the ignored GPU checks require a real adapter.
+See [recorded migration validation](checked.validation.json).

@@ -1,5 +1,11 @@
 # LightConvert row selection and active MMX RGB565 palette conversion
 
+> Maintenance note: the current [palette oracle](../../tools/palette_oracle/README.md)
+> now uses the shared verified PE loader and checked execution runner. Native replay
+> is read-only by default; candidate export requires `--write --output NEW_DIRECTORY`.
+> The older commands and private-loader description below document the original
+> investigation. Historical fixture/provenance bytes and runtime claims are retained.
+
 Read-only native investigation, 2026-09-09. This resolves the row-selection gap
 recorded in `src/render/palette_light.rs`, and finds two additional differences:
 normal YR x87 arithmetic produces base scale **65535**, not 65536, for input 1000;
