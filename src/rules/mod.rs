@@ -45,7 +45,8 @@
 //! ### Readers: `CCINIClass` (absent section, key or value -> the default argument)
 //! - ReadInt 0x005276D0: `$`-prefix or `h`-suffix hex (failure: default), else `atoi`.
 //! - ReadBool 0x005295F0: first char `1`/`T`/`Y` true, `0`/`F`/`N` false, else default.
-//! - ReadDouble 0x005283D0: `%f` into f32, widened; any `%` -> x0.01; junk -> stale bits.
+//! - ReadDouble 0x005283D0: `%f` into f32, widened; any `%` -> x0.01 chopped at 53 bits
+//!   (the game's control word 0x0E7F); junk -> stale bits.
 //! - ReadString 0x00528A10: byte cut at the call site's capacity, then trim.
 //! - ReadRange 0x00474620: absent or -1.0 -> default; else x256.0 and chop (disassembly
 //!   only: the decompile hides the FMUL).

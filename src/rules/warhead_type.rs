@@ -160,10 +160,6 @@ pub struct WarheadType {
     /// Native `double` damage multiplier read by InfantryClass before it enters
     /// the shared Foot/Techno/Object receiver. `50%` is stored as `0.5`.
     pub prone_damage_f64: f64,
-    /// Legacy lossy view retained for callers/tests that have not moved to the
-    /// concrete Infantry receiver. The authoritative receiver uses the double
-    /// above.
-    pub prone_damage_basis_points: u32,
     /// Instantly destroys any wall. `WarheadTypeClass+0x145`, written by
     /// `WarheadTypeClass::ReadINI` @ `0x0075d522` from the key string at
     /// `0x00847e1c`. (`+0x151` is `CLDisableRed=`, not this.)
@@ -405,7 +401,6 @@ impl WarheadType {
             cl_disable_blue: section.get_bool("CLDisableBlue").unwrap_or(false),
             combat_light_size_f64: section.read_double("CombatLightSize", 0.0),
             prone_damage_f64: section.read_double("ProneDamage", 1.0),
-            prone_damage_basis_points: parse_prone_damage_basis_points(section),
             wall_absolute_destroyer: section.get_bool("WallAbsoluteDestroyer").unwrap_or(false),
             temporal: section.get_bool("Temporal").unwrap_or(false),
             is_locomotor: section.get_bool("IsLocomotor").unwrap_or(false),
@@ -493,29 +488,6 @@ fn parse_verses_f64(raw: &str) -> [f64; 11] {
         };
     }
     out
-}
-
-fn parse_prone_damage_basis_points(section: &IniSection) -> u32 {
-    let Some(raw) = section.get("ProneDamage") else {
-        return 10_000;
-    };
-
-    let value = raw.trim();
-    let basis_points = if let Some(stripped) = value.strip_suffix('%') {
-        stripped.trim().parse::<f64>().ok().map(|v| v * 100.0)
-    } else {
-        value.parse::<f64>().ok().map(|v| v * 10_000.0)
-    };
-
-    let Some(basis_points) = basis_points else {
-        return 10_000;
-    };
-
-    if !basis_points.is_finite() || basis_points < 0.0 {
-        return 10_000;
-    }
-
-    basis_points.round().clamp(0.0, u32::MAX as f64) as u32
 }
 
 #[cfg(test)]
@@ -618,7 +590,6 @@ mod tests {
         assert_eq!(wh.delay_kill_frames, 5);
         assert_eq!(wh.delay_kill_at_max_f64, 1.0);
         assert_eq!(wh.prone_damage_f64, 1.0);
-        assert_eq!(wh.prone_damage_basis_points, 10_000);
         assert!(!wh.wall);
     }
 
@@ -676,9 +647,6 @@ mod tests {
         assert_eq!(ap.prone_damage_f64, 0.5);
         assert_eq!(gas.prone_damage_f64, 3.0);
         assert_eq!(raw.prone_damage_f64, 1.25);
-        assert_eq!(ap.prone_damage_basis_points, 5_000);
-        assert_eq!(gas.prone_damage_basis_points, 30_000);
-        assert_eq!(raw.prone_damage_basis_points, 12_500);
     }
 
     #[test]
@@ -705,21 +673,6 @@ mod tests {
         assert!(wh.rocker, "V3WH should have Rocker=yes");
         // V3WH does not set DirectRocker — default no.
         assert!(!wh.direct_rocker);
-    }
-
-    #[test]
-    fn test_prone_damage_invalid_values_fall_back_to_default() {
-        let ini: IniFile = IniFile::from_str(
-            "[Neg]\nProneDamage=-1\n[Bad]\nProneDamage=wat\n[Huge]\nProneDamage=inf\n",
-        );
-
-        let neg = WarheadType::from_ini_section("Neg", ini.section("Neg").unwrap());
-        let bad = WarheadType::from_ini_section("Bad", ini.section("Bad").unwrap());
-        let huge = WarheadType::from_ini_section("Huge", ini.section("Huge").unwrap());
-
-        assert_eq!(neg.prone_damage_basis_points, 10_000);
-        assert_eq!(bad.prone_damage_basis_points, 10_000);
-        assert_eq!(huge.prone_damage_basis_points, 10_000);
     }
 
     #[test]

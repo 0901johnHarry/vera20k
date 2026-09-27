@@ -57583,6 +57583,93 @@
         "prism_type": null
       },
       "input": {
+        "name": "modifier_35pct",
+        "passes": [
+          {
+            "PrismSupportModifier": "35%"
+          }
+        ]
+      },
+      "passes": [
+        {
+          "delay": 100,
+          "duration": 15,
+          "general": true,
+          "height": 300,
+          "max": 8,
+          "modifier": 34,
+          "prism_type": null
+        }
+      ]
+    },
+    {
+      "defaults": {
+        "delay": 100,
+        "duration": 15,
+        "height": 300,
+        "max": 8,
+        "modifier": 100,
+        "prism_type": null
+      },
+      "input": {
+        "name": "modifier_14pct",
+        "passes": [
+          {
+            "PrismSupportModifier": "14%"
+          }
+        ]
+      },
+      "passes": [
+        {
+          "delay": 100,
+          "duration": 15,
+          "general": true,
+          "height": 300,
+          "max": 8,
+          "modifier": 13,
+          "prism_type": null
+        }
+      ]
+    },
+    {
+      "defaults": {
+        "delay": 100,
+        "duration": 15,
+        "height": 300,
+        "max": 8,
+        "modifier": 100,
+        "prism_type": null
+      },
+      "input": {
+        "name": "modifier_57pct",
+        "passes": [
+          {
+            "PrismSupportModifier": "57%"
+          }
+        ]
+      },
+      "passes": [
+        {
+          "delay": 100,
+          "duration": 15,
+          "general": true,
+          "height": 300,
+          "max": 8,
+          "modifier": 56,
+          "prism_type": null
+        }
+      ]
+    },
+    {
+      "defaults": {
+        "delay": 100,
+        "duration": 15,
+        "height": 300,
+        "max": 8,
+        "modifier": 100,
+        "prism_type": null
+      },
+      "input": {
         "name": "general_without_keys_current_100",
         "passes": [
           {}

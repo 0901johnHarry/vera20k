@@ -2,14 +2,16 @@
 //!
 //! Sits on top of the raw `IniSection` store (the "INIClass" analog). Reproduces
 //! the gamemd parse CONTRACT bit-for-bit on the resolved value: $xx/xxh hex,
-//! C-atoi leniency, first-char bool, '%'-anywhere ×0.01 double, strtrim ≤0x20.
+//! C-atoi leniency, first-char bool, '%'-anywhere ×0.01 double (chopped at 53
+//! bits, as the game's x87 control word leaves it), strtrim ≤0x20.
 //!
 //! INVARIANT: the raw loader omits empty keys and empty values. A stored
 //! nonempty key returns its parsed value (malformed numeric text may still
 //! parse as zero); `default` is returned when a key is absent or omitted.
 //!
 //! ## Dependency rules
-//! - rules/ only: depends on `crate::rules::ini_parser`. No sim/render/ui/audio/net.
+//! - rules/ only: depends on `crate::rules::ini_parser` and `crate::util::native_x87`.
+//!   No sim/render/ui/audio/net.
 //! - Returns un-truncated f64 from `read_double`; the single f64->SimFixed
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
@@ -49,8 +51,9 @@ impl IniSection {
         self.fold_rules_values(key, default, parse_read_bool)
     }
 
-    /// ReadDouble (P7): sscanf "%f" (leading float, single-precision) widened to
-    /// f64, then ×0.01 iff the value string contains '%' ANYWHERE. Returns the
+    /// ReadDouble (P7, `0x005283D0`): sscanf "%f" (leading float,
+    /// single-precision) widened to f64, then ×0.01 chopped at 53 bits iff the
+    /// value string contains '%' ANYWHERE ([`parse_read_double`]). Returns the
     /// gamemd double UN-truncated; the consumer truncates toward zero at ITS
     /// boundary (never `.round()` / never truncate here). Default ONLY on absent.
     /// Present junk is absent from stock retail data; native exposes stale
@@ -391,13 +394,23 @@ fn parse_read_bool(default: bool, raw: &str) -> bool {
 }
 
 pub(crate) fn parse_read_double(raw: &str) -> f64 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+    // ReadDouble's percent scale `[0x007E3808]`, binary64 0.01.
+    const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
     let value = strtrim_ascii(raw);
     let widened = f64::from(parse_leading_f32(value));
-    if value.as_bytes().contains(&b'%') {
-        widened * 0.01_f64
-    } else {
-        widened
+    if !value.as_bytes().contains(&b'%') {
+        return widened;
     }
+    // `fld qword; fmul qword [0x007E3808]; fstp qword` (`0x0052857A..0x00528584`)
+    // under the game's control word 0x0E7F, which Math__ftol (`0x007C5F00`)
+    // installs and never restores: the product is chopped at 53 bits, one ulp
+    // below the nearest double for values such as `70%` or `90%`.
+    let scaled = X87::mul(
+        X87::load_f64(NativeF64Bits::from_bits(widened.to_bits())),
+        X87::load_f64(PERCENT_SCALE),
+    );
+    f64::from_bits(X87::store_f64_masked_chop(scaled).bits())
 }
 
 /// Byte-wise `strncpy` truncation. A cut that would land inside a multi-byte

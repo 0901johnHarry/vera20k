@@ -1329,16 +1329,8 @@ impl Default for PrismSupportRules {
 impl PrismSupportRules {
     /// One ReadGeneral pass over a `[General]` section. The modifier is
     /// `fmul qword 100.0` (`0x0067116E`) on the value ReadDouble returns, then
-    /// ftol (`0x007C5F00`), under the game's masked chop control word.
-    ///
-    /// RESIDUAL: ReadDouble's own percent product (`fmul qword 0.01`,
-    /// `0x0052857E`) is chopped under that control word too, while the shared
-    /// reader ([`crate::rules::ini_value`]) rounds it to nearest. Trigger: a
-    /// percent value whose product rounds differently (a modded `35%`; retail
-    /// `150%` is exact). Effect: the modifier reads one higher (`35%`: 35
-    /// against 34 in an unsaved native probe on `building_prism.py`'s group E
-    /// fixture). Later owner: the shared ReadDouble reader, whose other
-    /// percent keys it moves too.
+    /// ftol (`0x007C5F00`), under the game's masked chop control word, which
+    /// also chops ReadDouble's own percent product: a modded `35%` reads 34.
     pub(crate) fn read_pass(self, general: &crate::rules::ini_parser::IniSection) -> Self {
         use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
         let percent = general.read_double("PrismSupportModifier", f64::from(self.modifier));
