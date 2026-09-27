@@ -213,7 +213,7 @@ Before fixing a bug whose expected behavior is established, first make a focused
 - Docs/skills: validate content, links/examples and tooling; no Cargo suite.
 - Every `cargo test` uses `--lib`.
 
-Before Cargo: `Get-Process cargo,rustc -ErrorAction SilentlyContinue`. Wait for other
+Before Cargo, check for running `cargo` and `rustc` processes. Wait for other
 owners; never compete or kill a compile. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
@@ -241,6 +241,11 @@ APIs, hot loops, error handling or tests; this contract wins on conflict.
 Resolve `<main-checkout>` with `git worktree list`; its `ini/`, config and `LOCAL.md`
 are machine-local. Use `asset`/`asset-browser`; a successful parse or plausible
 render is not correctness proof.
+
+Tools follow the same one-owner rule as code. Before writing a helper, look for an
+existing tool in `tools/` and `src/bin/`, and extend it instead of copying it. Put
+anything another session would need in the repo, not a scratchpad; one-off
+investigation scripts can stay in scratch.
 
 Check compatibility before dependency changes; document non-obvious decisions near
 their owner. Edit skills in `.agents/skills/`; generate Claude copies with
