@@ -511,7 +511,8 @@ pub enum Command {
         producer_ids: Vec<u64>,
     },
     // The production commands act on the envelope's house, as a native
-    // production event acts on its header's house id; none names another.
+    // production event acts on its header's house id (`EventClass::Execute
+    // 0x004C6CB0` reads it at `0x004C6CC4`); none names another.
     /// Enqueue a production item.
     QueueProduction {
         type_id: InternedId,

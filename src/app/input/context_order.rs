@@ -532,14 +532,12 @@ pub(crate) fn try_queue_context_order_at_screen_point(
         let mut selected_miner_ids: Vec<u64> = Vec::new();
         let mut structure_selected = false;
         let mut mobile_count: usize = 0;
-        let mut _structure_count: usize = 0;
 
         for &sid in &selected_ids {
             let Some(entity) = sim.entities().get(sid) else {
                 continue;
             };
             if entity.category == EntityCategory::Structure {
-                _structure_count += 1;
                 structure_selected = true;
             } else {
                 mobile_count += 1;
@@ -754,10 +752,14 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             {
                 // Set rally point for the structures.
                 {
-                    // The click is the local player's event: only their own
-                    // selected factories take the rally (another house's
-                    // selected building gives no order).
-                    let producer_ids = selected_rally_producer_ids(sim, &selected_ids, owner_id);
+                    // `SetRallyPoint 0x00443860` sends the rally event as the
+                    // building's owner; the click names only the local
+                    // player's buildings that take a rally, so that owner is
+                    // the local player. A building without a rally point gets
+                    // `ACTION_NONE` on a cell (`0x0044762A`, `0x0044774F`):
+                    // with no such building the click orders nothing here.
+                    let producer_ids =
+                        selected_rally_producer_ids(sim, &resources.rules, &selected_ids, owner_id);
                     // `BuildingClass::SetRallyPoint 0x00443A2B..0x00443A69`,
                     // called per selected factory with announce = 1 by the
                     // map-click handlers `FUN_00443410` / `FUN_004436F0`:
@@ -777,15 +779,17 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                 )
                         })
                     });
-                    queued.push(CommandEnvelope::new(
-                        owner_id,
-                        execute_tick,
-                        Command::SetRally {
-                            rx: target_rx,
-                            ry: target_ry,
-                            producer_ids,
-                        },
-                    ));
+                    if !producer_ids.is_empty() {
+                        queued.push(CommandEnvelope::new(
+                            owner_id,
+                            execute_tick,
+                            Command::SetRally {
+                                rx: target_rx,
+                                ry: target_ry,
+                                producer_ids,
+                            },
+                        ));
+                    }
                 }
                 // Also issue Move commands for any mobile units in the
                 // selection — RA2 moves units AND sets rally when both
@@ -1528,17 +1532,15 @@ fn ivan_cannot_bomb(
 
 fn selected_rally_producer_ids(
     sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
     selected_ids: &[u64],
     owner: InternedId,
 ) -> Vec<u64> {
+    let owner = sim.interner.resolve(owner);
     let mut producer_ids: Vec<u64> = selected_ids
         .iter()
         .copied()
-        .filter(|stable_id| {
-            sim.entities().get(*stable_id).is_some_and(|entity| {
-                entity.category == EntityCategory::Structure && entity.owner() == owner
-            })
-        })
+        .filter(|&stable_id| sim.takes_rally_point(stable_id, owner, rules))
         .collect();
     producer_ids.sort_unstable();
     producer_ids.dedup();
@@ -1552,44 +1554,46 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::world::Simulation;
 
+    /// The rally click names the local player's selected buildings that take
+    /// a rally: not their power plant, not another house's factory, not units.
     #[test]
-    fn right_click_structure_selection_sends_rally_producer_ids() {
+    fn rally_click_names_only_the_players_rally_buildings() {
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[BuildingTypes]\n0=GAWEAP\n1=GAPOWR\n[VehicleTypes]\n0=MTNK\n\
+                 [GAWEAP]\nFactory=UnitType\n[GAPOWR]\nPower=100\n[MTNK]\nStrength=300\n",
+            ))
+            .unwrap();
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
+        let other = sim.interner.intern("Russians");
         let factory_type = sim.interner.intern("GAWEAP");
+        let power_type = sim.interner.intern("GAPOWR");
         let tank_type = sim.interner.intern("MTNK");
-        sim.entities_mut()
-            .insert(GameEntity::new_at_frame_zero_for_test(
-                1,
-                10,
-                10,
-                0,
-                0,
-                owner,
-                Health { current: 1000 },
-                factory_type,
-                EntityCategory::Structure,
-                0,
-                5,
-                false,
-            ));
-        sim.entities_mut()
-            .insert(GameEntity::new_at_frame_zero_for_test(
-                2,
-                11,
-                10,
-                0,
-                0,
-                owner,
-                Health { current: 300 },
-                tank_type,
-                EntityCategory::Unit,
-                0,
-                5,
-                true,
-            ));
+        for (id, rx, house, kind, category) in [
+            (1, 10, owner, factory_type, EntityCategory::Structure),
+            (2, 11, owner, tank_type, EntityCategory::Unit),
+            (3, 12, owner, power_type, EntityCategory::Structure),
+            (4, 13, other, factory_type, EntityCategory::Structure),
+        ] {
+            sim.entities_mut()
+                .insert(GameEntity::new_at_frame_zero_for_test(
+                    id,
+                    rx,
+                    10,
+                    0,
+                    0,
+                    house,
+                    Health { current: 300 },
+                    kind,
+                    category,
+                    0,
+                    5,
+                    category == EntityCategory::Unit,
+                ));
+        }
 
-        let producer_ids = selected_rally_producer_ids(&sim, &[2, 1], owner);
+        let producer_ids = selected_rally_producer_ids(&sim, &rules, &[4, 3, 2, 1], owner);
 
         assert_eq!(producer_ids, vec![1]);
     }
