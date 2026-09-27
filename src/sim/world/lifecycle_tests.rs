@@ -6684,8 +6684,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     );
     let without_bridge_records = crate::sim::pathfinding::zone_map::ZoneGrid::build_with_terrain(
         sim.path_grid.as_ref().unwrap(),
-        &sim.terrain_costs,
-        sim.resolved_terrain.as_ref(),
+        sim.resolved_terrain.as_ref().unwrap(),
         &[],
         16,
         16,

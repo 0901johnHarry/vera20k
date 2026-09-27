@@ -56,11 +56,8 @@ impl App {
         // bypasses drive_scenario_exit entirely).
         if let Some(ref mut sfx) = state.audio.sfx_player {
             sfx.stop_all();
-            sfx.set_output_scale(1.0);
         }
-        if let Some(ref mut player) = state.audio.music_player {
-            player.set_output_scale(1.0);
-        }
+        state.audio.set_master_output_scale(1.0);
         state.match_state.match_audio.reset_for_new_match();
         state.frontend.screen = GameScreen::MainMenu;
         Self::enter_shell_window_mode(state);
@@ -376,9 +373,11 @@ impl App {
         state.match_state.scenario_outcome = None;
         let _ = state.match_state.scenario_elapsed_clock.stop(wall_ms);
         // gamemd provenance: battle abort teardown; verified
-        // GameExit__BattleControlTerminated @ 0x00686570 starts Theme's fade,
-        // then fades the independent audio master, bounds its voice pump to
-        // 300 timer buckets, and finally hard-stops audio.
+        // GameExit__BattleControlTerminated @ 0x00686570 starts Theme's fade
+        // (`ThemeClass::Stop(1)` @ 0x006865FA), then fades the independent
+        // audio master, bounds its voice pump to 300 timer buckets, and
+        // finally hard-stops audio.
+        state.audio.fade_out_theme(wall_ms);
         let mut scenario_exit =
             crate::app::match_runtime::scenario_exit::ScenarioExitCascade::start(
                 wall_ms,
@@ -662,25 +661,15 @@ impl App {
             .expect("scenario exit remains present")
             .tick(wall_ms, voices_active);
 
-        if let Some(scale) = tick.music_output_scale {
-            if let Some(player) = state.audio.music_player.as_mut() {
-                player.set_output_scale(scale);
-            }
-        }
-        if let Some(scale) = tick.sfx_output_scale {
-            if let Some(player) = state.audio.sfx_player.as_mut() {
-                player.set_output_scale(scale);
-            }
+        if let Some(scale) = tick.master_output_scale {
+            state.audio.set_master_output_scale(scale);
         }
         if tick.stop_audio {
             state.audio.stop_theme();
-            if let Some(player) = state.audio.music_player.as_mut() {
-                player.set_output_scale(1.0);
-            }
             if let Some(player) = state.audio.sfx_player.as_mut() {
                 player.stop_all();
-                player.set_output_scale(1.0);
             }
+            state.audio.set_master_output_scale(1.0);
         }
         // ScoreDialog__WndProc @ 0x005C9B10 resolves the literal SCORE theme
         // and starts it immediately on WM_INITDIALOG. Keep this after the

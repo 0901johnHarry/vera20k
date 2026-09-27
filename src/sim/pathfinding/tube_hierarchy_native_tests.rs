@@ -193,8 +193,7 @@ fn tube_hierarchy_generated_records_connect_full_and_local_precheck() {
     );
     let zone_grid = super::super::zone_map::ZoneGrid::build_with_native_bridge_geometry(
         &path,
-        &std::collections::BTreeMap::new(),
-        Some(&terrain),
+        &terrain,
         records,
         width,
         height,

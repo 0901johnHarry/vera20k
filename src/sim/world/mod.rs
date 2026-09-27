@@ -1509,7 +1509,6 @@ pub(crate) fn repair_wall_damage_navigation_authorities(
     } else {
         *zone_grid = Some(ZoneGrid::build_with_native_map_context(
             &tail_path_grid,
-            terrain_costs,
             terrain,
             bridge_state
                 .map(BridgeRuntimeState::endpoint_records)
@@ -4968,12 +4967,9 @@ impl Simulation {
         overlay_updates
     }
 
-    /// Rebuild the zone connectivity map from the current PathGrid and terrain costs.
-    /// Call after the PathGrid has been rebuilt so that zones reflect the latest
-    /// walkability state.
-    ///
-    /// Tries an incremental update first (diffing against the previous PathGrid).
-    /// Falls back to full rebuild if too many cells changed or no previous state.
+    /// Rebuild the zone connectivity map from the current PathGrid. Call after
+    /// the PathGrid has been rebuilt so that zones reflect the latest
+    /// walkability state. Unchanged cells and classes keep the current zones.
     #[cfg(test)]
     pub fn rebuild_zone_grid(&mut self, path_grid: &PathGrid) {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
@@ -4988,7 +4984,7 @@ impl Simulation {
         .rebuild_zones(path_grid, terrain, self.bridge_state.as_ref());
     }
 
-    /// Rebuild without the PathGrid-only incremental shortcut. Reduced zone
+    /// Rebuild without `rebuild_zones`' reuse of unchanged inputs. Reduced zone
     /// type can change while boolean walkability stays identical (notably a
     /// live OccupationBits=0 terrain object changing Building to Ground).
     fn rebuild_zone_grid_full(&mut self, path_grid: &PathGrid) {

@@ -41,12 +41,7 @@ pub(crate) fn reset_scenario_exit_runtime(state: &mut AppState) {
     state.match_state.scenario_outcome = None;
     state.match_state.scenario_exit = None;
     state.audio.cancel_scenario_theme_request();
-    if let Some(player) = state.audio.music_player.as_mut() {
-        player.set_output_scale(1.0);
-    }
-    if let Some(player) = state.audio.sfx_player.as_mut() {
-        player.set_output_scale(1.0);
-    }
+    state.audio.set_master_output_scale(1.0);
 }
 
 impl AppState {
@@ -83,7 +78,9 @@ impl AppState {
     /// Whether the software cursor (mouse.shp) should be active this frame.
     /// Returns false when an egui interactive panel is open so the OS cursor shows.
     pub(crate) fn use_software_cursor(&self) -> bool {
-        self.match_state.match_presentation.software_cursor.is_some()
+        !(self.frontend.screen == crate::ui::game_screen::GameScreen::MainMenu
+            && self.frontend.main_menu_shell_error.is_some())
+            && self.match_state.match_presentation.software_cursor.is_some()
             && (!self.match_state.paused()
                 || crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(self))
             && !self.match_state.match_presentation.show_save_load_panel

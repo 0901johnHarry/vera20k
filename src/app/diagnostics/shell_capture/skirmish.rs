@@ -227,8 +227,8 @@ fn guard(
                     GameScreen::Loading | GameScreen::InGame | GameScreen::MissionResult { .. }
                 )),
         surface: (state.render_width(), state.render_height()),
-        failed: state.frontend.main_menu_shell_failed,
-        developer_shortcut: state.frontend.dev_skirmish_shell_enabled,
+        failed: state.frontend.main_menu_shell_error.is_some(),
+        developer_shortcut: false,
         software_cursor: state.use_software_cursor(),
         // The game moves the pointer; the quit route puts it back at rest
         // when the shell returns (and its readiness requires that).
@@ -982,10 +982,9 @@ impl SkirmishCapture {
                     self.route.push(json!({"dialog": 0x102, "frame": frame,
                         "action": "pointer rests", "point": [point.0, point.1]}));
                 } else if self.selected_scene.is_some() && self.slide_out_tick.is_some() {
+                    App::handle_skirmish_back(state);
                     ensure!(
-                        App::handle_skirmish_back(state)
-                            == crate::app::shell_skirmish::SkirmishBackOutcome::Leaving
-                            && state.frontend.shell_exit.is_some(),
+                        state.frontend.shell_exit.is_some(),
                         "Skirmish Back did not start its teardown slide"
                     );
                     self.route
