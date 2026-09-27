@@ -173,6 +173,10 @@ pub(super) enum HashFeature {
     /// base-defence state. Earlier schemas fold the empty copies in their
     /// place; no pinned fixture sets a rally point.
     RetiredRallyCopies = 220,
+    /// Prism forwarding: a building's support count (`BuildingClass+0x664`),
+    /// a bullet's damage multiplier (`BulletClass+0x150`) and each House's
+    /// building list (House+0x68). Earlier schemas fold none of them.
+    PrismSupport = 222,
 }
 
 impl HashSchema {
@@ -214,6 +218,7 @@ impl HashSchema {
                     | HashFeature::BuildingRepair
                     | HashFeature::NativeRuntimeIdentity
                     | HashFeature::RetiredRallyCopies
+                    | HashFeature::PrismSupport
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

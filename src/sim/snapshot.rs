@@ -640,7 +640,10 @@ use crate::sim::world::Simulation;
 // `+0x6DD` set, and combat serves a building's Mission_Attack request instead
 // of deciding its shot. Layout is unchanged, but a 220 save's buildings hold
 // no mission and would idle on a MissionClass stub, so reject it.
-const SNAPSHOT_VERSION: u32 = 221;
+// 221 -> 222: Prism forwarding. A building's delayed fire carries a support
+// beam mode, buildings keep a support count, bullets a damage multiplier and
+// houses their building list (House+0x68), which a 221 save never filled.
+const SNAPSHOT_VERSION: u32 = 222;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3586,7 +3589,8 @@ mod tests {
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
         // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
         // 220 -> 221: buildings' Guard and Attack missions.
-        assert_eq!(super::SNAPSHOT_VERSION, 221);
+        // 221 -> 222: Prism forwarding.
+        assert_eq!(super::SNAPSHOT_VERSION, 222);
     }
 
     #[test]
@@ -5053,58 +5057,65 @@ mod tests {
         use crate::map::entities::EntityCategory;
         use crate::sim::combat::combat_weapon::WeaponSlot;
         use crate::sim::components::Health;
-        use crate::sim::game_entity::{GameEntity, PendingBuildingFire};
+        use crate::sim::game_entity::{DelayedFire, GameEntity, PendingBuildingFire};
+        use crate::sim::projectile::ProjectileCoord;
 
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Soviet");
         let type_ref = sim.interner.intern("NATSLA");
-        let entity = GameEntity::new_at_frame_zero_for_test(
-            1,
-            5,
-            5,
-            0,
-            0,
-            owner,
-            Health { current: 600 },
-            type_ref,
-            EntityCategory::Structure,
-            0,
-            8,
-            false,
-        );
-        sim.substrate.entities.insert(entity);
+        for id in [1, 2] {
+            let entity = GameEntity::new_at_frame_zero_for_test(
+                id,
+                5,
+                5,
+                0,
+                0,
+                owner,
+                Health { current: 600 },
+                type_ref,
+                EntityCategory::Structure,
+                0,
+                8,
+                false,
+            );
+            sim.substrate.entities.insert(entity);
+        }
         // Full snapshot load resets Scenario RNG to Seed0. Compare the
         // authoritative delayed-fire state on that same post-load cursor.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let without_latch = sim.state_hash();
+        let shot = PendingBuildingFire {
+            remaining_ticks: 17,
+            fire: DelayedFire::Weapon(WeaponSlot::Secondary),
+        };
         sim.substrate
             .entities
             .get_mut(1)
             .expect("Tesla Coil")
-            .pending_building_fire = Some(PendingBuildingFire {
-            remaining_ticks: 17,
-            weapon_slot: WeaponSlot::Secondary,
-        });
+            .pending_building_fire = Some(shot);
         let with_latch = sim.state_hash();
         assert_ne!(with_latch, without_latch);
+        let beam = PendingBuildingFire {
+            remaining_ticks: 17,
+            fire: DelayedFire::SupportBeam {
+                to: ProjectileCoord::new(1280, 1408, 378),
+            },
+        };
+        let supporter = sim.substrate.entities.get_mut(2).expect("second tower");
+        supporter.pending_building_fire = Some(beam);
+        supporter.prism_support_count = 3;
+        let with_beam = sim.state_hash();
+        assert_ne!(with_beam, with_latch);
 
         let bytes = GameSnapshot::save(&sim, 1, 2, "delay.map", 0);
         let restored = GameSnapshot::load(&bytes)
-            .expect("v75 delayed-fire snapshot")
+            .expect("delayed-fire snapshot")
             .sim;
-        assert_eq!(
-            restored
-                .substrate
-                .entities
-                .get(1)
-                .expect("restored Tesla Coil")
-                .pending_building_fire,
-            Some(PendingBuildingFire {
-                remaining_ticks: 17,
-                weapon_slot: WeaponSlot::Secondary,
-            })
-        );
-        assert_eq!(restored.state_hash(), with_latch);
+        let entities = &restored.substrate.entities;
+        assert_eq!(entities.get(1).unwrap().pending_building_fire, Some(shot));
+        assert_eq!(entities.get(2).unwrap().pending_building_fire, Some(beam));
+        assert_eq!(entities.get(2).unwrap().prism_support_count, 3);
+        assert_eq!(restored.state_hash(), with_beam);
     }
 
     #[test]
@@ -6634,6 +6645,7 @@ mod tests {
                 base_damage: 1,
                 warhead: InternedId::from_index(0),
                 weapon: InternedId::from_index(0),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),

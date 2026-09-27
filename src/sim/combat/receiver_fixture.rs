@@ -719,9 +719,9 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             if let Some(radiation) = radiation.as_deref() {
                 world.radiation = radiation.clone();
             }
-            // No object pass runs here: a building holding a target takes its
-            // Mission_Attack visit before the receiver, as its Update does.
-            let holders: Vec<u64> = world
+            // No object pass runs here: a building takes its Update's
+            // Mission_Attack and ProcessDelayedFire before the receiver.
+            let buildings: Vec<u64> = world
                 .substrate
                 .entities
                 .keys_sorted()
@@ -729,13 +729,12 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 .filter(|&id| {
                     world.substrate.entities.get(id).is_some_and(|entity| {
                         entity.category == EntityCategory::Structure
-                            && entity.attack_target.is_some()
                             && entity.health.current > 0
                             && !entity.lifecycle.in_limbo
                     })
                 })
                 .collect();
-            for id in holders {
+            for id in buildings {
                 // A hand-built object switched to Structure keeps its first
                 // category's leaf; construction gives a building its own.
                 if let Some(entity) = world.substrate.entities.get_mut(id)
@@ -746,7 +745,7 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                             EntityCategory::Structure,
                         );
                 }
-                world.fixture_building_attack_visit(id, rules, overlay_registry);
+                world.fixture_building_visit(id, rules, overlay_registry);
             }
             let fire_requests = std::mem::take(&mut world.fire_requests);
             let first_tail_id = world.substrate.next_stable_object_id;

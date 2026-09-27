@@ -591,6 +591,7 @@ mod tests {
                 base_damage: 1,
                 warhead: sim.interner.intern("WALLWH"),
                 weapon: sim.interner.intern("MISSING"),
+                damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
             };
             admit_existing(&mut sim, shot);
             let mut runtime = SimRuntime::from_simulation(sim);
@@ -1244,6 +1245,7 @@ mod tests {
             base_damage: 1,
             warhead: sim.interner.intern("WALLWH"),
             weapon: sim.interner.intern("MISSING"),
+            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
         };
         admit_existing(&mut sim, shot);
         let mut runtime = SimRuntime::from_simulation(sim);
@@ -1294,6 +1296,7 @@ mod tests {
             base_damage: 1,
             warhead: sim.interner.intern("WALLWH"),
             weapon: sim.interner.intern("MISSING"),
+            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
         };
         admit_existing(&mut sim, shot);
         let mut runtime = SimRuntime::from_simulation(sim);

@@ -104,6 +104,7 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             base_damage: rules.weapon("HoverMissile").unwrap().damage,
             warhead: world.interner.intern("HE"),
             weapon: world.interner.intern("HoverMissile"),
+            damage_multiplier: ProjectilePayload::UNSCALED,
         };
         let target = ProjectileTarget::Cell { rx: 10, ry: 20 };
         let id = world.allocate_stable_id();
@@ -318,6 +319,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                         base_damage: 25,
                         warhead: missing,
                         weapon,
+                        damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
                     },
                     reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
                 }],

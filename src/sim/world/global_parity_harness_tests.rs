@@ -801,7 +801,14 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_
 // just those two fields of the two buildings at tick 599 reproduces every
 // old pin, Schema220's current pin and before_power included. Old values:
 // the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xCDE2_E89E_8B4D_1FDE;
+// Schema222 adds Prism forwarding's state: each building's support count
+// (`+0x664`, zero here), each live bullet's damage multiplier (`+0x150`,
+// Construct's 256 here) and each House's building list (House+0x68, now
+// appended at Unlimbo; only the Prism walk reads it, and this fixture has no
+// Prism tower). Before(222) reproduces the prior current pin and every earlier
+// projection, per-tick replay and RNG receipt is unchanged: composition only.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x1A37_20B1_30A5_B108;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V221: u64 = 0xCDE2_E89E_8B4D_1FDE;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x5399_2DBF_0F41_2252;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB1CF_4893_C849_0668;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xA0DB_A253_A90D_DD51;
@@ -1362,6 +1369,11 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
         "schema220 only drops the two empty rally copies from this fixture's hash"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(222)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_PRISM_SUPPORT_V221,
+        "schema222 only adds the Prism support folds to this fixture's hash"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

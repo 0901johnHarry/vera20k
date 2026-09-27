@@ -1931,7 +1931,7 @@ fn emit_detonation_receivers(
                     rules,
                     overlay_registry,
                     (impact_rx, impact_ry),
-                    detonation.payload.base_damage,
+                    detonation.payload.area_damage(),
                     warhead,
                     (
                         detonation.source_id,
@@ -2146,7 +2146,7 @@ pub(crate) fn commit_projectile_detonations_inline(
                     rules,
                     overlay_registry,
                     (rx, ry),
-                    clustered.payload.base_damage,
+                    clustered.payload.area_damage(),
                     clustered.payload.warhead,
                     z,
                     routed_wall,
@@ -2371,16 +2371,10 @@ fn admit_attacker_fire<'r>(
     out: &mut CombatEmit,
 ) -> Option<AdmittedFire<'r>> {
     let sound_enabled = sound_enabled(world);
-    let delayed_building_slot = snap
-        .pending_building_fire
-        .map(|pending| pending.weapon_slot);
-    if delayed_building_slot.is_some() {
-        // ProcessDelayedFire clears mode/timer regardless of whether its live
-        // target and saved weapon still pass GetFireError.
-        if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
-            entity.pending_building_fire = None;
-        }
-    }
+    let delayed_building_slot = match snap.building_shot {
+        Some(super::BuildingShot::Delayed(slot)) => Some(slot),
+        _ => None,
+    };
     let obj = match rules.object(world.interner.resolve(snap.type_id)) {
         Some(o) => o,
         None => {
@@ -2535,8 +2529,8 @@ fn admit_attacker_fire<'r>(
     // owner does until it loses its legality subset.
     // - A delayed building shot resolves its saved slot through
     //   `select_weapon_slot` (`targeting_fire_error_blocks`). Effect: none;
-    //   ProcessDelayedFire drops the shot on any refusal (`0x004504D7`) either
-    //   way.
+    //   ProcessDelayedFire's GetFireError answered OK for that weapon in the
+    //   building's visit this frame.
     // - Garrison fire picks the occupant's weapon by AA/AG and Verses and drops
     //   the target when none fits. Native GetWeapon (`0x004526F0`) hands the
     //   occupant weapon over whatever the target, and the base asks AA only of
@@ -2642,13 +2636,13 @@ fn admit_attacker_fire<'r>(
     // `GetFireError` (vt+0x3C0, `fire_error`) with `SelectWeapon(Target)` and
     // the range check, asked where each class's fire routine asks it:
     // `UnitClass::Fire_At_Target @ 0x00736E3A`, `InfantryClass::
-    // Fire_At_Target @ 0x005206F3` (`0x005209DE` on the fire frame),
-    // `ProcessDelayedFire @ 0x00450476` for a building's delayed shot and
+    // Fire_At_Target @ 0x005206F3` (`0x005209DE` on the fire frame) and
     // `AircraftClass::Mission_Attack @ 0x0041832E`. Each routine then acts on
-    // the code as below. A building's ordinary shot is its Mission_Attack's
-    // FireAt arm, whose GetFireError (`0x0044B00F`) answered OK in the
-    // building's own visit this frame (`techno_ai::building_missions`), so it
-    // is not asked again.
+    // the code as below. A building shoots only a FireAt its own visit asked
+    // for this frame (`techno_ai::building_missions`): Mission_Attack's FireAt
+    // arm, whose GetFireError (`0x0044B00F`) answered OK, or
+    // ProcessDelayedFire's expiry, whose GetFireError (`0x00450476`) did;
+    // neither is asked again.
     let garrison_fire = if is_garrison {
         let (Some(gs), Some(selected)) = (snap.garrison.as_ref(), selected.as_ref()) else {
             return None;
@@ -2674,10 +2668,8 @@ fn admit_attacker_fire<'r>(
             });
         }
     };
-    let code = if snap.category == EntityCategory::Structure && delayed_building_slot.is_none() {
-        if !snap.mission_fire_request {
-            return None;
-        }
+    let code = if snap.category == EntityCategory::Structure {
+        snap.building_shot?;
         fire_error::FireError::Ok
     } else {
         let mut code = None;
@@ -3856,10 +3848,21 @@ pub(super) fn emit_admitted_fire(
             // `BulletClass::Fire` (`0x006FF014`) Unlimbos the bullet at the
             // launch source, which appends it to the Logic vector
             // (`0x005F5040`): it takes its first AI later in this frame's pass.
+            // ProcessDelayedFire writes its support bonus on the bullet this
+            // FireAt returns (`0x00450496..0x004504CD`). The rest of FireAt
+            // reads neither the bullet's multiplier nor the count, save the
+            // laser width (`0x006FF52B`), which VERA does not draw.
+            let damage_multiplier = match snap.building_shot {
+                Some(super::BuildingShot::Delayed(_)) => {
+                    world.take_support_bonus(snap.stable_id, rules)
+                }
+                _ => ProjectilePayload::UNSCALED,
+            };
             let payload = ProjectilePayload {
                 base_damage,
                 warhead: world.interner.intern(&warhead.id),
                 weapon: world.interner.intern(selected.weapon_id),
+                damage_multiplier,
             };
             let arm_frames = projectile_arm_delay(arm_frames, target, &world.substrate.entities);
             let spawn = ProjectileSpawn {
@@ -4619,100 +4622,53 @@ pub(crate) fn tick_combat(
         if fire_suppressed.contains(&id) {
             continue;
         }
-        // Read without a hand-out: only an armed building's delayed-fire
-        // latch is written here. Entity field-reads move into
-        // `build_attacker_snapshot` (pure) below.
-        let (attack_target, pending_infantry_fire, pending_building_fire) = {
-            let entity = match world.substrate.entities.get(id) {
-                Some(e) => e,
-                None => continue,
-            };
-            // A closed transport's passengers left the logic walk; an
-            // open-topped transport's riders stay in it and fire from inside
-            // (`SetInOpenTransport @ 0x00710470`).
-            if entity.passenger_role.is_inside_transport()
-                && !entity.passenger_role.in_open_transport()
-            {
-                continue;
-            }
-            if !attacker_reaches_fire(entity) {
-                // BuildingClass::Update no longer reaches ProcessDelayedFire
-                // once the object is dead.
-                continue;
-            }
-            let attack_state = entity
-                .attack_target
-                .as_ref()
-                .map(|attack| (attack.target, attack.pending_infantry_fire));
-            let structure = entity.category == EntityCategory::Structure;
-            // Skip snapshot for entities blocked by locomotor state.
-            // An aircraft's Mission_Attack visit runs whenever its dispatch asked
-            // for it; the visit opens with its own prefix.
-            let requested = fire_requests.aircraft.contains(&id);
-            let blocked = !requested
-                && (fire_blocked.contains(&id)
-                    || entity
-                        .aircraft_mission
-                        .as_ref()
-                        .is_some_and(|mission| mission.is_attacking()));
-
-            // gamemd-derived: BuildingClass::Update @ 0x0043FB20 invokes
-            // ProcessDelayedFire @ 0x004503F0 after mission dispatch. The
-            // signed counter is pre-decremented and values <= 0 clamp to zero
-            // and expire on this visit.
-            let pending_building_fire = if entity.pending_building_fire.is_some() {
-                let latch = &mut world
-                    .substrate
-                    .entities
-                    .get_mut(id)
-                    .expect("an attacker was just read")
-                    .pending_building_fire;
-                let pending = latch.as_mut().map(|pending| {
-                    pending.remaining_ticks = pending.remaining_ticks.saturating_sub(1).max(0);
-                    *pending
-                });
-                if pending.is_some_and(|pending| pending.remaining_ticks != 0) {
-                    // GetFireError @ 0x00447F10 blocks ordinary fire while armed.
-                    continue;
-                }
-                // Expiry reads only the live target, so a missing target clears
-                // the latch. Delayed expiry rechecks fire admissibility and
-                // clears on any failure rather than postponing until the
-                // building is usable.
-                if attack_state.is_none() || blocked {
-                    *latch = None;
-                    continue;
-                }
-                pending
-            } else {
-                None
-            };
-            // A missing target does not acquire or drop another target.
-            let Some((attack_target, pending_infantry_fire)) = attack_state else {
-                continue;
-            };
-            if blocked {
-                continue;
-            }
-            // A building shoots from its Mission_Attack's FireAt arm, in its
-            // own visit this frame, or from ProcessDelayedFire's expiry above.
-            if structure
-                && pending_building_fire.is_none()
-                && !fire_requests.buildings.contains(&id)
-            {
-                continue;
-            }
-            (attack_target, pending_infantry_fire, pending_building_fire)
-        };
-
-        // Re-fetch the attacker after the latch write above and resolve any
-        // garrison occupant, then build the
-        // snapshot through the shared `build_attacker_snapshot` so the field-reads
-        // stay byte-identical to the per-object Fire→Facing host.
+        // Entity field-reads move into `build_attacker_snapshot` (pure) below.
         let entity = match world.substrate.entities.get(id) {
             Some(e) => e,
             None => continue,
         };
+        // A closed transport's passengers left the logic walk; an
+        // open-topped transport's riders stay in it and fire from inside
+        // (`SetInOpenTransport @ 0x00710470`).
+        if entity.passenger_role.is_inside_transport() && !entity.passenger_role.in_open_transport()
+        {
+            continue;
+        }
+        if !attacker_reaches_fire(entity) {
+            continue;
+        }
+        // Skip snapshot for entities blocked by locomotor state.
+        // An aircraft's Mission_Attack visit runs whenever its dispatch asked
+        // for it; the visit opens with its own prefix.
+        let requested = fire_requests.aircraft.contains(&id);
+        let blocked = !requested
+            && (fire_blocked.contains(&id)
+                || entity
+                    .aircraft_mission
+                    .as_ref()
+                    .is_some_and(|mission| mission.is_attacking()));
+        // A missing target does not acquire or drop another target.
+        let Some((attack_target, pending_infantry_fire)) = entity
+            .attack_target
+            .as_ref()
+            .map(|attack| (attack.target, attack.pending_infantry_fire))
+        else {
+            continue;
+        };
+        if blocked {
+            continue;
+        }
+        // A building shoots only the FireAt its own visit asked for this
+        // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
+        // (`techno_ai::building_missions`).
+        let building_shot = fire_requests.buildings.get(&id).copied();
+        if entity.category == EntityCategory::Structure && building_shot.is_none() {
+            continue;
+        }
+
+        // Resolve any garrison occupant, then build the snapshot through the
+        // shared `build_attacker_snapshot` so the field-reads stay
+        // byte-identical to the per-object Fire→Facing host.
         let garrison_cargo: Option<(u8, u8, u64)> = if entity.category == EntityCategory::Structure
         {
             entity.passenger_role.cargo().and_then(|c| {
@@ -4744,14 +4700,8 @@ pub(crate) fn tick_combat(
         });
 
         snapshots.push(AttackerSnapshot {
-            mission_fire_request: fire_requests.buildings.contains(&id),
-            ..build_attacker_snapshot(
-                entity,
-                attack_target,
-                pending_infantry_fire,
-                pending_building_fire,
-                garrison,
-            )
+            building_shot,
+            ..build_attacker_snapshot(entity, attack_target, pending_infantry_fire, garrison)
         });
     }
     // Native combat resolves each object inline during the single live-object
@@ -4838,13 +4788,10 @@ pub(crate) fn tick_combat(
             .get(snap.stable_id)
             .filter(|entity| attacker_reaches_fire(entity))
             .and_then(|entity| {
-                entity.attack_target.as_ref().map(|attack| {
-                    (
-                        attack.target,
-                        attack.pending_infantry_fire,
-                        entity.pending_building_fire,
-                    )
-                })
+                entity
+                    .attack_target
+                    .as_ref()
+                    .map(|attack| (attack.target, attack.pending_infantry_fire))
             })
         else {
             // A unit whose target went away earlier this frame reaches its
@@ -4861,7 +4808,6 @@ pub(crate) fn tick_combat(
         let mut live_snap = snap.clone();
         live_snap.target = live_attack.0;
         live_snap.pending_infantry_fire = live_attack.1;
-        live_snap.pending_building_fire = live_attack.2;
 
         let n_remove = emit.remove_attack.len();
         let boundary = FireCommitBoundary::capture(&emit);

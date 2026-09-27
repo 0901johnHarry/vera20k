@@ -317,7 +317,6 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         super::super::TargetKind::Entity(2),
         None,
         None,
-        None,
     );
     let context = ScanContext {
         entities: &world.substrate.entities,

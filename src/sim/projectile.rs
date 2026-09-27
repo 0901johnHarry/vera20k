@@ -951,6 +951,25 @@ pub struct ProjectilePayload {
     pub warhead: InternedId,
     /// Weapon identity retained for impact-only effects such as radiation.
     pub weapon: InternedId,
+    /// `BulletClass+0x150`, 1/256 units: `BulletClass::Construct` writes
+    /// [`Self::UNSCALED`] (`0x00466546`) and only a Prism master's supported
+    /// shot writes another value (`BuildingClass::ProcessDelayedFire`,
+    /// `0x004504C7`). It scales only the damage handed to `Apply_area_damage`
+    /// ([`Self::area_damage`]).
+    pub damage_multiplier: i32,
+}
+
+impl ProjectilePayload {
+    /// `BulletClass::Construct @ 0x004664C0` writes 256 (`0x00466546`).
+    pub const UNSCALED: i32 = 256;
+
+    /// `BulletClass::DetonateAtCoord @ 0x004690B0` hands
+    /// `(+0x150 * +0x6C) >> 8` to `Apply_area_damage` (`0x00469A56..0x00469A66`:
+    /// `imul` wraps in 32 bits, then `sar 8`). Every other consumer, such as
+    /// the explosion anim choice (`0x00469BBA`), reads the raw damage.
+    pub fn area_damage(&self) -> i32 {
+        self.damage_multiplier.wrapping_mul(self.base_damage) >> 8
+    }
 }
 
 /// Presentation constructor receipt from ObjectType ART. This is emitted once
@@ -2314,6 +2333,7 @@ mod tests {
                 base_damage: 40,
                 warhead: InternedId::from_index(3),
                 weapon: InternedId::from_index(4),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),

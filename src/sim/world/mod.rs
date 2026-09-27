@@ -4496,6 +4496,9 @@ impl Simulation {
         if build_const_eligible {
             self.remove_build_const_from_owner(stable_id);
         }
+        if category == EntityCategory::Structure {
+            self.leave_house_base_lists(stable_id, old_owner);
+        }
         // Techno70158A..7015E6: Removed_From_Game on the old house (not in
         // limbo), then Remove_Tracking from it and Add_Tracking to the new.
         let on_map = self
@@ -4551,6 +4554,9 @@ impl Simulation {
             && !house.build_const_order.contains(&stable_id)
         {
             house.build_const_order.push(stable_id);
+        }
+        if category == EntityCategory::Structure {
+            self.join_house_base_lists(stable_id, new_owner);
         }
         // `TechnoClass::ChangeOwner` closes with the mission half (the
         // `+0x484` call at 0x00701849 reads the NEW owner's

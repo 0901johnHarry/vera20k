@@ -89,6 +89,7 @@ fn detonation(sim: &mut Simulation, input: &Value) -> ProjectileDetonation {
             base_damage: input["damage"].as_i64().unwrap() as i32,
             warhead: sim.interner.intern("WH"),
             weapon: sim.interner.intern("SHOT"),
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         reason: ProjectileDetonationReason::ReachedTarget,
     }

@@ -1022,6 +1022,7 @@ impl Simulation {
         if !attached_upgrade {
             self.mark_ai_repairable_at_unlimbo(stable_id);
             self.append_live_build_const(stable_id);
+            self.append_house_base_building(stable_id);
             self.refresh_waypoint_edge_from_committed_structure(stable_id);
             self.mark_building_base_reservation_with_arg(stable_id, false, context);
             self.fill_base_plan_from_successful_building_unlimbo(stable_id);

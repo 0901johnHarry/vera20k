@@ -93,7 +93,6 @@ pub(crate) struct AttackerSnapshot {
     pub is_fully_deployed: bool,
     pub has_movement: bool,
     pub pending_infantry_fire: Option<super::PendingInfantryFire>,
-    pub pending_building_fire: Option<crate::sim::game_entity::PendingBuildingFire>,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Retained body FacingClass (`+0x388`), including infantry fire-start
     /// snaps and vehicle turns. Facing gates and emission read its full
@@ -110,10 +109,10 @@ pub(crate) struct AttackerSnapshot {
     /// (Area Guard reaches roughly twice as far as plain Guard) and, for mask
     /// 0, the scan topology itself.
     pub scan_mission: ScanMission,
-    /// A building's Mission_Attack took its FireAt arm this frame
+    /// The FireAt a building's Update asked for this frame
     /// (`FireRequests::buildings`): its GetFireError already answered OK, and
-    /// a building fires no ordinary shot without it.
-    pub mission_fire_request: bool,
+    /// a building fires no shot without it.
+    pub building_shot: Option<super::BuildingShot>,
 }
 
 /// Acquire the best currently valid target for one attacker entity.
@@ -179,7 +178,7 @@ pub(crate) fn acquire_best_target_for_entity(
     // Dummy target: no current target when acquiring fresh.
     let snapshot = AttackerSnapshot {
         scan_mission: mask,
-        ..super::build_attacker_snapshot(entity, super::TargetKind::Entity(0), None, None, None)
+        ..super::build_attacker_snapshot(entity, super::TargetKind::Entity(0), None, None)
     };
     acquire_best_target(
         entities,

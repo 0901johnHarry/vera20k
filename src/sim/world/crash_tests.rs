@@ -574,6 +574,7 @@ fn a_death_weapon_detonates_once_without_cluster_draws() {
         base_damage: 150,
         warhead: sim.interner.intern("CrashWH"),
         weapon: sim.interner.intern("CrashGun"),
+        damage_multiplier: ProjectilePayload::UNSCALED,
     };
     let detonation = |reason| ProjectileDetonation {
         projectile_id: 1,

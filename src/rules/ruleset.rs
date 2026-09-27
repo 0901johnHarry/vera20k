@@ -431,9 +431,12 @@ pub struct GeneralRules {
     /// `SeparateAircraft=`. False means the first pad building's value includes
     /// the average cost of the first two `PadAircraft` entries.
     pub separate_aircraft: bool,
-    /// BuildingType identity handled by the Prism support/cascade mission path.
-    /// The generic art-delayed fire path must not consume this type.
+    /// `[General] PrismType=` (Rules `+0x498`): the BuildingType whose
+    /// Mission_Attack forwards its charge instead of firing
+    /// (`sim::world::techno_ai::building_missions`).
     pub prism_type: Option<String>,
+    /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
+    pub prism_support: PrismSupportRules,
     /// Whether ore cells grow denser over time (TiberiumGrows= in [General]).
     /// Default true. Can be overridden per-map in [SpecialFlags].
     pub tiberium_grows: bool,
@@ -1293,6 +1296,55 @@ fn parse_paradrop_list(
 /// double nearest .02 (`0x3F947AE147AE147B`, pushed at `0x0066D317`).
 const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
 
+/// The `[General]` Prism support keys, read by `RulesClass::ReadGeneral`
+/// (`0x0066D530`) on every rules pass that has a `[General]` section, each
+/// with its current value as the default (`0x0067114F..0x006711B8`). The
+/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
+/// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
+/// reader outside the constructor and ReadGeneral.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PrismSupportRules {
+    /// `PrismSupportModifier=` (`Rules+0x49C`), the percent each supporter
+    /// adds to the shot: `ftol(ReadDouble(key, current) x 100)`, so a pass
+    /// with a `[General]` section and no key multiplies it by 100 again.
+    pub modifier: i32,
+    /// `PrismSupportMax=` (`Rules+0x4A0`), the supporters one shot recruits.
+    pub max: i32,
+    /// `PrismSupportDelay=` (`Rules+0x4A4`), a supporter's downtime in frames.
+    pub delay: i32,
+}
+
+impl Default for PrismSupportRules {
+    /// The RulesClass constructor's values (`0x00665CF3`, `0x00665CF9`,
+    /// `0x00665D03`).
+    fn default() -> Self {
+        Self {
+            modifier: 100,
+            max: 8,
+            delay: 100,
+        }
+    }
+}
+
+impl PrismSupportRules {
+    /// One ReadGeneral pass over a `[General]` section. The modifier is
+    /// `fmul qword 100.0` (`0x0067116E`) on the value ReadDouble returns, then
+    /// ftol (`0x007C5F00`), under the game's masked chop control word.
+    pub(crate) fn read_pass(self, general: &crate::rules::ini_parser::IniSection) -> Self {
+        use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+        let percent = general.read_double("PrismSupportModifier", f64::from(self.modifier));
+        let modifier = X87::ftol_i32_low_masked(X87::mul(
+            X87::load_f64(NativeF64Bits::from_bits(percent.to_bits())),
+            X87::load_f64(NativeF64Bits::from_bits(100.0_f64.to_bits())),
+        ));
+        Self {
+            modifier,
+            max: general.read_int("PrismSupportMax", self.max),
+            delay: general.read_int("PrismSupportDelay", self.delay),
+        }
+    }
+}
+
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
@@ -1346,6 +1398,7 @@ impl Default for GeneralRules {
             pad_aircraft_types: Vec::new(),
             separate_aircraft: false,
             prism_type: None,
+            prism_support: PrismSupportRules::default(),
             tiberium_grows: true,
             tiberium_spreads: true,
             growth_rate_minutes: 2.0,
@@ -2169,13 +2222,20 @@ impl GeneralRules {
             separate_aircraft: general
                 .get_bool("SeparateAircraft")
                 .unwrap_or(defaults.separate_aircraft),
-            // RulesClass reads this BuildingType identity from [General].
-            // BuildingClass::Mission_Attack @ 0x0044ACF0 dispatches it to the
-            // Prism-specific path before considering generic delayed fire.
-            prism_type: general
-                .get("PrismType")
-                .map(|value| value.trim().to_ascii_uppercase())
-                .filter(|value| !value.is_empty()),
+            // `0x00671144` -> `0x0067BCE0`: ReadString128, an empty value
+            // keeps the current type and `none`/`<none>` clear it
+            // (BuildingType FindOrAllocate `0x004653C0`). The layered reader
+            // (`native_processing`) replaces this projection.
+            prism_type: match general.read_string("PrismType", "", 0x80) {
+                name if name.is_empty() => defaults.prism_type,
+                name if name.eq_ignore_ascii_case("none")
+                    || name.eq_ignore_ascii_case("<none>") =>
+                {
+                    None
+                }
+                name => Some(name.to_ascii_uppercase()),
+            },
+            prism_support: defaults.prism_support.read_pass(general),
             tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
             tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
             growth_rate_minutes: general.get_f32("GrowthRate").unwrap_or(2.0),
@@ -3163,6 +3223,8 @@ impl RuleSet {
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
+        rules.general.prism_support = processed.prism_support();
+        rules.general.prism_type = processed.prism_type().map(str::to_owned);
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
         rules.general.weather_con_bolt_explosion = weather_anim.to_owned();
@@ -4001,11 +4063,12 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v9".hash(&mut hasher);
+        b"rules-simulation-config-v10".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
         self.general.gravity.hash(&mut hasher);
+        self.general.prism_support.hash(&mut hasher);
         self.general.missile_rot_var.to_bits().hash(&mut hasher);
         self.general.safety_altitude.hash(&mut hasher);
         self.general.line_trail_color_override.hash(&mut hasher);

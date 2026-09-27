@@ -71,7 +71,6 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
         entity.attack_target.as_ref().unwrap().target,
         None,
         None,
-        None,
     );
     let point = fire_coord::fire_coordinate(
         sim,

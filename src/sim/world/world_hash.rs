@@ -986,6 +986,9 @@ impl Simulation {
             projectile.payload.base_damage.hash(hasher);
             projectile.payload.warhead.index().hash(hasher);
             projectile.payload.weapon.index().hash(hasher);
+            if schema.includes(HashFeature::PrismSupport) {
+                projectile.payload.damage_multiplier.hash(hasher);
+            }
             if !schema.includes(HashFeature::InvisoBullet) {
                 // The retired owner-house snapshot: the live source's house.
                 self.substrate
@@ -1175,6 +1178,9 @@ impl Simulation {
                 for stable_id in &house.build_const_order {
                     stable_id.hash(hasher);
                 }
+            }
+            if schema.includes(HashFeature::PrismSupport) {
+                house.base_projection.buildings().hash(hasher);
             }
             if schema.includes(HashFeature::BasePlan) {
                 house.base_plan.percent_built.hash(hasher);
@@ -2045,6 +2051,9 @@ impl Simulation {
                 entity.weapon_burst.hash(hasher);
             }
             entity.pending_building_fire.hash(hasher);
+            if schema.includes(HashFeature::PrismSupport) {
+                entity.prism_support_count.hash(hasher);
+            }
             entity.current_weapon_index.hash(hasher);
 
             // Slot-indexed fold: capacity + each slot's Option (null holes and
