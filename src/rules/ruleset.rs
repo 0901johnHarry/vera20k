@@ -795,6 +795,14 @@ pub struct GeneralRules {
     /// (`0x0083A1CC`) through `INIClass::ReadInt @ 0x005276D0` into
     /// `Rules+0x186C`; the constructor default is 0x32.
     pub ore_twinkle_chance: i32,
+    /// `[AudioVisual] GUIBuildSound=` (`Rules+0x18C`, read at `0x006693C1`
+    /// through `VocClass::FindByName`; retail `MenuClick`): the sidebar cameo
+    /// click sound, played by `SelectClass::Action @ 0x006AAD00` for every
+    /// click that acts (e.g. `0x006AAE2A`, `0x006AB713`). Residual: gamemd
+    /// resolves the name as it reads it and keeps the previous layer's sound
+    /// when the name does not resolve; VERA stores the name and resolves it at
+    /// play time. Retail's `MenuClick` resolves.
+    pub gui_build_sound: Option<String>,
     /// Sidebar tab click sound from [AudioVisual] GUITabSound (retail
     /// `MenuTab`). The key→tab-click mapping is name-inferred — flagged for a
     /// Ghidra spot-check of the tab-ID consumer before parity sign-off.
@@ -931,6 +939,13 @@ pub struct GeneralRules {
     /// slave miner waits before it looks for a field again. ReadInt at
     /// `0x0067035F`; constructor `0x7FFFFFFF` (`0x00667674`). Retail 150.
     pub slave_miner_kick_frame_delay: i32,
+    /// `Rules+0xF0`, `[General] MaximumQueuedObjects=`: how many builds a
+    /// factory's queue holds behind its active one; `FactoryClass::
+    /// StartProduction` refuses an append at this count (`0x004C9CDE`).
+    /// `RulesClass::ReadGeneral` reads it through `CCINIClass::ReadInt
+    /// 0x005276D0` at `0x00671DA7`; the constructor writes 5 (`0x006656EE` →
+    /// `0x006657CD`).
+    pub maximum_queued_objects: i32,
     /// `Rules+0xD78`, `[General] HarvesterTooFarDistance=` in cells: a
     /// refinery farther than this is approached before the dock is reserved.
     /// `RulesClass::ReadGeneral` reads it through `CCINIClass::ReadInt
@@ -1523,6 +1538,7 @@ impl Default for GeneralRules {
             gui_checkbox_sound: None,
             ore_twinkle: None,
             ore_twinkle_chance: 50,
+            gui_build_sound: None,
             gui_tab_sound: None,
             incoming_message_sound: None,
             message_delay_minutes: 0.6,
@@ -1554,6 +1570,7 @@ impl Default for GeneralRules {
             slave_miner_long_scan: 0x5000,
             slave_miner_scan_correction: 0x300,
             slave_miner_kick_frame_delay: 0x7FFF_FFFF,
+            maximum_queued_objects: 5,
             harvester_too_far_distance: 5,
             approach_target_reset_multiplier: 1,
             chrono_harv_too_far_distance: 50,
@@ -2457,6 +2474,11 @@ impl GeneralRules {
             ore_twinkle_chance: audio_visual
                 .and_then(|s| s.get_i32("OreTwinkleChance"))
                 .unwrap_or(defaults.ore_twinkle_chance),
+            gui_build_sound: audio_visual
+                .and_then(|s| s.get("GUIBuildSound"))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
             gui_tab_sound: audio_visual
                 .and_then(|s| s.get("GUITabSound"))
                 .map(str::trim)
@@ -2569,6 +2591,7 @@ impl GeneralRules {
             slave_miner_long_scan: general.read_range("SlaveMinerLongScan", 0x5000),
             slave_miner_scan_correction: general.read_range("SlaveMinerScanCorrection", 0x300),
             slave_miner_kick_frame_delay: general.read_int("SlaveMinerKickFrameDelay", 0x7FFF_FFFF),
+            maximum_queued_objects: general.read_int("MaximumQueuedObjects", 5),
             harvester_too_far_distance: general.read_int("HarvesterTooFarDistance", 5),
             approach_target_reset_multiplier: general.read_int("ApproachTargetResetMultiplier", 1),
             chrono_harv_too_far_distance: general.read_int("ChronoHarvTooFarDistance", 50),
@@ -5362,6 +5385,20 @@ SpawnCount=3
     }
 
     #[test]
+    fn retail_production_click_keys_come_from_rulesmd() {
+        // Rules+0xF0 MaximumQueuedObjects ([General], 0x00671DA7), +0x18C
+        // GUIBuildSound and +0x700 ScoldSound ([AudioVisual], 0x006693C1 and
+        // 0x0066ABE8).
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let general = GeneralRules::from_ini(&ini);
+        assert_eq!(general.maximum_queued_objects, 29);
+        assert_eq!(general.gui_build_sound.as_deref(), Some("MenuClick"));
+        assert_eq!(general.scold_sound.as_deref(), Some("MenuScold"));
+    }
+
+    #[test]
     fn cloak_global_defaults_and_native_minute_conversion_parse() {
         let defaults = GeneralRules::default();
         assert_eq!(defaults.cloaking_stages, 9);
@@ -6194,6 +6231,7 @@ MutateWarhead=MyMutate\n\
              SlaveMinerScanCorrection=5\n\
              SlaveMinerKickFrameDelay=200\n\
              HarvesterTooFarDistance=8\n\
+             MaximumQueuedObjects=$1D\n\
              ChronoHarvTooFarDistance=40\n\
              ApproachTargetResetMultiplier=1.5\n\
              PurifierBonus=.30\n",
@@ -6211,6 +6249,10 @@ MutateWarhead=MyMutate\n\
         // ReadInt stops at the decimal point.
         assert_eq!(rules.general.approach_target_reset_multiplier, 1);
         assert_eq!(rules.general.harvester_too_far_distance, 8);
+        assert_eq!(
+            rules.general.maximum_queued_objects, 29,
+            "ReadInt takes `$` hex"
+        );
         assert_eq!(rules.general.chrono_harv_too_far_distance, 40);
         assert_eq!(rules.general.purifier_bonus_ppm, 300_000);
     }
@@ -6237,6 +6279,7 @@ MutateWarhead=MyMutate\n\
         assert_eq!(rules.general.slave_miner_kick_frame_delay, 0x7FFF_FFFF);
         assert_eq!(rules.general.approach_target_reset_multiplier, 1);
         assert_eq!(rules.general.harvester_too_far_distance, 5);
+        assert_eq!(rules.general.maximum_queued_objects, 5);
         assert_eq!(rules.general.chrono_harv_too_far_distance, 50);
         assert_eq!(rules.general.purifier_bonus_ppm, 250_000);
     }

@@ -256,9 +256,6 @@ pub(crate) struct TacticalObservation {
     pub in_game: bool,
     pub local_owner: String,
     pub match_ended: bool,
-    /// True only when the adapter built this list from the strict live view,
-    /// without prototype-relaxed fallback.
-    pub build_options_strict: bool,
     pub entities: Vec<TacticalEntityObservation>,
     pub build_options: Vec<BuildOptionObservation>,
     pub queued_production: Vec<ProductionQueueObservation>,
@@ -1644,12 +1641,6 @@ impl TacticalScript {
         observation: &TacticalObservation,
         type_id: &str,
     ) -> ScriptResult<()> {
-        if !observation.build_options_strict {
-            return Err(violation(
-                TacticalFailureCode::ObservationInvalid,
-                "build-option observation did not come from the strict live view",
-            ));
-        }
         let matching: Vec<&BuildOptionObservation> = observation
             .build_options
             .iter()
@@ -2041,7 +2032,6 @@ mod script_tests {
             in_game: true,
             local_owner: OWNER.to_string(),
             match_ended: false,
-            build_options_strict: true,
             entities,
             build_options,
             queued_production,

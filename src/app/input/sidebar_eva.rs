@@ -1,8 +1,9 @@
-//! App-local EVA lines spoken by the sidebar itself — `SelectClass::Action @
-//! 0x006AAD00` (cameo clicks) and `SidebarClass::AddCameo @ 0x006A63E0` /
-//! `StripClass::AddEntry @ 0x006A87F0` (a new cameo). These are spoken only
-//! on the clicking machine (`PlayEVA` runs inside the click handler, before
-//! the `EventClass` is queued), so they are app events, not sim events.
+//! The sidebar's own click decision and the EVA lines it speaks —
+//! `SelectClass::Action @ 0x006AAD00` (cameo clicks) and
+//! `SidebarClass::AddCameo @ 0x006A63E0` / `StripClass::AddEntry @ 0x006A87F0`
+//! (a new cameo). The handler plays its sound and EVA line on the clicking
+//! machine before it queues the `EventClass`, so they are app events, not sim
+//! events.
 //!
 //! Every call site passes type `-1` (`OR EDX,0xffffffff` at `0x006AAE31`,
 //! `0x006AAF9F`, `0x006AAFFF`, `0x006AB100`, `0x006AB3A9`, `0x006AB490`,
@@ -30,59 +31,152 @@ pub(crate) const EVA_SELECT_TARGET: &str = "EVA_SelectTarget";
 pub(crate) const EVA_NEW_CONSTRUCTION_OPTIONS: &str = "EVA_NewConstructionOptions";
 pub(crate) const EVA_CANNOT_DEPLOY_HERE: &str = "EVA_CannotDeployHere";
 
-/// What a fresh left click on a build cameo does.
+/// A press on a build cameo: the left button, or the right one with Shift's
+/// state (modifier bit 0, read at `0x006AAD66`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BuildClickOutcome {
-    /// The line spoken, if any.
-    pub eva: Option<&'static str>,
-    /// Whether the build command is issued at all.
-    pub queue: bool,
+pub(crate) enum CameoPress {
+    Left,
+    Right { shift: bool },
 }
 
-/// `SelectClass::Action 0x006AB5F0..0x006AB6CE`, the fresh-click branch.
+/// The event a cameo click queues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CameoOrder {
+    /// PRODUCE (event 14): start, queue or resume a build of this type.
+    Produce,
+    /// SUSPEND (event 15): hold the category's running build.
+    Suspend,
+    /// ABANDON (event 16), or ABANDON_ALL (event 46) with Shift.
+    Abandon { all: bool },
+    /// A finished building: `HouseClass::Manual_Place @ 0x004FB840` enters
+    /// placement mode (`0x006AB3CF`).
+    Place,
+}
+
+/// What one cameo click does on the clicking machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct CameoClick {
+    /// `[AudioVisual] GUIBuildSound=` (`Rules+0x18C`).
+    pub sound: bool,
+    pub eva: Option<&'static str>,
+    pub order: Option<CameoOrder>,
+}
+
+/// `SelectClass::Action @ 0x006AAD00` for a build cameo of `type_id` in
+/// `category`, read against the local player's queue. Nothing here checks
+/// money.
 ///
-/// `iVar6 = HouseClass::GetFactory(rtti, naval)`; the factory is *busy* when
-/// it exists and is not (`object == 0 || IsDone`) with an empty queue
-/// (`0x006AB61A..0x006AB67B`). Busy + `RTTI == 7` (BuildingType, both the
-/// structure and defense strips) → `EVA_UnableToComply` and **no event**
-/// (`0x006AB67F CMP EBP,0x7 ; ... 0x006AB693 CALL PlayEVA ; JMP end`).
-/// Busy + a unit strip → queued silently (`local_8d = 1`, no line). Idle →
-/// `EVA_Training` for `RTTI == 0x10` (InfantryType, `0x006AB6A1`) else
-/// `EVA_Building`, both only when `HouseClass::CheckBuildLimit` passed
-/// (`0x006AB6BB TEST AL,AL ; JNZ skip`) — the caller feeds that gate as
-/// `buildable` (the cameo is only clickable when the option is enabled).
-pub(crate) fn build_click_outcome(
+/// The cameo's own factory (its `CurrentFactory`, linked by Begin_Production
+/// at `0x004FA6AA`) is the category's active build when that build is this
+/// type; it runs when it has a rate and no hold (`+0x38 != 0 && !+0x70`).
+///
+/// * Right, own factory running: the sound, `EVA_OnHold` and SUSPEND
+///   (`0x006AAFE1..0x006AB02A`). Held or finished: the sound,
+///   `EVA_Canceled` (`0x006AAE39`) and ABANDON, or ABANDON_ALL with Shift
+///   (`0x006AAE4A..0x006AAE68`). No own factory but a copy queued behind the
+///   category's build: the sound and the abandon, no line
+///   (`0x006AB1A0..0x006AB22A`).
+/// * Left, own factory stopped: finished — the sound and, for a building,
+///   placement (`0x006AB2BD..0x006AB3FC`; a unit's PLACE retry is VERA's
+///   automatic delivery); held — the sound, the start line and PRODUCE, which
+///   resumes it with no limit check (`0x006AB463..0x006AB511`).
+/// * Left otherwise (`0x006AB602..`): the category is busy when it has any
+///   build, running, held, finished or queued (`0x006AB663..0x006AB67D`). A
+///   busy structure strip (RTTI 7, both structure tabs) answers
+///   `EVA_UnableToComply` and nothing else (`0x006AB689..0x006AB698`); a type
+///   at its build limit does nothing (`0x006AB6F5`); otherwise the sound
+///   (`0x006AB713`), the start line when the category was idle
+///   (`0x006AB69D..0x006AB6C9`) and PRODUCE (`0x006AB76E`).
+///
+/// Residual: a right click on a cameo whose PRODUCE has not executed yet
+/// (cameo status 1, no factory linked) holds it on arrival
+/// (`0x006AB0AC..0x006AB12B`); VERA has no pending cameo status, so that
+/// click does nothing. Trigger: a right click within the command delay of a
+/// build's first left click. Rare.
+///
+/// Residual (building path): a right click on a cameo with its own factory
+/// first drops a pending building placement (`0x006AADC9..0x006AADF8`), and
+/// Abandon_Production drops it for the local player's abandon of any building
+/// (`0x004FAB79..0x004FAB9F`). VERA drops it only when the placed building
+/// itself is abandoned (`sidebar_render::sync_targeting_mode`). Trigger: a
+/// right click on another producing cameo, or another building's abandon,
+/// while a building is being placed. Effect: the placement cursor stays up.
+///
+/// Residual (building path): a left click on a finished building asks it for
+/// its builder (`vt+0x190` at `0x006AB31A`); with none, gamemd sends ABANDON
+/// and says `EVA_UnableToComply` (`0x006AB33F..0x006AB3B1`), while VERA
+/// enters placement. Trigger: the house's only builder of that building is
+/// being sold or is gone. Rare.
+pub(crate) fn cameo_click(
+    queue: &[QueueItemView],
     category: ProductionCategory,
-    factory_busy: bool,
-    buildable: bool,
-) -> BuildClickOutcome {
-    if !buildable {
-        return BuildClickOutcome {
-            eva: None,
-            queue: false,
-        };
+    type_id: Option<InternedId>,
+    press: CameoPress,
+    at_build_limit: bool,
+) -> CameoClick {
+    let in_category = || queue.iter().filter(|item| item.queue_category == category);
+    let own = in_category()
+        .find(|item| item.state != BuildQueueState::Queued)
+        .filter(|head| Some(head.type_id) == type_id)
+        .map(|head| head.state);
+    let click = |eva: Option<&'static str>, order: CameoOrder| CameoClick {
+        sound: true,
+        eva,
+        order: Some(order),
+    };
+    match (press, own) {
+        (CameoPress::Right { .. }, Some(BuildQueueState::Building)) => {
+            click(Some(EVA_ON_HOLD), CameoOrder::Suspend)
+        }
+        (CameoPress::Right { shift }, Some(_)) => {
+            click(Some(EVA_CANCELED), CameoOrder::Abandon { all: shift })
+        }
+        (CameoPress::Right { shift }, None) => {
+            let queued = in_category()
+                .any(|item| item.state == BuildQueueState::Queued && Some(item.type_id) == type_id);
+            if queued {
+                click(None, CameoOrder::Abandon { all: shift })
+            } else {
+                CameoClick::default()
+            }
+        }
+        (CameoPress::Left, Some(BuildQueueState::Done)) => {
+            let structure = is_structure_strip(category);
+            CameoClick {
+                sound: true,
+                eva: None,
+                order: structure.then_some(CameoOrder::Place),
+            }
+        }
+        (CameoPress::Left, Some(BuildQueueState::Paused)) => {
+            click(Some(start_line_for(category)), CameoOrder::Produce)
+        }
+        (CameoPress::Left, _) => {
+            let busy = in_category().next().is_some();
+            if busy && is_structure_strip(category) {
+                CameoClick {
+                    sound: false,
+                    eva: Some(EVA_UNABLE_TO_COMPLY),
+                    order: None,
+                }
+            } else if at_build_limit {
+                CameoClick::default()
+            } else {
+                click(
+                    (!busy).then(|| start_line_for(category)),
+                    CameoOrder::Produce,
+                )
+            }
+        }
     }
-    let structure_strip = matches!(
+}
+
+/// RTTI 7 (BuildingType): the structure and defense strips.
+fn is_structure_strip(category: ProductionCategory) -> bool {
+    matches!(
         category,
         ProductionCategory::Building | ProductionCategory::Defense
-    );
-    if factory_busy {
-        return if structure_strip {
-            BuildClickOutcome {
-                eva: Some(EVA_UNABLE_TO_COMPLY),
-                queue: false,
-            }
-        } else {
-            BuildClickOutcome {
-                eva: None,
-                queue: true,
-            }
-        };
-    }
-    BuildClickOutcome {
-        eva: Some(start_line_for(category)),
-        queue: true,
-    }
+    )
 }
 
 /// `0x006AB484..0x006AB498` / `0x006AB6A1..0x006AB6C9`: infantry trains,
@@ -93,121 +187,6 @@ pub(crate) fn start_line_for(category: ProductionCategory) -> &'static str {
     } else {
         EVA_BUILDING
     }
-}
-
-/// The hold/resume toggle. Native has no toggle gadget: a right click on a
-/// building cameo suspends it (`0x006AB007 EVA_OnHold`, event `0xF`), and a
-/// left click on a held cameo resumes it (`0x006AB498 EVA_Building` /
-/// `EVA_Training`, event `0xE`). VERA's pause button is that pair.
-pub(crate) fn pause_toggle_line(
-    category: ProductionCategory,
-    currently_paused: bool,
-) -> &'static str {
-    if currently_paused {
-        start_line_for(category)
-    } else {
-        EVA_ON_HOLD
-    }
-}
-
-/// What a left click on a cameo does when the category's active build is
-/// stalled (`SelectClass::Action 0x006AB5B3`: `local_94` — the factory
-/// producing THIS cameo's type — exists and `nRate == 0 || IsSuspended`, and
-/// `!IsComplete`): the click resumes it and speaks `EVA_Building` /
-/// `EVA_Training` (`0x006AB498`) with a `0xE` (produce) event — no new item.
-/// Only the same type takes that branch; another cameo in the category
-/// goes through the fresh-click branch with a busy factory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HeldClick {
-    /// Player-paused active item of this type: resume it and speak the start
-    /// line.
-    Resume,
-    /// The active item of this type is stalled for money (`nRate == 0`):
-    /// speak the start line; VERA's `NoFunds` resumes by itself, so no
-    /// command is issued.
-    NoFundsSameType,
-    /// The fresh-click branch (`0x006AB5F0..`).
-    Fresh,
-}
-
-pub(crate) fn held_click(
-    queue: &[QueueItemView],
-    category: ProductionCategory,
-    type_id: Option<InternedId>,
-) -> HeldClick {
-    let Some(type_id) = type_id else {
-        return HeldClick::Fresh;
-    };
-    let active = queue
-        .iter()
-        .find(|item| item.queue_category == category && item.state != BuildQueueState::Done);
-    match active {
-        Some(item) if item.type_id == type_id && item.state == BuildQueueState::Paused => {
-            HeldClick::Resume
-        }
-        Some(item) if item.type_id == type_id && item.state == BuildQueueState::NoFunds => {
-            HeldClick::NoFundsSameType
-        }
-        _ => HeldClick::Fresh,
-    }
-}
-
-/// The right-click / cancel-button line. Native right-click
-/// (`0x006AADF0..0x006AB1FF`): the cameo's own factory running → `EVA_OnHold`
-/// + suspend; already suspended or `nRate == 0` (a completed factory has
-/// `Set_Rate(0)`) → `EVA_Canceled` (`0x006AAE39`) + abandon; a copy that only
-/// sits in the queue behind the active build (`FactoryClass::IsInQueue`) is
-/// removed silently. VERA's cancel skips the hold step and abandons at once,
-/// so cancelling the ACTIVE item of its category speaks `EVA_Canceled` and a
-/// tail copy stays silent (VERA-internal mapping of the two-step native
-/// flow, gamemd equivalent UNCHECKED for the hold step).
-///
-/// `type_id == None` is the sidebar cancel button (`cancel_last`: the tail
-/// item if any, else the active build).
-pub(crate) fn cancel_line(
-    queue: &[QueueItemView],
-    type_id: Option<InternedId>,
-) -> Option<&'static str> {
-    match type_id {
-        Some(type_id) => {
-            let category = queue
-                .iter()
-                .find(|item| item.type_id == type_id)?
-                .queue_category;
-            let mut in_category = queue.iter().filter(|item| item.queue_category == category);
-            let active = in_category.next()?;
-            if in_category.any(|item| item.type_id == type_id) {
-                return None;
-            }
-            (active.type_id == type_id).then_some(EVA_CANCELED)
-        }
-        None => {
-            let last = queue.last()?;
-            let only_one = queue
-                .iter()
-                .filter(|item| item.queue_category == last.queue_category)
-                .count()
-                == 1;
-            only_one.then_some(EVA_CANCELED)
-        }
-    }
-}
-
-/// `HouseClass::GetFactory` "busy" per category: any queue entry that is
-/// not finished. `NoFunds`/`Paused` are the native `nRate == 0 ||
-/// IsSuspended` factory, still a factory with an object.
-pub(crate) fn factory_busy(queue: &[QueueItemView], category: ProductionCategory) -> bool {
-    queue
-        .iter()
-        .any(|item| item.queue_category == category && item.state != BuildQueueState::Done)
-}
-
-/// Whether the category's active build is player-suspended (`FactoryClass::
-/// IsSuspended`, the state the resume branch tests at `0x006AB5B3`).
-pub(crate) fn factory_paused(queue: &[QueueItemView], category: ProductionCategory) -> bool {
-    queue
-        .iter()
-        .any(|item| item.queue_category == category && item.state == BuildQueueState::Paused)
 }
 
 /// `SelectClass::Action 0x006AAED5..0x006AAFAC`, the superweapon strip
@@ -256,9 +235,13 @@ pub(crate) fn new_construction_options(
 mod tests {
     use super::*;
 
-    fn item(category: ProductionCategory, state: BuildQueueState) -> QueueItemView {
+    fn item(
+        type_id: InternedId,
+        category: ProductionCategory,
+        state: BuildQueueState,
+    ) -> QueueItemView {
         QueueItemView {
-            type_id: InternedId::default(),
+            type_id,
             display_name: String::new(),
             queue_category: category,
             state,
@@ -266,159 +249,208 @@ mod tests {
         }
     }
 
-    #[test]
-    fn idle_structure_strip_says_building_and_queues() {
-        let out = build_click_outcome(ProductionCategory::Building, false, true);
-        assert_eq!(out.eva, Some(EVA_BUILDING));
-        assert!(out.queue);
-        let out = build_click_outcome(ProductionCategory::Defense, false, true);
-        assert_eq!(out.eva, Some(EVA_BUILDING));
+    const LEFT: CameoPress = CameoPress::Left;
+    const RIGHT: CameoPress = CameoPress::Right { shift: false };
+    const SHIFT_RIGHT: CameoPress = CameoPress::Right { shift: true };
+
+    fn order(sound: bool, eva: Option<&'static str>, order: CameoOrder) -> CameoClick {
+        CameoClick {
+            sound,
+            eva,
+            order: Some(order),
+        }
     }
 
     #[test]
-    fn idle_infantry_strip_says_training() {
-        let out = build_click_outcome(ProductionCategory::Infantry, false, true);
-        assert_eq!(out.eva, Some(EVA_TRAINING));
-        assert!(out.queue);
-        for category in [
-            ProductionCategory::Vehicle,
-            ProductionCategory::Aircraft,
-            ProductionCategory::Ship,
+    fn idle_strip_speaks_the_start_line_and_produces() {
+        let a = InternedId::from_index(1);
+        for (category, line) in [
+            (ProductionCategory::Building, EVA_BUILDING),
+            (ProductionCategory::Defense, EVA_BUILDING),
+            (ProductionCategory::Infantry, EVA_TRAINING),
+            (ProductionCategory::Vehicle, EVA_BUILDING),
+            (ProductionCategory::Aircraft, EVA_BUILDING),
+            (ProductionCategory::Ship, EVA_BUILDING),
         ] {
             assert_eq!(
-                build_click_outcome(category, false, true).eva,
-                Some(EVA_BUILDING),
+                cameo_click(&[], category, Some(a), LEFT, false),
+                order(true, Some(line), CameoOrder::Produce),
                 "{category:?}"
             );
         }
     }
 
     #[test]
-    fn busy_structure_strip_refuses_with_unable_to_comply() {
-        for category in [ProductionCategory::Building, ProductionCategory::Defense] {
-            let out = build_click_outcome(category, true, true);
-            assert_eq!(out.eva, Some(EVA_UNABLE_TO_COMPLY));
-            assert!(!out.queue, "{category:?}");
-        }
-    }
-
-    #[test]
-    fn busy_unit_strip_queues_silently() {
-        for category in [
-            ProductionCategory::Infantry,
-            ProductionCategory::Vehicle,
-            ProductionCategory::Aircraft,
-            ProductionCategory::Ship,
+    fn busy_structure_strip_refuses_even_behind_a_finished_building() {
+        let a = InternedId::from_index(1);
+        let b = InternedId::from_index(2);
+        for state in [
+            BuildQueueState::Building,
+            BuildQueueState::Paused,
+            BuildQueueState::Done,
         ] {
-            let out = build_click_outcome(category, true, true);
-            assert_eq!(out.eva, None, "{category:?}");
-            assert!(out.queue);
+            let queue = [item(a, ProductionCategory::Building, state)];
+            assert_eq!(
+                cameo_click(&queue, ProductionCategory::Building, Some(b), LEFT, false),
+                CameoClick {
+                    sound: false,
+                    eva: Some(EVA_UNABLE_TO_COMPLY),
+                    order: None
+                },
+                "{state:?}"
+            );
         }
     }
 
     #[test]
-    fn build_limit_reached_is_silent_and_does_nothing() {
-        let out = build_click_outcome(ProductionCategory::Infantry, false, false);
+    fn busy_unit_strip_queues_silently_even_at_a_finished_head() {
+        let a = InternedId::from_index(1);
+        let b = InternedId::from_index(2);
+        for state in [
+            BuildQueueState::Building,
+            BuildQueueState::Paused,
+            BuildQueueState::Done,
+        ] {
+            let queue = [item(a, ProductionCategory::Vehicle, state)];
+            assert_eq!(
+                cameo_click(&queue, ProductionCategory::Vehicle, Some(b), LEFT, false),
+                order(true, None, CameoOrder::Produce),
+                "{state:?}"
+            );
+        }
+        // The running build's own cameo queues another copy.
+        let queue = [item(
+            a,
+            ProductionCategory::Vehicle,
+            BuildQueueState::Building,
+        )];
         assert_eq!(
-            out,
-            BuildClickOutcome {
-                eva: None,
-                queue: false
-            }
+            cameo_click(&queue, ProductionCategory::Vehicle, Some(a), LEFT, false),
+            order(true, None, CameoOrder::Produce)
         );
     }
 
     #[test]
-    fn pause_toggle_holds_then_resumes_with_the_start_line() {
+    fn a_type_at_its_build_limit_does_nothing_unless_it_is_held() {
+        let a = InternedId::from_index(1);
         assert_eq!(
-            pause_toggle_line(ProductionCategory::Vehicle, false),
-            EVA_ON_HOLD
+            cameo_click(&[], ProductionCategory::Infantry, Some(a), LEFT, true),
+            CameoClick::default()
         );
+        let held = [item(
+            a,
+            ProductionCategory::Infantry,
+            BuildQueueState::Paused,
+        )];
         assert_eq!(
-            pause_toggle_line(ProductionCategory::Vehicle, true),
-            EVA_BUILDING
-        );
-        assert_eq!(
-            pause_toggle_line(ProductionCategory::Infantry, true),
-            EVA_TRAINING
+            cameo_click(&held, ProductionCategory::Infantry, Some(a), LEFT, true),
+            order(true, Some(EVA_TRAINING), CameoOrder::Produce),
+            "a held build resumes without a limit check"
         );
     }
 
     #[test]
-    fn factory_busy_and_paused_read_only_their_own_category() {
-        let queue = vec![
-            item(ProductionCategory::Vehicle, BuildQueueState::Paused),
-            item(ProductionCategory::Building, BuildQueueState::Done),
+    fn right_click_holds_the_running_build_then_cancels_it() {
+        let a = InternedId::from_index(1);
+        let running = [item(
+            a,
+            ProductionCategory::Vehicle,
+            BuildQueueState::Building,
+        )];
+        assert_eq!(
+            cameo_click(&running, ProductionCategory::Vehicle, Some(a), RIGHT, false),
+            order(true, Some(EVA_ON_HOLD), CameoOrder::Suspend)
+        );
+        assert_eq!(
+            cameo_click(
+                &running,
+                ProductionCategory::Vehicle,
+                Some(a),
+                SHIFT_RIGHT,
+                false
+            ),
+            order(true, Some(EVA_ON_HOLD), CameoOrder::Suspend),
+            "Shift does not skip the hold"
+        );
+        for state in [BuildQueueState::Paused, BuildQueueState::Done] {
+            let stopped = [item(a, ProductionCategory::Vehicle, state)];
+            assert_eq!(
+                cameo_click(&stopped, ProductionCategory::Vehicle, Some(a), RIGHT, false),
+                order(true, Some(EVA_CANCELED), CameoOrder::Abandon { all: false }),
+                "{state:?}"
+            );
+            assert_eq!(
+                cameo_click(
+                    &stopped,
+                    ProductionCategory::Vehicle,
+                    Some(a),
+                    SHIFT_RIGHT,
+                    false
+                ),
+                order(true, Some(EVA_CANCELED), CameoOrder::Abandon { all: true }),
+                "{state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn right_click_on_a_queued_copy_abandons_it_without_a_line() {
+        let a = InternedId::from_index(1);
+        let b = InternedId::from_index(2);
+        let queue = [
+            item(a, ProductionCategory::Infantry, BuildQueueState::Building),
+            item(b, ProductionCategory::Infantry, BuildQueueState::Queued),
         ];
-        assert!(factory_busy(&queue, ProductionCategory::Vehicle));
-        assert!(factory_paused(&queue, ProductionCategory::Vehicle));
-        assert!(!factory_busy(&queue, ProductionCategory::Building));
-        assert!(!factory_busy(&queue, ProductionCategory::Infantry));
-        assert!(!factory_paused(&queue, ProductionCategory::Building));
-        let building = vec![item(ProductionCategory::Building, BuildQueueState::NoFunds)];
-        assert!(factory_busy(&building, ProductionCategory::Building));
-        assert!(!factory_paused(&building, ProductionCategory::Building));
-    }
-
-    #[test]
-    fn held_click_resumes_only_the_paused_active_type() {
-        let a = InternedId::from_index(1);
-        let b = InternedId::from_index(2);
-        let mut paused = item(ProductionCategory::Vehicle, BuildQueueState::Paused);
-        paused.type_id = a;
-        let mut tail = item(ProductionCategory::Vehicle, BuildQueueState::Queued);
-        tail.type_id = b;
-        let queue = vec![paused, tail];
         assert_eq!(
-            held_click(&queue, ProductionCategory::Vehicle, Some(a)),
-            HeldClick::Resume
+            cameo_click(
+                &queue,
+                ProductionCategory::Infantry,
+                Some(b),
+                SHIFT_RIGHT,
+                false
+            ),
+            order(true, None, CameoOrder::Abandon { all: true })
+        );
+        let c = InternedId::from_index(3);
+        assert_eq!(
+            cameo_click(&queue, ProductionCategory::Infantry, Some(c), RIGHT, false),
+            CameoClick::default(),
+            "a cameo with nothing built or queued ignores the right click"
         );
         assert_eq!(
-            held_click(&queue, ProductionCategory::Vehicle, Some(b)),
-            HeldClick::Fresh
-        );
-        assert_eq!(
-            held_click(&queue, ProductionCategory::Infantry, Some(a)),
-            HeldClick::Fresh
-        );
-        let mut broke = item(ProductionCategory::Vehicle, BuildQueueState::NoFunds);
-        broke.type_id = a;
-        assert_eq!(
-            held_click(&[broke], ProductionCategory::Vehicle, Some(a)),
-            HeldClick::NoFundsSameType
-        );
-        assert_eq!(
-            held_click(&queue, ProductionCategory::Vehicle, None),
-            HeldClick::Fresh
+            cameo_click(&queue, ProductionCategory::Vehicle, Some(b), RIGHT, false),
+            CameoClick::default(),
+            "only the cameo's own category counts"
         );
     }
 
     #[test]
-    fn cancel_line_speaks_for_the_active_item_only() {
+    fn left_click_resumes_a_held_build_and_places_a_finished_building() {
         let a = InternedId::from_index(1);
-        let b = InternedId::from_index(2);
-        let mut active = item(ProductionCategory::Infantry, BuildQueueState::Building);
-        active.type_id = a;
-        let mut tail = item(ProductionCategory::Infantry, BuildQueueState::Queued);
-        tail.type_id = b;
-        let mut tail_same = item(ProductionCategory::Infantry, BuildQueueState::Queued);
-        tail_same.type_id = a;
-        // Active item with no tail copy: Canceled.
-        assert_eq!(cancel_line(&[active.clone()], Some(a)), Some(EVA_CANCELED));
-        // A tail copy of the same type is what gets removed: silent.
-        assert_eq!(cancel_line(&[active.clone(), tail_same], Some(a)), None);
-        // A different tail item: silent.
-        assert_eq!(cancel_line(&[active.clone(), tail.clone()], Some(b)), None);
-        // Unknown type: silent.
-        assert_eq!(cancel_line(&[active.clone()], Some(b)), None);
-        // Cancel button: the tail goes first (silent), then the active build.
-        assert_eq!(cancel_line(&[active.clone(), tail], None), None);
-        assert_eq!(cancel_line(&[active], None), Some(EVA_CANCELED));
-        assert_eq!(cancel_line(&[], None), None);
-        // A completed building awaiting placement is the active item.
-        let mut ready = item(ProductionCategory::Building, BuildQueueState::Done);
-        ready.type_id = a;
-        assert_eq!(cancel_line(&[ready], Some(a)), Some(EVA_CANCELED));
+        let held = [item(
+            a,
+            ProductionCategory::Vehicle,
+            BuildQueueState::Paused,
+        )];
+        assert_eq!(
+            cameo_click(&held, ProductionCategory::Vehicle, Some(a), LEFT, false),
+            order(true, Some(EVA_BUILDING), CameoOrder::Produce)
+        );
+        let ready = [item(a, ProductionCategory::Defense, BuildQueueState::Done)];
+        assert_eq!(
+            cameo_click(&ready, ProductionCategory::Defense, Some(a), LEFT, false),
+            order(true, None, CameoOrder::Place)
+        );
+        let unit = [item(a, ProductionCategory::Vehicle, BuildQueueState::Done)];
+        assert_eq!(
+            cameo_click(&unit, ProductionCategory::Vehicle, Some(a), LEFT, false),
+            CameoClick {
+                sound: true,
+                eva: None,
+                order: None
+            },
+            "a finished unit's PLACE retry is VERA's automatic delivery"
+        );
     }
 
     #[test]

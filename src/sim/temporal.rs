@@ -90,11 +90,13 @@
 //!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`) and the
 //!   depot probe (`0x0043C7FB`). Not wired:
 //!   - `TechnoTypeClass::FindFactory @ 0x005F7900` with its online argument
-//!     (`(1,1,1)`, `production_tech::revalidate_eligibility`): production of
-//!     a category whose every factory is warped suspends natively; VERA's
-//!     `BuildEligibility::TemporarilyBlocked` seam has no consumer. Trigger:
-//!     a warp on a house's only factory of a kind. Effect: VERA keeps
-//!     producing during the warp.
+//!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
+//!     build that only offline factories could build (`0x0050924D`), and a
+//!     build promoted then starts on hold (`0x004FA45B`). VERA has neither
+//!     (residual at `production_tech::revalidate_eligibility`). Trigger: a
+//!     building event or a promotion while every factory of the kind is
+//!     warped; a warp's start runs no update (`0x004521C0`). Effect: VERA
+//!     keeps producing during the warp.
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
 //!     online, unsold host; plain prerequisites use the house counters), the

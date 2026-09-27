@@ -325,22 +325,16 @@ pub(crate) fn build_sidebar_view_with_spec(
     let btn_x1 = layout.sidebar_x + btn_pad;
     let btn_x2 = layout.sidebar_x + layout_spec.sidebar_width - btn_w - btn_pad;
 
-    // These two buttons are app-local controls, not native sidebar gadgets.
-    // A native unit-tab cameo retains its own FactoryPtr/category, so the
-    // combined presentation tab is not authority for a House factory slot.
+    // The producer button is an app-local control, not a native sidebar
+    // gadget. A native unit-tab cameo retains its own FactoryPtr/category, so
+    // the combined presentation tab is not authority for a House factory slot.
     // When exactly one real queue category is present, use it. With multiple
     // independent categories there is no evidenced global selector; omitting
-    // the ambiguous controls is safer than emitting a command for Vehicle.
+    // the ambiguous control is safer than emitting a command for Vehicle.
     let active_queue_category = unique_category_for_tab(
         selected_category,
         queue_items.iter().map(|item| item.queue_category),
     );
-    let active_queue_paused = active_queue_category.is_some_and(|category| {
-        queue_items
-            .iter()
-            .find(|item| item.queue_category == category)
-            .is_some_and(|item| item.state == BuildQueueState::Paused)
-    });
     let producer_category = active_queue_category
         .filter(|category| {
             producer_focus
@@ -379,20 +373,6 @@ pub(crate) fn build_sidebar_view_with_spec(
         top_buttons,
         scroll_down_button,
         scroll_up_button,
-        pause_button: active_queue_category.map(|category| SidebarControlButton {
-            rect: Rect {
-                x: btn_x1,
-                y: btn_y,
-                w: btn_w,
-                h: btn_h,
-            },
-            action: SidebarAction::TogglePauseQueue(category),
-            label: if active_queue_paused {
-                "Resume".to_string()
-            } else {
-                "Pause".to_string()
-            },
-        }),
         producer_button: producer_category.map(|category| SidebarControlButton {
             rect: Rect {
                 x: btn_x2,
@@ -403,16 +383,6 @@ pub(crate) fn build_sidebar_view_with_spec(
             action: SidebarAction::CycleProducer(category),
             label: "Factory".to_string(),
         }),
-        cancel_button: SidebarControlButton {
-            rect: Rect {
-                x: btn_x1,
-                y: btn_y + btn_h + layout_spec.control_button_gap,
-                w: btn_w,
-                h: btn_h,
-            },
-            action: SidebarAction::CancelLastBuild,
-            label: "Cancel".to_string(),
-        },
         cycle_owner_button: SidebarControlButton {
             rect: Rect {
                 x: btn_x2,
@@ -585,16 +555,13 @@ fn collect_build_entries(
                         && item.queue_category == opt.queue_category
                         && item.state == crate::sim::production::BuildQueueState::Building
                 });
-                // Suspended production — the two ways a stock queue stalls:
-                // the player paused it, or the house ran out of cash. gamemd
-                // shows its `TXT_HOLD` status text for exactly this state.
+                // The player's hold. gamemd's `TXT_HOLD` needs a factory with
+                // no rate or a stopped one (`0x006A9E9C..0x006A9ECC`); a cash
+                // stall keeps its rate, so it shows only a frozen clock.
                 let is_on_hold = queue_items.iter().any(|item| {
                     item.type_id == opt.type_id
                         && item.queue_category == opt.queue_category
-                        && matches!(
-                            item.state,
-                            BuildQueueState::Paused | BuildQueueState::NoFunds
-                        )
+                        && item.state == BuildQueueState::Paused
                 });
                 let progress = queue_items
                     .iter()
@@ -768,11 +735,9 @@ mod tests {
         );
 
         for button in [
-            Some(&view.cancel_button),
             Some(&view.cycle_owner_button),
             Some(&view.starter_base_button),
             Some(&view.spawn_test_units_button),
-            view.pause_button.as_ref(),
             view.producer_button.as_ref(),
         ]
         .into_iter()
@@ -981,7 +946,6 @@ mod tests {
             None,
         );
 
-        assert_eq!(view.cancel_button.action, SidebarAction::CancelLastBuild);
         assert_eq!(view.cycle_owner_button.action, SidebarAction::CycleOwner);
         assert_eq!(
             view.starter_base_button.action,
@@ -1093,12 +1057,6 @@ mod tests {
         assert_eq!(dest.queued_count, 1);
         assert!(dest.is_on_hold);
         approx_eq(dest.progress, 0.5);
-        let pause = view.pause_button.as_ref().expect("Ship pause control");
-        assert_eq!(pause.label, "Resume");
-        assert_eq!(
-            pause.action,
-            SidebarAction::TogglePauseQueue(ProductionCategory::Ship)
-        );
         assert_eq!(
             view.producer_button
                 .as_ref()
@@ -1174,21 +1132,18 @@ mod tests {
         approx_eq(dest.progress, 1.0);
         assert_eq!(mtnk.queued_count, 1);
         assert_eq!(dest.queued_count, 1);
-        assert!(view.pause_button.is_none());
         assert!(view.producer_button.is_none());
     }
 
-    /// gamemd shows its `TXT_HOLD` status text while production is suspended.
-    /// Our two suspended states are a player-paused queue and a house that ran
-    /// out of cash; neither an actively-building nor a merely-queued item
-    /// carries the flag.
+    /// gamemd shows its `TXT_HOLD` status text while the player holds a
+    /// build; neither a building (cash-stalled or not) nor a merely-queued
+    /// item carries the flag.
     #[test]
     fn suspended_queue_items_mark_their_cameo_on_hold() {
         use crate::sim::production::BuildQueueState;
 
         let cases = [
             (BuildQueueState::Paused, true),
-            (BuildQueueState::NoFunds, true),
             (BuildQueueState::Building, false),
             (BuildQueueState::Queued, false),
         ];

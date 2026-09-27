@@ -420,6 +420,18 @@ pub(super) fn dispatch_sim_sound_events(
                     type_override: None,
                 }
             }
+            SimSoundEvent::ProductionRefused { owner } => {
+                // `FactoryClass::StartProduction 0x004C9D3F..0x004C9D5F`:
+                // ScoldSound through `0x00750920` for the player's house.
+                let owner_str = sim.interner.resolve(owner);
+                if !local_owner_name.is_some_and(|l| l.eq_ignore_ascii_case(owner_str)) {
+                    continue;
+                }
+                let Some(sound_id) = rules.general.scold_sound.clone() else {
+                    continue;
+                };
+                GameSoundEvent::UiSound { sound_id }
+            }
             SimSoundEvent::StructureGarrisoned { owner } => {
                 // EVA cue: only play for the local human player.
                 let owner_str = sim.interner.resolve(owner);

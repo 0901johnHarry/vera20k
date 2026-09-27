@@ -668,7 +668,12 @@ use crate::sim::world::Simulation;
 // keeps its FactoryPlant list (House+0x140), hashed from schema 228, and drops
 // its unread tracked-building count and base radius; a factory keeps no
 // VERA-only full-cost copy of its Balance.
-const SNAPSHOT_VERSION: u32 = 228;
+// 228 -> 229: the production commands are the native events: QueueProduction
+// loses its unused mode, SuspendProduction replaces the pause toggle,
+// CancelProductionByType gains ABANDON_ALL and CancelLastProduction goes. A
+// factory keeps its construction order when it promotes a queued build, and a
+// user hold now clears its rate and restarts its timer.
+const SNAPSHOT_VERSION: u32 = 229;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3653,7 +3658,8 @@ mod tests {
         // no stored build-time estimates.
         // 226 -> 227: retained surface-ship sinking and its sound edge.
         // 227 -> 228: FactoryPlant cost bonuses; no full-cost Balance copy.
-        assert_eq!(super::SNAPSHOT_VERSION, 228);
+        // 228 -> 229: the native production events; a user hold clears the rate.
+        assert_eq!(super::SNAPSHOT_VERSION, 229);
     }
 
     #[test]
