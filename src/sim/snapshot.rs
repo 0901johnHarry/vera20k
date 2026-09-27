@@ -640,7 +640,9 @@ use crate::sim::world::Simulation;
 // `+0x6DD` set, and combat serves a building's Mission_Attack request instead
 // of deciding its shot. Layout is unchanged, but a 220 save's buildings hold
 // no mission and would idle on a MissionClass stub, so reject it.
-const SNAPSHOT_VERSION: u32 = 221;
+// 221 -> 222: pending production commands carry no house of their own; they
+// act on their envelope's house. Dropping the fields changes the bincode schema.
+const SNAPSHOT_VERSION: u32 = 222;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3586,7 +3588,8 @@ mod tests {
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
         // 219 -> 220: the rally point is the factory's ArchiveTarget alone.
         // 220 -> 221: buildings' Guard and Attack missions.
-        assert_eq!(super::SNAPSHOT_VERSION, 221);
+        // 221 -> 222: production commands take their envelope's house.
+        assert_eq!(super::SNAPSHOT_VERSION, 222);
     }
 
     #[test]

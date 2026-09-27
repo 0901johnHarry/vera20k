@@ -421,7 +421,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         owner_id,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: owner_id,
             type_id: gapowr_id,
             rx: fixture.blocked.0,
             ry: fixture.blocked.1,
@@ -488,7 +487,6 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         owner_id,
         sim.session.tick + 1,
         Command::PlaceReadyBuilding {
-            owner: owner_id,
             type_id: gapowr_id,
             rx: fixture.valid.0,
             ry: fixture.valid.1,
