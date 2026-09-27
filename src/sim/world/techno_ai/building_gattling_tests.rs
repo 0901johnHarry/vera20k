@@ -372,8 +372,7 @@ fn combat_phase_shot(
     building: u64,
 ) -> Option<(String, TargetKind)> {
     let requests = std::mem::take(&mut sim.fire_requests);
-    sim.fire_events.clear();
-    let _ = sim.tick_combat_with_fatal_lifecycle(
+    let result = sim.tick_combat_with_fatal_lifecycle(
         rules,
         None,
         67,
@@ -383,7 +382,9 @@ fn combat_phase_shot(
         &[],
         &[],
     );
-    sim.fire_events
+    result
+        .consequences
+        .fire_events()
         .iter()
         .find(|event| event.attacker_id == building)
         .map(|event| {
