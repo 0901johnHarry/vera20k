@@ -159,8 +159,24 @@ fn ready_latch(sim: &Simulation, id: u64) -> u8 {
 }
 
 /// Runs `call` and answers its return, asserting the row's Scenario draws:
-/// the state is the one that many `RandomRanged(0, 2)` leave.
+/// the state is the one that many `RandomRanged(0, 2)` leave, and the
+/// generator's two indices advance as far as the native ones did
+/// (`random_indices`), which pins the raw draws a re-draw adds.
 fn with_draws(sim: &mut Simulation, row: &Value, call: impl FnOnce(&mut Simulation) -> i32) -> i32 {
+    let name = &row["input"]["name"];
+    // The generator's table holds 250 words; both indices wrap there.
+    let advance = |before: [i64; 2], after: [i64; 2]| {
+        [0, 1].map(|index| (after[index] - before[index]).rem_euclid(250))
+    };
+    let native = |key: &str| {
+        let pair = &row["random_indices"][key];
+        [0, 1].map(|index| pair[index].as_i64().unwrap())
+    };
+    let indices = |sim: &Simulation| {
+        let state = sim.scenario_rng.logical_state();
+        [i64::from(state.index_a), i64::from(state.index_b)]
+    };
+    let before = indices(sim);
     let mut expected = sim.scenario_rng.clone();
     for draw in row["draws"].as_array().unwrap() {
         assert_eq!(draw, &serde_json::json!(["random_ranged", 0, 2]));
@@ -170,8 +186,12 @@ fn with_draws(sim: &mut Simulation, row: &Value, call: impl FnOnce(&mut Simulati
     assert_eq!(
         sim.scenario_rng.logical_state(),
         expected.logical_state(),
-        "{} draws",
-        row["input"]["name"]
+        "{name} draws"
+    );
+    assert_eq!(
+        advance(before, indices(sim)),
+        advance(native("before"), native("after")),
+        "{name} raw draws"
     );
     returns
 }
