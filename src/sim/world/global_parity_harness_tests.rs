@@ -785,7 +785,12 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_
 // repair diagnostic reproduced the prior current pin with Before(217), and
 // all earlier projections, replay/behavior checks and RNG receipts still passed.
 // These Rust regression receipts do not establish native gameplay parity.
-// 2026-09-27 combat chain 11 (behavior, snapshot 220), traced tick by tick
+// Schema220 retires the two VERA rally copies (the house's `rally_point` and
+// each building's `rally_target`; the rally is the factory's ArchiveTarget):
+// composition only, as no rally is set here. Before(220) folds their empty
+// values and reproduces the prior current pin; every earlier projection,
+// per-tick replay and the RNG receipts are unchanged.
+// 2026-09-27 combat chain 11 (behavior, snapshot 221), traced tick by tick
 // against 11c2e2e9: the war factory and refinery (ids 1, 2) now queue Guard
 // at Unlimbo (0x0044D6A0) and commence it on their first Update; unarmed and
 // with HasStupidGuardMode's constructor true, each Guard dispatch returns
@@ -794,8 +799,10 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_
 // mission and a zero timer. Every other object's full state, the logic order
 // and all three RNG streams match 11c2e2e9 at all 600 ticks, and resetting
 // just those two fields of the two buildings at tick 599 reproduces every
-// old pin, before_power included. Old values: the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x5399_2DBF_0F41_2252;
+// old pin, Schema220's current pin and before_power included. Old values:
+// the commit that moved them.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xCDE2_E89E_8B4D_1FDE;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x5399_2DBF_0F41_2252;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB1CF_4893_C849_0668;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xA0DB_A253_A90D_DD51;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_AI_SELLABLE_V213: u64 = 0x8790_DDF6_2049_578E;
@@ -1350,6 +1357,11 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217,
         "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
+        "schema220 only drops the two empty rally copies from this fixture's hash"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

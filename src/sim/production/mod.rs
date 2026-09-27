@@ -43,8 +43,8 @@ pub use self::production_placement::{
 pub use self::production_queue::{
     build_options_for_owner, credits_for_owner, enqueue_default_unit_for_owner,
     has_strict_build_option_for_owner, power_balance_for_owner, queue_view_for_owner,
-    rally_point_for_owner, ready_buildings_for_owner, set_rally_point_for_owner,
-    theoretical_power_for_owner, tick_production, tick_production_with_overlay_registry,
+    ready_buildings_for_owner, theoretical_power_for_owner, tick_production,
+    tick_production_with_overlay_registry,
 };
 pub(crate) use self::production_refinery::spawn_completed_refinery_free_units;
 pub(crate) use self::production_sell::{

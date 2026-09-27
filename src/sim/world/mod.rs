@@ -915,7 +915,8 @@ pub struct Simulation {
     /// load. NOT serialized, NOT hashed. `None` until resolved.
     #[serde(skip)]
     pub(crate) rule_handles: Option<crate::sim::type_handle_table::ResolvedRuleHandles>,
-    /// Credits, build queue state, and rally points.
+    /// Factories, ready buildings and producer focus; also ore growth,
+    /// terrain objects and airfield docks.
     pub production: ProductionState,
     /// Session aggregate — scenario identity, seed, authoritative map
     /// bounds, MP start table, per-match options, and the frame clocks

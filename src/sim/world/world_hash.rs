@@ -1154,11 +1154,8 @@ impl Simulation {
                 score.hash(hasher);
             }
             house.enemy_house.hash(hasher);
-            if let Some((rx, ry)) = house.rally_point {
-                1u8.hash(hasher);
-                rx.hash(hasher);
-                ry.hash(hasher);
-            } else {
+            if !schema.includes(HashFeature::RetiredRallyCopies) {
+                // The retired house rally copy, always empty in the fixtures.
                 0u8.hash(hasher);
             }
             if let Some((rx, ry)) = house.base_center {
@@ -2063,7 +2060,10 @@ impl Simulation {
                 }
                 None => 0u8.hash(hasher),
             }
-            entity.rally_target.hash(hasher);
+            if !schema.includes(HashFeature::RetiredRallyCopies) {
+                // The retired per-building rally copy (`HashFeature::RetiredRallyCopies`).
+                None::<(u16, u16)>.hash(hasher);
+            }
             entity.capture_target.hash(hasher);
             entity.c4_plant.hash(hasher);
             match entity.pending_c4_detonation {
@@ -3403,26 +3403,22 @@ mod track_authority_hash_tests {
 }
 
 #[cfg(test)]
-mod rally_hash_tests {
+mod state_hash_field_tests {
     use super::{Simulation, hash_house_ai_activation_fields};
     use crate::sim::components::{DriveCoord, DriveLocomotionRuntime};
     use crate::sim::game_entity::GameEntity;
 
+    /// A factory's rally point is its ArchiveTarget cell, folded with the
+    /// base-defence state.
     #[test]
-    fn entity_rally_target_changes_state_hash() {
+    fn factory_rally_point_changes_state_hash() {
+        let factory = GameEntity::test_default(1, "GAWEAP", "Americans", 10, 10);
+        let mut rallied = factory.clone();
+        rallied.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(30, 31)));
         let mut sim_a = Simulation::new();
         let mut sim_b = Simulation::new();
-        sim_a
-            .substrate
-            .entities
-            .insert(GameEntity::test_default(1, "GAWEAP", "Americans", 10, 10));
-        sim_b
-            .substrate
-            .entities
-            .insert(GameEntity::test_default(1, "GAWEAP", "Americans", 10, 10));
-
-        sim_b.substrate.entities.get_mut(1).unwrap().rally_target = Some((30, 31));
-
+        sim_a.substrate.entities.insert(factory);
+        sim_b.substrate.entities.insert(rallied);
         assert_ne!(sim_a.state_hash(), sim_b.state_hash());
     }
 

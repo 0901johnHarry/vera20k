@@ -344,8 +344,6 @@ pub struct HouseState {
     /// mutable `HouseClass` bytes — gamemd keeps this one on the house type.
     #[serde(default)]
     pub multiplay_passive: bool,
-    /// Rally point for newly produced units (isometric cell coords).
-    pub rally_point: Option<(u16, u16)>,
     /// Whether this player has been eliminated.
     pub is_defeated: bool,
     /// Victory flag.
@@ -671,7 +669,6 @@ impl HouseState {
             difficulty: HouseDifficulty::Normal,
             rof_bias: HouseRofBias::default(),
             multiplay_passive: false,
-            rally_point: None,
             is_defeated: false,
             has_won: false,
             has_lost: false,
