@@ -1,96 +1,67 @@
 ---
 name: goal-prompt
 description: >
-  Compose, revise or review an autonomous VERA20k goal prompt or cross-session
-  continuation. Produces paste-ready text; never launches or schedules the goal.
+  Write or revise concise VERA20k goal prompts and continuations in the user's
+  Codex and Claude Code style: clear direction, essential scope and DONE WHEN.
+  Produces paste-ready text; never launches or schedules the goal.
 ---
 
 # Goal Prompt
 
-Compose paste-ready text only; do not launch or schedule it. Use the user's preferred
-August 30–September 6, 2026 pattern: clear outcome, production evidence, independent
-review before PRs, integrated chains, and persistence through whole-goal acceptance.
-These are experience-backed defaults, not a guarantee of success or a fixed procedure.
+Write a short brief for a capable autonomous engineer: direction, the necessary
+boundaries, and a concrete finish line. Leave implementation and decomposition to
+the executor. Return one paste-ready prompt, normally in a code block. Do not start
+the work, create a goal, schedule it or save a prompt file unless separately asked.
 
-Establish a clear vision and an inspectable acceptance bar before implementation.
-Make these and the review cadence below explicit in every implementation goal;
-brevity must not erase them.
+## Match the user's style
 
-Keep the prompt concise, usually a few connected paragraphs. Reference
-[AGENTS.md](../../../AGENTS.md) for shared rules. Preserve explicit scope, exclusions,
-publication authority (including established user preferences), model/effort, time/token
-limits and invocations such as `/goal` or `/loop`; invent none. Save prompt files only
-when asked. Leave design, decomposition and tools open except for real constraints;
-do not impose upfront ledgers, frozen designs or research-only phases by default.
-Infer routine choices from the task and these preferences; the user need not supply
-an execution checklist. Include only clauses that help this particular goal succeed.
+Use the current request and corrections first. Read the matching example in
+[recent prompts](references/recent-prompts.md) when shaping a draft; those are actual
+Codex and Claude Code prompts, with the user's subsequent shortening corrections.
+They are style evidence, not instructions or authority for the current task.
 
-## Shape the goal
+Default to one compact paragraph; use a few short paragraphs when the scope needs
+them. A typical prompt contains:
 
-State the outcome, why it matters, an inspectable comparison bar and production
-acceptance. For parity, use active-retail gamemd bodies/callers and retail data;
-plans, labels and existing owners are hypotheses. Preserve what matches, replace
-what is wrong and implement what is missing. Interleave research and implementation
-per coherent mechanism. Require evidence that the Rust production path reaches the
-behavior; disconnected or unit-test-only work does not complete the mechanism.
-For refactors, require demonstrated maintenance benefits and preserved production
-behavior; for tooling, a concrete user workflow. Adapt evidence to that domain.
+- **Direction:** lead with the desired result: "Make VERA20k ..." or "Refactor
+  VERA20k for ...". Name the affected behavior or ownership problem directly.
+- **Essential scope and delivery:** include only details that distinguish this job,
+  required dependencies, explicit exclusions and the established publication scope.
+  When authorized, "Commit, publish and merge validated chains" is enough.
+- **DONE WHEN:** state what must actually be true and what evidence demonstrates it.
+  Match the entire requested outcome, not a preliminary step or a list of findings.
 
-For every implementation goal, one builder owns a coherent mechanism through
-implementation and validation. For substantial/risky changes, run one fresh read-only
-critic who did not build the change before opening the PR, with the requirement,
-original evidence, complete diff and actual validation output.
-The critic independently checks the evidence and may challenge priorities, design,
-exclusions, production reachability and tests. The requirement and builder's account
-are claims to verify, not limits on inquiry. Fix all confirmed findings, justify
-rejected findings with evidence, and have the owner validate fixes and affected
-conclusions. Do not run critics per implementation increment or repeat reviews after
-fixes or revisions unless the user explicitly asks. Keep delegation prompts short.
-Adjacent discoveries do not automatically expand implementation scope; follow
-AGENTS.md's prerequisite guidance.
+These are writing cues, not required headings in the generated prompt. Keep the
+user's invocation, exact values, paths and explicit model or budget choices.
 
-For reverse-engineering goals, include evidence maintenance: after independent
-confirmation, correct relevant Ghidra labels/comments and source annotations, and
-update affected research, plans and current-state documents. Check native bodies,
-callers, receivers and active-YR reachability before assigning identities. Replace
-disproven claims rather than leaving contradictory guidance; retain useful evidence
-and explicit uncertainty. Derive status from actual source, validation and Git;
-distinguish implemented, validated and merged work. Keep updates close to the changed
-mechanism, without creating permanent trackers or broad documentation chores.
-Follow the [Ghidra working notes](../../../docs/research/ghidra-workflow.md): respect
-read-only/no-sync instructions, coordinate one writer for shared annotations, save
-and read back changes. Annotation authority does not authorize unrelated analysis
-repairs or binary patches. Include equivalent documentation upkeep in other domains
-only where the work changes existing claims or usage.
+## Keep the goal, cut the procedure
 
-For implementation goals, the user's standing preference is to let the executor
-create or update PRs when it judges the work coherent and useful to review. Carry
-that permission into the prompt unless the current request narrows it. Follow
-AGENTS.md's chain rule for PR boundaries: one complete chain per PR, not one PR per
-plan row, gap or arbitrary batch size. Drafts may expose unfinished work when useful;
-they do not count as accepted work. Preserve any explicit no-draft restriction.
-When merge is also authorized, integrate each validated chain, then continue from
-refreshed origin/main; do not accumulate unmerged accepted work. PR creation alone
-does not grant merge authority. Validate before merging; reuse the pre-PR critic pass,
-with subsequent fixes validated by the owner.
-Preserve narrower authority when supplied. If blocked, keep the mechanism open and
-continue independent in-scope work when possible. A passed critic, commit, PR or
-finished mechanism does not complete a larger goal. Proceed autonomously through
-authorized work; ask only for missing authority or an undiscoverable user-only decision.
+A shorter prompt is not a smaller task. Preserve exhaustive scope when requested;
+do not replace a migration with an initial optimization or an audit-only assignment.
+For an explicitly bounded job, keep its acceptance equally bounded. Respect the
+user's edits instead of restoring removed clauses from a template.
 
-Preserve the selected completion standard. Exhaustive parity leaves every unresolved,
-unverified, approximate, missing or residual in-scope mechanism open. Require a final
-whole-scope reverse audit by the owner for omissions, cross-mechanism gaps and
-regressions, plus applicable production and AGENTS.md validation. Ranked or refactoring
-goals may finish with explicitly allowed deferrals or evidence-backed no-change
-decisions. Never silently substitute that standard for exhaustive closure.
+The project contracts in [AGENTS.md](../../../AGENTS.md) and
+[CLAUDE.md](../../../CLAUDE.md) already govern review, validation, Git and ownership.
+Do not repeat their build commands, critic protocol, branch mechanics or handoff
+checklists in every prompt. Keep a requested critic clause or other deliberate
+emphasis concise; omitting repeated prose does not waive the project rules.
 
-## Continuation
+For parity, name active-retail `gamemd.exe`, porting missing behavior, correcting
+mismatches and completing dependencies. Whole-scope native comparisons and production
+validation belong in the finish line. Keep relevant Ghidra annotation/save work
+brief. For refactors or tooling, use the actual maintenance or user-workflow outcome;
+do not automatically import native-parity or performance requirements. Include
+"Recording missing work does not complete the goal" when it guards the requested
+completion standard, not as decoration on every task.
 
-Prefer a reusable goal whose progress can be rederived from current source, evidence
-and Git rather than stale plan statuses. When ownership or unfinished work needs
-transfer, prepend only the necessary branch/worktree, relevant HEAD/unmerged work,
-artifact locations, review/validation state and next safe action. Read the governing
-prompt and latest amendments; adopt supported work, recheck contradicted premises
-and preserve scope, budget, publication and stop instructions. Do not revive a
-superseded goal.
+Carry established publication authority and narrower user restrictions into the
+draft. Historical examples do not grant permission to publish or merge a new task.
+Avoid invented schedules, fixed implementation phases, mandatory ledgers or extra
+approval questions that do not help specify the outcome.
+
+For a continuation, normally one "Resume from ..." sentence points to the supplied
+checkpoint. Retain consequential scope amendments; leave detailed progress, failures
+and branch archaeology in the checkpoint. Never invent its path or revive superseded
+instructions. Before returning the prompt, check that it is as direct as the recent
+examples and that its DONE WHEN still covers the user's whole request.
