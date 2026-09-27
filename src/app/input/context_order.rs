@@ -15,7 +15,8 @@ use crate::app::input::dispatch::{
     is_alt_held, is_ctrl_held, is_shift_held, selected_stable_ids_in_order,
 };
 use crate::app::input::entity_pick::{
-    hover_target_at_point, pick_any_target_stable_id, pick_enemy_target_stable_id,
+    HoverTargetKindWithId, hover_target_at_point, pick_any_target_stable_id,
+    pick_enemy_target_stable_id,
 };
 use crate::app::types::{HoverTargetKind, OrderMode};
 use crate::map::entities::EntityCategory;
@@ -691,59 +692,17 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     HoverTargetKind::FriendlyUnit | HoverTargetKind::FriendlyStructure
                 )
             });
-            // Self-click on a deployable structure (garrisoned building → unload,
-            // ConYard → undeploy). Must run before the friendly-click fallthrough
-            // below — otherwise the click is treated as plain re-selection and the
-            // deploy cursor's action is lost.
-            if context_actions_enabled && clicked_friendly {
-                if let Some(target) = hover.as_ref() {
-                    if selected_ids.contains(&target.stable_id) {
-                        if let Some(entity) = sim.entities().get(target.stable_id) {
-                            // Self-click on a loaded transport → unload.
-                            if let Some(cmd) = super::transport_orders::transport_unload_command(
-                                entity,
-                                resources
-                                    .rules
-                                    .object(sim.interner.resolve(entity.type_ref())),
-                            ) {
-                                queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
-                                return finish_order(state, queued, speaker_id);
-                            }
-                            if entity.category == EntityCategory::Structure {
-                                let obj = Some(&resources.rules).and_then(|r| {
-                                    r.object(sim.interner.resolve(entity.type_ref()))
-                                });
-                                let cmd = if obj.map_or(false, |o| o.can_be_occupied)
-                                    && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
-                                {
-                                    Some(Command::UnloadPassengers {
-                                        transport_id: target.stable_id,
-                                    })
-                                } else if entity.bunker_occupant.is_some() {
-                                    // Own occupied tank bunker → eject the installed unit.
-                                    Some(Command::EjectBunker {
-                                        bunker_id: target.stable_id,
-                                    })
-                                } else if Some(&resources.rules).is_some_and(|rules| {
-                                    sim.should_show_undeploy_building_command(
-                                        target.stable_id,
-                                        rules,
-                                    )
-                                }) {
-                                    Some(Command::UndeployBuilding {
-                                        entity_id: target.stable_id,
-                                    })
-                                } else {
-                                    None
-                                };
-                                if let Some(cmd) = cmd {
-                                    queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
-                                    return finish_order(state, queued, speaker_id);
-                                }
-                            }
-                        }
-                    }
-                }
+            if context_actions_enabled
+                && let Some(cmd) = self_click_command(
+                    sim,
+                    &resources.rules,
+                    owner_id,
+                    &selected_ids,
+                    hover.as_ref(),
+                )
+            {
+                queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
+                return finish_order(state, queued, speaker_id);
             }
             if select_friendly_clicks && clicked_friendly && context_actions_enabled {
                 return false;
@@ -1086,63 +1045,17 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     HoverTargetKind::FriendlyUnit | HoverTargetKind::FriendlyStructure
                 )
             });
-            // Deploy-on-self-click: clicking a selected deployable entity deploys/undeploys it.
-            if clicked_friendly && context_actions_enabled {
-                if let Some(target) = hover.as_ref() {
-                    if selected_ids.contains(&target.stable_id) {
-                        if let Some(entity) = sim.entities().get(target.stable_id) {
-                            let obj = Some(&resources.rules)
-                                .and_then(|r| r.object(sim.interner.resolve(entity.type_ref())));
-                            let cmd = if entity.category == EntityCategory::Structure {
-                                // Garrisoned building → unload occupants.
-                                if obj.map_or(false, |o| o.can_be_occupied)
-                                    && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
-                                {
-                                    Some(Command::UnloadPassengers {
-                                        transport_id: target.stable_id,
-                                    })
-                                // ConYard → MCV
-                                } else if Some(&resources.rules).is_some_and(|rules| {
-                                    sim.should_show_undeploy_building_command(
-                                        target.stable_id,
-                                        rules,
-                                    )
-                                }) {
-                                    Some(Command::UndeployBuilding {
-                                        entity_id: target.stable_id,
-                                    })
-                                } else {
-                                    None
-                                }
-                            } else if entity.category == EntityCategory::Infantry
-                                && obj.map_or(false, |o| o.deploy_fire)
-                            {
-                                // Deploy-fire infantry (GI, GGI, etc.) → toggle deploy.
-                                Some(Command::ToggleInfantryDeploy {
-                                    entity_id: target.stable_id,
-                                })
-                            } else if let Some(cmd) =
-                                super::transport_orders::transport_unload_command(entity, obj)
-                            {
-                                // Loaded transport → unload passengers.
-                                Some(cmd)
-                            } else {
-                                // MCV → ConYard
-                                if obj.map_or(false, |o| o.deploys_into.is_some() || o.deployer) {
-                                    Some(Command::DeployMcv {
-                                        entity_id: target.stable_id,
-                                    })
-                                } else {
-                                    None
-                                }
-                            };
-                            if let Some(cmd) = cmd {
-                                queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
-                                return finish_order(state, queued, speaker_id);
-                            }
-                        }
-                    }
-                }
+            if context_actions_enabled
+                && let Some(cmd) = self_click_command(
+                    sim,
+                    &resources.rules,
+                    owner_id,
+                    &selected_ids,
+                    hover.as_ref(),
+                )
+            {
+                queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
+                return finish_order(state, queued, speaker_id);
             }
             // A Crazy Ivan bombs a friend by a plain click, when the object that
             // owns the cursor is one of the bombing Ivans.
@@ -1384,6 +1297,71 @@ pub(crate) fn try_queue_context_order_at_screen_point(
         );
     }
     finish_order(state, queued, speaker_id)
+}
+
+/// The command a click on the one selected object issues when it clicks
+/// itself. `TechnoClass::What_Action_OnObject` returns ACTION_SELF only when
+/// the target is the acting object, exactly one object is selected
+/// (`[0xA8ECC8] == 1`, `0x007000C1`) and its owner is the current player
+/// (`0x007000B9..0x007000DF`). With more selected, a click on one of them
+/// resolves to ACTION_SELECT, which the left-up handler turns into a fresh
+/// selection of the clicked object (`0x004ABE18..`); the caller's friendly-click
+/// path does that.
+///
+/// VERA picks the command from the clicked object's own capabilities. The
+/// class overrides' post-processing of ACTION_SELF (`UnitClass` `0x0073FD50`,
+/// `InfantryClass` `0x0051E3B0`, `BuildingClass` `0x00447210`) is not ported,
+/// and the cursor decides its self-hover separately (refactor issue #605).
+fn self_click_command(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    local_owner: InternedId,
+    selected_ids: &[u64],
+    hover: Option<&HoverTargetKindWithId>,
+) -> Option<Command> {
+    let target = hover?;
+    if selected_ids != [target.stable_id] {
+        return None;
+    }
+    let entity = sim
+        .entities()
+        .get(target.stable_id)
+        .filter(|entity| entity.owner() == local_owner)?;
+    let obj = rules.object(sim.interner.resolve(entity.type_ref()));
+    if entity.category == EntityCategory::Structure {
+        // A garrisoned building unloads its occupants, a tank bunker ejects
+        // its unit, and a building that undeploys (a Construction Yard)
+        // packs up.
+        return if obj.is_some_and(|o| o.can_be_occupied)
+            && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
+        {
+            Some(Command::UnloadPassengers {
+                transport_id: target.stable_id,
+            })
+        } else if entity.bunker_occupant.is_some() {
+            Some(Command::EjectBunker {
+                bunker_id: target.stable_id,
+            })
+        } else if sim.should_show_undeploy_building_command(target.stable_id, rules) {
+            Some(Command::UndeployBuilding {
+                entity_id: target.stable_id,
+            })
+        } else {
+            None
+        };
+    }
+    if entity.category == EntityCategory::Infantry && obj.is_some_and(|o| o.deploy_fire) {
+        return Some(Command::ToggleInfantryDeploy {
+            entity_id: target.stable_id,
+        });
+    }
+    if let Some(cmd) = super::transport_orders::transport_unload_command(entity, obj) {
+        return Some(cmd);
+    }
+    obj.is_some_and(|o| o.deploys_into.is_some() || o.deployer)
+        .then_some(Command::DeployMcv {
+            entity_id: target.stable_id,
+        })
 }
 
 /// The selected Engineers whose click on `target` is DisarmBomb
@@ -2044,6 +2022,59 @@ mod tests {
             }
         );
     }
+    /// A click on the selected object itself is its self action only while it
+    /// is the one selected object and the local player's
+    /// (`TechnoClass::What_Action_OnObject`, `0x007000B9..0x007000DF`); a click
+    /// on one of several selected objects is a plain selection click.
+    #[test]
+    fn self_click_needs_the_one_selected_own_object() {
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=AMCV\n\
+                 [BuildingTypes]\n0=GACNST\n\
+                 [E1]\nStrength=125\nDeployFire=yes\nDeployer=yes\n\
+                 [AMCV]\nStrength=1000\nDeploysInto=GACNST\n\
+                 [GACNST]\nStrength=1000\n",
+            ))
+            .unwrap();
+        let mut sim = Simulation::new();
+        sim.resolve_type_handles(&rules);
+        let height_map = std::collections::BTreeMap::new();
+        for house in ["Americans", "Soviets"] {
+            let id = sim.interner.intern(house);
+            sim.session.house_order.push(id);
+        }
+        let americans = sim.interner.get("Americans").unwrap();
+        let mut spawn = |kind: &str, owner: &str, rx: u16| {
+            sim.spawn_object(kind, owner, rx, 5, 0, &rules, &height_map)
+                .unwrap()
+        };
+        let gi = spawn("E1", "Americans", 5);
+        let other_gi = spawn("E1", "Americans", 7);
+        let mcv = spawn("AMCV", "Americans", 9);
+        let enemy_mcv = spawn("AMCV", "Soviets", 20);
+        let hover = |stable_id| HoverTargetKindWithId {
+            kind: HoverTargetKind::FriendlyUnit,
+            stable_id,
+        };
+        let click = |selected: &[u64], target: u64| {
+            self_click_command(&sim, &rules, americans, selected, Some(&hover(target)))
+        };
+
+        assert_eq!(
+            click(&[gi], gi),
+            Some(Command::ToggleInfantryDeploy { entity_id: gi })
+        );
+        assert_eq!(
+            click(&[mcv], mcv),
+            Some(Command::DeployMcv { entity_id: mcv })
+        );
+        assert_eq!(click(&[gi, other_gi], gi), None, "a group click selects");
+        assert_eq!(click(&[mcv, gi], mcv), None, "a group click selects");
+        assert_eq!(click(&[gi], other_gi), None, "not the selected object");
+        assert_eq!(click(&[enemy_mcv], enemy_mcv), None, "not the player's");
+    }
+
     /// The click side of the bomb actions: an Engineer's DisarmBomb and a
     /// Crazy Ivan's IvanBomb on a friend are Attack orders (ForceAttack past
     /// VERA's alliance gate), and an Ivan never attacks a bombed target.
