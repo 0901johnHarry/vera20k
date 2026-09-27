@@ -626,7 +626,11 @@ use crate::sim::world::Simulation;
 // 216 -> 217: runtime constructors retain native Abstract IDs; guided bullets
 // use those IDs with global frame, native binary64 velocity and signed course/
 // closing counters. Removed approximate heading/age/phase cannot be recovered.
-const SNAPSHOT_VERSION: u32 = 217;
+// 217 -> 218: passive acquisition now honors live bridge layers and native
+// cell-query order; low/high flight reads live physical height. Layout is
+// unchanged, but an old save can acquire different targets and evolve its
+// shared Dummy differently on the next scan, so reject mixed continuations.
+const SNAPSHOT_VERSION: u32 = 218;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3581,7 +3585,8 @@ mod tests {
         // 215 -> 216: the building's AI repair byte; the house's repair
         // delay, auto-repair latch and its timer.
         // 216 -> 217: native constructor IDs and signed guided control state.
-        assert_eq!(super::SNAPSHOT_VERSION, 217);
+        // 217 -> 218: bridge-layer acquisition and live cell/height-query behavior.
+        assert_eq!(super::SNAPSHOT_VERSION, 218);
     }
 
     #[test]

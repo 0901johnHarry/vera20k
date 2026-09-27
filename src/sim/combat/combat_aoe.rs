@@ -529,6 +529,8 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
                     origin.source_id,
                     origin.source_house,
                     origin.warhead_ref,
+                    rules,
+                    interner,
                 );
             }
         }
@@ -911,6 +913,8 @@ fn push_airborne_aoe_damage(
     source_id: u64,
     source_house: Option<crate::sim::intern::InternedId>,
     warhead_ref: crate::sim::intern::InternedId,
+    rules: &RuleSet,
+    interner: &StringInterner,
 ) {
     let Some(entity) = entities.get(entity_id) else {
         return;
@@ -955,12 +959,16 @@ fn push_airborne_aoe_damage(
     // category test belongs to THIS site, not to `is_high_flying` — the native
     // predicate itself is universal over `ObjectClass`, so a Jumpjet
     // `UnitClass` like the stock Kirov is high-flying but is not halved here.
-    let distance_leptons =
-        if entity.category == EntityCategory::Aircraft && super::in_range::is_high_flying(entity) {
-            raw_distance_leptons / 2
-        } else {
-            raw_distance_leptons
-        };
+    let distance_leptons = if entity.category == EntityCategory::Aircraft
+        && crate::sim::movement::air_movement::is_high_flying(
+            entity,
+            Some(terrain),
+            Some((rules, interner)),
+        ) {
+        raw_distance_leptons / 2
+    } else {
+        raw_distance_leptons
+    };
     if i64::from(distance_leptons) > spread_leptons {
         return;
     }
@@ -1500,6 +1508,11 @@ mod tests {
             let mut air = GameEntity::test_default(stable_id, type_id, "Soviet", 5, 5);
             air.category = category;
             air.health.current = 1000;
+            // Ordinary Aircraft41B920 reaches Object5F6B90: Object+74 must
+            // be marked before the physical GetHeight threshold is queried.
+            air.lifecycle.in_limbo = false;
+            air.lifecycle.cell_marked = true;
+            air.position.exact_z_leptons = Some(altitude);
             let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
                 rules.object(type_id).unwrap(),
                 0,

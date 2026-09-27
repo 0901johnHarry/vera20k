@@ -2518,6 +2518,8 @@ fn admit_attacker_fire<'r>(
                 target_obj,
                 world.resolved_terrain.as_ref(),
                 is_ally,
+                rules,
+                &world.interner,
             )
         }
         TargetKind::Cell(rx, ry) => {
@@ -2587,7 +2589,7 @@ fn admit_attacker_fire<'r>(
                 &attacker_facts,
                 Some(&target_facts),
             ),
-            combat_weapon::select_weapon_for_emission(
+            combat_weapon::resolve_selected_weapon(
                 rules,
                 obj,
                 &attacker_facts,

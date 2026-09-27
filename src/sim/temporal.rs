@@ -377,7 +377,13 @@ impl Simulation {
                     entity.category,
                     EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                 );
-                if foot && crate::sim::combat::combat_weapon::target_is_high_flying(entity) {
+                if foot
+                    && crate::sim::movement::air_movement::is_high_flying(
+                        entity,
+                        self.resolved_terrain.as_ref(),
+                        Some((rules, &self.interner)),
+                    )
+                {
                     return;
                 }
                 match entity.bunker_link.installed_in() {

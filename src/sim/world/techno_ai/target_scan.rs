@@ -457,6 +457,8 @@ pub(super) fn select_weapon(
                                 firer.owner(),
                                 target.owner(),
                             ),
+                            rules,
+                            &sim.interner,
                         )
                     })
             })

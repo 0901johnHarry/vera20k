@@ -338,8 +338,14 @@ pub(crate) fn retaliation_weapon_index(
         victim.owner(),
         source.owner(),
     );
-    let source_as_target =
-        techno_target_facts(source, source_type, world.resolved_terrain.as_ref(), allied);
+    let source_as_target = techno_target_facts(
+        source,
+        source_type,
+        world.resolved_terrain.as_ref(),
+        allied,
+        rules,
+        &world.interner,
+    );
     select_weapon_for_target(
         rules,
         victim_type,

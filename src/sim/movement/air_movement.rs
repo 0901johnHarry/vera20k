@@ -587,16 +587,126 @@ pub(crate) fn current_fly_height(
     entity: &crate::sim::game_entity::GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> i32 {
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+    queried_flight_height(entity, cells.as_ref())
+}
+
+fn queried_flight_height(
+    entity: &crate::sim::game_entity::GameEntity,
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
+) -> i32 {
     let Some(z) = entity.position.exact_z_leptons else {
         return entity
             .locomotor
             .as_ref()
             .map_or(0, |l| l.altitude.to_num::<i32>());
     };
-    let xy = super::ground_pose::position_world_xy(&entity.position);
-    let ground = super::ground_pose::ground_surface_z_at(xy, false, terrain, None).unwrap_or(0);
+    let ground = cells
+        .and_then(|cells| {
+            super::ground_pose::query_ground_height(
+                cells,
+                super::ground_pose::position_world_coord(&entity.position),
+            )
+            .ok()
+        })
+        .unwrap_or(0);
     z.wrapping_sub(ground)
         .wrapping_sub(if entity.on_bridge { 416 } else { 0 })
+}
+
+/// Object virtual+50 /5F6B60. A marked grounded object is low; an unmarked
+/// object is neither low nor high. This is not the complement of +54.
+pub(crate) fn is_low_flying(
+    entity: &crate::sim::game_entity::GameEntity,
+    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> bool {
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+    query_flight_predicate(entity, cells.as_ref(), rules_context, false)
+}
+
+pub(crate) fn is_low_flying_in_query(
+    entity: &crate::sim::game_entity::GameEntity,
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> bool {
+    query_flight_predicate(entity, Some(cells), rules_context, false)
+}
+
+/// Object virtual+54 /5F6B90 and Aircraft41B920. The two Rules-designated
+/// missile aircraft ask their Rocket interface+80 instead of Mark/GetHeight.
+/// Existing native comparisons: tools/spatial_oracle/foot_neighbors and
+/// object_flight_height. Missing Rules context cannot dispatch named types.
+pub(crate) fn is_high_flying(
+    entity: &crate::sim::game_entity::GameEntity,
+    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> bool {
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+    query_flight_predicate(entity, cells.as_ref(), rules_context, true)
+}
+
+pub(crate) fn is_high_flying_in_query(
+    entity: &crate::sim::game_entity::GameEntity,
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> bool {
+    query_flight_predicate(entity, Some(cells), rules_context, true)
+}
+
+fn query_flight_predicate(
+    entity: &crate::sim::game_entity::GameEntity,
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+    high: bool,
+) -> bool {
+    if let Some(moving) = missile_flight_override(entity, rules_context) {
+        // Aircraft41B920 returns moving; Aircraft41B980 returns !moving.
+        return moving == high;
+    }
+    entity.lifecycle.cell_marked
+        && (queried_flight_height(entity, cells)
+            >= crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS as i32)
+            == high
+}
+
+fn missile_flight_override(
+    entity: &crate::sim::game_entity::GameEntity,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> Option<bool> {
+    if entity.category == EntityCategory::Aircraft
+        && rules_context.is_some_and(|(rules, interner)| {
+            let name = interner.resolve(entity.type_ref());
+            name.eq_ignore_ascii_case(&rules.missile_spawn.v3.type_name)
+                || name.eq_ignore_ascii_case(&rules.missile_spawn.dmisl.type_name)
+        })
+    {
+        return Some(
+            entity
+                .rocket_state
+                .as_ref()
+                .is_some_and(|rocket| rocket.phase.is_moving_now()),
+        );
+    }
+    None
 }
 
 /// Derived compatibility view for aircraft missions; the integer physical
@@ -962,3 +1072,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "object_flight_tests.rs"]
+mod object_flight_tests;

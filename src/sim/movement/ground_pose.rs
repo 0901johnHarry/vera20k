@@ -5,6 +5,7 @@
 //! OnBridge offset. Callers own cadence: Drive/Ship residual movement does
 //! not call this setter and retains the last raw coordinate Z.
 
+use crate::map::cell_index::NativeCellIdentity;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::pathfinding::PathGrid;
@@ -24,16 +25,25 @@ pub(crate) fn query_ground_height(
         .map_err(|error| format!("native ground query: {error:?}"))
 }
 
-/// Object5F5F00: signed current-cell level plus four for OnBridge. Its
-/// Object+1BC receiver5F6960 performs two map lookups from physical Object+9C;
-/// preserve their position in callers that retain the shared dummy Cell.
+/// Object+1BC receiver5F6960 performs two Map565730 lookups from physical
+/// Object+9C. The first lookup is observable when it stamps the shared Dummy;
+/// the second returns the identity retained by the caller.
+pub(crate) fn query_object_cell(
+    cells: &NativeCellQuery<'_>,
+    physical: DriveCoord,
+) -> NativeCellIdentity {
+    let _ = cells.lookup_world(physical.x, physical.y);
+    cells.lookup_world(physical.x, physical.y)
+}
+
+/// Object5F5F00: signed current-cell level plus four for OnBridge, through
+/// the same Object+1BC query used by firing and movement.
 pub(crate) fn query_object_cell_height(
     cells: &NativeCellQuery<'_>,
     physical: DriveCoord,
     on_bridge: bool,
 ) -> i32 {
-    let _ = cells.lookup_world(physical.x, physical.y);
-    let cell = cells.lookup_world(physical.x, physical.y);
+    let cell = query_object_cell(cells, physical);
     i32::from(cells.ground_fields(cell).0 as i8) + if on_bridge { 4 } else { 0 }
 }
 
@@ -142,17 +152,10 @@ pub(crate) fn ground_surface_z_at(
     let rx = (world_xy[0] / 256) as i16;
     let ry = (world_xy[1] / 256) as i16;
     let (level, slope) = if let Some(terrain) = terrain {
-        if let Some(index) = terrain.native_fixed_cell_index(rx, ry) {
-            let cell = &terrain.cells()[index];
-            (cell.level, cell.slope_type)
-        } else {
-            // GetGroundHeight @ 0x578080 evaluates the shared dummy's live
-            // fields too. Its default zero height is not an invariant.
-            let shared = terrain.shared_cell_dummy();
-            shared.stamp_coord(i32::from(rx), i32::from(ry));
-            let dummy = shared.snapshot();
-            (dummy.level as u8, dummy.slope_type)
-        }
+        // Map578080 ->565730 forms the wrapping fixed-stride index before
+        // narrowing fallback coordinates. Keep the common lookup owner.
+        let cells = NativeCellQuery::canonical(terrain);
+        cells.ground_fields(cells.lookup_world(world_xy[0], world_xy[1]))
     } else {
         let cell = path_grid?.cell(rx as u16, ry as u16)?;
         (cell.ground_level, cell.slope_type)

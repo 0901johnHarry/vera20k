@@ -48,14 +48,10 @@ impl Simulation {
         {
             return;
         }
-        // Object+74/on-map and GetHeight>=2*104. Rocket's current altitude has
-        // its own represented owner, also used by the ordinary reveal geometry.
-        let high = entity.rocket_state.as_ref().map_or_else(
-            || crate::sim::combat::in_range::is_high_flying(entity),
-            |state| {
-                state.altitude.to_num::<i32>()
-                    >= crate::util::lepton::HIGH_FLIGHT_THRESHOLD_LEPTONS as i32
-            },
+        let high = crate::sim::movement::air_movement::is_high_flying(
+            entity,
+            self.resolved_terrain.as_ref(),
+            rules.map(|rules| (rules, &self.interner)),
         );
         if !high {
             return;
