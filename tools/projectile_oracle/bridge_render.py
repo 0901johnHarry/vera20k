@@ -10,7 +10,7 @@ from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EIP, UC_X86_REG_ESP
 from tools.native_oracle import NATIVE_SHA256, finish_vectors, provenance
 from tools.spatial_oracle.bridge_damage_admission import base, call, CELL, MEM, SCENARIO, TABLE, read32, words
-from tools.projectile_oracle.ordinary_collision import slope_matrices
+from tools.native_slope import slope_matrices
 
 from tools.projectile_oracle.bridge_render_inputs import generate as native_inputs, assets_root
 OFFSETS={'shadow':0x29a,'inviso':0x29e,'inverse_rotates':0x2a1,

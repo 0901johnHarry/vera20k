@@ -294,17 +294,33 @@ adding navigation cannot silently change the older witness or hut payloads.
 From the repository root, after setting those environment variables:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m tools.spatial_oracle.anytown_damage.validate_packet --write
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m tools.spatial_oracle.anytown_damage.validate_packet --refresh-receipt
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m tools.spatial_oracle.anytown_damage.validate_packet --check
 ```
 
-The second invocation is independent and read-only. Each runner also accepts
-`--check`/`--write` individually with `python -m`; omitting the flag means check.
-`--manifest-only` validates or refreshes hashes without native execution and
-must not be cited as a replay. All modes also check the frozen navigation/hut/
-cursor/mission source/artifact receipts and both Rust projections. The receipt contains portable relative source
-and artifact paths, runtime versions and verified external input identities.
-Inspect compressed results with `gzip.open` and `json.load`.
+The second invocation is independent and read-only. The explicit refresh stages
+all twelve native witnesses and two Rust projections through their existing
+publishers. It requires unchanged native payloads and evidence metadata; only
+`sources`, `harness_sha256`, `helper_sources` and `projection_source_sha256` may
+change. After every replay and source/input stability check succeeds, it updates
+those sidecars and publishes the aggregate receipt last. It never writes golden
+payloads. A failed or interrupted publication leaves the old receipt as a strict
+check against partial updates.
+
+Each runner still accepts `--check`/`--write` individually with `python -m`;
+omitting the flag means check. `--manifest-only` is read-only, skips native replay
+and still checks both Rust projections. It cannot be combined with refresh.
+Python optimization (`-O`) is rejected because inherited packet witnesses still
+use assertion guards.
+
+The aggregate receipt owns current source and metadata identity. Frozen
+navigation/hut/cursor/mission receipts retain their original bytes, commands,
+times and claims. Their native payloads, promotions, input snapshots, instruction
+bytes, summaries and saved production comparisons remain exact guards; historical
+source and metadata drift is recorded explicitly. Replaying native witnesses does
+not repeat those historical production comparisons. The receipt contains portable
+relative paths, runtime versions and verified external input identities. Inspect
+compressed results with `gzip.open` and `json.load`.
 
 [`validation.json`](validation.json) records this promotion's actual replay and
 shared-helper checks. It establishes packaging equivalence, not production
