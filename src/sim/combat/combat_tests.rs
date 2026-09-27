@@ -84,7 +84,6 @@ fn sonic_active_wave_gate_precedes_target_resolution_and_all_shot_work() {
         TargetKind::Entity(999),
         None,
         None,
-        None,
     );
     let mut rng = SimRng::new(0x50_4e_49_43);
     let rng_before = rng.logical_state();
@@ -838,6 +837,7 @@ fn gsi_04_10_projectile_inert_suppresses_bridge_ore_and_collector_rng() {
             base_damage: 100,
             warhead,
             weapon,
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         reason: ProjectileDetonationReason::ReachedTarget,
     };
@@ -1766,6 +1766,7 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
                 base_damage: 10,
                 warhead: interner.intern("NoWallWH"),
                 weapon: interner.intern("Gun"),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             reason: ProjectileDetonationReason::ReachedTarget,
         };
@@ -2006,6 +2007,7 @@ fn retaliates(case: RetaliationCase) -> bool {
             base_damage: 10,
             warhead: incoming_wh,
             weapon: incoming_weapon,
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         reason: ProjectileDetonationReason::ReachedTarget,
     };
@@ -2511,6 +2513,7 @@ fn gsi_04_07_damage_retaliation_is_receiver_synchronous_and_uses_mission_overrid
                 base_damage: 10,
                 warhead: incoming_wh,
                 weapon: incoming_weapon,
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             reason: ProjectileDetonationReason::ReachedTarget,
         };
@@ -3547,6 +3550,7 @@ fn gsi_04_07_damage_repair_bullet_cellspread_zero_keeps_signed_area_record() {
             base_damage: weapon.damage,
             warhead: warhead_ref,
             weapon: weapon_ref,
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         reason: ProjectileDetonationReason::ReachedTarget,
     };
@@ -8354,6 +8358,7 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
             base_damage: 20,
             warhead: interner.intern("WH"),
             weapon: interner.intern("PARENT"),
+            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
         },
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
@@ -8437,6 +8442,7 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
             base_damage: 20,
             warhead: interner.intern("WH"),
             weapon: interner.intern("PARENT"),
+            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
         },
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
@@ -8527,6 +8533,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
             base_damage: 20,
             warhead: interner.intern("WH"),
             weapon: interner.intern("PARENT"),
+            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
         },
         reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
     };
@@ -10308,6 +10315,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
                 base_damage: 50,
                 warhead: warhead_ref,
                 weapon: interner.intern("MissingWeapon"),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             reason: ProjectileDetonationReason::ReachedTarget,
         };
@@ -10409,6 +10417,7 @@ fn clusters_scatter_around_the_impact() {
             base_damage: 10,
             warhead: interner.intern("Blast"),
             weapon: interner.intern("ClusterGun"),
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         reason: ProjectileDetonationReason::ReachedTarget,
     };
@@ -10498,6 +10507,7 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
                 base_damage: 50,
                 warhead: interner.intern("Rocker"),
                 weapon: interner.intern("MissingWeapon"),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             reason: ProjectileDetonationReason::ReachedTarget,
         };

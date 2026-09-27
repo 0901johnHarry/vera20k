@@ -40,6 +40,7 @@ fn projectile(source_id: u64) -> ProjectileSpawn {
             base_damage: 10,
             warhead: InternedId::from_index(0),
             weapon: InternedId::from_index(0),
+            damage_multiplier: ProjectilePayload::UNSCALED,
         },
         speed_leptons_per_frame: 64,
         velocity: ProjectileVelocity::new(64, 0, 0),

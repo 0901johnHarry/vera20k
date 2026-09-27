@@ -311,6 +311,7 @@ impl Simulation {
                 base_damage: damage,
                 warhead,
                 weapon,
+                damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
             },
             reason: crate::sim::projectile::ProjectileDetonationReason::DeathWeapon,
         };

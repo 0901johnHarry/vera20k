@@ -10,6 +10,7 @@ use crate::rules::error::RulesError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
+use crate::rules::ruleset::PrismSupportRules;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -378,6 +379,20 @@ impl ProcessedRulesLayers {
             .rules_gravity
     }
 
+    pub(crate) fn prism_support(&self) -> PrismSupportRules {
+        self.native_type_construction_trace
+            .registry_state()
+            .rules_prism_support
+    }
+
+    /// `[General] PrismType=` (Rules `+0x498`), the stored ID of its type.
+    pub(crate) fn prism_type(&self) -> Option<&str> {
+        self.native_type_construction_trace
+            .registry_state()
+            .rules_prism_type
+            .as_deref()
+    }
+
     pub(crate) fn projectile_rule_controls(&self) -> (f64, i32, [u8; 3]) {
         let state = self.native_type_construction_trace.registry_state();
         (
@@ -551,6 +566,8 @@ pub(crate) struct NativeRulesRegistryState {
     rules_missile_rot_var: f64,
     rules_safety_altitude: i32,
     rules_line_trail_override: [u8; 3],
+    rules_prism_support: PrismSupportRules,
+    rules_prism_type: Option<String>,
     select_anim: SelectAnimRulesState,
 }
 
@@ -564,6 +581,8 @@ impl Default for NativeRulesRegistryState {
             rules_missile_rot_var: 0.25,
             rules_safety_altitude: 500,
             rules_line_trail_override: [0; 3],
+            rules_prism_support: PrismSupportRules::default(),
+            rules_prism_type: None,
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -612,6 +631,7 @@ impl NativeRulesRegistryState {
             rules_missile_rot_var: self.rules_missile_rot_var,
             rules_safety_altitude: self.rules_safety_altitude,
             rules_line_trail_override: self.rules_line_trail_override,
+            rules_prism_support: self.rules_prism_support,
             ..Self::default()
         }
     }
@@ -773,6 +793,8 @@ struct RulesPassProcessor {
     rules_missile_rot_var: f64,
     rules_safety_altitude: i32,
     rules_line_trail_override: [u8; 3],
+    rules_prism_support: PrismSupportRules,
+    rules_prism_type: Option<String>,
     select_anim: SelectAnimRulesState,
 }
 
@@ -793,6 +815,8 @@ impl Default for RulesPassProcessor {
             rules_safety_altitude: NativeRulesRegistryState::default().rules_safety_altitude,
             rules_line_trail_override: NativeRulesRegistryState::default()
                 .rules_line_trail_override,
+            rules_prism_support: PrismSupportRules::default(),
+            rules_prism_type: None,
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -807,6 +831,8 @@ impl RulesPassProcessor {
             rules_missile_rot_var: registry_state.rules_missile_rot_var,
             rules_safety_altitude: registry_state.rules_safety_altitude,
             rules_line_trail_override: registry_state.rules_line_trail_override,
+            rules_prism_support: registry_state.rules_prism_support,
+            rules_prism_type: registry_state.rules_prism_type,
             select_anim: registry_state.select_anim,
             ..Self::default()
         }
@@ -1127,6 +1153,9 @@ impl RulesPassProcessor {
             section.read_double("MissileROTVar", self.rules_missile_rot_var);
         self.rules_safety_altitude =
             section.read_int("MissileSafetyAltitude", self.rules_safety_altitude);
+        // ReadGeneral's Prism block (`0x0067114F..0x006711B8`), current values
+        // as defaults; RulesClass keeps them across Full_Init's reset.
+        self.rules_prism_support = self.rules_prism_support.read_pass(section);
 
         for &(key, family, is_list) in SITES {
             if matches!(key, "MetallicDebris" | "BridgeExplosions") {
@@ -1139,22 +1168,25 @@ impl RulesPassProcessor {
                 }
             } else if matches!(
                 key,
-                "LightningWarhead" | "WeatherConBoltExplosion" | "WeaponNullifyAnim"
+                "LightningWarhead" | "WeatherConBoltExplosion" | "WeaponNullifyAnim" | "PrismType"
             ) {
                 // General671053/66DF19/66E2AF: empty ReadString128 retains the
                 // current pointer; exact none clears it through the factory.
+                // PrismType's reader (`0x0067BCE0`, called at `0x00671144`)
+                // does the same through BuildingType's FindOrAllocate.
                 let incoming = section.read_string(key, "", 0x80);
                 if !incoming.is_empty() {
                     let resolved = self
                         .find_or_allocate(family, &incoming)
                         .map(|index| self.families[&family][index].native_stored_id.clone())
                         .unwrap_or_default();
-                    if key == "LightningWarhead" {
-                        self.select_anim.lightning_warhead = resolved;
-                    } else if key == "WeatherConBoltExplosion" {
-                        self.select_anim.weather_con_bolt_explosion = resolved;
-                    } else {
-                        self.select_anim.weapon_nullify_anim = resolved;
+                    match key {
+                        "LightningWarhead" => self.select_anim.lightning_warhead = resolved,
+                        "WeatherConBoltExplosion" => {
+                            self.select_anim.weather_con_bolt_explosion = resolved;
+                        }
+                        "WeaponNullifyAnim" => self.select_anim.weapon_nullify_anim = resolved,
+                        _ => self.rules_prism_type = Some(resolved).filter(|id| !id.is_empty()),
                     }
                 }
             } else if is_list {
@@ -1883,6 +1915,8 @@ impl RulesPassProcessor {
                     rules_missile_rot_var: self.rules_missile_rot_var,
                     rules_safety_altitude: self.rules_safety_altitude,
                     rules_line_trail_override: self.rules_line_trail_override,
+                    rules_prism_support: self.rules_prism_support,
+                    rules_prism_type: self.rules_prism_type,
                     select_anim: self.select_anim,
                 },
             },

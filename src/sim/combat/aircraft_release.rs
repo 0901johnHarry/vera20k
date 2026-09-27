@@ -72,7 +72,7 @@ fn live_shot<'r>(
         None => None,
     };
     let shot = coordinates.map(|(target_coords, target_type_ref)| AdmittedFire {
-        snap: build_attacker_snapshot(entity, target.unwrap(), None, None, None),
+        snap: build_attacker_snapshot(entity, target.unwrap(), None, None),
         obj,
         selected,
         target_coords,

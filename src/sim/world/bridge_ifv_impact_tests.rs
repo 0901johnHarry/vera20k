@@ -215,6 +215,7 @@ fn native_ifv_bridge_impact_orders_live_selection_debris_ids_and_rng() {
             base_damage: rules.weapon("HoverMissile").unwrap().damage,
             warhead: world.interner.intern("HE"),
             weapon: world.interner.intern("HoverMissile"),
+            damage_multiplier: ProjectilePayload::UNSCALED,
         };
         let target = ProjectileTarget::Cell { rx: 10, ry: 20 };
         let stable_id = world.allocate_stable_id();
