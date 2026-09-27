@@ -260,8 +260,7 @@ fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
     ]);
     let terrain = clear_terrain(8, 8);
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
-    let zone_grid =
-        ZoneGrid::build_with_terrain(&path_grid, &BTreeMap::new(), Some(&terrain), &[], 8, 8);
+    let zone_grid = ZoneGrid::build_with_terrain(&path_grid, &terrain, &[], 8, 8);
     let alliances = HouseAllianceMap::new();
     let mut teams = TeamScriptVm::default();
     let seed = 0x504F_5349;

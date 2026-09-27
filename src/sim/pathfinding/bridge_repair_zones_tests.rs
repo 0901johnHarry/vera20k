@@ -3,7 +3,6 @@ use crate::sim::bridge_state::{BridgeRecordKind, BridgeRuntimeState};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_hierarchy::ZoneLevelGraph;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 fn coord(value: &Value) -> (u16, u16) {
     (
@@ -141,15 +140,14 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
         owner.test_set_endpoint_records(records);
         let mut zones = ZoneGrid::build_with_native_bridge_geometry(
             &path,
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             owner.endpoint_records(),
             16,
             16,
             Some((8, 8)),
         );
-        zones.hierarchy = Some(hierarchy(original));
-        let base = zones.base_topology.as_mut().unwrap();
+        zones.hierarchy = hierarchy(original);
+        let base = &mut zones.base_topology;
         base.zone_ids.fill(1);
         let b = coord(&input["b"]);
         let native_index = (i32::from(b.1 as i16) * 17 + i32::from(b.0 as i16)).clamp(0, 288);
@@ -186,7 +184,7 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
         zones.retain_repaired_bridge_records(&path, &terrain, owner.endpoint_records());
         assert_eq!(json!(returned), original["returned"], "{}", input["name"]);
         assert_eq!(
-            edges(zones.hierarchy.as_ref().unwrap()),
+            edges(&zones.hierarchy),
             original["edges"],
             "{}",
             input["name"]
@@ -201,7 +199,7 @@ fn record_activation_matches_original_and_keeps_raw_connectivity_rows() {
             ),
             original["active"]
         );
-        let base = zones.base_topology.as_ref().unwrap();
+        let base = &zones.base_topology;
         assert_eq!(
             (base.zone_ids.clone(), base.raw_zone_ids_by_row.clone()),
             before
@@ -261,20 +259,19 @@ fn connectivity_consumes_retained_classes_and_matches_original_thirteen_rows() {
             .collect();
         let mut zones = ZoneGrid::build_with_native_bridge_geometry(
             &path,
-            &BTreeMap::new(),
-            Some(&terrain),
+            &terrain,
             &records,
             16,
             16,
             Some((8, 8)),
         );
-        let base = zones.base_topology.as_mut().unwrap();
+        let base = &mut zones.base_topology;
         base.movement_classes = classes.clone();
         base.levels = levels.clone();
         base.zone_ids.fill(0xabcd);
         let before_hierarchy = format!("{:?}", zones.hierarchy);
         zones.rebuild_base_connectivity_preserving_hierarchy(&path, &terrain, &records);
-        let base = zones.base_topology.as_ref().unwrap();
+        let base = &zones.base_topology;
         assert_eq!(base.movement_classes, classes, "{}", input["name"]);
         assert_eq!(base.levels, levels, "{}", input["name"]);
         assert_eq!(
@@ -283,8 +280,9 @@ fn connectivity_consumes_retained_classes_and_matches_original_thirteen_rows() {
             "{}",
             input["name"]
         );
+        // Native's cluster count is the highest base label it assigned.
         assert_eq!(
-            json!(base.zone_count),
+            json!(base.zone_ids.iter().copied().max().unwrap_or(0)),
             original["zone_count"],
             "{}",
             input["name"]
@@ -305,17 +303,16 @@ fn recalc_publication_updates_only_touched_class_and_unsigned_height() {
         4, 4, &[0; 16], &[0; 16],
     );
     let path = PathGrid::from_resolved_terrain(&terrain);
-    let mut zones =
-        ZoneGrid::build_with_terrain(&path, &BTreeMap::new(), Some(&terrain), &[], 4, 4);
+    let mut zones = ZoneGrid::build_with_terrain(&path, &terrain, &[], 4, 4);
     let before_hierarchy = format!("{:?}", zones.hierarchy);
-    let before_base = zones.base_topology.as_ref().unwrap().clone();
+    let before_base = zones.base_topology.clone();
     for (x, level, class) in [(1, 255, 3), (2, 4, 2)] {
         let cell = terrain.cell_mut(x, 1).unwrap();
         cell.level = level;
         cell.zone_type = class;
     }
     assert!(zones.refresh_base_cell_attributes_at(&terrain, 1, 1));
-    let base = zones.base_topology.as_ref().unwrap();
+    let base = &zones.base_topology;
     let mut expected_classes = before_base.movement_classes.clone();
     let mut expected_levels = before_base.levels.clone();
     expected_classes[5] = 3;

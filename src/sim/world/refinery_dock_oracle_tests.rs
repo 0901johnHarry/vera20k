@@ -154,7 +154,6 @@ pub(super) fn world_with(
     let path = PathGrid::from_resolved_terrain(&terrain);
     let zones = ZoneGrid::build_with_native_map_context(
         &path,
-        &BTreeMap::new(),
         &terrain,
         bridges.endpoint_records(),
         Some((32, 32)),

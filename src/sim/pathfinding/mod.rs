@@ -1,10 +1,10 @@
 //! Pathfinding system — A* search, zone connectivity, terrain costs, and path smoothing.
 //!
 //! Combines cell-level A* with zone-aware hierarchical search for fast unreachability
-//! detection and corridor-based pruning.
+//! detection and hierarchy-marked pruning.
 //!
-//! TODO(RE): The current split is still only partially aligned with RA2/YR. Terrain-aware
-//! zone rebuilds now use recovered nodeIndex -> zoneId semantics, but bridge-layer remap,
+//! TODO(RE): The current split is still only partially aligned with RA2/YR. Zone
+//! rebuilds use the recovered nodeIndex -> zoneId semantics, but bridge-layer remap,
 //! full hierarchical subzone support, and the exact regular-vs-hierarchical path entry
 //! behavior are still pending.
 //!
