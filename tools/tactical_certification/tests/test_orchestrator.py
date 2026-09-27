@@ -463,6 +463,7 @@ def _stable_fixture(
                 "logical_name": profile.fixture["logical_map_name"],
                 "payload_len": profile.fixture["entry_payload_byte_length"],
                 "source_archive": profile.fixture["archive_name"],
+                "source_sha256": profile.fixture["entry_payload_sha256"],
             },
             "logical_map_name": profile.fixture["logical_map_name"],
             "loose_shadow_rejected": True,
@@ -471,10 +472,6 @@ def _stable_fixture(
                 "entry_payload_byte_length"
             ],
             "payload_sha256": profile.fixture["entry_payload_sha256"],
-            "post_load_resolve_entry_id": mix_entry_id,
-            "post_load_resolve_source_archive": profile.fixture[
-                "archive_name"
-            ],
         },
         "lifecycle": {
             "focus_violations": 0,
@@ -787,8 +784,34 @@ class OrchestratorTests(unittest.TestCase):
                     capture, self.profile, self.contract, environment
                 )
 
+    def test_map_source_requires_consumed_digest_without_obsolete_lookup_fields(self) -> None:
+        from tools.tactical_certification.evidence_validation import _require_map_source
+
+        with tempfile.TemporaryDirectory() as temporary:
+            stable = _stable_fixture(
+                self.profile, self.contract, _fake_environment(Path(temporary).resolve())
+            )
+            _require_map_source(stable, self.profile)
+            missing = copy.deepcopy(stable)
+            del missing["map_source"]["loaded_source"]["source_sha256"]
+            with self.assertRaisesRegex(ValidationError, "missing=.*source_sha256"):
+                _require_map_source(missing, self.profile)
+            for obsolete in ("post_load_resolve_entry_id", "post_load_resolve_source_archive"):
+                extra = copy.deepcopy(stable)
+                extra["map_source"][obsolete] = "obsolete lookup"
+                with self.subTest(field=obsolete), self.assertRaisesRegex(
+                    ValidationError, "unexpected=.*post_load_resolve"
+                ):
+                    _require_map_source(extra, self.profile)
+
     def test_load_bearing_stable_and_run_mutations_are_invalid(self) -> None:
         mutations = (
+            (
+                "consumed map source digest",
+                ("evidence", "stable", "map_source", "loaded_source", "source_sha256"),
+                "0" * 64,
+                "evidence.stable.map_source.loaded_source.source_sha256",
+            ),
             (
                 "missing sampled viewport edge",
                 ("evidence", "stable", "render", "production_render",
@@ -1455,7 +1478,7 @@ class OrchestratorTests(unittest.TestCase):
                     return_value=environment,
                 ),
                 patch(
-                    "tools.tactical_certification.orchestrator.subprocess.Popen",
+                    "tools.child_process.subprocess.Popen",
                     side_effect=launch,
                 ),
                 patch(
@@ -1538,7 +1561,7 @@ class OrchestratorTests(unittest.TestCase):
                     return_value=environment,
                 ),
                 patch(
-                    "tools.tactical_certification.orchestrator.subprocess.Popen",
+                    "tools.child_process.subprocess.Popen",
                     return_value=Child(),
                 ),
                 patch(

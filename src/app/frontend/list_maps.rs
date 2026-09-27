@@ -14,12 +14,13 @@ use crate::assets::mix_archive::MixArchive;
 use crate::map::briefing::BriefingSection;
 use crate::map::map_file::{self, MapFile};
 use crate::map::preview::PreviewSection;
-use crate::map::waypoints::DEFAULT_SKIRMISH_PLAYER_CAPACITY;
-use crate::rules::ini_parser::IniFile;
 use crate::map::skirmish_scenarios::{
     PktEntryFields, SkirmishScenarioRecord, SkirmishScenarioSource, parse_game_mode_list,
 };
+use crate::map::waypoints::DEFAULT_SKIRMISH_PLAYER_CAPACITY;
+use crate::rules::ini_parser::IniFile;
 use crate::util::config::GameConfig;
+use crate::util::sha256::sha256_hex;
 
 /// Names the loose wildcard scans skip. Both are exclusions, not prerequisites:
 /// the archived `MISSIONSMD.PKT` is already consumed as the first source, and
@@ -35,12 +36,16 @@ pub(crate) enum LoadedMapSource {
     Loose {
         path: PathBuf,
         payload_len: usize,
+        /// Hash of the consumed file buffer, including the wrapper for .mmx.
+        source_sha256: String,
     },
     Mix {
         logical_name: String,
         source_archive: String,
         entry_id: i32,
         payload_len: usize,
+        /// Hash of the extracted entry bytes passed to the map INI parser.
+        source_sha256: String,
     },
     Generated {
         seed_name: String,
@@ -447,27 +452,8 @@ pub(crate) fn read_map_menu_entry(path: &Path, file_name: &str) -> MapMenuEntry 
 // the app map-listing callers.
 pub(crate) use crate::map::scenario_menu::read_map_menu_entry_from_ini;
 
-
 pub(crate) fn read_map_ini_for_metadata(path: &Path) -> Option<IniFile> {
-    let bytes = std::fs::read(path).ok()?;
-    if bytes.len() >= 2 && bytes[0] == 0 && bytes[1] == 0 {
-        // MIX-wrapped: pick the entry that parses as INI with a [Map] section
-        // (retail map MIXes also contain a tiny [MultiMaps] description stub).
-        let archive = MixArchive::load(path).ok()?;
-        let mut entries = archive.entries().to_vec();
-        entries.sort_by(|a, b| b.size.cmp(&a.size));
-        for entry in &entries {
-            let data = archive.get_by_id(entry.id)?;
-            if let Ok(ini) = IniFile::from_bytes(data) {
-                if ini.section("Map").is_some() {
-                    return Some(ini);
-                }
-            }
-        }
-        None
-    } else {
-        IniFile::from_bytes(&bytes).ok()
-    }
+    map_file::ini_from_file_bytes(std::fs::read(path).ok()?).ok()
 }
 
 pub(crate) fn load_map_by_name_or_path(ra2_dir: &Path, map_name: &str) -> Result<LoadedMap> {
@@ -531,6 +517,7 @@ pub(crate) fn load_map_by_name_or_path_with_assets(
                             source_archive: resolved.source_archive.to_string(),
                             entry_id: resolved.entry_id,
                             payload_len: resolved.bytes.len(),
+                            source_sha256: sha256_hex(resolved.bytes),
                         },
                     });
                 }
@@ -552,18 +539,17 @@ pub(crate) fn asset_map_candidates(map_name: &str) -> Vec<String> {
     names
 }
 
-pub(crate) fn load_map_from_path(path: &Path) -> Result<MapFile> {
-    map_file::load_from_path(path).map_err(Into::into)
-}
-
 fn load_map_from_path_with_source(path: &Path) -> Result<LoadedMap> {
-    let payload_len = std::fs::metadata(path)?.len() as usize;
-    let map = load_map_from_path(path)?;
+    let bytes = std::fs::read(path)?;
+    let payload_len = bytes.len();
+    let source_sha256 = sha256_hex(&bytes);
+    let map = map_file::load_from_bytes(bytes)?;
     Ok(LoadedMap {
         map,
         source: LoadedMapSource::Loose {
             path: path.to_path_buf(),
             payload_len,
+            source_sha256,
         },
     })
 }
@@ -573,14 +559,10 @@ pub(crate) fn try_load_mmx(ra2_dir: &Path, names: &[&str]) -> Result<LoadedMap> 
     for &name in names {
         let path: PathBuf = ra2_dir.join(name);
         if path.exists() {
-            match map_file::load_mmx(&path) {
-                Ok(mf) => {
+            match load_map_from_path_with_source(&path) {
+                Ok(loaded) => {
                     log::info!("Loaded map from {}", name);
-                    let payload_len = std::fs::metadata(&path)?.len() as usize;
-                    return Ok(LoadedMap {
-                        map: mf,
-                        source: LoadedMapSource::Loose { path, payload_len },
-                    });
+                    return Ok(loaded);
                 }
                 Err(err) => {
                     log::warn!("Failed to load {}: {:#}", name, err);
@@ -597,8 +579,8 @@ pub(crate) fn try_load_mmx(ra2_dir: &Path, names: &[&str]) -> Result<LoadedMap> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::preview::{PreviewSourceBounds, PreviewStartPoint};
     use crate::assets::mix_hash::mix_hash;
+    use crate::map::preview::{PreviewSourceBounds, PreviewStartPoint};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -743,6 +725,112 @@ mod tests {
         assert_eq!(asset_map_candidates("MP01T2.MAP"), vec!["MP01T2.MAP"]);
     }
 
+    const SOURCE_TEST_MAP: &[u8] = b"[Map]\nTheater=TEMPERATE\nSize=0,0,2,1\nLocalSize=0,0,2,1\n[IsoMapPack5]\n1=DwALABwBAAIA/////wAAABEAAA==\n";
+    // SHA-256 independently computed from the literal raw INI buffer, not from
+    // its parsed or normalized representation.
+    const SOURCE_TEST_MAP_SHA256: &str =
+        "889a91e6c8652968c930f40cfe998f2c0f4152d3f4b10b6af1a8c8e9a7c6e814";
+
+    #[test]
+    fn loose_map_source_retains_consumed_bytes_after_file_changes() {
+        let directory = TestDirectory::new("loose-source");
+        directory.write("Arena.map", SOURCE_TEST_MAP);
+        let loaded = load_map_by_name_or_path(directory.path(), "Arena")
+            .expect("resolve extension and load loose map");
+        directory.write("Arena.map", b"file replaced after map load");
+
+        assert_eq!(loaded.map.header.theater, "TEMPERATE");
+        assert_eq!(
+            loaded.source,
+            LoadedMapSource::Loose {
+                path: directory.path().join("Arena.map"),
+                payload_len: SOURCE_TEST_MAP.len(),
+                source_sha256: SOURCE_TEST_MAP_SHA256.to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn loose_wrapped_map_hashes_container_and_preserves_map_entry_selection() {
+        let directory = TestDirectory::new("wrapped-source");
+        // Deliberately larger than the actual map: the shared selector must
+        // skip the description even though it sorts entries by descending size.
+        let description = format!("[MultiMaps]\n1={}\n", "description".repeat(30));
+        let archive = make_new_format_mix_bytes(&[
+            ("description.ini", description.as_bytes()),
+            ("Arena.MAP", SOURCE_TEST_MAP),
+        ]);
+        directory.write("Arena.mmx", &archive);
+        directory.write("broken.mmx", b"not a map");
+        let loaded = try_load_mmx(directory.path(), &["broken.mmx", "Arena.mmx"])
+            .expect("skip failed candidate and load wrapped map");
+
+        assert_eq!(loaded.map.header.theater, "TEMPERATE");
+        assert_eq!(
+            loaded.source,
+            LoadedMapSource::Loose {
+                path: directory.path().join("Arena.mmx"),
+                payload_len: archive.len(),
+                source_sha256: sha256_hex(&archive),
+            }
+        );
+        assert_ne!(sha256_hex(&archive), SOURCE_TEST_MAP_SHA256);
+        let metadata = read_map_ini_for_metadata(&directory.path().join("Arena.mmx"))
+            .expect("metadata scan selects the same map entry");
+        assert!(metadata.section("Map").is_some());
+        let direct = map_file::load_from_path(&directory.path().join("Arena.mmx"))
+            .expect("shared disk loader retains wrapped map support");
+        assert_eq!(direct.header.theater, loaded.map.header.theater);
+    }
+
+    #[test]
+    fn metadata_selection_does_not_require_decodable_terrain() {
+        let directory = TestDirectory::new("metadata-only");
+        let ini = b"[Map]\nTheater=SNOW\n[Basic]\nName=Metadata only\n";
+        directory.write("Metadata.map", ini);
+        directory.write(
+            "Metadata.mmx",
+            &make_new_format_mix_bytes(&[("Metadata.MAP", ini)]),
+        );
+        for name in ["Metadata.map", "Metadata.mmx"] {
+            let path = directory.path().join(name);
+            let metadata = read_map_ini_for_metadata(&path).expect("lightweight metadata");
+            assert_eq!(
+                metadata.section("Map").unwrap().get("Theater"),
+                Some("SNOW")
+            );
+            assert!(map_file::load_from_path(&path).is_err());
+        }
+    }
+
+    #[test]
+    fn archived_map_source_hashes_extracted_entry_not_container() {
+        let directory = TestDirectory::new("mix-source");
+        let archive = make_new_format_mix_bytes(&[("Arena.MAP", SOURCE_TEST_MAP)]);
+        directory.write("Arena.YRO", &archive);
+        let mut assets = AssetManager::from_loose_root_for_test(directory.path());
+        assert!(
+            assets
+                .register_loose_yro_archive(&directory.path().join("Arena.YRO"))
+                .expect("register scenario archive")
+        );
+        let loaded = load_map_by_name_or_path_with_assets(directory.path(), "Arena.MAP", &assets)
+            .expect("load actual archived map entry");
+
+        assert_eq!(loaded.map.header.theater, "TEMPERATE");
+        assert_eq!(
+            loaded.source,
+            LoadedMapSource::Mix {
+                logical_name: "Arena.MAP".to_string(),
+                source_archive: "Arena.YRO".to_string(),
+                entry_id: mix_hash("Arena.MAP"),
+                payload_len: SOURCE_TEST_MAP.len(),
+                source_sha256: SOURCE_TEST_MAP_SHA256.to_string(),
+            }
+        );
+        assert_ne!(sha256_hex(&archive), SOURCE_TEST_MAP_SHA256);
+    }
+
     #[test]
     fn map_source_manifest_preserves_actual_mix_lookup_facts() {
         let source = LoadedMapSource::Mix {
@@ -750,6 +838,8 @@ mod tests {
             source_archive: "multimd.mix".to_string(),
             entry_id: 0x9306_F050_u32 as i32,
             payload_len: 91_254,
+            source_sha256: "d751dce7cd3611077e9228c33235f39c71681fff6ac08ca1f716d963ad6ce070"
+                .to_string(),
         };
         let json = serde_json::to_value(source).expect("serialize source");
 
@@ -758,6 +848,10 @@ mod tests {
         assert_eq!(json["source_archive"], "multimd.mix");
         assert_eq!(json["entry_id"], 0x9306_F050_u32 as i32);
         assert_eq!(json["payload_len"], 91_254);
+        assert_eq!(
+            json["source_sha256"],
+            "d751dce7cd3611077e9228c33235f39c71681fff6ac08ca1f716d963ad6ce070"
+        );
     }
 
     fn encode_csf_string(s: &str) -> Vec<u8> {

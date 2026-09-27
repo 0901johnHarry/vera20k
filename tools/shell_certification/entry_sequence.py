@@ -5,10 +5,10 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any, Mapping
+
+from tools.child_process import run_child
 
 from .core import (
     ALLOWED_SURFACE_FORMATS,
@@ -31,7 +31,6 @@ from .orchestrator import (
     CONFIG_FILENAME,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_TIMEOUT_SECONDS,
-    POST_KILL_DRAIN_SECONDS,
     _require_child_working_directory,
     _require_new_run_directory,
 )
@@ -296,47 +295,14 @@ def capture_entry_sequence(
     executable_hash = sha256_file(executable, "VERA executable")
     command = build_entry_sequence_command(executable, run_dir)
 
-    with tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir.parent, prefix=f".{run_dir.name}-stdout-"
-    ) as stdout_stream, tempfile.TemporaryFile(
-        mode="w+b", dir=run_dir.parent, prefix=f".{run_dir.name}-stderr-"
-    ) as stderr_stream:
-        try:
-            child = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_stream,
-                stderr=stderr_stream,
-                shell=False,
-                cwd=child_cwd,
-            )
-        except OSError as exc:
-            raise ValidationError(f"failed to start entry-sequence child: {exc}") from exc
-        timed_out = False
-        try:
-            child.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            try:
-                child.kill()
-            except OSError as exc:
-                raise ValidationError(
-                    f"failed to kill timed-out child PID {child.pid}: {exc}"
-                ) from exc
-            try:
-                child.wait(timeout=POST_KILL_DRAIN_SECONDS)
-            except subprocess.TimeoutExpired as exc:
-                raise ValidationError(
-                    f"child PID {child.pid} did not terminate after exact-PID kill"
-                ) from exc
-        if timed_out:
-            raise ValidationError(
-                f"entry-sequence child PID {child.pid} exceeded {timeout:g}s timeout"
-            )
-        if child.returncode != 0:
-            raise ValidationError(
-                f"entry-sequence child exited with nonzero status {child.returncode}"
-            )
+    child = run_child(command, cwd=child_cwd, temporary_directory=run_dir.parent,
+                      timeout_seconds=timeout, label="entry-sequence child")
+    if child.errors:
+        raise ValidationError("; ".join(child.errors))
+    if child.exit_status != 0:
+        raise ValidationError(
+            f"entry-sequence child exited with nonzero status {child.exit_status}"
+        )
 
     if sha256_file(executable, "VERA executable") != executable_hash:
         raise ValidationError("VERA executable changed during entry-sequence capture")
@@ -345,7 +311,7 @@ def capture_entry_sequence(
     validation = validate_entry_sequence_bundle(run_dir)
     return {
         "child_pid": child.pid,
-        "exit_status": child.returncode,
+        "exit_status": child.exit_status,
         "executable_sha256": executable_hash,
         "config_sha256": config_hash,
         "capture": validation,

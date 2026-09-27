@@ -191,6 +191,9 @@ class EntrySequenceRunnerTests(unittest.TestCase):
                     raise subprocess.TimeoutExpired(["vera20k"], timeout)
                 self.returncode = -9
 
+            def poll(self):
+                return self.returncode
+
             def kill(self) -> None:
                 self.kill_calls += 1
 
@@ -204,7 +207,7 @@ class EntrySequenceRunnerTests(unittest.TestCase):
             run_dir = root / "run"
             child = FakeChild()
             with mock.patch(
-                "tools.shell_certification.entry_sequence.subprocess.Popen",
+                "tools.child_process.subprocess.Popen",
                 return_value=child,
             ):
                 with self.assertRaisesRegex(ValidationError, "exceeded"):
