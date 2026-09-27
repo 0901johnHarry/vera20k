@@ -22,6 +22,7 @@
 
 use super::ObjectAiCtx;
 use crate::map::entities::EntityCategory;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::combat::fire_error::FireError;
@@ -470,6 +471,25 @@ pub(super) fn select_weapon(
         &combat_weapon::attacker_facts(firer, obj),
         target_facts.as_ref(),
     )
+}
+
+/// `TechnoClass::CanFireAt @ 0x006F77B0` (vt+0x3A8): InRange for `target`
+/// with `weapon_index`, measured from the object's own coordinate.
+pub(super) fn can_fire_at(
+    sim: &Simulation,
+    rules: &RuleSet,
+    id: u64,
+    target: TargetKind,
+    weapon_index: i32,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) -> bool {
+    fire_subject(sim, rules, id, Some(target), weapon_index).is_some_and(|subject| {
+        FireSubject {
+            overlay_registry,
+            ..subject
+        }
+        .in_range()
+    })
 }
 
 /// GetFireError (vt+0x3C0) for `target` with `weapon_index`; `check_range`

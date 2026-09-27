@@ -626,7 +626,10 @@ use crate::sim::world::Simulation;
 // 216 -> 217: runtime constructors retain native Abstract IDs; guided bullets
 // use those IDs with global frame, native binary64 velocity and signed course/
 // closing counters. Removed approximate heading/age/phase cannot be recovered.
-const SNAPSHOT_VERSION: u32 = 217;
+// 217 -> 218: a passenger keeps `TechnoClass+0x82` (InOpenToppedTransport) in
+// its Inside role, and the weapon override loses the transport-side
+// open-transport slot that stood in for it.
+const SNAPSHOT_VERSION: u32 = 218;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1557,7 +1560,7 @@ fn restore_object_references(
                 target_transport_id,
                 ..
             } => Some((*target_transport_id, "passenger_role.boarding")),
-            PassengerRole::Inside { transport_id } => {
+            PassengerRole::Inside { transport_id, .. } => {
                 Some((*transport_id, "passenger_role.inside"))
             }
             PassengerRole::None | PassengerRole::Transport { .. } => None,
@@ -3581,7 +3584,8 @@ mod tests {
         // 215 -> 216: the building's AI repair byte; the house's repair
         // delay, auto-repair latch and its timer.
         // 216 -> 217: native constructor IDs and signed guided control state.
-        assert_eq!(super::SNAPSHOT_VERSION, 217);
+        // 217 -> 218: a passenger's `+0x82`; no open-transport weapon override.
+        assert_eq!(super::SNAPSHOT_VERSION, 218);
     }
 
     #[test]

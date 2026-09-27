@@ -96,6 +96,9 @@ mod fireat_launch_tests;
 
 #[cfg(test)]
 mod ifv_fireat_tests;
+#[cfg(test)]
+#[path = "open_topped_fire_tests.rs"]
+mod open_topped_fire_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -982,8 +985,25 @@ pub(crate) fn pursuit_selected_weapon<'a>(
     terrain: Option<&ResolvedTerrainGrid>,
     alliances: Option<&HouseAllianceMap>,
 ) -> Option<&'a WeaponType> {
+    pursuit_selection(
+        entity, target, entities, rules, interner, terrain, alliances,
+    )
+    .map(|selected| selected.weapon)
+}
+
+/// [`pursuit_selected_weapon`]'s whole selection, native weapon index
+/// included.
+pub(crate) fn pursuit_selection<'a>(
+    entity: &GameEntity,
+    target: &TargetKind,
+    entities: &EntityStore,
+    rules: &'a RuleSet,
+    interner: &StringInterner,
+    terrain: Option<&ResolvedTerrainGrid>,
+    alliances: Option<&HouseAllianceMap>,
+) -> Option<combat_weapon::SelectedWeapon<'a>> {
     let attacker_obj = rules.object(interner.resolve(entity.type_ref()))?;
-    let selected = select_weapon_against(
+    select_weapon_against(
         rules,
         attacker_obj,
         &combat_weapon::attacker_facts(entity, attacker_obj),
@@ -993,8 +1013,7 @@ pub(crate) fn pursuit_selected_weapon<'a>(
         interner,
         terrain,
         alliances,
-    )?;
-    Some(selected.weapon)
+    )
 }
 
 /// What the pursuit stage should do with an attacker that is holding a target.
@@ -2832,6 +2851,7 @@ pub(crate) fn build_attacker_snapshot(
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,
+        in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
     }
@@ -2959,8 +2979,7 @@ pub(crate) fn award_kill_experience(
     };
     // Branch 1: a passenger firing from an OpenTopped transport pays its
     // transporter (the `+0x82`/`+0x11C` pair).
-    let open_transporter =
-        crate::sim::passenger::open_topped_transport(entities, rules, interner, killer);
+    let open_transporter = killer.passenger_role.open_transport_id();
     let recipient = if let Some(transporter) = open_transporter.and_then(trainable_cost) {
         Some(transporter)
     } else if killer_type.trainable {

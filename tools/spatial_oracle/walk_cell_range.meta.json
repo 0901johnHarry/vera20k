@@ -7,9 +7,9 @@
     1,
     33621247
   ],
-  "scope": "Original6F7970->6F77B0->6F7220 normal non-arcing Infantry Cell-target range and lookup ordering; explicit supplied object/weapon/map fields.",
+  "scope": "Original6F7970->6F77B0->6F7220 normal non-arcing Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; explicit supplied object/weapon/map fields.",
   "assumptions": [
-    "Supplied original Infantry table7EB058 and Cell table7E4EEC; actor non-garrison, no bunker/open-top/veteran range bonuses. Projectile has all flags false, including non-arcing and no wall/cliff collision; original line callable executes.",
+    "Supplied original Infantry table7EB058 and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile has all flags false, including non-arcing and no wall/cliff collision; original line callable executes.",
     "Supplied independently established104 level/208 high-flight and416 bridge constants, x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state.",
     "No constructors or complete PerCell/weapon selection/flight behavior claimed."
   ],
@@ -27,5 +27,5 @@
     "map_cell": "0x00565730",
     "line": "0x004CC310"
   },
-  "payload_sha256": "60a1ccaa5b0d68e659e4cbadb06927ba08aa675a75738c9d5f98f704cfbf682c"
+  "payload_sha256": "3ae459a7984055ea26fab82cace69914665887c30d353101e058f09de8272e15"
 }

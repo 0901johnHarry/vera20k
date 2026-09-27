@@ -177,6 +177,7 @@ fn crew_scene(input: &Value) -> (SlaveScene, Vec<u64>) {
                 .expect("absorbed infantry");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
                 transport_id: refinery,
+                open_topped: false,
             };
             passengers.push(id);
         }

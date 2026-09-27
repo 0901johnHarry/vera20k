@@ -345,16 +345,21 @@ fn idle_action_for_roll(roll: u32) -> IdleAction {
 fn idle_action_ready(entity: &GameEntity, frame: u32) -> bool {
     use crate::sim::mission::MissionType;
 
-    // A limboed man — garrisoned, or riding inside an IFV or Battle Fortress —
-    // is off the logic vector in gamemd and never reaches the feeder at all, so
-    // he must not spend a draw here either.
+    // A limboed man — garrisoned, or riding inside an IFV — is off the logic
+    // vector in gamemd and never reaches the feeder at all, so he must not
+    // spend a draw here either. A Battle Fortress rider is the exception: it
+    // stays on the logic vector on Guard (`SetInOpenTransport @ 0x00710470`),
+    // and neither `FootClass::Mission_Guard`'s idle call (`0x004D51A6`,
+    // `0x004D51D8`) nor the readiness predicate (`0x005216D0`) tests limbo.
     //
     // The `is_active` half is VERA-internal, gamemd equivalent UNCHECKED: a
     // dying infantryman is already excluded natively because his current action
     // is a Die sequence and the readiness gate admits only Ready/Guard/Tread.
     // The `Stand` test at the bottom of this function reaches the same answer,
     // so this is a second lock on the same door, not a behaviour change.
-    if entity.lifecycle.in_limbo || !entity.is_active() {
+    if (entity.lifecycle.in_limbo && !entity.passenger_role.in_open_transport())
+        || !entity.is_active()
+    {
         return false;
     }
     // A man being warped never reaches his mission handler.
@@ -420,8 +425,8 @@ fn set_idle_facing(entity: &mut GameEntity, facing_index: u8, frame: u32) {
 /// `order` is the logic vector — the active-object order gamemd dispatches
 /// through to reach the guard/hunt/area-guard handlers that own this call. It is
 /// deliberately not the entity store's key order: the store also holds limboed
-/// objects (garrison occupants, transport passengers) that never reach the
-/// feeder natively and must not spend a draw.
+/// objects (garrison occupants, closed-transport passengers) that never reach
+/// the feeder natively and must not spend a draw.
 ///
 /// This runs every tick where gamemd reaches it on the guard mission's own
 /// dispatch cadence. The wait timer is the real gate in both, so the residual is
@@ -984,6 +989,49 @@ mod tests {
                 store.get(1).unwrap().infantry.unwrap().idle_action_timer,
                 crate::sim::mission::MissionTimer::default(),
                 "case {index} must not re-arm the idle wait"
+            );
+        }
+    }
+
+    /// A Battle Fortress rider stays on the logic vector on Guard
+    /// (`SetInOpenTransport @ 0x00710470`), and neither the Guard handler's
+    /// idle call nor the readiness predicate (`0x005216D0`) tests limbo, so
+    /// it takes its idle turns inside, draws and all; a closed transport's
+    /// passenger does not.
+    #[test]
+    fn a_battle_fortress_rider_takes_its_idle_turns_inside() {
+        use crate::sim::animation::Animation;
+        use crate::sim::entity_store::EntityStore;
+        use crate::sim::passenger::PassengerRole;
+        use crate::sim::rng::SimRng;
+
+        let rules = rules_for("");
+        let houses = std::collections::BTreeMap::new();
+        for open_topped in [true, false] {
+            let mut rng = SimRng::new(7);
+            let before = rng.state();
+            let mut store = EntityStore::new();
+            let mut e = infantry(100);
+            e.animation = Some(Animation::new(SequenceKind::Stand));
+            e.lifecycle.in_limbo = true;
+            e.passenger_role = PassengerRole::Inside {
+                transport_id: 9,
+                open_topped,
+            };
+            store.insert(e);
+            let interner = crate::sim::intern::test_interner();
+
+            tick_idle_actions(&mut store, &ORDER, &houses, &rules, &interner, &mut rng, 0);
+            let armed = store.get(1).unwrap().infantry.unwrap().idle_action_timer;
+            assert_eq!(
+                rng.state() != before,
+                open_topped,
+                "open_topped {open_topped}"
+            );
+            assert_eq!(
+                armed != crate::sim::mission::MissionTimer::default(),
+                open_topped,
+                "open_topped {open_topped}"
             );
         }
     }

@@ -3687,7 +3687,10 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
     let mut pax = crate::sim::game_entity::GameEntity::test_default(31, "E1", "Americans", 39, 40);
     pax.owner = amer_id;
     pax.type_ref = e1_id;
-    pax.passenger_role = PassengerRole::Inside { transport_id: 30 };
+    pax.passenger_role = PassengerRole::Inside {
+        transport_id: 30,
+        open_topped: false,
+    };
     sim.substrate.entities.insert(pax);
     if let Some(t) = sim.substrate.entities.get_mut(30) {
         if let Some(c) = t.passenger_role.cargo_mut() {

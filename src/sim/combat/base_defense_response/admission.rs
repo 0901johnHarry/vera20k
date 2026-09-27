@@ -8,7 +8,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::{InternedId, StringInterner};
-use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::ground_height_leptons;
 
 use super::super::combat_weapon::{
@@ -167,15 +166,15 @@ pub(super) fn current_target_disposition(
     }
 }
 
+/// `GetWeaponRange(0)` (`0x004D9840`), the open-topped cargo minimum included.
 pub(super) fn primary_range_leptons(
     candidate: &GameEntity,
     object: &ObjectType,
+    entities: &EntityStore,
     rules: &RuleSet,
+    interner: &StringInterner,
 ) -> i32 {
-    primary_for_tier(object, candidate.veterancy)
-        .and_then(|weapon_id| rules.weapon(weapon_id))
-        .map(|weapon| (weapon.range * SimFixed::from_num(256)).to_num::<i32>())
-        .unwrap_or(0)
+    crate::sim::combat::combat_weapon::weapon_range(candidate, object, 0, entities, rules, interner)
 }
 
 /// Represented exact-code classifier for the response's read-only weapon-zero
@@ -269,7 +268,9 @@ pub(crate) fn responder_peek_fire_error(
     let Some(weapon) = rules.weapon(weapon_id) else {
         return ResponderPeekFireError::Cant;
     };
-    if candidate.passenger_role.inside_transport_id().is_some() && !weapon.fire_in_transport {
+    // T32 `0x006FC57D`: an open-topped passenger (`+0x82`) cannot fire a
+    // `FireInTransport=no` weapon.
+    if candidate.passenger_role.in_open_transport() && !weapon.fire_in_transport {
         return ResponderPeekFireError::Illegal;
     }
     let Some(warhead) = weapon.warhead.as_deref().and_then(|id| rules.warhead(id)) else {

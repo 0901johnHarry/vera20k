@@ -748,7 +748,7 @@ impl Simulation {
         };
         if matches!(
             entity.passenger_role,
-            crate::sim::passenger::PassengerRole::Inside { transport_id } if transport_id == unit_id
+            crate::sim::passenger::PassengerRole::Inside { transport_id, .. } if transport_id == unit_id
         ) {
             entity.passenger_role = crate::sim::passenger::PassengerRole::None;
         }

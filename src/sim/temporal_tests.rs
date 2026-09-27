@@ -431,6 +431,7 @@ fn native_update_corpus() {
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role =
                     crate::sim::passenger::PassengerRole::Inside {
                         transport_id: transport,
+                        open_topped: true,
                     };
             }
             if let Some(coords) = attacker.coords {

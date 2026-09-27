@@ -1173,6 +1173,9 @@ impl Simulation {
             if entity.is_deployed() {
                 continue;
             }
+            // A passenger never walks: an open-topped transport's rider has
+            // its chase off (`+0x82`, `0x004D5782`) and a destination refused
+            // (`0x004D94D7`); its reach is `open_transport_reach_step`.
             if entity.passenger_role.is_inside_transport() {
                 continue;
             }
@@ -1255,6 +1258,24 @@ impl Simulation {
                 },
             );
 
+            // `FootClass::Per_Cell_Process @ 0x004D885C`: an `OpenTopped=`
+            // mover chasing a Foot target, on a mission the range stop admits,
+            // stops only on entering a cell, by distance
+            // (`foot_per_cell_range_stop`), never by InRange. A loaded Battle
+            // Fortress drives on to its GIs' M60 range. On any other mission
+            // (VERA's Guard and AttackMove orders among them) the stop never
+            // fires, and the halt below stands in as for every other mover.
+            let open_topped_chase = matches!(
+                attack.target,
+                combat::TargetKind::Entity(target_id)
+                    if self.substrate.entities.get(target_id).is_some_and(|target| {
+                        target.category != EntityCategory::Structure
+                    })
+            ) && movement::range_stop_admits(entity)
+                && self
+                    .object_type(entity.type_ref(), rules)
+                    .is_some_and(|obj| obj.open_topped);
+
             if verdict == combat::PursuitRangeVerdict::CloseIn {
                 // **Sticky never chases.** The one place the engine tells
                 // Sticky apart from Guard at all — they share a mission handler
@@ -1277,7 +1298,7 @@ impl Simulation {
                     });
                 }
                 // else: existing pursuit movement is still running; let it continue.
-            } else if entity.movement_target.is_some() {
+            } else if entity.movement_target.is_some() && !open_topped_chase {
                 // `CanFire` — halt for firing. `HoldInsideMinimumRange` halts
                 // here too: closing further cannot help, and this is the arm it
                 // took before the walk landed.
@@ -1327,11 +1348,9 @@ impl Simulation {
                     // holds no NavCom. GetFireError's NavCom tests (U7..U10)
                     // would otherwise keep refusing a spark, flame, drain or
                     // temporal weapon. Infantry take the Walk port's stop
-                    // (`finish_walk_pursuit_at_per_cell`).
-                    if e.category == EntityCategory::Unit
-                        && [21, 11, 1, 15].contains(&e.mission.effective().raw())
-                        && e.navigation.nav_queue.is_empty()
-                    {
+                    // (`finish_walk_pursuit_at_per_cell`), an open-topped unit
+                    // the track PerCell's (`foot_per_cell_range_stop`).
+                    if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
                         self.set_unit_null_destination(entity_id, Some(rules));
                     }
                 }

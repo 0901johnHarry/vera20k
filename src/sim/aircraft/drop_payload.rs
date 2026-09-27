@@ -371,6 +371,7 @@ mod tests {
         passenger.sub_cell = Some(2);
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: aircraft_id,
+            open_topped: false,
         };
         sim.substrate.entities.insert(passenger);
     }
@@ -636,7 +637,7 @@ mod tests {
             .expect("passenger exists");
         assert!(matches!(
             passenger.passenger_role,
-            PassengerRole::Inside { transport_id } if transport_id == aircraft_id
+            PassengerRole::Inside { transport_id, .. } if transport_id == aircraft_id
         ));
         assert!(passenger.parachute_state.is_none());
         assert!(passenger.lifecycle.object_alive);

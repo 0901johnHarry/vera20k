@@ -2987,6 +2987,11 @@ fn attacker_reaches_fire(entity: &crate::sim::game_entity::GameEntity) -> bool {
 /// tube (`0x007363A4`) return before the update; a dead one does not reach
 /// it. Only a gattling type does anything there with no target. The caller
 /// asks [`unit_reaches_fire_update`] again at each unit's slot.
+///
+/// RESIDUAL (dormant): a unit riding an `OpenTopped=` transport is in the
+/// walk (`SetInOpenTransport 0x00710470` registers it), so an idle gattling
+/// rider would spin down there. No retail gattling vehicle fits the Battle
+/// Fortress (`SizeLimit=2`).
 fn idle_unit_fire_updates(
     world: &Simulation,
     rules: &RuleSet,
@@ -3351,13 +3356,9 @@ fn fireat_launch_aim(
 /// and set by no retail layer; the per-object value is raised only by the
 /// Firepower crate, which VERA does not have.
 ///
-/// RESIDUAL: the open-topped stage has no production firer yet. Natively a
-/// passenger of an `OpenTopped=` transport (retail: `[BFRT]`) runs its own
-/// FireAt with `+0x82` set (`PerCellProcess 0x0051A45E`/`0x0073A75D` ->
-/// `SetInOpenTransport 0x00710470`); VERA's passengers never reach the fire
-/// path, and a loaded Battle Fortress fires only its own weapon. Trigger:
-/// any infantry in a Battle Fortress. Effect: their shots (x1.2 here, plus
-/// their own FIREPOWER stage) are missing entirely, not mis-scaled.
+/// A passenger of an `OpenTopped=` transport (retail: `[BFRT]`) fires with
+/// `+0x82` set (`PerCellProcess 0x0051A45E`/`0x0073A75D` ->
+/// `SetInOpenTransport 0x00710470`), which takes the open-topped stage.
 fn fireat_damage(
     world: &Simulation,
     rules: &RuleSet,
@@ -3388,14 +3389,7 @@ fn fireat_damage(
             .and_then(|firer| firer.bunker_link.installed_in())
             .map(|_| f32_bits(multipliers.bunker_damage_multiplier)),
         open_topped: firer
-            .and_then(|firer| {
-                crate::sim::passenger::open_topped_transport(
-                    &world.substrate.entities,
-                    rules,
-                    &world.interner,
-                    firer,
-                )
-            })
+            .filter(|firer| firer.passenger_role.in_open_transport())
             .map(|_| f32_bits(multipliers.open_topped_damage_multiplier)),
     };
     damage::attacker::fire_damage(
@@ -4003,6 +3997,11 @@ pub(super) fn emit_admitted_fire(
         .as_ref()
         .filter(|_| !obj.is_gattling || snap.category == EntityCategory::Structure)
         .map(|report_id| world.interner.intern(report_id));
+    let in_open_transport = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .is_some_and(|firer| firer.passenger_role.in_open_transport());
     out.fire_events.push(SimFireEvent {
         attacker_id: snap.stable_id,
         attacker_type_ref: snap.type_id,
@@ -4028,6 +4027,7 @@ pub(super) fn emit_admitted_fire(
             weapon,
             fire.aim_facing16,
             snap.garrison.is_some(),
+            in_open_transport,
         )
         .map(|name| world.interner.intern(name)),
         occupied_building: snap.garrison.is_some(),
@@ -4634,8 +4634,12 @@ pub(crate) fn tick_combat(
                 Some(e) => e,
                 None => continue,
             };
-            // Skip entities inside a transport — they can't fire (unless OpenTopped, deferred).
-            if entity.passenger_role.is_inside_transport() {
+            // A closed transport's passengers left the logic walk; an
+            // open-topped transport's riders stay in it and fire from inside
+            // (`SetInOpenTransport @ 0x00710470`).
+            if entity.passenger_role.is_inside_transport()
+                && !entity.passenger_role.in_open_transport()
+            {
                 continue;
             }
             if !attacker_reaches_fire(entity) {
@@ -4750,8 +4754,9 @@ pub(crate) fn tick_combat(
     // the live-object order, not stable-id. Sort the collected attacker
     // snapshots by their position in the live order. stable_id is the
     // deterministic tiebreaker for any attacker absent from the live order
-    // (limbo objects do not fire) and makes an empty live_order reproduce the
-    // previous stable-id order exactly.
+    // (objects outside the logic walk do not fire; an open-topped rider is in
+    // it) and makes an empty live_order reproduce the previous stable-id order
+    // exactly.
     let live_index: std::collections::HashMap<u64, usize> = live_order
         .iter()
         .enumerate()

@@ -232,7 +232,10 @@ mod tests {
         sim.entities_mut()
             .get_mut(passenger)
             .unwrap()
-            .passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: id };
+            .passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: id,
+            open_topped: false,
+        };
         assert!(
             sim.entities_mut()
                 .get_mut(id)
