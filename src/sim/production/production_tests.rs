@@ -592,20 +592,15 @@ pub(super) fn arm_build_via(
     owner: &str,
     type_id: &str,
     queue_category: ProductionCategory,
-    total_base_frames: u32,
     order: u64,
 ) {
     let oid = sim.interner.intern(owner);
     let tid = sim.interner.intern(type_id);
     let cost = sim.object_type(tid, rules).map_or(0, |o| o.cost.max(0));
-    let started = sim.production.factory_shadow.enqueue(
-        oid,
-        queue_category,
-        tid,
-        order,
-        total_base_frames,
-        cost,
-    );
+    let started = sim
+        .production
+        .factory_shadow
+        .enqueue(oid, queue_category, tid, order, cost);
     if started {
         super::construct_active_factory_fixture(sim, rules, oid, queue_category, tid)
             .expect("test production type must construct at StartProduction");
@@ -1131,7 +1126,6 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         1,
     );
     arm_build_via(
@@ -1140,7 +1134,6 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         "Americans",
         "DEST",
         ProductionCategory::Ship,
-        100,
         2,
     );
     assert!(
@@ -1255,7 +1248,6 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
         "DEST",
         ProductionCategory::Ship,
         1,
-        1,
     );
     let americans = sim.interner.intern("Americans");
     assert!(
@@ -1351,7 +1343,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
         "DEST",
         ProductionCategory::Ship,
         1,
-        1,
     );
     arm_build_via(
         &mut sim,
@@ -1359,7 +1350,6 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
         "Americans",
         "DEST",
         ProductionCategory::Ship,
-        1,
         2,
     );
     assert!(
@@ -1534,7 +1524,6 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
         "DEST",
         ProductionCategory::Ship,
         1,
-        1,
     );
     let americans = sim.interner.intern("Americans");
     assert!(
@@ -1643,7 +1632,6 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
         "DEST",
         ProductionCategory::Ship,
         1,
-        1,
     );
     let americans = sim.interner.intern("Americans");
     assert!(
@@ -1721,7 +1709,6 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
         "Americans",
         "DEST",
         ProductionCategory::Ship,
-        1,
         1,
     );
     let americans = sim.interner.intern("Americans");

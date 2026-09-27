@@ -81,7 +81,7 @@ impl RegisteredBuilding {
 
 impl HouseBaseState {
     /// The FactoryPlant products (House `+0x5390..+0x53A0`, in
-    /// [`ObjectType::cost_factor_slot`] order) `CalculateCostMultipliers @
+    /// [`ObjectType::factor_slot`] order) `CalculateCostMultipliers @
     /// 0x0050BF60` last left; `HouseClass::GetAccumulatedBonus @ 0x0050BEB0`
     /// returns one slot.
     pub(crate) fn factory_plant_factors(&self) -> CostFactors {

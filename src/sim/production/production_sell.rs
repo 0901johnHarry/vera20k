@@ -105,7 +105,7 @@ pub(crate) fn building_type_refund(
     } else {
         X87::store_f32_masked_chop(X87::load_f64(rules.general.refund_percent))
     };
-    let slot = object.cost_factor_slot();
+    let slot = object.factor_slot();
     let (m1, m2) = (factors.country[slot], factors.factory_plant[slot]);
     if object.soylent != 0 {
         return X87::ftol_i32_low_masked(X87::mul(
