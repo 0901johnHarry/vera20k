@@ -521,8 +521,11 @@ fn read_tileset_row<'a>(
 /// The filename is `{FileName}{NN:02}.{extension}` where NN is 1-indexed.
 /// Blank FileName entries consume tile_id slots but map to None.
 pub fn parse_tileset_ini(ini_data: &[u8], extension: &str) -> Result<TilesetLookup, MapError> {
-    let ini: IniFile = IniFile::from_bytes(ini_data).map_err(MapError::Ini)?;
+    let ini = IniFile::from_bytes(ini_data).map_err(MapError::Ini)?;
+    parse_tileset_sections(&ini, extension)
+}
 
+fn parse_tileset_sections(ini: &IniFile, extension: &str) -> Result<TilesetLookup, MapError> {
     let mut entries: Vec<Option<String>> = Vec::new();
     let mut variant_filenames: Vec<Vec<String>> = Vec::new();
     let mut tileset_bounds: Vec<TilesetBounds> = Vec::new();
@@ -539,7 +542,7 @@ pub fn parse_tileset_ini(ini_data: &[u8], extension: &str) -> Result<TilesetLook
     // exact signed -1 sentinel. `%04d` is a minimum width, not a 10,000-row cap.
     let mut idx = 0u32;
     loop {
-        let Some((section, tiles_in_set)) = read_tileset_row(&ini, idx)? else {
+        let Some((section, tiles_in_set)) = read_tileset_row(ini, idx)? else {
             break;
         };
 
@@ -1023,7 +1026,11 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
         ini_source
     );
 
-    let mut lookup: TilesetLookup = parse_tileset_ini(&ini_data, def.extension).ok()?;
+    // TileSet rows and General metadata share the native INI parser. Original
+    // 545535..545C3F uses exact-case General keys and ReadInt5276D0 syntax;
+    // tools/rules_oracle/theater_general_reader.md preserves executed results.
+    let ini = IniFile::from_bytes(&ini_data).ok()?;
+    let mut lookup = parse_tileset_sections(&ini, def.extension).ok()?;
     resolve_contiguous_variant_chains(&mut lookup, asset_manager);
     log::info!(
         "Theater {}: loaded {} from INI '{}' ({} tile_id slots, {} tilesets)",
@@ -1045,13 +1052,14 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
     )
     .unwrap_or_else(native_missing_theater_palette);
 
-    // Parse theater [General] tile-set keys directly from the raw text; these
-    // keys are not represented by the TileSet parser.
-    let ini_text = String::from_utf8_lossy(&ini_data);
-    let mut bridge_set = parse_general_int(&ini_text, "BridgeSet");
-    let mut wood_bridge_set = parse_general_int(&ini_text, "WoodBridgeSet");
-    let slope_set_pieces = parse_general_int(&ini_text, "SlopeSetPieces");
-    let slope_set_pieces2 = parse_general_int(&ini_text, "SlopeSetPieces2");
+    // Original ReadTheater545150 reads these from the same General section
+    // as the signed repair/rim owner. These u16 fields are bounded tile-index
+    // projections; HighBridgeRimTiles independently retains signed values.
+    let general = ini.section("General");
+    let mut bridge_set = read_general_u16(general, "BridgeSet");
+    let mut wood_bridge_set = read_general_u16(general, "WoodBridgeSet");
+    let slope_set_pieces = read_general_u16(general, "SlopeSetPieces");
+    let slope_set_pieces2 = read_general_u16(general, "SlopeSetPieces2");
     let TheaterBridgePieceKeys {
         bridge_top_left_1,
         bridge_top_left_2,
@@ -1063,19 +1071,19 @@ pub fn load_theater(asset_manager: &mut AssetManager, theater_name: &str) -> Opt
         bridge_bottom_left_2,
         bridge_middle_1,
         bridge_middle_2,
-    } = parse_bridge_piece_keys(&ini_text);
-    let tunnels = parse_general_int(&ini_text, "Tunnels");
-    let track_tunnels = parse_general_int(&ini_text, "TrackTunnels");
-    let dirt_tunnels = parse_general_int(&ini_text, "DirtTunnels");
-    let dirt_track_tunnels = parse_general_int(&ini_text, "DirtTrackTunnels");
+    } = read_bridge_piece_keys(general);
+    let tunnels = read_general_u16(general, "Tunnels");
+    let track_tunnels = read_general_u16(general, "TrackTunnels");
+    let dirt_tunnels = read_general_u16(general, "DirtTunnels");
+    let dirt_track_tunnels = read_general_u16(general, "DirtTrackTunnels");
     let automatic_tube_bases =
         [tunnels, track_tunnels, dirt_tunnels, dirt_track_tunnels].map(|ordinal| {
             ordinal
                 .and_then(|ordinal| lookup.bounds().get(ordinal as usize))
                 .map_or(-1, |bounds| i32::from(bounds.start))
         });
-    let mut cliff_ranges = resolve_cliff_ranges(&lookup, &ini_text, bridge_set, wood_bridge_set);
-    let mut rmg_tiles = resolve_rmg_tile_keys(&lookup, &ini_text);
+    let mut cliff_ranges = resolve_cliff_ranges(&lookup, general, bridge_set, wood_bridge_set);
+    let mut rmg_tiles = resolve_rmg_tile_keys(&lookup, general);
     apply_lunar_global_zeroing(
         theater_name,
         &mut bridge_set,
@@ -1215,8 +1223,7 @@ pub(crate) fn resolve_contiguous_variant_chains_for_test(
     resolve_contiguous_variant_chains(lookup, asset_manager);
 }
 
-fn resolve_tileset_start(lookup: &TilesetLookup, ordinal: Option<i32>) -> Option<u16> {
-    let ordinal = ordinal?;
+fn resolve_tileset_start(lookup: &TilesetLookup, ordinal: i32) -> Option<u16> {
     if ordinal < 0 {
         return None;
     }
@@ -1226,8 +1233,11 @@ fn resolve_tileset_start(lookup: &TilesetLookup, ordinal: Option<i32>) -> Option
         .map(|bounds| bounds.start)
 }
 
-fn resolve_rmg_tile_keys(lookup: &TilesetLookup, ini_text: &str) -> RmgTileKeys {
-    let resolve = |key: &str| resolve_tileset_start(lookup, parse_general_i32(ini_text, key));
+fn resolve_rmg_tile_keys(lookup: &TilesetLookup, general: Option<&IniSection>) -> RmgTileKeys {
+    let resolve = |key: &str| {
+        let ordinal = general.map_or(-1, |section| section.read_int(key, -1));
+        resolve_tileset_start(lookup, ordinal)
+    };
     RmgTileKeys {
         clear_tile: resolve("ClearTile"),
         ramp_base: resolve("RampBase"),
@@ -1252,31 +1262,27 @@ fn resolve_rmg_tile_keys(lookup: &TilesetLookup, ini_text: &str) -> RmgTileKeys 
 
 fn resolve_cliff_ranges(
     lookup: &TilesetLookup,
-    ini_text: &str,
+    general: Option<&IniSection>,
     bridge_set: Option<u16>,
     wood_bridge_set: Option<u16>,
 ) -> TheaterCliffRanges {
+    let resolve = |key: &str, default: i32| {
+        let ordinal = general.map_or(default, |section| section.read_int(key, default));
+        resolve_tileset_start(lookup, ordinal)
+    };
     TheaterCliffRanges {
-        cliff_set: resolve_tileset_start(lookup, parse_general_i32(ini_text, "CliffSet")),
-        cliff_ramps: resolve_tileset_start(lookup, parse_general_i32(ini_text, "CliffRamps")),
-        water_cliffs: resolve_tileset_start(lookup, parse_general_i32(ini_text, "WaterCliffs")),
-        destroyable_cliffs: resolve_tileset_start(
-            lookup,
-            parse_general_i32(ini_text, "DestroyableCliffs"),
-        ),
-        bridge_set: resolve_tileset_start(lookup, bridge_set.map(i32::from)),
-        wood_bridge_set: resolve_tileset_start(lookup, wood_bridge_set.map(i32::from)),
-        water_caves: resolve_tileset_start(lookup, parse_general_i32(ini_text, "WaterCaves")),
-        waterfall_east: resolve_tileset_start(lookup, parse_general_i32(ini_text, "WaterfallEast")),
-        waterfall_west: resolve_tileset_start(lookup, parse_general_i32(ini_text, "WaterfallWest")),
-        waterfall_north: resolve_tileset_start(
-            lookup,
-            parse_general_i32(ini_text, "WaterfallNorth"),
-        ),
-        waterfall_south: resolve_tileset_start(
-            lookup,
-            parse_general_i32(ini_text, "WaterfallSouth"),
-        ),
+        cliff_set: resolve("CliffSet", -1),
+        cliff_ramps: resolve("CliffRamps", -1),
+        water_cliffs: resolve("WaterCliffs", -1),
+        // ReadTheater545150's call545978 uses -2, unlike the other ordinals.
+        destroyable_cliffs: resolve("DestroyableCliffs", -2),
+        bridge_set: resolve_tileset_start(lookup, bridge_set.map_or(-1, i32::from)),
+        wood_bridge_set: resolve_tileset_start(lookup, wood_bridge_set.map_or(-1, i32::from)),
+        water_caves: resolve("WaterCaves", -1),
+        waterfall_east: resolve("WaterfallEast", -1),
+        waterfall_west: resolve("WaterfallWest", -1),
+        waterfall_north: resolve("WaterfallNorth", -1),
+        waterfall_south: resolve("WaterfallSouth", -1),
     }
 }
 
@@ -1300,56 +1306,26 @@ fn waterfall_is_special(start: Option<u16>, tile_id: u16, sub_tile: u8, ordinary
     waterfall_blocks(start, tile_id, sub_tile, ordinary)
 }
 
-/// Parse a key=value integer from the `[General]` section of a theater INI file.
-/// BridgeSet and WoodBridgeSet are defined inside `[General]`, not in the
-/// global scope before any section header.
-fn parse_general_int(text: &str, key: &str) -> Option<u16> {
-    parse_general_i32(text, key).and_then(|value| u16::try_from(value).ok())
+/// Checked tile-index projection; absent, negative and out-of-range values
+/// have no representable u16 tile identity. Native signed repair keys remain
+/// owned by HighBridgeRimTiles and must not be reconstructed from this view.
+fn read_general_u16(general: Option<&IniSection>, key: &str) -> Option<u16> {
+    u16::try_from(general?.read_int(key, -1)).ok()
 }
 
-fn parse_bridge_piece_keys(text: &str) -> TheaterBridgePieceKeys {
+fn read_bridge_piece_keys(general: Option<&IniSection>) -> TheaterBridgePieceKeys {
     TheaterBridgePieceKeys {
-        bridge_top_left_1: parse_general_int(text, "BridgeTopLeft1"),
-        bridge_top_left_2: parse_general_int(text, "BridgeTopLeft2"),
-        bridge_bottom_right_1: parse_general_int(text, "BridgeBottomRight1"),
-        bridge_bottom_right_2: parse_general_int(text, "BridgeBottomRight2"),
-        bridge_top_right_1: parse_general_int(text, "BridgeTopRight1"),
-        bridge_top_right_2: parse_general_int(text, "BridgeTopRight2"),
-        bridge_bottom_left_1: parse_general_int(text, "BridgeBottomLeft1"),
-        bridge_bottom_left_2: parse_general_int(text, "BridgeBottomLeft2"),
-        bridge_middle_1: parse_general_int(text, "BridgeMiddle1"),
-        bridge_middle_2: parse_general_int(text, "BridgeMiddle2"),
+        bridge_top_left_1: read_general_u16(general, "BridgeTopLeft1"),
+        bridge_top_left_2: read_general_u16(general, "BridgeTopLeft2"),
+        bridge_bottom_right_1: read_general_u16(general, "BridgeBottomRight1"),
+        bridge_bottom_right_2: read_general_u16(general, "BridgeBottomRight2"),
+        bridge_top_right_1: read_general_u16(general, "BridgeTopRight1"),
+        bridge_top_right_2: read_general_u16(general, "BridgeTopRight2"),
+        bridge_bottom_left_1: read_general_u16(general, "BridgeBottomLeft1"),
+        bridge_bottom_left_2: read_general_u16(general, "BridgeBottomLeft2"),
+        bridge_middle_1: read_general_u16(general, "BridgeMiddle1"),
+        bridge_middle_2: read_general_u16(general, "BridgeMiddle2"),
     }
-}
-
-fn parse_general_i32(text: &str, key: &str) -> Option<i32> {
-    let mut in_general = false;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('[') {
-            if line.to_ascii_lowercase().starts_with("[general]") {
-                in_general = true;
-                continue;
-            } else if in_general {
-                // Left [General], entered another section — stop.
-                break;
-            }
-            continue;
-        }
-        if !in_general {
-            continue;
-        }
-        if line.starts_with(';') || line.is_empty() {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            if k.trim().eq_ignore_ascii_case(key) {
-                let v = v.split(';').next().unwrap_or("").trim();
-                return v.parse().ok();
-            }
-        }
-    }
-    None
 }
 
 fn load_exact_palette(

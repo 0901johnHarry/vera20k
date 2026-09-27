@@ -72,9 +72,7 @@ impl<'a> CurrentRadarCellAuthority<'a> {
         ry: u16,
         terrain_brightness: f32,
     ) -> Option<([u8; 3], [u8; 3])> {
-        let metadata = self
-            .resolved_terrain?
-            .current_tile_radar_metadata(rx, ry)?;
+        let metadata = self.resolved_terrain?.current_tile_radar_metadata(rx, ry)?;
         Some(radar_colors_for_tmp_metadata(
             metadata.left,
             metadata.right,
@@ -109,17 +107,17 @@ impl<'a> CurrentRadarCellAuthority<'a> {
         // the immutable high-family routing fact: a saved collapse clears the
         // structural bit, but its current Cell+0x44 byte is still the runtime
         // high-bridge overlay authority.
-        let structural_high_present =
+        let structural_bridge_present =
             resolved_cell.is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
         let runtime_bridge_cell = self.bridge_state.and_then(|state| state.cell(rx, ry));
         let immutable_high_runtime_owner = runtime_bridge_cell.is_some()
             && resolved_cell.is_some_and(|cell| {
                 cell.bridge_facts.family != crate::map::bridge_facts::BridgeStampFamily::None
             });
-        let structural_bridge_present = structural_high_present
-            && runtime_bridge_cell.is_some_and(|cell| {
-                cell.deck_present && BridgeRuntimeState::effective_render_state(cell).is_some()
-            });
+        // Constructor5FC380 stamps structural side cells with Cell+44=-1;
+        // bridge_constructor.json cases8..11 retain these original outputs.
+        // GetRadarColor47C060's bit100 branch precedes its overlay branch and
+        // cannot be vetoed by absent sprite data or runtime damage state.
         let overlay = if immutable_high_runtime_owner {
             // High walkers keep their current Cell+0x44 identity only in
             // BridgeRuntimeState. OverlayGrid intentionally mirrors low

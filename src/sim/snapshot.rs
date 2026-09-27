@@ -645,10 +645,15 @@ use crate::sim::world::Simulation;
 // 222 -> 223: Move orders and movement targets lose the group id that capped a
 // group to its slowest member; gamemd's speed getter (`0x004DB1A0`) reads only
 // the unit's own state. Dropping the fields changes the bincode schema.
-// 223 -> 224: Prism forwarding. A building's delayed fire carries a support
+// 223 -> 224: Infantry uses its native Foot SpeedType default, live AStar/Walk
+// cell admission and ordered Walk responses. Engineer hut entry and repaired
+// structural side-cell consumers consequently change saved continuations.
+// Foot+68A now retains its exact path-failure sound byte through a snapshot.
+// Existing valid SpeedType variant tags and zero-latch hash streams are preserved.
+// 224 -> 225: Prism forwarding. A building's delayed fire carries a support
 // beam mode, buildings keep a support count, bullets a damage multiplier and
-// houses their building list (House+0x68), which a 223 save never filled.
-const SNAPSHOT_VERSION: u32 = 224;
+// houses their building list (House+0x68), which a 224 save never filled.
+const SNAPSHOT_VERSION: u32 = 225;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3596,8 +3601,9 @@ mod tests {
         // 220 -> 221: buildings' Guard and Attack missions.
         // 221 -> 222: production commands take their envelope's house.
         // 222 -> 223: no group speed cap on Move orders.
-        // 223 -> 224: Prism forwarding.
-        assert_eq!(super::SNAPSHOT_VERSION, 224);
+        // 223 -> 224: live Infantry movement/repair and structural side consumers.
+        // 224 -> 225: Prism forwarding.
+        assert_eq!(super::SNAPSHOT_VERSION, 225);
     }
 
     #[test]

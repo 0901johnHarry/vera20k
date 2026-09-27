@@ -97,8 +97,10 @@ use crate::sim::movement::locomotor::MovementLayer;
 
 /// Provenance of a returned path failure. The Foot wrapper must not turn
 /// unavailable caches or compatibility-only rejection into a native core NULL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PathSearchFailure {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathSearchFailure {
+    ///Required live Foot inputs are unavailable; never a native NULL route.
+    CellEntryUnavailable(String),
     ///42CB22 rejected unequal native raw labels before cell A*.
     NativeEntryRejected,
     ///A required hierarchy cell had no represented native topology.
@@ -416,6 +418,7 @@ pub(crate) fn find_path_zoned_marker(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -516,6 +519,7 @@ fn find_path_zoned_marker_inner(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         blocker_neighbor_counts,
     )
@@ -574,7 +578,6 @@ fn find_flat_path_after_entry(
         marker_overlay,
         facts,
     )
-    .ok_or(PathSearchFailure::CellSearchExhausted)
 }
 
 #[cfg(test)]
@@ -620,6 +623,7 @@ pub(crate) fn find_layered_path_zoned_marker(
             mover_is_crusher,
             is_infantry,
             wall_cost: None,
+            foot_entry: None,
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -699,7 +703,6 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
         marker_overlay,
         facts,
     )
-    .ok_or(PathSearchFailure::CellSearchExhausted)
 }
 
 #[cfg(test)]

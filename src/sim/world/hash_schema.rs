@@ -173,10 +173,14 @@ pub(super) enum HashFeature {
     /// base-defence state. Earlier schemas fold the empty copies in their
     /// place; no pinned fixture sets a rally point.
     RetiredRallyCopies = 220,
+    /// Foot+68A is a retained byte, even though its sound guard only tests
+    /// nonzero. A tagged suffix for nonzero values preserves the former
+    /// zero-byte streams; earlier projections omit this byte entirely.
+    FootScoldLatch = 224,
     /// Prism forwarding: a building's support count (`BuildingClass+0x664`),
     /// a bullet's damage multiplier (`BulletClass+0x150`) and each House's
     /// building list (House+0x68). Earlier schemas fold none of them.
-    PrismSupport = 224,
+    PrismSupport = 225,
 }
 
 impl HashSchema {
@@ -218,6 +222,7 @@ impl HashSchema {
                     | HashFeature::BuildingRepair
                     | HashFeature::NativeRuntimeIdentity
                     | HashFeature::RetiredRallyCopies
+                    | HashFeature::FootScoldLatch
                     | HashFeature::PrismSupport
             ),
             #[cfg(test)]

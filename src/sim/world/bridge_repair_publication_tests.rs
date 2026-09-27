@@ -1,111 +1,10 @@
 use super::*;
-use crate::rules::ini_parser::IniFile;
-use crate::rules::locomotor_type::{MovementZone, SpeedType};
-use crate::sim::{
-    command::Command,
-    overlay_grid::OverlayGrid,
-    pathfinding::{PathGrid, zone_map::ZoneGrid},
-};
+use crate::rules::locomotor_type::SpeedType;
+use crate::sim::{command::Command, pathfinding::PathGrid};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-pub(super) fn fixture() -> (
-    Simulation,
-    RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
-) {
-    fixture_with_rules("")
-}
-
-pub(super) fn fixture_with_rules(
-    extra: &str,
-) -> (
-    Simulation,
-    RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
-) {
-    let mut text = String::from(
-        "[InfantryTypes]\n0=ENGINEER\n1=JUMPJET\n[JUMPJET]\nStrength=125\nSpeed=9\nSpeedType=Hover\nMovementZone=Fly\nJumpjetSpeed=30\nJumpjetHeight=500\nJumpjetClimb=20\nJumpJet=yes\nBalloonHover=yes\nHoverAttack=yes\nLocomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n[AircraftTypes]\n0=HORNET\n[HORNET]\nLandable=yes\nSpeed=12\nSpeedType=Winged\nStrength=75\nLocomotor={4A582746-9839-11d1-B709-00A024DDAFD1}\n[BuildingTypes]\n0=CABHUT\n[ENGINEER]\nEngineer=yes\nSpeed=4\nSpeedType=Foot\nStrength=75\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n[CABHUT]\nBridgeRepairHut=yes\nFoundation=1x1\nStrength=200\n[Warheads]\n0=SA\n1=Super\n[Super]\nInfDeath=2\nPenetratesBunker=yes\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n[CombatDamage]\nC4Warhead=SA\n[SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n[OverlayTypes]\n",
-    );
-    for id in 0..=238 {
-        text.push_str(&format!("{id}=O{id}\n"));
-    }
-    for id in 0..=238 {
-        text.push_str(&format!("[O{id}]\nLand=Clear\nNoUseTileLandType=no\n"));
-    }
-    for land in crate::rules::terrain_rules::LandType::ALL.iter().take(9) {
-        text.push_str(&format!(
-            "[{}]\nFoot=100%\nTrack=100%\nWheel=100%\nBuildable=yes\n",
-            land.section_name()
-        ));
-    }
-    let mut ini = IniFile::from_str(&text);
-    ini.merge(&IniFile::from_str(extra));
-    let rules = RuleSet::from_ini(&ini).unwrap();
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
-    let mut terrain = ResolvedTerrainGrid::from_cells(
-        33,
-        33,
-        (0..33)
-            .flat_map(|y| {
-                (0..33).map(move |x| {
-                    crate::sim::world::lifecycle_tests::common_raw_terrain_cell(x, y, 0, false)
-                })
-            })
-            .collect(),
-    );
-    crate::map::resolved_terrain::install_ordinary_repair_test_catalog(&mut terrain);
-    terrain.test_set_high_bridge_set_starts(Some(100), Some(200));
-    let terrain_rules = crate::rules::terrain_rules::TerrainRules::from_ini(&ini);
-    let costs = terrain_rules
-        .semantics_for_land_type(0)
-        .unwrap()
-        .speed_costs;
-    for y in 0..33 {
-        for x in 0..33 {
-            let c = terrain.cell_mut(x, y).unwrap();
-            c.speed_costs = costs.clone();
-            c.base_speed_costs = costs.clone();
-        }
-    }
-    let bounds =
-        crate::map::playfield::PlayfieldBounds::from_normalized_local_size(16, 0, 0, 16, 16);
-    let bridges =
-        BridgeRuntimeState::from_resolved_terrain_with_map_size(&terrain, true, 300, (16, 16));
-    let path = PathGrid::from_resolved_terrain(&terrain);
-    let zones = ZoneGrid::build_with_native_map_context(
-        &path,
-        &terrain,
-        bridges.endpoint_records(),
-        Some((16, 16)),
-        Some(bounds),
-    );
-    assert!(zones.hierarchy_for(MovementZone::Normal).is_some());
-    let mut sim = Simulation::with_seed(31);
-    // Match production initialization: every registered type exists before
-    // building the derived table, including types first spawned after load.
-    sim.intern_rule_type_ids(&rules);
-    sim.resolve_type_handles(&rules);
-    sim.playfield_bounds = Some(bounds);
-    sim.session.map_width = 33;
-    sim.session.map_height = 33;
-    sim.overlay_grid = Some(OverlayGrid::new(33, 33));
-    sim.bridge_state = Some(bridges);
-    sim.zone_grid = Some(zones);
-    sim.path_grid = Some(Arc::new(path));
-    sim.install_resolved_terrain_for_new_map(terrain);
-    sim.terrain_costs = crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(
-        sim.resolved_terrain.as_ref().unwrap(),
-    );
-    for p in [(15, 15), (16, 15), (17, 14), (17, 15), (17, 16)] {
-        assert!(crate::sim::cell_rect::cell_is_in_playfield_height_aware(
-            (p.0, p.1),
-            sim.playfield_bounds,
-            sim.resolved_terrain.as_ref()
-        ));
-    }
-    (sim, rules, registry)
-}
+pub(super) use crate::sim::world::entry_test_fixture::{fixture, fixture_with_rules};
 
 fn broken_strip(sim: &mut Simulation) {
     for (x, y) in [(17, 14), (17, 15), (17, 16)] {
@@ -1401,11 +1300,7 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
         assert!(replay.path_grid.is_none());
         assert!(replay.zone_grid.is_none());
         assert!(replay.terrain_costs.is_empty());
-        replay.rebuild_caches_after_load(
-            map_terrain,
-            sim.terrain_speed_config.clone(),
-            &rules,
-        );
+        replay.rebuild_caches_after_load(map_terrain, sim.terrain_speed_config.clone(), &rules);
         replay
             .restore_map_authority_after_snapshot_load(&rules, &registry)
             .unwrap();
@@ -1726,17 +1621,17 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
         if ordered {
             // Infantry's accepted Foot setter4D96C2..9707 runs after Jumpjet
             // MoveTo: reset timers/latch while preserving the retry dword.
-            sim.substrate
+            let path_runtime = &mut sim
+                .substrate
                 .entities
                 .get_mut(rocketeer)
                 .unwrap()
                 .navigation
-                .path_runtime = crate::sim::components::FootPathRuntime {
-                movement_timer: crate::sim::timer::CdTimer::from_raw(-1, 7),
-                blocked_timer: crate::sim::timer::CdTimer::from_raw(-1, 31),
-                path_blocked: true,
-                retries_left: 256,
-            };
+                .path_runtime;
+            path_runtime.movement_timer = crate::sim::timer::CdTimer::from_raw(-1, 7);
+            path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(-1, 31);
+            path_runtime.path_blocked = true;
+            path_runtime.retries_left = 256;
             let grid = sim.path_grid_snapshot();
             assert!(sim.apply_command_with_overlays(
                 "Americans",
@@ -1752,6 +1647,11 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                 Some(&registry)
             ));
             drop(grid);
+            let mut expected_runtime =
+                crate::sim::components::FootPathRuntime::at_frame(sim.session.binary_frame);
+            expected_runtime.blocked_timer =
+                crate::sim::timer::CdTimer::started(sim.session.binary_frame as i32, 60);
+            expected_runtime.retries_left = 256;
             assert_eq!(
                 sim.substrate
                     .entities
@@ -1759,18 +1659,7 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     .unwrap()
                     .navigation
                     .path_runtime,
-                crate::sim::components::FootPathRuntime {
-                    movement_timer: crate::sim::timer::CdTimer::started(
-                        sim.session.binary_frame as i32,
-                        0
-                    ),
-                    blocked_timer: crate::sim::timer::CdTimer::started(
-                        sim.session.binary_frame as i32,
-                        60
-                    ),
-                    path_blocked: false,
-                    retries_left: 256,
-                }
+                expected_runtime
             );
             let state = sim
                 .substrate

@@ -309,12 +309,19 @@ impl Simulation {
         if self.stop_or_take_next_waypoint(id, rules) {
             return Ok(FootPathOutcome::Returned);
         }
-        //4B2E36..4B2E70: a dead Foot returns; otherwise the one-shot +68A
-        //ScoldSound. Foot+68A has no nonzero writer in the program (R2 (d)),
-        //so the sound is not represented.
+        //4B2E36..4B2E70 / 6A2486..6A24C0: a dead Foot returns;
+        //otherwise request the retained +68A sound, then clear the byte.
         if !self.track_owner_alive(id) {
             return Ok(FootPathOutcome::Returned);
         }
+        self.play_foot_path_scold(id, rules);
+        self.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .navigation
+            .path_runtime
+            .clear_scold_latch();
         self.finish_track_path_tail(id, rules, registry)
     }
 

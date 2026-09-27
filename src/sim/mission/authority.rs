@@ -930,12 +930,13 @@ impl Simulation {
     }
 
     /// `Foot::Override_Mission(Attack, target, NULL)` (`0x004D8F40`) from the
-    /// Drive/Ship code-4/5 arm (Drive `0x004B3BE9`, Ship `0x006A3238`), after
+    /// ground locomotor code-4/5 arm (Drive `0x004B3BE9`, Ship `0x006A3238`,
+    /// Walk `0x0075BAEB`/`0x0075BB49`), after
     /// that arm asked the mover's House about an object target. NavCom and
     /// TarCom are archived, the mission overrides onto Attack and the target
-    /// is assigned; the class setter's NULL destination is Unit `0x00741970`
-    /// ([`Self::assign_null_destination`]), whose locomotor Stop nulls +34.
-    pub(crate) fn mission_override_track_blocker(
+    /// is assigned, then the class setter receives NULL. Ordinary Walk
+    /// Infantry uses51AA40; the existing Unit path uses741970.
+    pub(crate) fn mission_override_movement_blocker(
         &mut self,
         mover: u64,
         target: TargetKind,
@@ -950,10 +951,22 @@ impl Simulation {
         if !override_entity_to_attack_target(entity, target, target_commits, archived_destination) {
             return false;
         }
-        // The arm cleared the head before the Override; the scheduling
-        // adapter stops with NavCom in the same transaction.
+        // The caller owns its native head-clear order. The scheduling
+        // adapter has no independent destination after this transaction.
         entity.movement_target = None;
-        self.assign_null_destination(mover, Some(rules));
+        let walk = entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk);
+        match (walk, entity.category) {
+            (true, EntityCategory::Infantry) => {
+                self.set_walk_null_destination(mover, Some(rules));
+            }
+            (true, EntityCategory::Unit) => {
+                self.set_unit_null_destination(mover, Some(rules));
+            }
+            _ => self.assign_null_destination(mover, Some(rules)),
+        }
         true
     }
 

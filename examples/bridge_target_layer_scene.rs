@@ -1,8 +1,7 @@
 //! Production Hills bridge target-layer composition witness.
 //! Run: bridge_target_layer_scene RETAIL_DIR NEW_SAVE_PREFIX [MAP_FILE]
 //! The fixture supplies two hostile human houses and a ten-frame rearm entry;
-//! normal Move, passive AI, firing and collapse then execute.
-//! Ordinary Engineer repair is a separate, unresolved gameplay mechanism.
+//! normal Move, passive AI, firing, collapse and Engineer hut repair execute.
 //! This is production composition, not native whole-scene equivalence.
 use std::io::Write;
 use std::path::Path;
@@ -48,6 +47,19 @@ fn move_fv(
     deck: bool,
 ) -> u64 {
     let id = spawn(scene, owner, "FV", start).expect("ordinary FV bank/road placement");
+    move_existing_fv(scene, owner, id, destination, stop_at, deck);
+    id
+}
+fn move_existing_fv(
+    scene: &mut HeadlessScenario,
+    owner: InternedId,
+    id: u64,
+    destination: (u16, u16),
+    stop_at: (u16, u16),
+    deck: bool,
+) {
+    let position = &scene.sim().entities().get(id).unwrap().position;
+    let start = (position.rx, position.ry);
     let now = scene.sim().session.binary_frame;
     scene
         .runtime
@@ -103,7 +115,7 @@ fn move_fv(
                 e.position.exact_z_leptons,
                 tick + 1
             );
-            return id;
+            return;
         }
     }
     panic!("FV{id} failed normal Move {start:?}->{destination:?}, stop{stop_at:?}");
@@ -261,4 +273,119 @@ fn main() {
         }
     }
     assert!(collapsed, "ordinary IFV did not collapse stock bridge");
+
+    // Finish the real attack before issuing repair. In-flight shots retain
+    // their normal lifetime; the fixture does not delete projectiles.
+    let stop = envelope(
+        &scene,
+        owner,
+        Command::Stop {
+            entity_id: attacker,
+        },
+    );
+    frame(&mut scene, &[stop]);
+    for _ in 0..2000 {
+        if scene
+            .sim()
+            .projectiles
+            .iter()
+            .all(|(_, projectile)| projectile.source_id != attacker)
+        {
+            break;
+        }
+        frame(&mut scene, &[]);
+    }
+    assert!(
+        scene
+            .sim()
+            .projectiles
+            .iter()
+            .all(|(_, projectile)| projectile.source_id != attacker),
+        "the original attack must finish before repair"
+    );
+    let hut = scene
+        .sim()
+        .entities()
+        .values()
+        .find(|entity| {
+            scene.sim().resolve(entity.type_ref()) == "CABHUT"
+                && (entity.position.rx, entity.position.ry) == (68, 74)
+        })
+        .expect("authored Hills CABHUT")
+        .stable_id();
+    let engineer =
+        spawn(&mut scene, owner, "ENGINEER", (66, 76)).expect("legal ordinary Engineer approach");
+    assert_eq!(
+        scene
+            .runtime
+            .resources
+            .rules
+            .object("ENGINEER")
+            .unwrap()
+            .speed_type,
+        vera20k::rules::locomotor_type::SpeedType::Foot
+    );
+    let enter = envelope(
+        &scene,
+        owner,
+        Command::CaptureBuilding {
+            engineer_id: engineer,
+            target_building_id: hut,
+        },
+    );
+    let mut saved_approach = false;
+    let mut repaired = false;
+    for tick in 0..1200 {
+        frame(
+            &mut scene,
+            if tick == 0 {
+                std::slice::from_ref(&enter)
+            } else {
+                &[]
+            },
+        );
+        if let Some(actor) = scene.sim().entities().get(engineer) {
+            assert!(
+                !actor
+                    .movement_target
+                    .as_ref()
+                    .is_some_and(|route| route.adapter_route),
+                "Engineer entry must use production Foot/Walk navigation"
+            );
+            if !saved_approach && (actor.position.rx, actor.position.ry) == (67, 75) {
+                save(&scene, &prefix, "engineer-approach");
+                saved_approach = true;
+            }
+        } else {
+            assert!(
+                structural(&scene),
+                "consumed Engineer must restore the deck"
+            );
+            assert!(
+                scene
+                    .sim()
+                    .path_grid()
+                    .unwrap()
+                    .cell(64, 69)
+                    .unwrap()
+                    .bridge_walkable
+            );
+            println!(
+                "ENGINEER{engineer} entered CABHUT{hut} and repaired the bridge in{}frames",
+                tick + 1
+            );
+            save(&scene, &prefix, "repaired");
+            repaired = true;
+            break;
+        }
+    }
+    assert!(
+        saved_approach && repaired,
+        "ordinary Engineer must approach, enter and repair"
+    );
+    // The stopped attacker still occupies the bank. Reuse that live object;
+    // spawning a second FV onto its occupied cell must correctly be refused.
+    move_existing_fv(&mut scene, owner, attacker, (64, 69), (64, 69), true);
+    println!("FV{attacker} entered the repaired side deck through normal navigation");
+    save(&scene, &prefix, "repaired-deck-occupied");
 }

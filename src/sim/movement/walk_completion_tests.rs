@@ -205,6 +205,7 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         actor.navigation.path_runtime.start_movement(50, 5);
         actor.navigation.path_runtime.start_blocked(40, 6);
         actor.navigation.path_runtime.retries_left = input["retries"].as_u64().unwrap() as u32;
+        actor.navigation.path_runtime.set_scold_latch_for_test(255);
         actor.foot_speed.applied_fraction = SimFixed::lit("0.75");
         let owner = actor.owner();
         sim.houses.insert(
@@ -216,6 +217,13 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         sim.finish_walk_navigation(1, Some(&rules)).unwrap();
 
         let actor = sim.substrate.entities.get(1).unwrap();
+        // This existing native corpus ends before final Mark(PUT). Neither
+        // the null setter nor WalkStop owns the later75BF77 byte clear.
+        assert_eq!(
+            actor.navigation.path_runtime.scold_latch_raw(),
+            255,
+            "{input}"
+        );
         let loco = actor.locomotor.as_ref().unwrap();
         assert_eq!(
             loco.walk_destination(),
@@ -285,4 +293,71 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
             "{input}"
         );
     }
+}
+
+#[test]
+fn paid_walk_world_scold_tails_match_original_boundaries() {
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_scold_latch.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for row in corpus["paid_tails"].as_array().unwrap() {
+        let case = row["case"].as_str().unwrap();
+        if !matches!(
+            case,
+            "arrival_mark"
+                | "common_return"
+                | "dead_post_percell"
+                | "limbo_post_percell"
+                | "falling_post_percell"
+        ) {
+            continue;
+        }
+        let mut sim = Simulation::new();
+        sim.interner = crate::sim::intern::test_interner();
+        let mut actor = GameEntity::test_default(1, "E1", "Americans", 9, 10);
+        actor.category = EntityCategory::Infantry;
+        actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
+        actor
+            .navigation
+            .path_runtime
+            .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+        actor.lifecycle.object_alive = case != "dead_post_percell";
+        actor.lifecycle.in_limbo = case == "limbo_post_percell";
+        actor.object_is_falling_down = u8::from(case == "falling_post_percell");
+        let head = DriveCoord::cell(10, 10, 0);
+        actor.locomotor.as_mut().unwrap().set_step_head(Some(head));
+        sim.substrate.entities.insert(actor);
+        match case {
+            "arrival_mark" => {
+                // The native golden supplies the final Mark callback. Here
+                // the real completion owner runs Mark/PerCell through it.
+                sim.run_completed_walk_step(1, head, None, None, None)
+                    .unwrap();
+                assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
+            }
+            "common_return" => sim.run_walk_boundary(1, head, None, None, None),
+            _ => {
+                // Supplied post-PerCell liveness is the native corpus boundary;
+                // these rows do not claim to execute a death/limbo producer.
+                sim.finish_walk_navigation(1, None).unwrap();
+            }
+        }
+        assert_eq!(
+            u64::from(
+                sim.substrate
+                    .entities
+                    .get(1)
+                    .unwrap()
+                    .navigation
+                    .path_runtime
+                    .scold_latch_raw()
+            ),
+            row["final_byte"].as_u64().unwrap(),
+            "{row}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 15);
 }

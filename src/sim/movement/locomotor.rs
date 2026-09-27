@@ -510,6 +510,16 @@ impl LocomotorState {
         }
     }
 
+    /// Walk75B6A3 clears animation+36 on a refused fresh head, retaining
+    /// its distinct moving byte, destination and head.
+    pub(super) fn refuse_walk_animation(&mut self) {
+        if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
+            (self.kind, &mut self.runtime_payload)
+        {
+            state.animation_moving = false;
+        }
+    }
+
     /// Stop75ADA0 differs from null MoveTo: no-head Stop also clears +36.
     pub(crate) fn stop_walk(&mut self) {
         self.set_walk_destination(None);

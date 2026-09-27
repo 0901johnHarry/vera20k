@@ -35,15 +35,15 @@ pub(super) enum FreshRejectedTail {
 
 /// A required response body, not a completed effect or a movement permission.
 /// Retry flags on effect-bearing variants apply only at the native retry arm;
-/// the caller must not skip the earlier redraw/head-clear/scatter decisions.
+/// the caller must not skip the earlier contact/head-clear/scatter decisions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum FreshDispatch {
     /// First: terrain/speed/entering receiver. Second: two-node queue shift.
     Accept,
     /// The second query/coercions have completed; owner+90 is now false.
     OwnerNotAlive,
-    /// Redraw483480 first, then retry if present; otherwise stop/next destination.
-    Redraw { retry: Option<FreshRetry> },
+    /// Uncloak ground contacts483480 first, then retry if present; otherwise stop/next destination.
+    UncloakContacts { retry: Option<FreshRetry> },
     /// First code2: clear head/valid, then blocked and movement timer/FindPath
     /// ladder. It neither scatters nor uses the code7 retry/stop response.
     BlockedDelay,
@@ -124,8 +124,8 @@ pub(super) const fn dispatch_entry(
     };
     Some(match (stage, effective_code) {
         (_, 0) => FreshDispatch::Accept,
-        // Redraw before recursion:4B394D..3984 /4B444A..4485.
-        (_, 1) => FreshDispatch::Redraw { retry },
+        // Contact callbacks before recursion:4B394D..3984 /4B444A..4485.
+        (_, 1) => FreshDispatch::UncloakContacts { retry },
         (FreshStage::First, 2) => FreshDispatch::BlockedDelay,
         //4B420B..4219 /6A3837..3845 retain arg2 and publish arg3=1.
         (FreshStage::Second, 2) => FreshDispatch::Retry(single),
