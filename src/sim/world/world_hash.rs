@@ -1285,11 +1285,10 @@ impl Simulation {
             f.insertion_seq.hash(hasher);
             f.progress.hash(hasher);
             f.step_rate_frames.hash(hasher);
-            f.step_timer.hash(hasher);
+            f.step_timer.start_frame().hash(hasher);
+            f.step_timer.duration().hash(hasher);
             f.balance.hash(hasher);
             f.original_balance.hash(hasher);
-            // P5d: the active build's ETA basis (was the front `BuildQueueItem.total_base_frames`).
-            f.active_total_base_frames.hash(hasher);
             match &f.object {
                 Some(o) => {
                     1u8.hash(hasher);
@@ -1322,7 +1321,6 @@ impl Simulation {
             for e in &f.queue {
                 e.type_id.hash(hasher);
                 e.enqueue_order.hash(hasher);
-                e.total_base_frames.hash(hasher);
             }
         }
     }

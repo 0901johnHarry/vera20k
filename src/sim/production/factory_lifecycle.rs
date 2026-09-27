@@ -8,10 +8,11 @@
 //! call settlement only after their successful world effects have committed.
 
 use super::CancelOutcome;
+use super::factory::{time_to_build, time_to_build_inputs};
 use super::production_queue::{credits_entry_for_owner, credits_for_owner};
 use super::production_tech::{
-    build_option_for_owner, build_time_base_frames, production_category_for_object,
-    should_use_relaxed_build_mode, supports_live_production,
+    build_option_for_owner, production_category_for_object, should_use_relaxed_build_mode,
+    supports_live_production,
 };
 use super::production_types::{BuildMode, ProductionCategory};
 use crate::rules::object_type::ObjectCategory;
@@ -45,7 +46,6 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     if obj.cost <= 0 || owner_credits < obj.cost {
         return false;
     }
-    let total_base_frames: u32 = build_time_base_frames(rules, obj);
     // The upfront debit is RETIRED at the authority flip: the per-step `advance_one_step`
     // (driven by `step_all` at the Phase-7 head) charges the cost down over the build
     // against the one wallet (`house.economy.credits`). Enqueue only checks affordability (the
@@ -62,18 +62,11 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
         queue_category,
         type_interned,
         enqueue_order,
-        total_base_frames,
         cost,
     );
     if started {
-        construct_and_link_active_factory_object(
-            sim,
-            rules,
-            owner_id,
-            queue_category,
-            type_interned,
-        )
-        .expect("validated StartProduction type must construct one Techno");
+        start_active_production(sim, rules, owner_id, queue_category, type_interned)
+            .expect("validated StartProduction type must construct one Techno");
     }
     true
 }
@@ -83,18 +76,21 @@ fn next_enqueue_order(sim: &mut Simulation) -> u64 {
     sim.production.next_enqueue_order = sim.production.next_enqueue_order.saturating_add(1);
     order
 }
-/// Materialize the exact Techno retained by an active factory head. Active
-/// retail `FactoryClass::StartProduction @ 0x004C9C70` calls
-/// `type->CreateInstance(owner)` at start and stores the result at
-/// `Factory+0x58`; queued tail entries do not construct until promoted by
-/// `FactoryClass::StartNextQueued @ 0x004CA5A0`.
-fn construct_and_link_active_factory_object(
+/// Start the build an active factory head holds. `HouseClass::Begin_Production
+/// @ 0x004FA350` runs `FactoryClass::StartProduction @ 0x004C9C70`, which calls
+/// `type->CreateInstance(owner)` and stores the result at `Factory+0x58`, then
+/// `FactoryClass::SetRate @ 0x004C9EA0` (`0x004FA628`), which arms the step rate
+/// and timer from that object's `Time_To_Build`. Queued tail entries start only
+/// when `FactoryClass::StartNextQueued @ 0x004CA5A0` promotes them, which runs
+/// the same Begin_Production (`0x004CA60A`).
+fn start_active_production(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner_id: InternedId,
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<u64> {
+    let obj = sim.object_type(type_id, rules)?;
     let owner = sim.interner.resolve(owner_id).to_string();
     let type_name = sim.interner.resolve(type_id).to_string();
     // A factory-held object is still in limbo and has no cell authority. Zero
@@ -109,6 +105,11 @@ fn construct_and_link_active_factory_object(
         let _ = sim.discard_constructed_limbo(stable_id);
         return None;
     }
+    let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+    let frame = sim.session.binary_frame;
+    sim.production
+        .factory_shadow
+        .start_rate(owner_id, category, time_to_build, frame);
     Some(stable_id)
 }
 /// Cancel the most recently queued item for this owner.
@@ -211,9 +212,7 @@ pub fn cancel_by_type_for_owner(
                 );
             }
             // C7: the active build was abandoned (object cleared, tail intact). Promote the
-            // next queued entry into the active slot, cost-seeded. EventClass
-            // dispatch is after this tick's `step_all`, so step_delay = 0
-            // charges the promoted build on the next gameplay frame.
+            // next queued entry into the active slot, cost-seeded and started.
             advance_after_delivery(sim, rules, owner_id, category);
             sim.production.factory_shadow.prune_all_idle();
             true
@@ -279,9 +278,7 @@ fn cancel_ready_by_type_for_owner(
 }
 /// C7 StartNextQueued after a successful delivery (or a completed-but-undeliverable refund):
 /// clear the delivered active object and promote the next queued entry into the active slot,
-/// cost-seeded from `rules`. Runs in `tick_production` (Phase 7, AFTER `step_all`), so the
-/// promoted build's cadence (`step_delay = 0`) starts on the NEXT tick's sweep — never the
-/// same tick it is promoted.
+/// cost-seeded from `rules` and started at this frame.
 fn advance_after_delivery(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -297,9 +294,9 @@ fn advance_after_delivery(
     let promoted = sim
         .production
         .factory_shadow
-        .clear_active_and_advance(owner_id, category, next_cost, 0);
+        .clear_active_and_advance(owner_id, category, next_cost);
     if let Some(type_id) = promoted {
-        construct_and_link_active_factory_object(sim, rules, owner_id, category, type_id)
+        start_active_production(sim, rules, owner_id, category, type_id)
             .expect("validated promoted production type must construct one Techno");
     }
 }
@@ -480,17 +477,17 @@ pub(in crate::sim) fn construct_active_factory_fixture(
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<u64> {
-    construct_and_link_active_factory_object(sim, rules, owner, category, type_id)
+    start_active_production(sim, rules, owner, category, type_id)
 }
 
 /// Revalidate before the charge sweep at its existing frame phase. Dispose all
-/// abandoned objects before constructing any promoted ones; their delay stays 1.
+/// abandoned objects before starting any promoted ones.
 pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules: &RuleSet) {
     let mut registry = std::mem::take(&mut sim.production.factory_shadow);
     // P6: prereq/factory-loss revalidation BEFORE the charge sweep. Builds whose
     // prerequisites or producing factory were lost are abandoned (partial refund)
     // + now-unbuildable queued items dropped, so a freshly-abandoned factory is not
-    // charged this tick and a freshly-promoted one starts charging next tick.
+    // charged this tick; a promoted build is started at this frame.
     let reval_plan = registry.plan_revalidation(sim, rules);
     let lifecycle = registry.apply_revalidation(&reval_plan, &mut sim.houses);
     for entity_id in lifecycle.discarded_entity_ids {
@@ -513,12 +510,12 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
     }
     sim.production.factory_shadow = registry;
     for (owner, category, type_id) in lifecycle.promoted {
-        construct_and_link_active_factory_object(sim, rules, owner, category, type_id)
+        start_active_production(sim, rules, owner, category, type_id)
             .expect("validated revalidation promotion must construct one Techno");
     }
     let mut registry = std::mem::take(&mut sim.production.factory_shadow);
     let prepared = registry.prepare_step_inputs(sim, rules);
-    registry.step_all(&mut sim.houses, &prepared);
+    registry.step_all(&mut sim.houses, &prepared, sim.session.binary_frame);
     sim.production.factory_shadow = registry;
 }
 

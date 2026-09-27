@@ -950,7 +950,6 @@ fn gsi_04_12_completed_ground_unit_rally_threads_exact_blocker_counts() {
         ProductionCategory::Vehicle,
         produced_type,
         0,
-        100,
         0,
     );
     assert!(started);

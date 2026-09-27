@@ -350,16 +350,18 @@ fn deployed_mcv_unlocks_building_options_for_named_skirmish_owner() {
     assert_eq!(power.reason, None);
 }
 
+/// `Time_To_Build` reads the owner's power (House `+0x53A4`/`+0x53A8`) and the
+/// owner's factory count for the object's class (`0x00500910`).
 #[test]
-fn queue_view_uses_owner_power_modifier() {
+fn build_time_inputs_read_owner_power_and_matching_factories() {
     let mut sim = Simulation::new();
     let rules = production_modifier_rules();
 
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Soviet", "NAHAND", 20, 20);
-    spawn_structure(&mut sim, 3, "Soviet", "GAPOWR", 22, 20);
-
-    // Populate cached power states so the speed multiplier sees the deficit.
+    spawn_structure(&mut sim, 2, "Americans", "GAPILE", 12, 10);
+    spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 14, 10);
+    spawn_structure(&mut sim, 4, "Soviet", "NAHAND", 20, 20);
+    spawn_structure(&mut sim, 5, "Soviet", "GAPOWR", 22, 20);
     crate::sim::power_system::tick_power_states(
         &mut sim.power_states,
         &mut sim.substrate.entities,
@@ -367,61 +369,41 @@ fn queue_view_uses_owner_power_modifier() {
         &sim.interner,
     );
 
-    arm_build_via(
-        &mut sim,
-        &rules,
-        "Americans",
-        "E1",
-        ProductionCategory::Infantry,
-        900,
-        0,
+    let americans = sim.interner.intern("Americans");
+    let soviet = sim.interner.intern("Soviet");
+    let e1 = rules.object("E1").expect("E1");
+    let mtnk = rules.object("MTNK").expect("MTNK");
+    let inputs = |owner, category, obj| {
+        super::factory::time_to_build_inputs(&sim, &rules, owner, category, obj)
+    };
+
+    let americans_infantry = inputs(americans, ProductionCategory::Infantry, e1);
+    assert_eq!(
+        (
+            americans_infantry.power_output,
+            americans_infantry.power_drain
+        ),
+        (0, 60)
     );
-    arm_build_via(
-        &mut sim,
-        &rules,
-        "Soviet",
-        "E1",
-        ProductionCategory::Infantry,
-        900,
-        1,
+    assert_eq!(americans_infantry.factory_count, 2);
+    assert_eq!(
+        inputs(americans, ProductionCategory::Vehicle, mtnk).factory_count,
+        1
     );
-
-    let americans = queue_view_for_owner(&sim, &rules, "Americans");
-    let soviet = queue_view_for_owner(&sim, &rules, "Soviet");
-
-    assert_eq!(americans[0].total_ms, 118_800);
-    assert_eq!(soviet[0].total_ms, 59_400);
+    let soviet_infantry = inputs(soviet, ProductionCategory::Infantry, e1);
+    assert_eq!(
+        (soviet_infantry.power_output, soviet_infantry.power_drain),
+        (200, 20)
+    );
+    assert_eq!(soviet_infantry.factory_count, 1);
+    assert!(!soviet_infantry.wall);
 }
 
+/// A `Wall=yes` building takes `WallBuildSpeedCoefficient=` (Time_To_Build's
+/// branch on BuildingType `+0x1571`, `0x006F4929..0x006F493D`); every building
+/// factory counts.
 #[test]
-fn matching_factory_bonus_is_category_specific() {
-    let mut sim = Simulation::new();
-    let rules = production_modifier_rules();
-
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAPILE", 12, 10);
-    spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 14, 10);
-    spawn_structure(&mut sim, 4, "Americans", "GAPOWR", 16, 10);
-
-    let infantry_rate =
-        super::effective_progress_rate_ppm_for_type(&sim, &rules, "Americans", "E1");
-    let vehicle_rate =
-        super::effective_progress_rate_ppm_for_type(&sim, &rules, "Americans", "MTNK");
-
-    assert_eq!(infantry_rate, 1_250_000);
-    assert_eq!(vehicle_rate, 1_000_000);
-}
-
-#[test]
-fn base_build_frames_follow_ra2_cost_buildspeed_formula() {
-    let rules = production_modifier_rules();
-    let obj = rules.object("E1").expect("E1 should exist");
-
-    assert_eq!(super::build_time_base_frames(&rules, obj), 900);
-}
-
-#[test]
-fn wall_build_speed_coefficient_applies_after_factory_scaling() {
+fn wall_build_time_inputs_carry_the_wall_coefficient() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
         "[General]\n\
@@ -455,94 +437,32 @@ fn wall_build_speed_coefficient_applies_after_factory_scaling() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "NACNST", 12, 10);
 
+    let americans = sim.interner.intern("Americans");
     let wall = rules.object("GAWALL").expect("wall should exist");
-    let base_frames = super::build_time_base_frames(&rules, wall);
-    let total_frames = super::effective_time_to_build_frames_for_type(
+    let inputs = super::factory::time_to_build_inputs(
         &sim,
         &rules,
-        "Americans",
-        "GAWALL",
-        base_frames,
+        americans,
+        ProductionCategory::Building,
+        wall,
     );
-
-    assert_eq!(base_frames, 900);
-    assert_eq!(total_frames, 360);
-}
-
-#[test]
-#[ignore = "retired (P5b): tick_production no longer advances a frames timer — the per-step \
-            charge in the registry sweep drives progress, and the low-power/factory-bonus rate \
-            now lives in build_step_time. Per-category rate differentiation is pinned by \
-            matching_factory_bonus_is_category_specific."]
-fn low_power_and_factory_bonus_apply_per_owner_and_category() {
-    let mut sim = Simulation::new();
-    let rules = production_modifier_rules();
-    let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
-
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAPILE", 12, 10);
-    spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 14, 10);
-    spawn_structure(&mut sim, 4, "Soviet", "NAHAND", 20, 20);
-    spawn_structure(&mut sim, 5, "Soviet", "GAWEAP", 22, 20);
-    spawn_structure(&mut sim, 6, "Soviet", "GAPOWR", 24, 20);
-
-    // Populate cached power states so the speed multiplier sees the deficit.
-    crate::sim::power_system::tick_power_states(
-        &mut sim.power_states,
-        &mut sim.substrate.entities,
-        &rules,
-        &sim.interner,
+    assert!(inputs.wall);
+    assert_eq!(inputs.factory_count, 2);
+    assert_eq!(
+        inputs.wall_coefficient,
+        crate::util::native_x87::NativeF64Bits::HALF
     );
-
-    let americans_id = sim.interner.intern("Americans");
-    let soviet_id = sim.interner.intern("Soviet");
-    arm_build_via(
-        &mut sim,
-        &rules,
-        "Americans",
-        "E1",
-        ProductionCategory::Infantry,
-        60_000,
-        0,
+    let tower = rules.object("GACNST").expect("GACNST");
+    assert!(
+        !super::factory::time_to_build_inputs(
+            &sim,
+            &rules,
+            americans,
+            ProductionCategory::Building,
+            tower,
+        )
+        .wall
     );
-    arm_build_via(
-        &mut sim,
-        &rules,
-        "Soviet",
-        "MTNK",
-        ProductionCategory::Vehicle,
-        60_000,
-        1,
-    );
-
-    let _ = tick_production(&mut sim, &rules, &height_map, None);
-
-    // P5d: the per-item `remaining_base_frames` mirror is retired; mid-build state lives in
-    // the registry as `progress`. The active build's remaining base frames are derived as
-    // `active_total_base_frames * (54 - progress) / 54`.
-    let remaining_frames_for =
-        |sim: &Simulation, owner: crate::sim::intern::InternedId, cat: ProductionCategory| -> u32 {
-            sim.production
-                .factory_shadow
-                .view(owner, cat)
-                .map(|v| {
-                    let steps_left =
-                        super::factory::PRODUCTION_STEPS.saturating_sub(v.progress) as u64;
-                    let total = 60_000u64;
-                    ((total * steps_left) / super::factory::PRODUCTION_STEPS as u64) as u32
-                })
-                .expect("factory should still exist")
-        };
-    let americans_remaining =
-        remaining_frames_for(&sim, americans_id, ProductionCategory::Infantry);
-    let soviet_remaining = remaining_frames_for(&sim, soviet_id, ProductionCategory::Vehicle);
-
-    // P5D-REVIEW: ignored/retired test. The old per-frame-timer remaining values (59_991 /
-    // 59_985) cannot be reproduced — `tick_production` no longer advances a frames timer, so
-    // progress stays 0 here and remaining stays the full total. Construction is translated so
-    // the test compiles; the value assertions are documented as no longer applicable.
-    assert_eq!(americans_remaining, 60_000);
-    assert_eq!(soviet_remaining, 60_000);
 }
 
 #[test]
@@ -591,7 +511,6 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         "Americans",
         "DEST",
         ProductionCategory::Ship,
-        100,
         0,
     );
     let held_id = sim
@@ -725,7 +644,6 @@ fn tick_production_advances_each_owner_queue() {
         "Americans",
         "E1",
         ProductionCategory::Infantry,
-        100,
         0,
     );
     arm_build_via(
@@ -734,7 +652,6 @@ fn tick_production_advances_each_owner_queue() {
         "Soviet",
         "E1",
         ProductionCategory::Infantry,
-        100,
         1,
     );
 
@@ -798,7 +715,6 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
         "Americans",
         "E1",
         ProductionCategory::Infantry,
-        100,
         0,
     );
     arm_build_via(
@@ -807,7 +723,6 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         1,
     );
 
@@ -878,7 +793,6 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         1,
     );
     arm_build_via(
@@ -887,7 +801,6 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         2,
     );
 
@@ -937,16 +850,16 @@ fn blocked_vehicle_delivery_keeps_completed_item_and_holds_next_queue_item() {
         active_steps_left, 0,
         "head is complete -> 0 remaining base frames"
     );
-    // Tail item is Queued, not started; its remaining base frames == its full total of 100.
-    assert_eq!(
-        view.queue[0].total_base_frames, 100,
-        "next queued item must not start while completed vehicle is pending"
-    );
-    // The projected sidebar view shows the head as Done and the tail as Queued.
+    // The projected sidebar view shows the head as Done and the tail as Queued and
+    // not started.
     let projected = queue_view_for_owner(&sim, &rules, "Americans");
     assert_eq!(projected.len(), 2);
     assert_eq!(projected[0].state, BuildQueueState::Done);
     assert_eq!(projected[1].state, BuildQueueState::Queued);
+    assert_eq!(
+        projected[1].progress, 0,
+        "next queued item must not start while completed vehicle is pending"
+    );
     let held_id = view
         .object
         .and_then(|object| object.entity_id)
@@ -997,7 +910,6 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         1,
     );
     arm_build_via(
@@ -1006,7 +918,6 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        100,
         2,
     );
 
@@ -1095,16 +1006,21 @@ fn pending_vehicle_delivery_success_consumes_completed_item_and_starts_next_item
         1
     );
     assert!(view.queue.is_empty(), "the FIFO tail is now empty");
-    // The promoted build has not been charged this tick (step_delay = 0 -> first charge next
-    // tick), so progress is 0 and its remaining base frames == its full total of 100.
+    // StartNextQueued runs Begin_Production (0x004CA60A), whose SetRate arms the promoted
+    // build's rate and timer at this frame; it has not stepped yet.
     assert_eq!(view.progress, 0);
-    let steps_left = super::factory::PRODUCTION_STEPS
-        .saturating_sub(view.progress.min(super::factory::PRODUCTION_STEPS));
-    let remaining_base_frames =
-        ((100u64 * steps_left as u64) / super::factory::PRODUCTION_STEPS as u64) as u32;
+    let promoted = sim
+        .production
+        .factory_shadow
+        .iter_insertion_ordered()
+        .into_iter()
+        .find(|f| f.owner == americans_id && f.category == ProductionCategory::Vehicle)
+        .expect("promoted factory");
+    assert!(promoted.step_rate_frames > 0);
     assert_eq!(
-        remaining_base_frames, 100,
-        "successful delivery starts the next item without advancing its timer in this tick"
+        promoted.step_timer.start_frame(),
+        sim.session.binary_frame as i32,
+        "successful delivery starts the next item at this frame"
     );
     // The projected sidebar view shows the single promoted item as Building.
     let projected = queue_view_for_owner(&sim, &rules, "Americans");
@@ -1162,7 +1078,6 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
         "Americans",
         "E1",
         ProductionCategory::Infantry,
-        1000,
         0,
     );
     arm_build_via(
@@ -1171,7 +1086,6 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
         "Americans",
         "MTNK",
         ProductionCategory::Vehicle,
-        1000,
         1,
     );
 
@@ -1281,7 +1195,6 @@ fn cancel_by_type_prefers_build_queue_over_ready_queue() {
         "Americans",
         "GAREFN",
         ProductionCategory::Building,
-        10000,
         0,
     );
 

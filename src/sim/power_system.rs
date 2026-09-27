@@ -17,6 +17,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
+use crate::util::native_x87::MaskedX87Value;
 
 /// Per-player power state, updated each simulation tick.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -49,6 +50,21 @@ impl PowerState {
     /// operands, a negative denominator reverses the strict less-than result.
     pub(crate) fn has_full_power(&self) -> bool {
         self.total_output >= self.total_drain || self.total_drain <= 0
+    }
+}
+
+/// `HouseClass @ 0x004FCE30`: the house's power ratio, left on the x87 stack.
+/// Output at least drain, or no drain, gives 1.0; no output gives 0.0;
+/// otherwise output / drain (FILD / FIDIV).
+pub(crate) fn native_power_ratio(output: i32, drain: i32) -> MaskedX87Value {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+
+    if output >= drain || drain == 0 {
+        X87::load_f64(NativeF64Bits::ONE)
+    } else if output == 0 {
+        X87::load_f64(NativeF64Bits::POSITIVE_ZERO)
+    } else {
+        X87::div(X87::load_i32(output), X87::load_i32(drain))
     }
 }
 

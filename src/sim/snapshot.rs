@@ -645,7 +645,10 @@ use crate::sim::world::Simulation;
 // 222 -> 223: Move orders and movement targets lose the group id that capped a
 // group to its slowest member; gamemd's speed getter (`0x004DB1A0`) reads only
 // the unit's own state. Dropping the fields changes the bincode schema.
-const SNAPSHOT_VERSION: u32 = 223;
+// 223 -> 224: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
+// armed by SetRate (`0x004C9EA0`), and the stored sidebar build-time estimates
+// go. The factory and queue-entry schemas change.
+const SNAPSHOT_VERSION: u32 = 224;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3593,7 +3596,9 @@ mod tests {
         // 220 -> 221: buildings' Guard and Attack missions.
         // 221 -> 222: production commands take their envelope's house.
         // 222 -> 223: no group speed cap on Move orders.
-        assert_eq!(super::SNAPSHOT_VERSION, 223);
+        // 223 -> 224: the factory step timer is the CDTimer SetRate arms; no
+        // stored build-time estimates.
+        assert_eq!(super::SNAPSHOT_VERSION, 224);
     }
 
     #[test]
