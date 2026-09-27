@@ -546,7 +546,7 @@ fn validate_and_stamp_candidate_inner(
     }
 
     if selected_flags.wall {
-        // `Cell_passability_building_placement @ 0x0047C620` receives
+        // `CellClass::Is_Clear_To_Build @ 0x0047C620` receives
         // `(cell, 1, 0, 0)` here. The crate caller already proved allocated,
         // in-playfield, and overlay-empty; with the null object argument the
         // surviving admission is Track speed, not terrain-object/occupation.

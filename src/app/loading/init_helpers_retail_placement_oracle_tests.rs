@@ -309,6 +309,9 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(resolved);
     sim.overlay_grid = Some(overlay_grid);
+    sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds::from_map_header(
+        &map.header,
+    ));
     let provider_id = sim
         .spawn_object(
             CONYARD,
@@ -330,6 +333,12 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(provider.foundation, "4x4");
 
     let owner_id = sim.interner.intern(OWNER);
+    // `HouseClass::CanBuild @ 0x004F7870` runs for a real house only.
+    sim.houses.insert(
+        owner_id,
+        crate::sim::house_state::HouseState::new(owner_id, 0, None, true, 10_000, 10),
+    );
+    sim.session.house_order.push(owner_id);
     let gapowr_id = sim.interner.intern(POWER_PLANT);
     assert!(crate::sim::production::enqueue_by_type(
         &mut sim,

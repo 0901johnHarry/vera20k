@@ -253,7 +253,7 @@ pub(crate) struct LiveCellPassabilityQuery<'a> {
 //
 // The earlier citation here — "CellClass::IsClearToMove @ 0x0047C650" — was
 // wrong twice over: `0x0047C650` is not a function entry, and the function
-// containing it is `Cell_passability_building_placement` @ `0x0047C620`, a
+// containing it is `CellClass::Is_Clear_To_Build` @ `0x0047C620`, a
 // building-placement test whose tail returns the buildable flag.
 pub(crate) fn evaluate_live_cell_passability(
     query: LiveCellPassabilityQuery<'_>,

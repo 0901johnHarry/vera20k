@@ -690,3 +690,119 @@ fn a_computer_mcv_on_guard_unloads_when_its_house_has_a_yard() {
     assert_eq!(yard_cells(&sim).len(), 2);
     assert!(yard_cells(&sim).contains(&(19, 21)));
 }
+
+/// A computer house's MCV on retail Dustbowl through the production frame,
+/// set up as `ScenarioClass::Create_Houses` sets up a skirmish computer slot
+/// (`MaxIQLevels`, an AI player). HouseClass::Update's activation sets
+/// `+0x1F3`, UnitClass::AI queues Hunt for the yard-less house, and
+/// Mission_Hunt's TryToDeploy admits the spot where the MCV stands: every
+/// foundation cell is flat, empty `[Clear]` or `[Rough]` ground, both of
+/// which retail marks `Buildable=yes`. Deploy then unpacks NACNST one cell north-west of the MCV.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
+    let dir = std::env::var("RA2_DIR")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            crate::util::config::GameConfig::load()
+                .expect("set RA2_DIR or provide config.toml for this ignored test")
+                .paths
+                .ra2_dir
+        });
+    let mut scenario =
+        crate::headless_scenario::load(&dir, "Dustbowl.mmx", 0x00C0_FFEE).expect("Dustbowl loads");
+    let crate::sim::runtime::SimRuntime {
+        simulation: sim,
+        resources,
+    } = &mut scenario.runtime;
+    let rules = &resources.rules;
+    sim.session.game_mode_nonzero = true;
+    let owner = sim.interner.intern("Russians");
+    let mut house =
+        crate::sim::house_state::HouseState::new(owner, 1, Some(owner), false, 10_000, 10);
+    house.current_iq = rules.general.max_iq_levels;
+    sim.houses.insert(owner, house);
+    sim.session.house_order.push(owner);
+    sim.ai_players
+        .push(crate::sim::ai::AiPlayerState::new(owner));
+
+    let (width, height) = crate::rules::foundation::foundation_dimensions(
+        &rules.object("NACNST").expect("retail NACNST").foundation,
+    );
+    // Retail `[Clear]` and `[Rough]` both read `Buildable=yes`.
+    let buildable = [
+        crate::rules::terrain_rules::LandType::Clear.as_index(),
+        crate::rules::terrain_rules::LandType::Rough.as_index(),
+    ];
+    // Nearest the map centre first, well inside the playfield.
+    let mut cells: Vec<(u16, u16)> = (43..103_u16)
+        .flat_map(|y| (43..103_u16).map(move |x| (x, y)))
+        .collect();
+    cells.sort_by_key(|&(x, y)| x.abs_diff(73).max(y.abs_diff(73)));
+    let (mcv, (x, y)) = cells
+        .into_iter()
+        .find_map(|(x, y)| {
+            let terrain = sim.resolved_terrain.as_ref()?;
+            let overlays = sim.overlay_grid.as_ref()?;
+            let level = terrain.cell(x, y)?.level;
+            let site = (x - 1..x - 1 + width).all(|cx| {
+                (y - 1..y - 1 + height).all(|cy| {
+                    terrain.cell(cx, cy).is_some_and(|cell| {
+                        cell.level == level
+                            && cell.slope_type == 0
+                            && buildable.contains(&cell.yr_cell_land_type)
+                            && cell.terrain_object_occupation.is_none()
+                            && !cell.has_bridge_deck
+                            && !cell.bridge_facts.has_structural_bridge()
+                    }) && overlays.cell(cx, cy).overlay_id.is_none()
+                })
+            });
+            let alone = sim.substrate.entities.values().all(|entity| {
+                entity.position.rx.abs_diff(x) > 5 || entity.position.ry.abs_diff(y) > 5
+            });
+            if !site || !alone {
+                return None;
+            }
+            let id = sim.spawn_object("SMCV", "Russians", x, y, 0, rules, &resources.height_map)?;
+            Some((id, (x, y)))
+        })
+        .expect("flat, empty buildable ground for the yard");
+    sim.resolve_type_handles(rules);
+
+    let yard_at = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let sim = scenario.sim();
+        sim.substrate
+            .entities
+            .values()
+            .find(|e| !e.dying && sim.interner.resolve(e.type_ref()) == "NACNST")
+            .map(|e| (e.position.rx, e.position.ry))
+    };
+    let frame = |scenario: &mut crate::headless_scenario::HeadlessScenario| {
+        scenario
+            .runtime
+            .advance_frame(
+                &[],
+                crate::headless_scenario::SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+            )
+            .expect("retail frame");
+    };
+    frame(&mut scenario);
+    let sim = scenario.sim();
+    assert!(sim.houses[&owner].ai_activation.auto_base_building);
+    let mut frames = 1;
+    while yard_at(&scenario).is_none() && frames < 600 {
+        frame(&mut scenario);
+        frames += 1;
+    }
+    assert_eq!(
+        yard_at(&scenario),
+        Some((x - 1, y - 1)),
+        "after {frames} frames"
+    );
+    let sim = scenario.sim();
+    assert!(sim.substrate.entities.get(mcv).is_none_or(|e| e.dying));
+    assert_eq!(sim.houses[&owner].base_center, Some((x - 1, y - 1)));
+}
