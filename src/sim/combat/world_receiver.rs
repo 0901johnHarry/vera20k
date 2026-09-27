@@ -4058,8 +4058,9 @@ pub(super) fn emit_admitted_fire(
     // then the rearm (`+0x2EC`) with GetROF's value, which a berserk firer
     // (`+0x298`) halves, signed and toward zero (`0x006FF28F..0x006FF29C`).
     // `0x006FF743` stores the frame in `+0x120`, the since-my-last-shot mark
-    // `UnitClass::Facing_Update`'s idle dwell reads (the constructor at
-    // `0x006F2B9C` is its only other writer).
+    // `UnitClass::Facing_Update`'s idle dwell and a Gattling building's idle
+    // decay (`0x0043FEF5`) read (the constructor at `0x006F2B9C` is its only
+    // other writer).
     // The remainder (`0x006FF2C5`) divides by the Burst of the weapon fired,
     // where GetROF's mid-burst test read the (next) weapon GetWeapon answers.
     // A DiskLaser weapon's own path stores GetROF's value unhalved
