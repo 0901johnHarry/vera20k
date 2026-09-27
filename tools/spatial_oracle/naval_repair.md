@@ -137,8 +137,12 @@ area exclusion, firing/target legality, statistics and app cache persistence.
 The ignored physical AEGIS test compares all four native bounds and complete
 palette-byte hashes. The ignored GPU test sends all 16 Unit clip visits through
 real batch lowering, upload and Metal shader, checking every 640×480 pixel and
-unchanged depth. Final suite, release, visible-run and critic results belong in
-the chain validation record. These bounded passes do not close the whole-bridge goal.
+unchanged depth. The [chain validation record](naval_repair_validation.json)
+retains the actual suite/focused results, binary and log hashes, navigation
+comparison, Ghidra readbacks and ordinary visible save/load/sinking captures.
+Its full suite had two stale score-timing assertions; the native-backed test-only
+fix passed with all 1,102 surrounding world tests. These bounded passes do not
+close the whole-bridge goal.
 
 ### Reproduce the additional packets
 
