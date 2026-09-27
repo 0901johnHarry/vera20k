@@ -113,17 +113,17 @@ and retire the Engineer without stale CellList links. Native load reseeds
 Scenario RNG, so these are two restored futures, not an assertion that loading
 preserves the uninterrupted future.
 
-The final candidate integrates main2687b5bc and uses snapshot version223. Its
-retail-required library suite passes **9,574 tests, zero failures, 177 ignored**;
-`cargo clippy -p vera20k --lib` exits0 with939 warnings. Logs are
-`engineer-entry-followup/engineer-v223-readiness.log` and
-`engineer-v223-clippy.log`. The retained lib-test binary SHA256 is
-`f53d9e15cf21dbad5789722ee0bad0daa904b1da59086086ad0412e35245b34a`.
+The final candidate integrates main5f2e14ed and uses snapshot version224. Its
+retail-required library suite passes **9,573 tests, zero failures, 177 ignored**;
+`cargo clippy -p vera20k --lib` exits0 with935 warnings. Logs are
+`engineer-entry-followup/engineer-v224-readiness.log` and
+`engineer-v224-clippy.log`. The retained lib-test binary SHA256 is
+`358aa7d46fa4496a8949badb476e7f514659f5b3134df0ca09881f9aba6bf11c`.
 The full suite includes the124 Walk response rows, native height/admission
 controls and constructor-side consumers. The two ignored physical Hills tests
 were explicitly run from that same retained binary: **2 passed, zero failures**,
 including the legal approach/dual restore and rejected cliff start. The log is
-`engineer-entry-followup/engineer-v223-explicit-hills.log`.
+`engineer-entry-followup/engineer-v224-explicit-hills.log`.
 The synthetic Capture detour needed its missing raw bridge-transition
 0x200 flag: its PathGrid already marked those cells as transitions. Live Foot
 admission exposed that inconsistent fixture; route expectations were retained.
@@ -143,24 +143,27 @@ side deck at `(64,69)`, with OnBridge=true and Z=1040. These timings describe
 this Rust composition, not full native scene timing. The runner reuses the live
 attacker: ordinary placement rejects a second FV on its occupied bank cell.
 The retained example SHA256 is
-`31bc7160b405f92476bad466cc5a613a6c2548b6bae0401f233cf4605e718061`;
+`07ff2f47d04372238a23730478f5bd7d7d2e72b067160cfe60cbde49b694a670`;
 the release app is
-`e469a2e6b3f5e61aad5a544446dd2f8777dcd3d489fde607f12cb492f0a2d28b`.
-`engineer-entry-followup/engineer-v223-scene.log` records all five saved phases.
+`eb50844e86cad9ac267429ced557b62fe756b11db4bdcfa7ecd8499985a5657b`.
+`engineer-entry-followup/engineer-v224-scene.log` records all five saved phases.
 
 The same release app was launched visibly without arguments, through ordinary
-Skirmish/Customize Battle/map selection. Normal Load restored the collapsed,
-Engineer-approach and repaired-deck saves. Resuming the approach consumes the
-Engineer and visibly rebuilds the central deck; directly loading the occupied
-repair save shows the IFV on the rebuilt deck. GPU PCX captures use normal fog:
-collapsed SHA256 `e1abbb95d68a7cc98ea5e2b31bb5f623f1eb2d985f8b6c185a4df5fdac1faddf`,
-resumed repair `f7927767eef7b785c646a18885e69c2424103f0bcfd20011d42ffb5747a609fb`,
-occupied repair `a5651e2e7fc82d35c7757b7c6dd2d49f09f5c967308e9931ead6429b1801ea7c`.
-The corrected receipt is `engineer-entry-followup/visible-v223-validation.json`.
-The earlier artifact filenames containing `gap` reflect a withdrawn visual
-misreading; the persisted images show a continuous repaired deck. No renderer
-change was made on that basis. This is production rendering/restore evidence,
-not a native pixel comparison or certification of other bridge families.
+Single Player/Skirmish with the exact loose map selected. Normal Load restored
+the collapsed, Engineer-approach and repaired-deck version224 saves. Resuming
+the approach consumes the Engineer and visibly rebuilds the central deck;
+directly loading the occupied repair save shows the IFV on the rebuilt deck.
+The persisted GPU PCX captures were separately opened and inspected under
+normal fog: collapsed SHA256
+`0b7dfa50df3b5ae9325970d94cc166f5cf58fdbce32e99672688d0bd39d7665c`,
+resumed repair `8ce8743fb61812149f33e9a9c5cd157be196efe0115f85a247ceab3c0308ad8f`,
+occupied repair `8bdf482819647372ee8e642a361e4c3245aa613bd1f14e22f5d9b9384f0d70a0`.
+The receipt is `engineer-entry-followup/visible-v224-validation.json`; the app
+was closed and the temporary camera scroll rate restored from6 to its original4.
+This is settled production rendering/restore evidence, not a native pixel or
+load-transition timing comparison. Early post-Load UI observations showed prior
+geometry before the settled captures; the first-draw timing remains an audit
+item, not an established native mismatch or a persistent missing repaired deck.
 
 Four structural-collapse tests previously mixed direct overlay0xDC with raw
 structural0x100. Original57D530 changes the overlay without the structural flag
@@ -195,7 +198,7 @@ Ordinary construction clears it, while original raw Load and no-init Foot
 construction preserve supplied1 and255. The existing sound consumer receives
 the rules-named centred request; Walk's clear points follow the reached native
 branches. Drive/Ship's first rejection can retry before clearing and therefore
-does not consume the byte when merely requesting the sound. Hash feature223
+does not consume the byte when merely requesting the sound. Hash feature224
 adds only a nonzero tagged suffix; previous zero-state hashes stay unchanged.
 No ordinary gameplay arming writer has been established. The direct/alias
 scan is bounded and does not prove global unreachability; this remains an
@@ -211,9 +214,17 @@ branch and EMP lifecycle remain separate conditional mechanisms. See the
 linked prerequisite corpus for callback ordering and coverage limits.
 
 Ghidra corrections are saved and read back: PerCell519CA3/519B3E/51A010,
-AStar429E54/42A18B/42A4B6, InfantryType5236AA, and Cell483480 now named
+AStar429E19/429E54/42A18B/42A4B6, Walk75BC36, InfantryType5236AA,
+and Cell483480 now named
 `CellClass__Uncloak_Ground_Objects`. The previous redraw name hid a simulation
 side effect. Exact receipts are retained with the Engineer follow-up evidence.
+
+The single fresh read-only critic found the missing AStar NULL-slot guard and
+Walk dead-owner clear mismatch. Both were independently executed in original
+instructions, pinned as additional native controls and fixed with regressions.
+The shared entry-owner refactor also came from that pass. The final full suite
+includes both fixes; no second critic was run. The local disposition is
+`engineer-entry-followup/engineer-critic-disposition.md`.
 
 Theater loading now parses TileSet rows and General keys through one `IniFile`,
 removing the repeated case-insensitive text scanner and its `str::parse` integer
