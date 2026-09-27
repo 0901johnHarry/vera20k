@@ -183,7 +183,8 @@ fn override_entity_to_attack(
     target_commits: bool,
     archived_destination: Option<NavTargetRef>,
 ) -> bool {
-    if !override_entity_to_attack_target(entity, target, target_commits, archived_destination) {
+    if !override_entity_to_attack_target(entity, Some(target), target_commits, archived_destination)
+    {
         return false;
     }
     if entity.category != EntityCategory::Structure {
@@ -199,7 +200,7 @@ fn override_entity_to_attack(
 /// Aircraft gate suppresses the transaction atomically.
 fn override_entity_to_attack_target(
     entity: &mut crate::sim::game_entity::GameEntity,
-    target: TargetKind,
+    target: Option<TargetKind>,
     target_commits: bool,
     archived_destination: Option<NavTargetRef>,
 ) -> bool {
@@ -211,7 +212,7 @@ fn override_entity_to_attack_target(
     }
     entity.suspended_attack_target = entity.attack_target.as_ref().map(|target| target.target);
     verb::override_base(&mut entity.mission, MISSION_ATTACK);
-    represented_assign_target_admitted(entity, Some(target), target_commits);
+    represented_assign_target_admitted(entity, target, target_commits);
     true
 }
 
@@ -895,24 +896,25 @@ impl Simulation {
         rules: &RuleSet,
     ) -> bool {
         // A building's setter admits the attacker first (BuildingClass::
-        // SetTarget `0x00443B90`: out of range, it takes none).
-        let admitted =
-            self.building_admits_target(receiver, Some(TargetKind::Entity(attacker)), rules);
+        // SetTarget `0x00443B90`: out of range, it hands the base setter NULL,
+        // `0x00443BFE`).
+        let requested = self
+            .building_admits_target(receiver, Some(TargetKind::Entity(attacker)), rules)
+            .then_some(TargetKind::Entity(attacker));
         let entities = &mut self.substrate.entities;
         if entities.get(attacker).is_none() {
             return false;
         }
         // A dying source (its DeathWeapon's blast) still overrides the mission,
         // but Assign_Target refuses the Health-0 object and commits NULL.
-        let attacker_commits =
-            admitted && assign_target_commits(entities, Some(TargetKind::Entity(attacker)));
+        let attacker_commits = assign_target_commits(entities, requested);
         let Some(entity) = entities.get_mut(receiver) else {
             return false;
         };
         let archived_destination = entity.navigation.nav_com;
         if !override_entity_to_attack_target(
             entity,
-            TargetKind::Entity(attacker),
+            requested,
             attacker_commits,
             archived_destination,
         ) {
@@ -948,7 +950,12 @@ impl Simulation {
             return false;
         };
         let archived_destination = entity.navigation.nav_com;
-        if !override_entity_to_attack_target(entity, target, target_commits, archived_destination) {
+        if !override_entity_to_attack_target(
+            entity,
+            Some(target),
+            target_commits,
+            archived_destination,
+        ) {
             return false;
         }
         // The caller owns its native head-clear order. The scheduling

@@ -3480,9 +3480,12 @@ fn gsi_04_07_damage_full_capture_manager_blocks_retaliation() {
 
     let full = run(3);
     assert_eq!(full.health, 99, "receiver still commits the hostile hit");
+    // The full manager rejects the Override: the mission stays Guard.
     assert_eq!(full.mission, MissionId::from_known(MissionType::Guard));
     assert_eq!(full.suspended, MissionId::NONE);
-    assert_eq!(full.target, None, "full manager rejects Override");
+    // BuildingClass::ReceiveDamage's retaliation block then offers the
+    // computer's tower the in-range source (`0x00442A39`).
+    assert_eq!(full.target, Some(TargetKind::Entity(1)));
     assert_eq!(full.links, vec![10, 11, 12]);
 
     let below_capacity = run(2);
@@ -8088,14 +8091,17 @@ fn under_attack_events_fire_for_sourced_structures_and_harvester_types() {
         "insignificant buildings never ping"
     );
 
-    // Deployed slave miner (`UndeploysInto=` + `ResourceGatherer=yes`
-    // building) → the ore-miner line through the building path.
+    // A 1x1 building with `UndeploysInto=` (this Foundation-less slave miner)
+    // never pings: vt+0x80 (`0x00465D40`) gates NotifyUnderAttack
+    // (`0x00442956`). Retail's 2x2 YAREFN takes the ore-miner line
+    // (`building_retaliation`'s tests).
     let mut slave = make_entity_owned(10, "YAREFN", 8, 5, 800, "Defender");
     slave.category = EntityCategory::Structure;
     let result = run_attack(slave);
-    assert_eq!(result.consequences.effects().under_attack_events.len(), 1);
-    assert!(result.consequences.effects().under_attack_events[0].miner);
-    assert!(result.consequences.effects().under_attack_events[0].structure);
+    assert!(
+        result.consequences.effects().under_attack_events.is_empty(),
+        "1x1 UndeploysInto buildings never ping"
+    );
 
     // Plain vehicle (not `Harvester=`, not a structure) → no ping.
     let plain = make_entity_owned(10, "MTNK", 8, 5, 1000, "Defender");

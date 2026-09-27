@@ -124,10 +124,6 @@
 //!   `SuperWeapon=`), the waypoint-planning hook (`0x0044AFB1`, VERA has no
 //!   planning mode) and BuildingClass::SetTarget's TickTank/Artillary
 //!   undeploy (`0x00443C07..0x00443C54`, neither key set).
-//! - A turretless building's `+0x388` (its body) takes Mission_Attack's
-//!   Set_Desired natively; VERA has no body facing for a building, so the
-//!   FLH of its later shots leaves along the authored facing (a few
-//!   pixels).
 //! - `+0x6DD` has two more homes, `BuildingUp::done` and `BuildingDown::done`
 //!   (`sim::components`), each written and read only by its own build-up or
 //!   sale; a finished build-up queues and commences Guard itself
@@ -804,9 +800,29 @@ fn support_multiplier(modifier: i32, count: i32) -> i32 {
     (scaled / 100) as i32
 }
 
+/// Whether the building's weapon 0 (vt+0x3F8, `0x004526F0`) has a WeaponType
+/// whose projectile is not `AA=` (BulletType `+0x2A4`). BuildingClass::SetTarget
+/// admits every target when it has not (`0x00443BC0..0x00443BED`), and
+/// ReceiveDamage's retaliation block stops (`0x004429B4..0x004429E5`).
+pub(super) fn building_weapon0_aims(
+    sim: &Simulation,
+    rules: &RuleSet,
+    id: u64,
+    target: TargetKind,
+) -> bool {
+    weapon_at_index_for(sim, rules, id, Some(target), 0).is_some_and(|weapon| {
+        !weapon
+            .projectile
+            .as_deref()
+            .and_then(|projectile| rules.projectile(projectile))
+            .is_some_and(|projectile| projectile.aa)
+    })
+}
+
 /// The voxel-turret retry (`0x0044B017..0x0044B0CC`): a building with a turret
 /// whose `TurretAnimIsVoxel=` is set, within one `ROT=` step of the target's
-/// direction (`abs(low-byte ROT << 8)` as signed16, without FacingClass
+/// direction (vt+0x4E8 at `0x0044B056`, [`fire_coord::building_direction_to`];
+/// `abs(low-byte ROT << 8)` as signed16, without FacingClass
 /// SetROT's clamp; any miss at ROT 0), snaps its turret (`0x0044B0AC`) and
 /// asks GetFireError again. Original decisions: building_fire_turn.json.
 fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) -> bool {
@@ -823,13 +839,7 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     ) else {
         return false;
     };
-    let Some(direction) = crate::sim::movement::turret::facing_toward_target(
-        entity,
-        &target,
-        &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
-    ) else {
+    let Some(direction) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return false;
     };
     let delta = i32::from(barrel.current(now).wrapping_sub(direction) as i16);
@@ -848,8 +858,9 @@ fn voxel_turret_snaps(sim: &mut Simulation, id: u64, rules: &RuleSet, target: Ta
     true
 }
 
-/// `turret(+0x388).Set_Desired(DirectionTo(Target))` (`0x0044B16F`,
-/// `0x0044B1A8`, `0x0044B1FF`), at the type's `ROT=`.
+/// `+0x388.Set_Desired(vt+0x4E8(Target))` (`0x0044B16F`, `0x0044B1A8`,
+/// `0x0044B1FF`; [`fire_coord::building_direction_to`]), at the type's `ROT=`:
+/// the turret of a `Turret=yes` type, the body of any other.
 fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind) {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
@@ -861,13 +872,7 @@ fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind
     else {
         return;
     };
-    let Some(desired) = crate::sim::movement::turret::facing_toward_target(
-        entity,
-        &target,
-        &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
-    ) else {
+    let Some(desired) = fire_coord::building_direction_to(sim, rules, entity, target) else {
         return;
     };
     if let Some(barrel) = sim
@@ -980,15 +985,7 @@ impl Simulation {
         let Some(target) = requested else {
             return true;
         };
-        let Some(weapon0) = weapon_at_index_for(self, rules, id, Some(target), 0) else {
-            return true;
-        };
-        let anti_air = weapon0
-            .projectile
-            .as_deref()
-            .and_then(|projectile| rules.projectile(projectile))
-            .is_some_and(|projectile| projectile.aa);
-        if anti_air {
+        if !building_weapon0_aims(self, rules, id, target) {
             return true;
         }
         let weapon = select_weapon(self, rules, id, Some(target));
