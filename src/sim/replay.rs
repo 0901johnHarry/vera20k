@@ -1361,7 +1361,6 @@ mod tests {
                 crate::sim::intern::test_intern("Americans"),
                 1,
                 Command::SetRally {
-                    owner: crate::sim::intern::test_intern("Americans"),
                     rx: 10,
                     ry: 11,
                     producer_ids: vec![1, 2],

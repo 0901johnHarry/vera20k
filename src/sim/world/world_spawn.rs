@@ -1834,8 +1834,10 @@ impl Simulation {
             unit.veterancy = crate::sim::combat::veterancy::rank_u16(veterancy);
         }
         self.transfer_slave_manager(sid, new_sid, false, rules, overlay_registry);
-        // A building's archive is a cell: the Slave Miner refinery's
-        // relocation is its only VERA writer (`slave_manager`).
+        // A building's archive is a cell. Of its VERA writers (the Slave
+        // Miner refinery's relocation in `slave_manager`, the rally click on
+        // rally-line factories), only the relocation reaches an
+        // UndeploysInto building: no retail rally-line type undeploys.
         if let Some(TargetKind::Cell(x, y)) = archive {
             if !self.set_unit_cell_destination(new_sid, (x, y), rules) {
                 log::debug!("undeployed unit {new_sid} refused its archive ({x}, {y})");

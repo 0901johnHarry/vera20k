@@ -73,8 +73,8 @@
 //!   (it undeploys on a self-click, which retail never offers); the building
 //!   arm is unreachable without it. Trigger: a player's move order for a
 //!   refinery (or Construction Yard). Effect: no move order. Frequency:
-//!   occasional. Downstream: the building's rally point is VERA's
-//!   `rally_target`, not the ArchiveTarget it is natively.
+//!   occasional. Downstream: VERA's rally click archives a cell only on
+//!   rally-line factories, so a refinery never holds a player's archive.
 //! - The factory-exit hunt start runs at production: VERA hands a produced
 //!   unit its rally point there rather than at the factory exit
 //!   (`production_queue.rs`), so the Slave Miner's hunt begins a few frames

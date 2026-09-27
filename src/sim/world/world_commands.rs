@@ -1317,14 +1317,10 @@ impl Simulation {
                 true
             }
             Command::SetRally {
-                owner,
                 rx,
                 ry,
                 producer_ids,
-            } => {
-                production::set_rally_point_for_owner(self, owner, *rx, *ry);
-                self.set_rally_target_for_producers(command_owner, producer_ids, *rx, *ry, rules)
-            }
+            } => self.set_rally_point_for_producers(command_owner, producer_ids, *rx, *ry, rules),
             Command::QueueProduction { owner, type_id, .. } => {
                 let Some(rules) = rules else { return false };
                 let owner_s = self.interner.resolve(*owner).to_string();
@@ -2403,7 +2399,32 @@ impl Simulation {
         }
     }
 
-    fn set_rally_target_for_producers(
+    /// The rally click's event 0x1E for each selected factory:
+    /// `BuildingClass::SetRallyPoint @ 0x00443860` queues it and
+    /// `EventClass::Execute @ 0x004C6DAA` runs `Set_ArchiveTarget @
+    /// 0x0070C610`, so the factory archives the cell (its only store).
+    ///
+    /// Residuals (instruction reading; not ported):
+    /// - SetRallyPoint first moves the clicked cell to
+    ///   `Find_Nearby_Passable_Cell` (the building type's speed and movement
+    ///   zone, the zone of the building's cell); when that finds no cell, a
+    ///   building other than a Construction Yard sends no event
+    ///   (`0x0044395E..0x00443977`, `0x00443A7B`) and keeps its old rally.
+    ///   VERA archives the clicked cell. Trigger: a rally click on a cell the
+    ///   factory's units cannot enter. Effect: the rally line and the
+    ///   produced units' move end at the clicked cell. Frequency:
+    ///   occasional. Downstream: the unit stops where its path search gives
+    ///   up.
+    /// - Stop clears a factory's rally: StopCommandClass sends event 6 for a
+    ///   selected HasRallyPoint building not under EMP
+    ///   (`0x00730EC3..0x00730EEB`, vt+0xA0 = `0x0044F5C0`); the IDLE arm's
+    ///   `Assign_Destination(0, 1)` (`0x004C75ED`) reaches `BuildingClass`
+    ///   vt+0x480 (`0x00455D50`), which archives the destination on a
+    ///   HasRallyPoint or ConstructionYard building unless it is Selling.
+    ///   VERA's Stop leaves the archive. Trigger: Stop with a factory
+    ///   selected. Effect: the rally line stays and new units keep taking
+    ///   it. Frequency: occasional. Downstream: none beyond the rally.
+    fn set_rally_point_for_producers(
         &mut self,
         command_owner: &str,
         producer_ids: &[u64],
@@ -2431,7 +2452,7 @@ impl Simulation {
                 });
             if eligible {
                 if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.rally_target = Some((rx, ry));
+                    entity.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(rx, ry)));
                 }
             }
         }
@@ -3485,24 +3506,17 @@ mod tests {
         spawn_structure_for_owner(&mut sim, 5, "NAWEAP", "Soviet", 16, 10);
 
         let command = Command::SetRally {
-            owner,
             rx: 40,
             ry: 41,
             producer_ids: vec![3, 2, 2, 4, 5],
         };
 
         assert!(sim.apply_command("Americans", &command, Some(&rules), None, &BTreeMap::new()));
-        assert_eq!(
-            sim.substrate.entities.get(2).unwrap().rally_target,
-            Some((40, 41))
-        );
-        assert_eq!(
-            sim.substrate.entities.get(3).unwrap().rally_target,
-            Some((40, 41))
-        );
-        assert_eq!(sim.substrate.entities.get(4).unwrap().rally_target, None);
-        assert_eq!(sim.substrate.entities.get(5).unwrap().rally_target, None);
-        assert_eq!(sim.houses.get(&owner).unwrap().rally_point, Some((40, 41)));
+        let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
+        assert_eq!(rally(2), Some((40, 41)));
+        assert_eq!(rally(3), Some((40, 41)));
+        assert_eq!(rally(4), None);
+        assert_eq!(rally(5), None);
     }
 
     #[test]
