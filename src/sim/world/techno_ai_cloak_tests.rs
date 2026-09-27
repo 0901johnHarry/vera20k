@@ -4,7 +4,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::combat::{AttackTarget, TargetKind};
 use crate::sim::components::NavTargetRef;
-use crate::sim::game_entity::PendingBuildingFire;
+use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::snapshot::GameSnapshot;
 use crate::util::fixed_math::SimFixed;
 
@@ -464,7 +464,7 @@ fn already_cloaked_object_is_refused_by_can_auto_cloak_step_two() {
         entity.weapon_burst.complete_shot(4);
         entity.pending_building_fire = Some(PendingBuildingFire {
             remaining_ticks: 7,
-            weapon_slot: WeaponSlot::Secondary,
+            fire: DelayedFire::Weapon(WeaponSlot::Secondary),
         });
         entity.attack_target = Some(attack);
         entity.passively_acquired_target = true;
@@ -507,7 +507,7 @@ fn already_cloaked_object_is_refused_by_can_auto_cloak_step_two() {
         entity.pending_building_fire,
         Some(PendingBuildingFire {
             remaining_ticks: 7,
-            weapon_slot: WeaponSlot::Secondary,
+            fire: DelayedFire::Weapon(WeaponSlot::Secondary),
         })
     );
     assert_eq!(entity.mission, mission_before);

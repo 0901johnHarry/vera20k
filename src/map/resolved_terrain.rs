@@ -6869,6 +6869,7 @@ mod tests {
                         base_damage: 0,
                         warhead: key,
                         weapon: key,
+                        damage_multiplier: ProjectilePayload::UNSCALED,
                     },
                     speed_leptons_per_frame: 16,
                     velocity: ProjectileVelocity::new(16, 0, 0),

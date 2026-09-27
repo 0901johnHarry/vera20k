@@ -1028,6 +1028,7 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
                 base_damage: 40,
                 warhead: crate::sim::intern::InternedId::from_index(0),
                 weapon: crate::sim::intern::InternedId::from_index(0),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 64,
             velocity: crate::sim::projectile::ProjectileVelocity::new(64, 0, 0),

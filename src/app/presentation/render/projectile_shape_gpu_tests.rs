@@ -92,6 +92,7 @@ fn fixture(row: &Value, kind: &crate::rules::projectile_type::ProjectileType) ->
                 base_damage: 0,
                 warhead,
                 weapon,
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 0,
             velocity: input["velocity"].as_array().map_or_else(

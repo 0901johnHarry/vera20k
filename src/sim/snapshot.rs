@@ -650,10 +650,13 @@ use crate::sim::world::Simulation;
 // structural side-cell consumers consequently change saved continuations.
 // Foot+68A now retains its exact path-failure sound byte through a snapshot.
 // Existing valid SpeedType variant tags and zero-latch hash streams are preserved.
-// 224 -> 225: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
-// armed by SetRate (`0x004C9EA0`), and the stored sidebar build-time estimates
-// go. The factory and queue-entry schemas change.
-const SNAPSHOT_VERSION: u32 = 225;
+// 224 -> 225: Prism forwarding. A building's delayed fire carries a support
+// beam mode, buildings keep a support count, bullets a damage multiplier and
+// houses their building list (House+0x68), which a 224 save never filled.
+// 225 -> 226: a factory's step timer is the frame-anchored CDTimer (`+0x2C`)
+// armed when a build starts (`0x004C9EA0`), and the stored sidebar build-time
+// estimates go. The factory and queue-entry schemas change.
+const SNAPSHOT_VERSION: u32 = 226;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3602,9 +3605,10 @@ mod tests {
         // 221 -> 222: production commands take their envelope's house.
         // 222 -> 223: no group speed cap on Move orders.
         // 223 -> 224: live Infantry movement/repair and structural side consumers.
-        // 224 -> 225: the factory step timer is the CDTimer SetRate arms; no
-        // stored build-time estimates.
-        assert_eq!(super::SNAPSHOT_VERSION, 225);
+        // 224 -> 225: Prism forwarding.
+        // 225 -> 226: the factory step timer is the CDTimer a build start arms;
+        // no stored build-time estimates.
+        assert_eq!(super::SNAPSHOT_VERSION, 226);
     }
 
     #[test]
@@ -5071,58 +5075,65 @@ mod tests {
         use crate::map::entities::EntityCategory;
         use crate::sim::combat::combat_weapon::WeaponSlot;
         use crate::sim::components::Health;
-        use crate::sim::game_entity::{GameEntity, PendingBuildingFire};
+        use crate::sim::game_entity::{DelayedFire, GameEntity, PendingBuildingFire};
+        use crate::sim::projectile::ProjectileCoord;
 
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Soviet");
         let type_ref = sim.interner.intern("NATSLA");
-        let entity = GameEntity::new_at_frame_zero_for_test(
-            1,
-            5,
-            5,
-            0,
-            0,
-            owner,
-            Health { current: 600 },
-            type_ref,
-            EntityCategory::Structure,
-            0,
-            8,
-            false,
-        );
-        sim.substrate.entities.insert(entity);
+        for id in [1, 2] {
+            let entity = GameEntity::new_at_frame_zero_for_test(
+                id,
+                5,
+                5,
+                0,
+                0,
+                owner,
+                Health { current: 600 },
+                type_ref,
+                EntityCategory::Structure,
+                0,
+                8,
+                false,
+            );
+            sim.substrate.entities.insert(entity);
+        }
         // Full snapshot load resets Scenario RNG to Seed0. Compare the
         // authoritative delayed-fire state on that same post-load cursor.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let without_latch = sim.state_hash();
+        let shot = PendingBuildingFire {
+            remaining_ticks: 17,
+            fire: DelayedFire::Weapon(WeaponSlot::Secondary),
+        };
         sim.substrate
             .entities
             .get_mut(1)
             .expect("Tesla Coil")
-            .pending_building_fire = Some(PendingBuildingFire {
-            remaining_ticks: 17,
-            weapon_slot: WeaponSlot::Secondary,
-        });
+            .pending_building_fire = Some(shot);
         let with_latch = sim.state_hash();
         assert_ne!(with_latch, without_latch);
+        let beam = PendingBuildingFire {
+            remaining_ticks: 17,
+            fire: DelayedFire::SupportBeam {
+                to: ProjectileCoord::new(1280, 1408, 378),
+            },
+        };
+        let supporter = sim.substrate.entities.get_mut(2).expect("second tower");
+        supporter.pending_building_fire = Some(beam);
+        supporter.prism_support_count = 3;
+        let with_beam = sim.state_hash();
+        assert_ne!(with_beam, with_latch);
 
         let bytes = GameSnapshot::save(&sim, 1, 2, "delay.map", 0);
         let restored = GameSnapshot::load(&bytes)
-            .expect("v75 delayed-fire snapshot")
+            .expect("delayed-fire snapshot")
             .sim;
-        assert_eq!(
-            restored
-                .substrate
-                .entities
-                .get(1)
-                .expect("restored Tesla Coil")
-                .pending_building_fire,
-            Some(PendingBuildingFire {
-                remaining_ticks: 17,
-                weapon_slot: WeaponSlot::Secondary,
-            })
-        );
-        assert_eq!(restored.state_hash(), with_latch);
+        let entities = &restored.substrate.entities;
+        assert_eq!(entities.get(1).unwrap().pending_building_fire, Some(shot));
+        assert_eq!(entities.get(2).unwrap().pending_building_fire, Some(beam));
+        assert_eq!(entities.get(2).unwrap().prism_support_count, 3);
+        assert_eq!(restored.state_hash(), with_beam);
     }
 
     #[test]
@@ -6652,6 +6663,7 @@ mod tests {
                 base_damage: 1,
                 warhead: InternedId::from_index(0),
                 weapon: InternedId::from_index(0),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),

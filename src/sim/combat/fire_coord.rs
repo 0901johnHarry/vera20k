@@ -64,7 +64,7 @@ pub(crate) struct FireSource {
 impl FireSource {
     /// The fire facts of a stored object, read as the attacker snapshot
     /// reads them (`combat::build_attacker_snapshot`).
-    fn of_entity(entity: &crate::sim::game_entity::GameEntity) -> Self {
+    pub(crate) fn of_entity(entity: &crate::sim::game_entity::GameEntity) -> Self {
         Self {
             stable_id: entity.stable_id(),
             category: entity.category,

@@ -17,13 +17,21 @@
 //!   jumps to it), Attack runs Mission_Attack (`0x0044ACF0`), Selling runs
 //!   Sell ([`Simulation::visit_building_down`]), and a mission the building
 //!   has no handler for, or none, a MissionClass stub (450 frames).
+//! - `ProcessDelayedFire` (`0x004503F0`, called at `0x004400F4` while Health
+//!   is above zero): the countdown of a delayed fire Mission_Attack armed,
+//!   and what it does when the countdown ends ([`process_delayed_fire`]).
 //! - the range drop at the end of the Update (`0x00440378..0x004403C6`).
 //!
-//! Mission_Attack's FireAt (`0x0044B6D0`) is VERA's combat emission: the OK
-//! arm asks the combat phase for the shot
+//! The Update's two FireAts, Mission_Attack's (`0x0044B6D0`) and
+//! ProcessDelayedFire's (`0x00450492`), are VERA's combat emission: the visit
+//! asks the combat phase for the shot
 //! ([`crate::sim::combat::FireRequests::buildings`]), which emits it without
-//! asking GetFireError again. A building fires no ordinary shot without that
-//! request.
+//! asking GetFireError again. A building fires no shot without that request.
+//!
+//! A Prism tower (`[General] PrismType=`) never takes Mission_Attack's FireAt
+//! arm: it recruits one charged tower of its House per visit to beam at it,
+//! then arms its own delayed shot, whose damage grows with the count
+//! ([`prism_arm`], [`Simulation::take_support_bonus`]).
 //!
 //! Evidence: `tools/spatial_oracle/building_guard_attack.json`, replayed in
 //! the tests below: Mission_Guard's returns and Scenario draws per arm,
@@ -31,31 +39,41 @@
 //! BuildingClass::SetTarget's decisions, Unlimbo's mission (`0x0044D6A0`) and
 //! the dispatch cadence of Update's mission pieces run natively frame by
 //! frame (the shot every ROF + 1 frames for an even ROF, every ROF frames
-//! for an odd one).
+//! for an odd one). `tools/spatial_oracle/building_prism.json`: the Prism
+//! arm's recruitment and master arm, ProcessDelayedFire's two modes, the
+//! support bonus and its damage, the multi-tower cadence and the `[General]`
+//! Prism reader, run natively.
 //!
 //! RESIDUALS, each with its later owner:
-//! - The frame position of a building's shot. Native fires FireAt inside the
-//!   building's own Logic visit and runs ProcessDelayedFire later in the same
-//!   Update (`0x004400F4`); VERA emits both in the combat phase after the
-//!   Logic pass, like every class's FireAt (the draw-order residual
-//!   `docs/plans/2026-09-21-combat-parity.md` records for all of them).
-//!   Trigger: every building shot. Effect: the shot's Scenario draws
+//! - The frame position of a building's shot. Native fires both FireAts
+//!   inside the building's own Logic visit; VERA emits them in the combat
+//!   phase after the Logic pass, like every class's FireAt (the draw-order
+//!   residual `docs/plans/2026-09-21-combat-parity.md` records for all of
+//!   them). Trigger: every building shot. Effect: the shot's Scenario draws
 //!   (GetROF's `RandomRanged(0, 2)` at `0x006FD09E`, the bullet's own) and
 //!   its rearm and ammo writes follow the Logic visits of the objects after
 //!   the building, not precede them; the bullet still takes its first AI at
 //!   the tail of the same pass ([`Simulation::visit_combat_tail`]).
 //!   Frequency: every frame a building fires while a later object draws.
-//!   Downstream: the Scenario stream's order in that frame. Later owner:
-//!   FireAt moving into each object's Logic visit.
+//!   Downstream: the Scenario stream's order in that frame. The pass's one
+//!   reader of another building's rearm, the Prism walk, counts a requested
+//!   shot as rearming ([`prism_supporter`]); the support count the shot
+//!   clears (`0x004504CD`) is read only in its own tower's visits. Later
+//!   owner: FireAt moving into each object's Logic visit.
 //! - Gattling (D11): Mission_Guard's stage update (`0x004496C1..0x004496DF`),
 //!   Mission_Attack's charge and decay calls (`0x70DE70`, `0x70E000`) and
 //!   their `+0xC4` resets. Trigger: every `[YAGGUN]` visit. Effect: its
 //!   stage stays at 0. Frequency: every Gattling Cannon engagement.
 //!   Downstream: its rate of fire and weapon stage.
-//! - Prism (D7): the PrismType arm (`0x0044B310..0x0044B62B`, recruiting a
-//!   charged tower or arming its own delayed shot) and `+0x664 = 0` on the
-//!   null-target and drop tails. VERA fires a Prism tower at once. Trigger:
-//!   every `[ATESLA]` shot. Effect: no forwarding and no charge delay.
+//! - The Prism beams are not drawn. A support beam (`0x0044ABD0`: a
+//!   LaserDrawClass from the supporter's weapon-0 FLH to the stored point in
+//!   the House's `LaserColor`, width 3, `PrismSupportDuration=` frames) and
+//!   FireAt's main beam of an `IsLaser=` weapon (`0x006FF4CC..0x006FF544`,
+//!   width 5 on a supported shot) have no presentation owner: VERA has no
+//!   LaserDrawClass. Trigger: every Prism tower and Prism tank shot. Effect:
+//!   the beams are invisible; damage, timing and anims are unaffected (no
+//!   RNG, no sim state). Later owner: laser drawing, its own presentation
+//!   chain.
 //! - The docking radio of an unarmed building's Guard (the depot/airfield
 //!   docking chain). Status 1 of a `UnitRepair=` (`+0x16A9`), `UnitReload=`
 //!   (`+0x16AA`) or `Bunker=` (`+0x16AB`) type walks its radio contacts
@@ -108,9 +126,11 @@ use crate::sim::building_art::requested_damage_state;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::combat_weapon::{self, WeaponSlot};
 use crate::sim::combat::fire_error::FireError;
-use crate::sim::game_entity::PendingBuildingFire;
+use crate::sim::combat::{BuildingShot, fire_coord};
+use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::projectile::ProjectilePayload;
 use crate::sim::world::Simulation;
 
 /// The MissionClass stubs a building's table holds for every mission it has
@@ -270,13 +290,15 @@ fn mission_attack(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: ObjectAiC
 }
 
 /// Mission_Attack up to its GetFireError (`0x0044B00F`): with no target, the
-/// null-target tail (`0x0044AF86..0x0044AFE0`), which answers `None`;
+/// null-target tail (`0x0044AF86..0x0044AFE0`, `+0x664 = 0` at `0x0044AF9F`),
+/// which answers `None`;
 /// otherwise SelectWeapon (`0x0044AFF2`) and `+0x6DD = 1` (`0x0044B008`),
 /// answering the target and weapon.
 fn attack_prelude(sim: &mut Simulation, id: u64, rules: &RuleSet) -> Option<(TargetKind, i32)> {
     let entity = sim.substrate.entities.get(id)?;
     let Some(target) = entity.attack_target.as_ref().map(|attack| attack.target) else {
         let _ = sim.assign_target_represented(id, None, Some(rules));
+        clear_support_count(sim, id);
         if !waits(sim, id) {
             queue_and_commence(sim, id, MissionType::Guard, rules);
         }
@@ -304,9 +326,10 @@ fn attack_arm(
             fire_arm(sim, id, rules, weapon);
             1
         }
-        // `0x0044B0DE`: the drop tail.
+        // `0x0044B0DE`: the drop tail (`+0x664 = 0` at `0x0044B0ED`).
         FireError::Ammo | FireError::Illegal | FireError::Cant | FireError::Range => {
             let _ = sim.assign_target_represented(id, None, Some(rules));
+            clear_support_count(sim, id);
             if waits(sim, id) {
                 return 1;
             }
@@ -345,6 +368,13 @@ fn waits(sim: &Simulation, id: u64) -> bool {
     })
 }
 
+/// `+0x664 = 0`, the Prism support count, after both tails' SetTarget(0).
+fn clear_support_count(sim: &mut Simulation, id: u64) {
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        entity.prism_support_count = 0;
+    }
+}
+
 /// `+0xC4 = 0` (`0x0044B174`).
 fn clear_ai_counter(sim: &mut Simulation, id: u64) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -352,20 +382,11 @@ fn clear_ai_counter(sim: &mut Simulation, id: u64) {
     }
 }
 
-/// The OK arm (`0x0044B2BC`): a Prism tower (D7, module doc) and an ordinary
-/// building shoot, an `IsAnimDelayedFire=` one arms its delayed shot
-/// (`0x0044B630..0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the
-/// weapon, `+0x704` = 1) for ProcessDelayedFire (`0x004503F0`), which native
-/// runs later in this same Update (`0x004400F4`) and VERA in the combat phase
-/// (module doc).
-///
-/// Arming also swaps the building's anims (`0x0044B66E..0x0044B6C2`): the
-/// Active anim's slot 3 is emptied (`0x00451E40`) and the SpecialAnim plays
-/// in slot 10, its Damaged variant at or below ConditionYellow (`0x00451890`,
-/// the Tesla Coil's charge and its `Report=`). Nothing in play gives the
-/// Active anim back when the SpecialAnim ends: BuildingClass's vt+0x28
-/// (`0x0044E9AA`) replays it only for a `Grinding=` type, so it returns with
-/// a power restore.
+/// The OK arm (`0x0044B2BC`): a Prism tower forwards ([`prism_arm`]); an
+/// `IsAnimDelayedFire=` building arms its delayed shot (`0x0044B630..
+/// 0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the weapon, `+0x704`
+/// = 1) for [`process_delayed_fire`]; any other asks the combat phase for its
+/// FireAt (`0x0044B6D0`).
 fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
     let Some(obj) = sim
         .substrate
@@ -375,38 +396,282 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
     else {
         return;
     };
-    let prism = rules
-        .general
-        .prism_type
-        .as_deref()
-        .is_some_and(|prism_type| obj.id.eq_ignore_ascii_case(prism_type));
-    let delayed_fire_delay = rules
+    if is_prism_type(rules, obj) {
+        prism_arm(sim, id, rules, obj);
+        return;
+    }
+    match rules
         .art_registry
         .resolve_metadata_entry(&obj.id, &obj.image)
         .filter(|art| art.is_anim_delayed_fire)
-        .map(|art| art.delayed_fire_delay);
-    match delayed_fire_delay {
-        Some(delay) if !prism => {
-            let Some(entity) = sim.substrate.entities.get_mut(id) else {
-                return;
+    {
+        Some(art) => {
+            let slot = if weapon == 1 {
+                WeaponSlot::Secondary
+            } else {
+                WeaponSlot::Primary
             };
-            entity.pending_building_fire = Some(PendingBuildingFire {
-                remaining_ticks: delay,
-                weapon_slot: if weapon == 1 {
-                    WeaponSlot::Secondary
-                } else {
-                    WeaponSlot::Primary
-                },
-            });
-            let damaged =
-                requested_damage_state(entity.health, obj.strength, rules.general.condition_yellow);
-            sim.clear_building_anim_slot(id, ACTIVE_ANIM_SLOT);
-            let _ = sim.set_building_anim_slot(id, SPECIAL_ANIM_SLOT, damaged, false, 0, rules);
+            arm_delayed_fire(
+                sim,
+                id,
+                rules,
+                obj,
+                art.delayed_fire_delay,
+                DelayedFire::Weapon(slot),
+            );
         }
-        _ => {
-            sim.fire_requests.buildings.insert(id);
+        None => {
+            sim.fire_requests
+                .buildings
+                .insert(id, BuildingShot::Mission);
         }
     }
+}
+
+/// `Type == Rules+0x498` (`[General] PrismType=`, `0x0044B2F8`).
+fn is_prism_type(rules: &RuleSet, obj: &crate::rules::object_type::ObjectType) -> bool {
+    rules
+        .general
+        .prism_type
+        .as_deref()
+        .is_some_and(|prism_type| obj.id.eq_ignore_ascii_case(prism_type))
+}
+
+/// Arms a delayed fire (`+0x714` = `delay`, `+0x704` and `+0x708..+0x710`
+/// from `fire`) and swaps the building's anims: the Active anim's slot 3 is
+/// emptied (`0x00451E40`) and the SpecialAnim plays in slot 10, its Damaged
+/// variant at or below ConditionYellow (`0x00451890`, the Tesla Coil's and
+/// the Prism tower's charge, with their `Report=`). Nothing in play gives the
+/// Active anim back when the SpecialAnim ends: BuildingClass's vt+0x28
+/// (`0x0044E9AA`) replays it only for a `Grinding=` type, so it returns with a
+/// power restore.
+fn arm_delayed_fire(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    obj: &crate::rules::object_type::ObjectType,
+    delay: i32,
+    fire: DelayedFire,
+) {
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    entity.pending_building_fire = Some(PendingBuildingFire {
+        remaining_ticks: delay,
+        fire,
+    });
+    let damaged =
+        requested_damage_state(entity.health, obj.strength, rules.general.condition_yellow);
+    sim.clear_building_anim_slot(id, ACTIVE_ANIM_SLOT);
+    let _ = sim.set_building_anim_slot(id, SPECIAL_ANIM_SLOT, damaged, false, 0, rules);
+}
+
+/// Mission_Attack's PrismType arm (`0x0044B310..0x0044B62B`), which never
+/// reaches FireAt and does not read IsAnimDelayedFire or SelectWeapon's
+/// weapon. While the tower's support count (`+0x664`) is below
+/// `PrismSupportMax` (`0x0044B349`), the tower its House can recruit
+/// ([`prism_supporter`]) is armed with a support beam aimed at this tower's
+/// weapon-0 FLH and the count goes up (`0x0044B4CB..0x0044B590`). With none,
+/// or at the cap, the tower arms its own delayed shot with weapon 0
+/// (`0x0044B595..0x0044B62B`). Both arm through [`arm_delayed_fire`], with
+/// the type's `DelayedFireDelay=` (`+0x16EC`; the supporter is a PrismType
+/// tower too), and the arm returns 1 either way, so one tower is recruited per
+/// visit.
+fn prism_arm(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    obj: &crate::rules::object_type::ObjectType,
+) {
+    let delay = rules
+        .art_registry
+        .resolve_metadata_entry(&obj.id, &obj.image)
+        .map_or(0, |art| art.delayed_fire_delay);
+    let Some(master) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    let supporter = (master.prism_support_count < rules.general.prism_support.max)
+        .then(|| prism_supporter(sim, id, rules, obj))
+        .flatten();
+    let Some(supporter) = supporter else {
+        arm_delayed_fire(
+            sim,
+            id,
+            rules,
+            obj,
+            delay,
+            DelayedFire::Weapon(WeaponSlot::Primary),
+        );
+        return;
+    };
+    if let Some(master) = sim.substrate.entities.get_mut(id) {
+        master.prism_support_count = master.prism_support_count.wrapping_add(1);
+    }
+    // `vt+0xB0(out, 0, {0, 0, 0})` (`0x0044B4F6`): the master's weapon-0 FLH.
+    let Some(master) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    let to = fire_coord::fire_coordinate(
+        sim,
+        rules,
+        &fire_coord::FireSource::of_entity(master),
+        obj,
+        0,
+        (master.weapon_burst.index() & 1) as u8,
+    )
+    .coord;
+    arm_delayed_fire(
+        sim,
+        supporter,
+        rules,
+        obj,
+        delay,
+        DelayedFire::SupportBeam { to },
+    );
+}
+
+/// The Prism arm's walk (`0x0044B357..0x0044B4BD`) over the master's House's
+/// buildings (House+0x68) in vector order. A tower is admitted when it is
+/// alive (`+0x90`), of PrismType (the master's own type), its rearm timer
+/// has run out, it counts no delayed fire down (`+0x714 == 0`; the mode is
+/// not read), no Floating Disc drains it (`0x0070FEC0`), its mission
+/// (current, else queued) is not Attack, it is not the master, and its
+/// distance from the master (`Distance3D` of the two Locations: Sqrt_Approx,
+/// ftol) is at most the master's weapon 1 range (`vt+0x168(1)`, the Secondary
+/// `PrismSupport`'s 2048 in retail; inclusive, `0x0044B49A`). The nearest
+/// wins; a tie keeps the lower vector index (`0x0044B49E..0x0044B4AA`).
+/// Power, EMP, the tower's own target, a build-up or a sale are not asked.
+///
+/// FireAt starts the shooter's rearm inside its visit
+/// (`0x006FF2B2..0x006FF2BB`), before the visits after it; VERA's combat
+/// phase starts it after the Logic pass (module doc), so a tower whose shot
+/// this pass has already asked for counts as rearming. That is FireAt's
+/// answer for every ROF above zero; a zero ROF, which native leaves run out,
+/// is not told apart.
+fn prism_supporter(
+    sim: &Simulation,
+    id: u64,
+    rules: &RuleSet,
+    obj: &crate::rules::object_type::ObjectType,
+) -> Option<u64> {
+    let master = sim.substrate.entities.get(id)?;
+    let house = sim.houses.get(&master.owner())?;
+    let now = sim.session.binary_frame as i32;
+    let location = |entity: &crate::sim::game_entity::GameEntity| {
+        let coord = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+        [coord.x, coord.y, coord.z]
+    };
+    let origin = location(master);
+    let attack = MissionId::from_known(MissionType::Attack);
+    let mut best: Option<(u64, i32)> = None;
+    for &candidate_id in house.base_projection.buildings() {
+        let Some(candidate) = sim.substrate.entities.get(candidate_id) else {
+            continue;
+        };
+        let admitted = candidate.lifecycle.object_alive
+            && candidate.type_ref() == master.type_ref()
+            && candidate.rearm_timer.remaining(now) == 0
+            && !sim.fire_requests.buildings.contains_key(&candidate_id)
+            && candidate
+                .pending_building_fire
+                .map_or(0, |pending| pending.remaining_ticks)
+                == 0
+            && candidate.draining_me.is_none()
+            && candidate.mission.effective() != attack
+            && candidate_id != id;
+        if !admitted {
+            continue;
+        }
+        let distance = crate::util::native_x87::distance_3d_leptons(origin, location(candidate));
+        let range = combat_weapon::weapon_range(
+            master,
+            obj,
+            1,
+            &sim.substrate.entities,
+            rules,
+            &sim.interner,
+        );
+        if distance > range {
+            continue;
+        }
+        if best.is_none_or(|(_, nearest)| distance < nearest) {
+            best = Some((candidate_id, distance));
+        }
+    }
+    best.map(|(supporter, _)| supporter)
+}
+
+/// `BuildingClass::ProcessDelayedFire` (`0x004503F0`), from Update
+/// (`0x004400F4`) once Health is above zero, whatever the mission, power or
+/// owner. An armed delayed fire (`+0x704` nonzero) counts `+0x714` down with a
+/// signed pre-decrement and ends when it reaches zero or below, `+0x714 = 0`
+/// (`0x00450401..0x00450419`); every end clears the mode (`0x00450452`,
+/// `0x004504D7`).
+/// - A shot (mode 1, `0x0045045E..0x00450492`) needs a target and
+///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt is
+///   asked of the combat phase ([`BuildingShot::Delayed`]), whose bullet
+///   takes the support bonus ([`Simulation::take_support_bonus`]). Otherwise
+///   the shot is dropped and `+0x664` kept.
+/// - A support beam (mode 2, `0x0044ABD0`): the beam (not drawn, module
+///   doc), `+0x664 = 0` (`0x0044ACCA`) and the downtime: the rearm timer
+///   becomes {Frame, `PrismSupportDelay=`} (`0x0044ACD0..0x0044ACDC`). No
+///   check, damage or Scenario draw.
+pub(super) fn process_delayed_fire(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+) {
+    let now = sim.session.binary_frame as i32;
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    // Health 0 returned before the call (`0x00440072`).
+    if entity.dying || entity.health.current == 0 {
+        return;
+    }
+    let Some(pending) = entity.pending_building_fire.as_mut() else {
+        return;
+    };
+    pending.remaining_ticks = pending.remaining_ticks.wrapping_sub(1);
+    if pending.remaining_ticks > 0 {
+        return;
+    }
+    let fire = pending.fire;
+    entity.pending_building_fire = None;
+    match fire {
+        DelayedFire::Weapon(slot) => {
+            let Some(target) = entity.attack_target.as_ref().map(|attack| attack.target) else {
+                return;
+            };
+            let weapon = match slot {
+                WeaponSlot::Primary => 0,
+                WeaponSlot::Secondary => 1,
+            };
+            if fire_error_with_overlay(sim, rules, id, target, weapon, ctx.overlay_registry)
+                == FireError::Ok
+            {
+                sim.fire_requests
+                    .buildings
+                    .insert(id, BuildingShot::Delayed(slot));
+            }
+        }
+        DelayedFire::SupportBeam { .. } => {
+            entity.prism_support_count = 0;
+            entity
+                .rearm_timer
+                .start(now, rules.general.prism_support.delay);
+        }
+    }
+}
+
+/// ProcessDelayedFire's support bonus (`0x004504A8..0x004504C7`):
+/// `((PrismSupportModifier * count + 100) << 8) / 100`, the `imul` and add
+/// wrapping in 32 bits and the division unsigned (`mul 0x51EB851F; shr edx,
+/// 5`), in the bullet's 1/256 damage units.
+fn support_multiplier(modifier: i32, count: i32) -> i32 {
+    let scaled = (modifier.wrapping_mul(count).wrapping_add(100) as u32) << 8;
+    (scaled / 100) as i32
 }
 
 /// The voxel-turret retry (`0x0044B017..0x0044B0CC`): a building with a turret
@@ -522,6 +787,25 @@ pub(super) fn range_drop(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: Ob
 }
 
 impl Simulation {
+    /// The bonus ProcessDelayedFire writes on the bullet its FireAt returned
+    /// (`0x00450496..0x004504CD`): a building with a support count (`+0x664`)
+    /// gives the bullet the [`support_multiplier`] of it (`+0x150`) and
+    /// restarts the count; with none the bullet keeps Construct's
+    /// [`ProjectilePayload::UNSCALED`]. The combat phase asks it for a
+    /// launched delayed shot only ([`BuildingShot::Delayed`]); FireAt's early
+    /// exits and a refused launch return no bullet and keep the count.
+    pub(crate) fn take_support_bonus(&mut self, id: u64, rules: &RuleSet) -> i32 {
+        let Some(entity) = self.substrate.entities.get_mut(id) else {
+            return ProjectilePayload::UNSCALED;
+        };
+        let count = entity.prism_support_count;
+        if count == 0 {
+            return ProjectilePayload::UNSCALED;
+        }
+        entity.prism_support_count = 0;
+        support_multiplier(rules.general.prism_support.modifier, count)
+    }
+
     /// `BuildingClass::SetTarget` (vt+0x3C8, `0x00443B90`)'s admission of a
     /// requested target for a building: a Selling building (`+0xAC`) or one
     /// not operational (vt+0x350, `0x004555D0`) takes none; any other keeps a
@@ -582,12 +866,12 @@ impl Simulation {
     }
 
     /// The phase-level combat fixture's stand-in for a building's object-pass
-    /// visit (`combat::receiver_fixture`): Mission_Attack, whose request or
-    /// delayed shot the receiver then serves, as BuildingClass::Update runs it
-    /// before the frame's combat. The fixture honours no mission or dispatch
-    /// timer.
+    /// visit (`combat::receiver_fixture`): Mission_Attack when the building
+    /// holds a target, then ProcessDelayedFire, whose requests the receiver
+    /// then serves, as BuildingClass::Update runs them before the frame's
+    /// combat. The fixture honours no mission or dispatch timer.
     #[cfg(test)]
-    pub(crate) fn fixture_building_attack_visit(
+    pub(crate) fn fixture_building_visit(
         &mut self,
         id: u64,
         rules: &RuleSet,
@@ -597,10 +881,22 @@ impl Simulation {
             overlay_registry,
             ..Default::default()
         };
-        let _ = mission_attack(self, id, rules, ctx);
+        if self
+            .substrate
+            .entities
+            .get(id)
+            .is_some_and(|entity| entity.attack_target.is_some())
+        {
+            let _ = mission_attack(self, id, rules, ctx);
+        }
+        process_delayed_fire(self, id, rules, ctx);
     }
 }
 
 #[cfg(test)]
 #[path = "building_missions_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "prism_support_tests.rs"]
+mod prism_tests;

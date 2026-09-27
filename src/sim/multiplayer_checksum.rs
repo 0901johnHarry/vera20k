@@ -433,6 +433,7 @@ mod tests {
                 base_damage: 0,
                 warhead: InternedId::from_index(0),
                 weapon: InternedId::from_index(0),
+                damage_multiplier: ProjectilePayload::UNSCALED,
             },
             speed_leptons_per_frame: 1,
             velocity: ProjectileVelocity::new(0, 0, 0),

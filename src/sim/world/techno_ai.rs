@@ -660,10 +660,12 @@ fn techno_ai_shell(
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             // The ready check after the Techno AI (`0x0043FF91`).
             building_missions::ready_commence(sim, id);
-            // BuildingClass::UpdateRepairAndPower (`0x004401B6`) follows the
-            // Techno AI: the computer's low-credit sale or auto-repair start,
-            // then the repair step.
+            // ProcessDelayedFire (`0x004400F4`), then
+            // BuildingClass::UpdateRepairAndPower (`0x004401B6`): the
+            // computer's low-credit sale or auto-repair start, then the
+            // repair step.
             if let Some(rules) = rules {
+                building_missions::process_delayed_fire(sim, id, rules, ctx);
                 crate::sim::production::update_repair_and_power(sim, rules, id);
             }
             // BuildingClass::Update consumes the shared C4/PostMortem latch at

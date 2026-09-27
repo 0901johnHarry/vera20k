@@ -236,6 +236,7 @@ fn immediate_bullet_commits_before_return_with_its_original_sound_order() {
         base_damage: 40,
         warhead: sim.interner.intern("AP"),
         weapon: sim.interner.intern("CoilBolt"),
+        damage_multiplier: ProjectilePayload::UNSCALED,
     };
     sim.admit_projectile(projectile, spawn);
     assert!(sim.object_ai_visit_one(projectile, Some(&rules), ObjectAiCtx::default()));

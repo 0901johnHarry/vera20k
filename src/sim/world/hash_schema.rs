@@ -177,6 +177,13 @@ pub(super) enum HashFeature {
     /// nonzero. A tagged suffix for nonzero values preserves the former
     /// zero-byte streams; earlier projections omit this byte entirely.
     FootScoldLatch = 224,
+    /// Prism forwarding: a building's support count (`BuildingClass+0x664`),
+    /// a bullet's damage multiplier (`BulletClass+0x150`) and each House's
+    /// building list (House+0x68), each a tagged suffix only when set (a
+    /// nonzero count, a multiplier other than Construct's 256, a non-empty
+    /// list), so a stream without them is unchanged. Earlier schemas fold none
+    /// of them.
+    PrismSupport = 225,
 }
 
 impl HashSchema {
@@ -219,6 +226,7 @@ impl HashSchema {
                     | HashFeature::NativeRuntimeIdentity
                     | HashFeature::RetiredRallyCopies
                     | HashFeature::FootScoldLatch
+                    | HashFeature::PrismSupport
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {
