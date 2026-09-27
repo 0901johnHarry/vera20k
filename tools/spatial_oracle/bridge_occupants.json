@@ -8034,5 +8034,4183 @@
         ]
       }
     }
+  ],
+  "damage_cases": [
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 0,
+        "name": "jumpjet_low_byte_0",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "abstract_kind",
+            "object": 1,
+            "result": 15
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "jumpjet_low_byte_1",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": true
+          },
+          {
+            "damage": 100,
+            "health_alias": false,
+            "kind": "damage",
+            "object": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 256,
+        "name": "jumpjet_low_byte_256",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "abstract_kind",
+            "object": 1,
+            "result": 15
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 257,
+        "name": "jumpjet_low_byte_257",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": true
+          },
+          {
+            "damage": 100,
+            "health_alias": false,
+            "kind": "damage",
+            "object": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_type_gate_4_15_True",
+        "objects": [
+          {
+            "flags": 4,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "abstract_kind",
+            "object": 1,
+            "result": 15
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_type_gate_5_1_True",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 1
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": true
+          },
+          {
+            "damage": 100,
+            "health_alias": false,
+            "kind": "damage",
+            "object": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_type_gate_1_6_True",
+        "objects": [
+          {
+            "flags": 1,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 6
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": true
+          },
+          {
+            "damage": 100,
+            "health_alias": false,
+            "kind": "damage",
+            "object": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_type_gate_5_1_False",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": false,
+            "kind": 1
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": false
+          },
+          {
+            "kind": "abstract_kind",
+            "object": 1,
+            "result": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ]
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_type_gate_5_2_False",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": false,
+            "kind": 2
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "kind": "jumpjet_type",
+            "object": 1,
+            "result": false
+          },
+          {
+            "kind": "abstract_kind",
+            "object": 1,
+            "result": 2
+          },
+          {
+            "damage": 100,
+            "health_alias": false,
+            "kind": "damage",
+            "object": 1
+          },
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "cells": [
+          {
+            "coord": [
+              8,
+              8
+            ]
+          },
+          {
+            "coord": [
+              8,
+              9
+            ],
+            "head": 1
+          },
+          {
+            "coord": [
+              8,
+              10
+            ]
+          },
+          {
+            "coord": [
+              8,
+              11
+            ]
+          },
+          {
+            "coord": [
+              8,
+              12
+            ]
+          },
+          {
+            "coord": [
+              9,
+              8
+            ]
+          },
+          {
+            "coord": [
+              9,
+              9
+            ]
+          },
+          {
+            "coord": [
+              9,
+              10
+            ]
+          },
+          {
+            "coord": [
+              9,
+              11
+            ]
+          },
+          {
+            "coord": [
+              9,
+              12
+            ]
+          },
+          {
+            "coord": [
+              10,
+              8
+            ]
+          },
+          {
+            "coord": [
+              10,
+              9
+            ]
+          },
+          {
+            "coord": [
+              10,
+              10
+            ],
+            "head": null
+          },
+          {
+            "coord": [
+              10,
+              11
+            ]
+          },
+          {
+            "coord": [
+              10,
+              12
+            ]
+          },
+          {
+            "coord": [
+              11,
+              8
+            ]
+          },
+          {
+            "coord": [
+              11,
+              9
+            ]
+          },
+          {
+            "coord": [
+              11,
+              10
+            ]
+          },
+          {
+            "coord": [
+              11,
+              11
+            ]
+          },
+          {
+            "coord": [
+              11,
+              12
+            ]
+          },
+          {
+            "coord": [
+              12,
+              8
+            ]
+          },
+          {
+            "coord": [
+              12,
+              9
+            ]
+          },
+          {
+            "coord": [
+              12,
+              10
+            ]
+          },
+          {
+            "coord": [
+              12,
+              11
+            ]
+          },
+          {
+            "coord": [
+              12,
+              12
+            ]
+          }
+        ],
+        "dummy": {
+          "coord": [
+            -1,
+            -1
+          ]
+        },
+        "mode": 1,
+        "name": "positive_mode_does_not_change_neighbor_gate",
+        "objects": [
+          {
+            "flags": 5,
+            "id": 1,
+            "jumpjet": true,
+            "kind": 15
+          }
+        ],
+        "start": [
+          10,
+          10
+        ]
+      },
+      "output": {
+        "dummy_coord": [
+          -1,
+          -1
+        ],
+        "health": [
+          [
+            1,
+            100
+          ]
+        ],
+        "selected_coord": [
+          10,
+          10
+        ],
+        "trace": [
+          {
+            "kind": "probe",
+            "point": [
+              2688,
+              2688,
+              0
+            ]
+          },
+          {
+            "cell": 0,
+            "kind": "lookup",
+            "requested": [
+              8,
+              8
+            ]
+          },
+          {
+            "cell": 1,
+            "kind": "lookup",
+            "requested": [
+              8,
+              9
+            ]
+          },
+          {
+            "kind": "at_coord",
+            "object": 1,
+            "point": [
+              2688,
+              2688,
+              0
+            ],
+            "result": true
+          },
+          {
+            "kind": "admit",
+            "object": 1,
+            "result": 0
+          },
+          {
+            "cell": 2,
+            "kind": "lookup",
+            "requested": [
+              8,
+              10
+            ]
+          },
+          {
+            "cell": 3,
+            "kind": "lookup",
+            "requested": [
+              8,
+              11
+            ]
+          },
+          {
+            "cell": 4,
+            "kind": "lookup",
+            "requested": [
+              8,
+              12
+            ]
+          },
+          {
+            "cell": 5,
+            "kind": "lookup",
+            "requested": [
+              9,
+              8
+            ]
+          },
+          {
+            "cell": 6,
+            "kind": "lookup",
+            "requested": [
+              9,
+              9
+            ]
+          },
+          {
+            "cell": 7,
+            "kind": "lookup",
+            "requested": [
+              9,
+              10
+            ]
+          },
+          {
+            "cell": 8,
+            "kind": "lookup",
+            "requested": [
+              9,
+              11
+            ]
+          },
+          {
+            "cell": 9,
+            "kind": "lookup",
+            "requested": [
+              9,
+              12
+            ]
+          },
+          {
+            "cell": 10,
+            "kind": "lookup",
+            "requested": [
+              10,
+              8
+            ]
+          },
+          {
+            "cell": 11,
+            "kind": "lookup",
+            "requested": [
+              10,
+              9
+            ]
+          },
+          {
+            "cell": 12,
+            "kind": "lookup",
+            "requested": [
+              10,
+              10
+            ]
+          },
+          {
+            "cell": 13,
+            "kind": "lookup",
+            "requested": [
+              10,
+              11
+            ]
+          },
+          {
+            "cell": 14,
+            "kind": "lookup",
+            "requested": [
+              10,
+              12
+            ]
+          },
+          {
+            "cell": 15,
+            "kind": "lookup",
+            "requested": [
+              11,
+              8
+            ]
+          },
+          {
+            "cell": 16,
+            "kind": "lookup",
+            "requested": [
+              11,
+              9
+            ]
+          },
+          {
+            "cell": 17,
+            "kind": "lookup",
+            "requested": [
+              11,
+              10
+            ]
+          },
+          {
+            "cell": 18,
+            "kind": "lookup",
+            "requested": [
+              11,
+              11
+            ]
+          },
+          {
+            "cell": 19,
+            "kind": "lookup",
+            "requested": [
+              11,
+              12
+            ]
+          },
+          {
+            "cell": 20,
+            "kind": "lookup",
+            "requested": [
+              12,
+              8
+            ]
+          },
+          {
+            "cell": 21,
+            "kind": "lookup",
+            "requested": [
+              12,
+              9
+            ]
+          },
+          {
+            "cell": 22,
+            "kind": "lookup",
+            "requested": [
+              12,
+              10
+            ]
+          },
+          {
+            "cell": 23,
+            "kind": "lookup",
+            "requested": [
+              12,
+              11
+            ]
+          },
+          {
+            "cell": 24,
+            "kind": "lookup",
+            "requested": [
+              12,
+              12
+            ]
+          }
+        ]
+      }
+    }
   ]
 }

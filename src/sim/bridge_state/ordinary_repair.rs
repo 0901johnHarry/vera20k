@@ -5,37 +5,10 @@
 use super::publication::CellCoord;
 use super::ramp_repair::{Family, Rect};
 
-pub(crate) trait OrdinaryRepairHost {
-    type Cell: Copy;
-    type Error;
-    fn lookup(&mut self, coord: CellCoord) -> Self::Cell;
-    fn overlay(&self, cell: Self::Cell) -> i32;
-    fn write_overlay(&mut self, cell: Self::Cell, overlay: u8);
+use super::ordinary::{OrdinaryBridgeHost, centered, member, offset};
+
+pub(crate) trait OrdinaryRepairHost: OrdinaryBridgeHost {
     fn variant(&mut self) -> u8;
-    fn redraw(&mut self, cell: Self::Cell);
-    fn radar(&mut self, coord: CellCoord);
-    fn recalc(&mut self, cell: Self::Cell) -> Result<(), Self::Error>;
-    fn occupants(&mut self, cell: Self::Cell) -> Result<(), Self::Error>;
-    fn connectivity(&mut self) -> Result<(), Self::Error>;
-    fn rebuild_rectangle(&mut self, rect: Rect) -> Result<(), Self::Error>;
-}
-
-fn member(overlay: i32, family: Family) -> bool {
-    match family {
-        Family::Low => (74..=101).contains(&overlay),
-        Family::High => (205..=232).contains(&overlay),
-    }
-}
-
-fn north_south(overlay: i32, family: Family) -> bool {
-    match family {
-        Family::Low => matches!(overlay, 74..=82 | 92..=95 | 100),
-        Family::High => matches!(overlay, 205..=213 | 223..=226 | 231),
-    }
-}
-
-fn offset(point: CellCoord, x: i16, y: i16) -> CellCoord {
-    (point.0.wrapping_add(x), point.1.wrapping_add(y))
 }
 
 // The native union expands a newly extended right/bottom edge by one. This
@@ -69,25 +42,10 @@ pub(crate) fn repair<H: OrdinaryRepairHost>(
     input: CellCoord,
     family: Family,
 ) -> Result<(), H::Error> {
-    let selected = host.lookup(input);
-    let overlay = host.overlay(selected);
-    if !member(overlay, family) {
+    let Some((mut point, ns)) = centered(host, input, family) else {
         return Ok(());
-    }
-    let ns = north_south(overlay, family);
-    let across = if ns { (0, -1) } else { (-1, 0) };
-    let before = offset(input, across.0, across.1);
-    let previous = host.lookup(before);
-    let mut point = if !member(host.overlay(previous), family) {
-        offset(input, -across.0, -across.1)
-    } else {
-        let previous = host.lookup(offset(before, across.0, across.1));
-        if member(host.overlay(previous), family) {
-            before
-        } else {
-            input
-        }
     };
+    let across = if ns { (0, -1) } else { (-1, 0) };
     let along = if ns { (1, 0) } else { (0, 1) };
     loop {
         point = offset(point, -along.0, -along.1);
@@ -158,7 +116,7 @@ pub(crate) fn repair<H: OrdinaryRepairHost>(
                 host.recalc(cell)?;
             }
             for cell in [center, negative, positive] {
-                host.occupants(cell)?;
+                host.occupants(cell, 0)?;
             }
         }
         point = offset(point, along.0, along.1);

@@ -91,9 +91,7 @@ fn dummy_resolved_terrain() -> ResolvedTerrainGrid {
     ResolvedTerrainGrid::from_cells(20, 20, cells)
 }
 
-fn bridge_repair_test_rules() -> RuleSet {
-    let ini: IniFile = IniFile::from_str(
-        "[InfantryTypes]\n0=ENGI\n1=GHOST\n\n\
+const BRIDGE_REPAIR_TEST_INI: &str = "[InfantryTypes]\n0=ENGI\n1=GHOST\n\n\
          [VehicleTypes]\n\n\
          [AircraftTypes]\n\n\
          [BuildingTypes]\n0=CABHUT\n\n\
@@ -102,8 +100,10 @@ fn bridge_repair_test_rules() -> RuleSet {
          [CABHUT]\nStrength=200\nArmor=concrete\nFoundation=1x1\nBridgeRepairHut=yes\n\n\
          [AudioVisual]\nRepairBridgeSound=BridgeRepaired\n\n\
          [CombatDamage]\nC4Warhead=SA\n\n\
-         [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-    );
+         [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n";
+
+fn bridge_repair_test_rules() -> RuleSet {
+    let ini = IniFile::from_str(BRIDGE_REPAIR_TEST_INI);
     RuleSet::from_ini(&ini).expect("bridge-repair test rules should parse")
 }
 
@@ -113,6 +113,50 @@ fn build_sim() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
     sim.resolve_type_handles(&rules);
     sim.resolved_terrain = Some(dummy_resolved_terrain());
     (sim, rules, BTreeMap::new())
+}
+
+fn build_concrete_c4_sim() -> (
+    Simulation,
+    RuleSet,
+    crate::map::overlay_types::OverlayTypeRegistry,
+) {
+    use crate::sim::house_state::HouseState;
+
+    let ini = format!(
+        "{BRIDGE_REPAIR_TEST_INI}\n[GHOST]\n\
+         Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n"
+    );
+    let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
+    // Same raw concrete strip as BombClass::Detonate's hut fixture. Ordinary
+    // concrete overlays do not create structural/deck runtime cells.
+    for y in [14, 15, 16] {
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(17, y)
+            .unwrap()
+            .bridge_facts
+            .overlay_id = Some(0xD4);
+        sim.overlay_grid
+            .as_mut()
+            .unwrap()
+            .place_overlay(17, y, 0xD4, 0);
+    }
+    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain_with_map_size(
+        sim.resolved_terrain.as_ref().unwrap(),
+        true,
+        300,
+        (16, 16),
+    ));
+    for (side, name) in ["Americans", "Soviets"].into_iter().enumerate() {
+        let house = sim.interner.intern(name);
+        sim.houses.insert(
+            house,
+            HouseState::new(house, side as u8, None, false, 1000, 10),
+        );
+        sim.session.house_order.push(house);
+    }
+    (sim, rules, registry)
 }
 
 fn spawn_engineer(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
@@ -188,7 +232,6 @@ fn spawn_cabhut(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
 }
 
 const BRIDGE_CELLS: &[(u16, u16)] = &[(10, 9), (10, 10), (10, 11), (10, 12), (10, 13)];
-const ENGINEER_REPAIR_STRIP_CELLS: &[(u16, u16)] = &[(10, 9), (10, 10), (10, 11)];
 
 fn seed_destroyed_bridge(sim: &mut Simulation) {
     seed_bridge_with_state(sim, DamageState::Destroyed);
@@ -458,6 +501,16 @@ fn step(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMap<(u16, u16), u8
     sim.advance_tick(&due, Some(rules), heights, None, None, 67)
 }
 
+fn step_with_overlay_registry(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    heights: &BTreeMap<(u16, u16), u8>,
+    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+) -> TickResult {
+    let due = sim.take_due_commands();
+    sim.advance_tick(&due, Some(rules), heights, None, Some(registry), 67)
+}
+
 fn advance_pending_c4_to_detonation(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -476,11 +529,12 @@ fn advance_until_c4_claim(
     rules: &RuleSet,
     heights: &BTreeMap<(u16, u16), u8>,
     target_id: u64,
+    registry: &crate::map::overlay_types::OverlayTypeRegistry,
 ) -> u64 {
     // SEAL/Tanya at Speed=4 covers ~10 lep/tick (gamemd-faithful), so a
     // one-cell enter (256 leptons) takes ~26 ticks; 32 leaves headroom.
     for _ in 0..32 {
-        step(sim, rules, heights);
+        step_with_overlay_registry(sim, rules, heights, registry);
         if let Some(pending) = sim
             .substrate
             .entities
@@ -530,25 +584,29 @@ fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
 ///   - propagate `bridge_state_changed` to TickResult so the app rebuilds
 ///     PathGrid.
 ///
-/// Cascading-subsystem coverage (ground-occupant kill on BlowUpBridge
-/// cells, deck-tank drop, zone_grid rebuild) is intentionally NOT
-/// asserted here — those are owned by the bridge cascade tests proper.
-/// This test only asserts the C4-on-CABHUT integration points.
+/// This exercises the ordinary concrete hut sweep
+/// (`574000 -> 5749C0 -> 575BA0`) and its raw-overlay publication.
+/// Resident damage and complete navigation results are covered by the
+/// separate concrete bridge integration tests.
 #[test]
 fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
-    let (mut sim, rules, heights) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
+    let (mut sim, rules, registry) = build_concrete_c4_sim();
+    let heights = BTreeMap::new();
+    let cabhut = sim
+        .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
+        .expect("hut must be constructed and placed beside the concrete strip");
     let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    let seal = spawn_seal(&mut sim, 10, 10); // Chebyshev-1 adjacent
+    let seal = sim
+        .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
+        .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
     sim.substrate.entities.get_mut(seal).unwrap().c4_plant =
         Some(crate::sim::components::C4PlantState {
             target_building_id: cabhut,
         });
-    seed_bridge_with_state(&mut sim, DamageState::Healthy { variant: 0 });
 
     // First tick: adjacency only issues the one-cell enter move. It must not
     // claim the marker until the SEAL's current cell resolves to the CABHUT.
-    step(&mut sim, &rules, &heights);
+    step_with_overlay_registry(&mut sim, &rules, &heights, &registry);
     assert!(
         sim.substrate
             .entities
@@ -557,15 +615,30 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
             .is_none(),
         "adjacent SEAL must not claim C4 before entering CABHUT"
     );
-    let plant_start = advance_until_c4_claim(&mut sim, &rules, &heights, cabhut);
+    let plant_start = advance_until_c4_claim(&mut sim, &rules, &heights, cabhut, &registry);
 
     // Throughout the C4Delay window: hut HP must stay at max — the
     // BridgeRepairHut branch never damages the hut, even before the timer
-    // fires. Bridge stays Healthy until detonation, then flips.
+    // fires. The damaged strip stays unchanged until detonation.
     let delay = rules.c4_delay_ticks as u64;
     let mut bridge_state_changed_seen = false;
     for _ in 0..(delay + 1) {
-        let result = step(&mut sim, &rules, &heights);
+        if (sim.session.binary_frame as u64) < plant_start + delay {
+            for y in [14, 15, 16] {
+                assert_eq!(
+                    sim.resolved_terrain
+                        .as_ref()
+                        .unwrap()
+                        .cell(17, y)
+                        .unwrap()
+                        .bridge_facts
+                        .overlay_id,
+                    Some(0xD4),
+                    "damaged concrete strip must remain unchanged before C4Delay expires"
+                );
+            }
+        }
+        let result = step_with_overlay_registry(&mut sim, &rules, &heights, &registry);
         bridge_state_changed_seen |= result.bridge_state_changed;
         // Hut HP invariant — hold across every tick of the window.
         let cur = sim.substrate.entities.get(cabhut).unwrap().health.current;
@@ -593,28 +666,21 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
         "CABHUT pending C4 marker must clear after bridge dispatch"
     );
 
-    // The hut branch must invoke the bounded gamemd CollapseBridge walker.
-    // This synthetic one-column fixture collapses the local 3-cell footprint;
-    // long bridges are covered separately by bridge_orchestrator tests and
-    // must NOT be treated as full-span flood fills.
-    let bs = sim.bridge_state.as_ref().unwrap();
-    let destroyed_cells = BRIDGE_CELLS
-        .iter()
-        .filter(|&&(rx, ry)| {
-            bs.cell(rx, ry)
-                .is_some_and(|cell| matches!(cell.damage_state, DamageState::Destroyed))
-        })
-        .count();
-    assert_eq!(
-        destroyed_cells, 3,
-        "CABHUT C4 detonation must collapse the bounded local footprint in this fixture; destroyed_cells={destroyed_cells}"
-    );
-    let anchor = bs.cell(10, 10).unwrap();
-    assert!(
-        matches!(anchor.damage_state, DamageState::Destroyed),
-        "anchor cell (10,10) must be Destroyed after C4 cascade, got {:?}",
-        anchor.damage_state
-    );
+    // MapClass's concrete hut sweep (574000 -> 5749C0 -> 575BA0)
+    // changes the raw overlay authority, without structural runtime cells.
+    for y in [14, 15, 16] {
+        assert_eq!(
+            sim.resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(17, y)
+                .unwrap()
+                .bridge_facts
+                .overlay_id,
+            Some(0xE7),
+            "CABHUT C4 must collapse concrete cell (17, {y})"
+        );
+    }
 
     // BR-16: the collapse must feed the minimap radar-dirty channel end-to-end
     // (the same channel the engineer-repair path uses).
@@ -623,8 +689,8 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
         "bridge collapse must dirty minimap terrain cells"
     );
     assert!(
-        sim.radar_terrain_dirty_cells.contains(&(10, 10)),
-        "the collapsed anchor (10,10) must be radar-dirty"
+        sim.radar_terrain_dirty_cells.contains(&(17, 15)),
+        "the collapsed concrete cell (17,15) must be radar-dirty"
     );
 
     assert!(
@@ -670,11 +736,15 @@ fn c4_on_cabhut_without_bridge_clears_pending_marker() {
 fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
     use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
 
-    let (mut sim, rules, heights) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 10, 10);
+    let (mut sim, rules, registry) = build_concrete_c4_sim();
+    let heights = BTreeMap::new();
+    let cabhut = sim
+        .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
+        .expect("hut must be constructed and placed beside the concrete strip");
+    let seal = sim
+        .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
+        .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
     let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    seed_bridge_with_state(&mut sim, DamageState::Healthy { variant: 0 });
     sim.substrate
         .entities
         .get_mut(cabhut)
@@ -696,7 +766,7 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
 
     let mut bridge_state_changed_seen = false;
     for _ in 0..(rules.c4_delay_ticks as u64 + 1) {
-        let result = step(&mut sim, &rules, &heights);
+        let result = step_with_overlay_registry(&mut sim, &rules, &heights, &registry);
         bridge_state_changed_seen |= result.bridge_state_changed;
     }
 
@@ -705,15 +775,18 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
     assert!(!hut.dying);
     assert!(hut.pending_c4_detonation.is_none());
     assert!(bridge_state_changed_seen);
-    assert!(matches!(
-        sim.bridge_state
-            .as_ref()
-            .unwrap()
-            .cell(10, 10)
-            .unwrap()
-            .damage_state,
-        DamageState::Destroyed
-    ));
+    for y in [14, 15, 16] {
+        assert_eq!(
+            sim.resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(17, y)
+                .unwrap()
+                .bridge_facts
+                .overlay_id,
+            Some(0xE7)
+        );
+    }
 }
 
 #[test]
@@ -1356,7 +1429,10 @@ fn build_ns_bridge_with_bridgehead_for_dispatch() -> (
     resolved.cell_mut(2, 4).unwrap().final_tile_index = 1019;
     resolved.test_set_high_bridge_rim_tiles(
         crate::map::bridge_rim_tiles::HighBridgeRimTiles::from_ini(
-            1000, b"[General]\nBridgeMiddle1=20\nBridgeMiddle2=40\n"));
+            1000,
+            b"[General]\nBridgeMiddle1=20\nBridgeMiddle2=40\n",
+        ),
+    );
 
     // Build bridge state: bridgehead at (2, 4), anchor at (2, 2), and two
     // perpendicular Anchor neighbors at (1, 2) / (3, 2). Overlay 0x18 keeps
@@ -1505,166 +1581,79 @@ fn ramp_fire_collapses_high_bridgehead_on_ion_retry() {
     );
 }
 
-// ---- mapgen_rng routing / lockstep proof for the engineer bridge repair -----
-//
-// These guard the "bridge repair draws g_MapGenRng, not the gameplay streams"
-// fix. They drive the walker via the same disjoint-field-borrow call the
-// production trigger uses in `world_orders.rs`
-// (`bs.repair_bridge_from_engineer_scan(&scan, &mut sim.mapgen_rng, terrain)`),
-// so a "scenario unchanged" assertion is never confounded by other RNG a full
-// `advance_tick` might draw. Fixtures reused: `build_sim`, `seed_destroyed_bridge`,
-// `seed_bridge_with_state`, `BRIDGE_CELLS`, `ENGINEER_REPAIR_STRIP_CELLS`, and
-// `cells_in_5x5_scan` (the exact scan the trigger builds).
+// Live519C07 ->573540 ->57F440 ->5800D0 publication owns stream routing.
+// Transition/callback arithmetic is checked by bridge_ordinary_repair.json;
+// SimRng's mapgen_range.json regression checks the retained-state range helper.
+// These integration tests enter the already-admitted production receiver with
+// resident TMP/overlay inputs and all navigation owners installed.
+const LIVE_REPAIR_STRIP: &[(u16, u16)] = &[(17, 14), (17, 15), (17, 16)];
 
-/// Engineer repair draws only MapGen and follows fresh native Seed(0) variants.
+fn live_repair_fixture() -> (
+    Simulation,
+    RuleSet,
+    crate::map::overlay_types::OverlayTypeRegistry,
+    u64,
+) {
+    let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();
+    let engineer = sim
+        .spawn_object("ENGINEER", "Americans", 16, 15, 0, &rules, &BTreeMap::new())
+        .unwrap();
+    let owner = sim.substrate.entities.get(engineer).unwrap().owner();
+    for (index, &(x, y)) in LIVE_REPAIR_STRIP.iter().enumerate() {
+        sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(x, y)
+            .unwrap()
+            .bridge_facts
+            .overlay_id = Some(231);
+        let overlays = sim.overlay_grid.as_mut().unwrap();
+        overlays.place_overlay(x, y, 231, 0xA0 + index as u8);
+        overlays.cell_mut(x, y).wall_owner = Some(owner);
+    }
+    (sim, rules, registry, engineer)
+}
+
+fn assert_live_repair_strip(sim: &Simulation, engineer: u64, expected_overlay: u8) {
+    let owner = sim.substrate.entities.get(engineer).unwrap().owner();
+    for (index, &(x, y)) in LIVE_REPAIR_STRIP.iter().enumerate() {
+        let terrain = sim.resolved_terrain.as_ref().unwrap().cell(x, y).unwrap();
+        let overlay = sim.overlay_grid.as_ref().unwrap().cell(x, y);
+        assert_eq!(terrain.bridge_facts.overlay_id, Some(expected_overlay));
+        assert_eq!(overlay.overlay_id, Some(expected_overlay));
+        assert_eq!(overlay.overlay_data, 0xA0 + index as u8);
+        assert_eq!(overlay.wall_owner, Some(owner));
+    }
+}
+
 #[test]
-fn bridge_repair_ns_high_destroyed_anchor_consumes_mapgen_only() {
-    let (mut sim, _rules, _heights) = build_sim();
-    seed_destroyed_bridge(&mut sim); // all BRIDGE_CELLS overlay 0xE7 (NS-High destroyed)
-
-    // Fresh Simulation construction installs the native Seed(0) MapGen state.
-    let scenario_before = sim.scenario_rng.state();
-    let main_before = sim.main_rng.state();
-    let mapgen_before = sim.mapgen_rng.state();
-
-    // Drive the repair via the production disjoint-borrow call. Scan center is
-    // the CABHUT-arrival cell (9,10); its 5x5 window covers the 0xE7 strip.
-    let scan: Vec<(u16, u16)> = crate::sim::bridge_state::cells_in_5x5_scan((9, 10)).collect();
-    let outcome = if let (Some(bs), Some(terrain)) =
-        (sim.bridge_state.as_mut(), sim.resolved_terrain.as_ref())
-    {
-        bs.repair_bridge_from_engineer_scan(&scan, &mut sim.mapgen_rng, terrain)
-    } else {
-        crate::sim::bridge_state::RepairOutcome::default()
-    };
-
-    assert!(
-        outcome.repaired_cells > 0,
-        "fixture must actually repair cells, else the RNG assertions are vacuous"
-    );
-
-    // (2) Neither gameplay stream may move.
-    assert_eq!(
-        sim.scenario_rng.state(),
-        scenario_before,
-        "bridge repair must NOT advance the scenario stream"
-    );
-    assert_eq!(
-        sim.main_rng.state(),
-        main_before,
-        "bridge repair must NOT advance the main stream"
-    );
-
-    // The MapGen object advances while both per-game streams remain unchanged.
-    assert_ne!(
-        sim.mapgen_rng.state(),
-        mapgen_before,
-        "bridge repair must draw the MapGen stream"
-    );
+fn ordinary_engineer_repair_consumes_mapgen_only_and_preserves_overlay_metadata() {
+    let (mut sim, rules, registry, engineer) = live_repair_fixture();
+    let scenario_before = sim.scenario_rng.logical_state();
+    let main_before = sim.main_rng.logical_state();
     let mut expected_mapgen = crate::sim::rng::SimRng::new(0);
-    let first_variant = expected_mapgen.next_high_two_bits();
-    assert_eq!(first_variant, 1);
-    assert_eq!(
-        sim.mapgen_rng.state(),
-        expected_mapgen.state(),
-        "this one-strip fixture must consume exactly one scaled MapGen draw"
-    );
-    let bs = sim.bridge_state.as_ref().unwrap();
-    for (&(rx, ry), expected_overlay) in ENGINEER_REPAIR_STRIP_CELLS.iter().zip([0xCE, 0xCE, 0xCE])
-    {
-        assert_eq!(
-            bs.cell(rx, ry).unwrap().overlay_byte,
-            expected_overlay,
-            "fresh Seed(0) MapGen variant mismatch at ({rx},{ry})"
-        );
-    }
-}
+    assert_eq!(expected_mapgen.next_high_two_bits(), 1);
 
-/// TEST B — a SEEDED (non-zero) mapgen stream drives a NON-zero, varied
-/// repaired variant through the same repair path, while scenario/main stay
-/// untouched. Acceptance (3) nonzero: proves the variant is read from
-/// mapgen_rng, not hardcoded to 0.
-///
-/// DIFFERENTIAL design (not single-cell): isolating a lone 0xE7 cell by
-/// blanking its neighbors breaks the walker's contiguous-span precondition, so
-/// the cell never repairs. Instead we reuse the full 3-cell 0xE7 strip that
-/// TEST A already proves repairs cleanly, run it under many seeds, and look for
-/// a seed whose repaired overlays are NOT all-0xCD. The production draw is
-/// `next_high_two_bits()` spanning variants 0..=3, so some
-/// seed varies; we don't predict exact per-cell values (cell processing order
-/// is unclear) — the differential "not all base" + "in range" is the robust
-/// proof, and the `assert!(found)` makes a regression to hardcoded-0 fail loud.
-#[test]
-fn seeded_mapgen_drives_repaired_variant() {
-    /// Build a FRESH destroyed-bridge fixture, set mapgen to `rng`, run the
-    /// repair via the same disjoint-borrow call TEST A uses, and return the
-    /// strip overlays plus the gameplay-stream states before/after the repair.
-    fn run_repair_with_mapgen(rng: crate::sim::rng::SimRng) -> (Vec<u8>, (u64, u64), (u64, u64)) {
-        let (mut sim, _rules, _heights) = build_sim();
-        seed_destroyed_bridge(&mut sim); // full 0xE7 NS-High strip
-        sim.mapgen_rng = rng;
-
-        let before = (sim.scenario_rng.state(), sim.main_rng.state());
-
-        // Scan center (9,10) = CABHUT-arrival cell, same as TEST A.
-        let scan: Vec<(u16, u16)> = crate::sim::bridge_state::cells_in_5x5_scan((9, 10)).collect();
-        if let (Some(bs), Some(terrain)) =
-            (sim.bridge_state.as_mut(), sim.resolved_terrain.as_ref())
-        {
-            bs.repair_bridge_from_engineer_scan(&scan, &mut sim.mapgen_rng, terrain);
-        }
-
-        let after = (sim.scenario_rng.state(), sim.main_rng.state());
-        let bs = sim.bridge_state.as_ref().unwrap();
-        let overlays: Vec<u8> = ENGINEER_REPAIR_STRIP_CELLS
-            .iter()
-            .map(|&(rx, ry)| bs.cell(rx, ry).unwrap().overlay_byte)
-            .collect();
-        (overlays, before, after)
-    }
-
-    // Probe seeds: find the first whose repaired overlays are NOT all 0xCD.
-    // A handful of seeds is near-certain to vary; 1..64 leaves wide margin.
-    let mut found: Option<(u64, Vec<u8>, (u64, u64), (u64, u64))> = None;
-    for seed in 1u64..64 {
-        let (overlays, before, after) = run_repair_with_mapgen(crate::sim::rng::SimRng::new(seed));
-        if overlays.iter().any(|&b| b != 0xCD) {
-            found = Some((seed, overlays, before, after));
-            break;
-        }
-    }
-
-    let (seed, overlays, before, after) = found.expect(
-        "some seed in 1..64 must drive a non-zero repaired variant; a constant \
-                      0xCD across every seed would mean the variant is hardcoded, not from mapgen",
-    );
-
-    // (a) At least one strip cell varied off the base — the variant came from
-    //     mapgen_rng's non-zero state, not a hardcoded 0.
     assert!(
-        overlays.iter().any(|&b| b != 0xCD),
-        "seed {seed}: overlays {overlays:?} must include a non-base byte"
+        crate::sim::world::bridge_orchestrator::repair_from_engineer(
+            &mut sim,
+            &rules,
+            Some(&registry),
+            engineer,
+        )
+        .expect("live repair must complete its Recalc and navigation callbacks")
     );
-    // (b) Every repaired cell is still a valid NS-High healthy variant
-    //     (base 0xCD + variant 0..=3).
-    for &b in &overlays {
-        assert!(
-            (0xCD..=0xD0).contains(&b),
-            "seed {seed}: overlay {b:#04X} must be NS-High base 0xCD + variant 0..3"
-        );
-    }
-    // (c) The repair consumed neither gameplay stream.
+
+    assert_eq!(sim.scenario_rng.logical_state(), scenario_before);
+    assert_eq!(sim.main_rng.logical_state(), main_before);
     assert_eq!(
-        before.0, after.0,
-        "seed {seed}: scenario stream must not move during repair"
+        sim.mapgen_rng.logical_state(),
+        expected_mapgen.logical_state()
     );
-    assert_eq!(
-        before.1, after.1,
-        "seed {seed}: main stream must not move during repair"
-    );
+    assert_live_repair_strip(&sim, engineer, 0xCE);
 }
 
-/// An installed post-generation cursor feeds the first repair draw.
+/// An installed post-generation cursor feeds the live owner's next repair draw.
 #[test]
 fn generated_map_bridge_repair_continues_post_rmg_mapgen_stream() {
     let mut generated = crate::sim::rng::SimRng::new(0xBEEF);
@@ -1681,81 +1670,57 @@ fn generated_map_bridge_repair_continues_post_rmg_mapgen_stream() {
     };
     let mut expected = crate::sim::rng::SimRng::from_mapgen_continuation(continuation());
     let expected_variant = expected.next_high_two_bits();
-
-    let (mut sim, _rules, _heights) = build_sim();
-    seed_destroyed_bridge(&mut sim);
+    let (mut sim, rules, registry, engineer) = live_repair_fixture();
     sim.mapgen_rng = crate::sim::rng::SimRng::from_mapgen_continuation(continuation());
-    let scenario_before = sim.scenario_rng.state();
-    let main_before = sim.main_rng.state();
-    let scan: Vec<(u16, u16)> = crate::sim::bridge_state::cells_in_5x5_scan((9, 10)).collect();
-    let outcome = if let (Some(bridges), Some(terrain)) =
-        (sim.bridge_state.as_mut(), sim.resolved_terrain.as_ref())
-    {
-        bridges.repair_bridge_from_engineer_scan(&scan, &mut sim.mapgen_rng, terrain)
-    } else {
-        crate::sim::bridge_state::RepairOutcome::default()
-    };
+    let scenario_before = sim.scenario_rng.logical_state();
+    let main_before = sim.main_rng.logical_state();
 
-    assert!(outcome.repaired_cells > 0);
-    assert_eq!(sim.scenario_rng.state(), scenario_before);
-    assert_eq!(sim.main_rng.state(), main_before);
+    assert!(
+        crate::sim::world::bridge_orchestrator::repair_from_engineer(
+            &mut sim,
+            &rules,
+            Some(&registry),
+            engineer,
+        )
+        .expect("live repair must retain the installed MapGen continuation")
+    );
+
+    assert_eq!(sim.scenario_rng.logical_state(), scenario_before);
+    assert_eq!(sim.main_rng.logical_state(), main_before);
     assert_eq!(sim.mapgen_rng.logical_state(), expected.logical_state());
-    for &(rx, ry) in ENGINEER_REPAIR_STRIP_CELLS {
-        assert_eq!(
-            sim.bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(rx, ry)
-                .unwrap()
-                .overlay_byte,
-            0xCD + expected_variant,
-            "repair must consume the next post-generation MapGen draw"
-        );
-    }
+    assert_live_repair_strip(&sim, engineer, 0xCD + expected_variant);
 }
 
-/// TEST C — lockstep determinism: two fresh identical sims repair identically,
-/// matching world hash AND all three RNG cursors. Acceptance (4).
 #[test]
 fn two_identical_sims_repair_with_identical_hash_and_streams() {
-    fn fresh_repair_sim() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
-        let (mut sim, rules, heights) = build_sim();
-        let cabhut = spawn_cabhut(&mut sim, 9, 10);
-        let engineer = spawn_engineer(&mut sim, 9, 10);
-        sim.substrate
-            .entities
-            .get_mut(engineer)
-            .unwrap()
-            .capture_target = Some(cabhut);
-        seed_destroyed_bridge(&mut sim);
-        (sim, rules, heights)
+    let (mut sim_a, rules_a, registry_a, engineer_a) = live_repair_fixture();
+    let (mut sim_b, rules_b, registry_b, engineer_b) = live_repair_fixture();
+    for (sim, rules, registry, engineer) in [
+        (&mut sim_a, &rules_a, &registry_a, engineer_a),
+        (&mut sim_b, &rules_b, &registry_b, engineer_b),
+    ] {
+        assert!(
+            crate::sim::world::bridge_orchestrator::repair_from_engineer(
+                sim,
+                rules,
+                Some(registry),
+                engineer,
+            )
+            .expect("live repair must complete")
+        );
+        assert_live_repair_strip(sim, engineer, 0xCE);
     }
-
-    let (mut sim_a, rules, heights) = fresh_repair_sim();
-    let (mut sim_b, _rules_b, _heights_b) = fresh_repair_sim();
-
-    // Same repair driven on both via the full tick path (both run identically).
-    step(&mut sim_a, &rules, &heights);
-    step(&mut sim_b, &rules, &heights);
-
+    assert_eq!(sim_a.state_hash(), sim_b.state_hash());
     assert_eq!(
-        sim_a.state_hash(),
-        sim_b.state_hash(),
-        "two identical sims must reach the same world hash after repair (lockstep)"
+        sim_a.scenario_rng.logical_state(),
+        sim_b.scenario_rng.logical_state()
     );
     assert_eq!(
-        sim_a.scenario_rng.state(),
-        sim_b.scenario_rng.state(),
-        "scenario streams must match"
+        sim_a.main_rng.logical_state(),
+        sim_b.main_rng.logical_state()
     );
     assert_eq!(
-        sim_a.main_rng.state(),
-        sim_b.main_rng.state(),
-        "main streams must match"
-    );
-    assert_eq!(
-        sim_a.mapgen_rng.state(),
-        sim_b.mapgen_rng.state(),
-        "mapgen streams must match"
+        sim_a.mapgen_rng.logical_state(),
+        sim_b.mapgen_rng.logical_state()
     );
 }

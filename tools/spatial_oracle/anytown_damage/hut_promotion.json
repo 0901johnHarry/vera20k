@@ -1,0 +1,97 @@
+{
+  "auxiliary_artifacts": {
+    "hut_callsite_bytes.json": {
+      "original_file_sha256": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
+      "original_path": "anytown-hut-native/callsite_bytes.json",
+      "promoted_file_sha256": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
+      "transformation": "byte-identical"
+    },
+    "hut_summary.json.gz": {
+      "canonical_payload_sha256": "bd41e93d0cc44d9944bbbf989dbd28eb2d472a017cb2c15f59ce66a505b92f0c",
+      "original_file_sha256": "7698ea5b8fcbb9574c4bd81a0a557e5b30a340689c696904953a19e5fb93210c",
+      "original_path": "anytown-hut-native/summary.json",
+      "promoted_file_sha256": "d35da0044074ffbd6376315540df63a8732ec4523b04b7cf7832cccf069c2a19",
+      "transformation": "canonical JSON plus deterministic gzip only"
+    }
+  },
+  "conversion": "Only packaging/import/root-path changes in the harness; native payload hash is checked before publication. Animation layer source_lines are replaced by canonical SHA256; all reader results, trace, RNG, cell and constructor-request outputs stay exact.",
+  "frozen_receipt": {
+    "files": {
+      "README.md": {
+        "bytes": 9449,
+        "sha256": "ff3af400388bbb093676799c2e7903ebcc84fedbb4ea07a2dcd27d1190e88984"
+      },
+      "anytown_hut.json": {
+        "bytes": 5505915,
+        "sha256": "046def26dcfe679b585fd8ff1129d266a8025ad09bd604f41ace537f2ac6912a"
+      },
+      "anytown_hut.meta.json": {
+        "bytes": 6752,
+        "sha256": "9ff8e4de78b27b812c37bdc43ac4c7017ae483d6ef78d37454dd33ef81447a52"
+      },
+      "anytown_hut.py": {
+        "bytes": 13528,
+        "sha256": "2c53d82ec3c724b6ee371434562e60ed877ca73ba09b2c2598efd9e89f37eacd"
+      },
+      "caller_startup.asm": {
+        "bytes": 8407,
+        "sha256": "8db6f78087583179a311b5c8e1c408543c58c0906979c3579a361a63382a43fc"
+      },
+      "callsite_bytes.json": {
+        "bytes": 2728,
+        "sha256": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba"
+      },
+      "check.log": {
+        "bytes": 173,
+        "sha256": "9e1d2849a05c7144852a086f137171cab1f5a851b34b8729172c4d802d1317ec"
+      },
+      "native_574000.asm": {
+        "bytes": 13082,
+        "sha256": "7cda68a6cd52a9674c27892f77dcc0ef9d936f56417b80e86025e21f58a67625"
+      },
+      "native_5749C0.asm": {
+        "bytes": 5215,
+        "sha256": "09317a20ad31b776a799bd8933415fc8ba0139c5fae60853eed2cf14afab9b01"
+      },
+      "native_575870.asm": {
+        "bytes": 6719,
+        "sha256": "5a0893946bd4a10e7c98c7489a2ca6f40d9457033120f1c297c8e98526f338ff"
+      },
+      "native_575BA0.asm": {
+        "bytes": 6738,
+        "sha256": "d4a295254e6a4fb6d922870d13d6a95c6412c6c32264bc02d164e3bba2c58086"
+      },
+      "native_587180.asm": {
+        "bytes": 5947,
+        "sha256": "b517270206b02ad81a7d0a4b58c0e049add5ba272478a3988c81a27de2fd0308"
+      },
+      "summary.json": {
+        "bytes": 252783,
+        "sha256": "7698ea5b8fcbb9574c4bd81a0a557e5b30a340689c696904953a19e5fb93210c"
+      },
+      "write.log": {
+        "bytes": 322,
+        "sha256": "ee1032d69ec4a32c83befdbcc4c20b5bf8fc62e1dc42804b24a57c10ebb324ee"
+      }
+    },
+    "path": "anytown-hut-native/receipt.json",
+    "sha256": "a991b9d8e629321dc17c8c1c651421304e8882c4a775eb12484870c6747f724f"
+  },
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "results": {
+    "hut.json": {
+      "original_file_sha256": "046def26dcfe679b585fd8ff1129d266a8025ad09bd604f41ace537f2ac6912a",
+      "original_metadata_sha256": "9ff8e4de78b27b812c37bdc43ac4c7017ae483d6ef78d37454dd33ef81447a52",
+      "original_path": "anytown-hut-native/anytown_hut.json",
+      "original_payload_sha256": "4b1f825f1300048af10cb3eef0b55e9f5a675d44bb7e49e17b33af9c768b51a3",
+      "original_runner_sha256": "2c53d82ec3c724b6ee371434562e60ed877ca73ba09b2c2598efd9e89f37eacd",
+      "projection": [
+        "animation_inputs.layers[*].source_lines -> source_lines_sha256"
+      ],
+      "promoted_publication_sha256": "ea7f83f536586f6d2e22351af4cdb007ddc707b6698ef3e6dd13e64382fd2c0f",
+      "promoted_runner_sha256": "000950121c307d77867148f5dd1f023b7dcc0236022d142117c82fe923f98435",
+      "published_payload_sha256": "b6a0af36a3d5b945b380e3bb60f805aa632097f70267d56eb711e10970ad9765"
+    }
+  },
+  "schema": 1
+}

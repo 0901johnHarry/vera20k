@@ -95,6 +95,16 @@ impl DamageHost for LiveDamage<'_> {
         } else {
             path
         };
+        if matches!(path, DispatchPath::HighDirect)
+            && let Some((rules, registry)) = self.publication
+        {
+            let result = live_publication::damage_concrete(self.sim, rules, registry, input)
+                .unwrap_or_else(|error| {
+                    panic!("concrete bridge publication at {input:?}: {error}")
+                });
+            self.collapsed |= result.collapsed;
+            return result.returned;
+        }
         if matches!(path, DispatchPath::HighStateMachine)
             && let Some((rules, registry)) = self.publication
             && let Some(result) = live_publication::try_body(self.sim, rules, registry, input)
@@ -111,16 +121,16 @@ impl DamageHost for LiveDamage<'_> {
             let state = self.sim.bridge_state.as_mut().expect("bridge damage state");
             match path {
                 DispatchPath::HighStateMachine => {
-                    state.apply_damage_to_cell(self.event.rx, self.event.ry, true, terrain)
+                    state.advance_damage_state(self.event.rx, self.event.ry, true, terrain)
                 }
                 DispatchPath::LowStateMachine => {
-                    state.apply_damage_to_cell(self.event.rx, self.event.ry, false, terrain)
+                    state.advance_damage_state(self.event.rx, self.event.ry, false, terrain)
                 }
                 DispatchPath::LowDirect => {
                     state.destroy_bridge_low(self.event.rx, self.event.ry, terrain)
                 }
                 DispatchPath::HighDirect => {
-                    state.destroy_bridge_high(self.event.rx, self.event.ry, terrain)
+                    panic!("concrete bridge damage requires the live rules/publication context")
                 }
             }
         };

@@ -36,21 +36,23 @@
 //!   0x004AF4A0 is a one-shot constant initializer and is bound in
 //!   `sim::movement::movement_bridge`; this one cannot be bound without a
 //!   reference.
-pub mod walker;
 pub(crate) mod damage_dispatch;
 mod damaged_variant;
-mod record_scan;
-mod zone_activation;
 pub(crate) mod gap_restamp;
+pub(crate) mod occupants;
+pub(crate) mod ordinary;
+pub(crate) mod ordinary_damage;
+pub(crate) mod ordinary_repair;
 pub(crate) mod publication;
 pub(crate) mod ramp_repair;
-pub(crate) mod ordinary_repair;
-pub(crate) mod repair_occupants;
+mod record_scan;
 pub(crate) mod rim;
+pub mod walker;
+mod zone_activation;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use damaged_variant::extend_unique_cells;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Sentinel `overlay_byte` value meaning "no bridge overlay" (the original
 /// engine's -1 / 0xFF). A cell carrying this byte has no own overlay sprite.
@@ -329,28 +331,6 @@ pub enum DispatchPath {
     HighDirect,
 }
 
-/// `ApplyDamageToCell` 0x00587180 dispatch bands.
-///
-/// The driver tests `(0x49 < overlay) && (overlay < 100)` for the low walker
-/// and `(0xCC < overlay) && (overlay < 0xE7)` for the high one, so 0x64/0x65
-/// and 0xE7/0xE8 are NOT routed to a walker from here — they fall through to
-/// the tileset-family branch.
-///
-/// That is deliberately narrower than the bands `DestroyBridge_Low` 0x0057BAA0
-/// and `DestroyBridge_High` 0x0057CCF0 accept once they are already running:
-/// their own axis classes union to 0x4A..=0x65 and 0xCD..=0xE8, and their
-/// neighbour probes test `overlay < 0x4A || 0x65 < overlay` and
-/// `overlay < 0xCD || 0xE8 < overlay`. Both bands are real; see
-/// `BridgeRuntimeState::is_low_destroy_overlay` for the wider pair.
-const fn is_low_dispatch_overlay(overlay: u8) -> bool {
-    0x49 < overlay && overlay < 100
-}
-
-/// High twin of [`is_low_dispatch_overlay`]. See its doc comment.
-const fn is_high_dispatch_overlay(overlay: u8) -> bool {
-    0xCC < overlay && overlay < 0xE7
-}
-
 impl DispatchPath {
     /// State-machine paths support the IonCannon 3-retry loop. Direct-overlay
     /// paths are single-shot regardless of warhead.
@@ -465,24 +445,6 @@ impl StateOutcome {
             StateOutcome::Absorbed { .. } | StateOutcome::NoChange => &[],
         }
     }
-}
-
-/// Outcome of a single `body_cell_repair_state` call. Carries the
-/// side-effects the caller must fire AFTER state mutation.
-///
-/// Side-effect gating mirrors the original engine's repair-walker semantics:
-///   - `zones_dirty`: rebuild PathGrid + zone grid. Set only when a
-///     **main-deck damaged or destroyed** cell was repaired —
-///     bridgehead-only repairs do NOT trigger zones rebuild.
-///   - `radar_cells`: mark these cells dirty in the minimap. Includes exact
-///     damage-variant clears plus cells restored **from `Destroyed`**.
-///   - `repaired_cells`: total mutated cell count for caller's
-///     `bridge_state_changed` decision and metrics.
-#[derive(Debug, Clone, Default)]
-pub struct RepairOutcome {
-    pub zones_dirty: bool,
-    pub radar_cells: Vec<(u16, u16)>,
-    pub repaired_cells: u32,
 }
 
 /// One ordered CellClass bridge-overlay projection operation.
@@ -851,12 +813,6 @@ impl BridgeRuntimeState {
         self.anchor_spans.get(&id)
     }
 
-    /// Mutable counterpart to `anchor_span`. Used by `body_cell_repair_state`
-    /// to sync the span's mirror `damage_state` field after per-cell repair.
-    pub fn anchor_span_mut(&mut self, id: u16) -> Option<&mut AnchorSpan> {
-        self.anchor_spans.get_mut(&id)
-    }
-
     /// All anchor spans, sorted by ID (BTreeMap iteration order).
     pub fn anchor_spans(&self) -> &BTreeMap<u16, AnchorSpan> {
         &self.anchor_spans
@@ -945,33 +901,20 @@ impl BridgeRuntimeState {
         self.bridge_destroyable_flag
     }
 
-    /// Overlay-first inner dispatcher for a state-machine block (binary
-    /// `ApplyDamageToCell @ 0x00587180`, the driver of `Apply_area_damage`
-    /// blocks A/B). The visible overlay byte is checked FIRST: a cell already
-    /// in a destroy band routes straight to the matching direct walker; only
-    /// overlay-miss cells reach the damage state machine. `is_high` selects the
-    /// SM family for the overlay-miss fallback (bridgehead vs body branch is
-    /// then chosen by the cell's role).
-    ///
-    /// Both bands are tested regardless of `is_high` — the binary's overlay
-    /// short-circuit is family-agnostic; family only decides the SM fallback.
-    pub(crate) fn apply_damage_to_cell(
+    /// Unmigrated structural state continuation. The shared damage dispatcher
+    /// owns587180's overlay-first selection before this continuation is called.
+    pub(crate) fn advance_damage_state(
         &mut self,
         rx: u16,
         ry: u16,
         is_high: bool,
         terrain: &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
     ) -> StateOutcome {
-        let overlay = self.cell(rx, ry).map(|c| c.overlay_byte);
-        match overlay {
-            Some(o) if is_high_dispatch_overlay(o) => self.destroy_bridge_high(rx, ry, terrain),
-            Some(o) if is_low_dispatch_overlay(o) => self.destroy_bridge_low(rx, ry, terrain),
-            _ => match self.cell(rx, ry).map(|c| c.role) {
-                Some(BridgeCellRole::Bridgehead) => {
-                    self.bridgehead_advance_state(rx, ry, is_high, terrain)
-                }
-                _ => self.body_cell_advance_state(rx, ry, is_high, terrain),
-            },
+        match self.cell(rx, ry).map(|c| c.role) {
+            Some(BridgeCellRole::Bridgehead) => {
+                self.bridgehead_advance_state(rx, ry, is_high, terrain)
+            }
+            _ => self.body_cell_advance_state(rx, ry, is_high, terrain),
         }
     }
 
@@ -1174,10 +1117,7 @@ impl BridgeRuntimeState {
                     terrain,
                     live_flags,
                 );
-                extend_unique_cells(
-                    &mut damaged_variant_cells,
-                    ramp_a.damaged_variant_cells,
-                );
+                extend_unique_cells(&mut damaged_variant_cells, ramp_a.damaged_variant_cells);
                 let ramp_b = crate::sim::bridge_specs::update_ramp_perpendicular_with_flags(
                     self,
                     anchor_pos,
@@ -1187,10 +1127,7 @@ impl BridgeRuntimeState {
                     terrain,
                     live_flags,
                 );
-                extend_unique_cells(
-                    &mut damaged_variant_cells,
-                    ramp_b.damaged_variant_cells,
-                );
+                extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
                 StateOutcome::Absorbed {
                     damaged_variant_cells,
                 }
@@ -1218,10 +1155,7 @@ impl BridgeRuntimeState {
                 );
                 let mut damaged_variant_cells = ramp_a.damaged_variant_cells;
                 let mut setter_transcript = ramp_a.setter_transcript;
-                extend_unique_cells(
-                    &mut damaged_variant_cells,
-                    ramp_b.damaged_variant_cells,
-                );
+                extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
                 setter_transcript.extend(ramp_b.setter_transcript);
                 let mut destroyed = self.clear_collapsed_span_overlay_bytes(&span_clone);
                 if !destroyed.contains(&anchor_pos) {
@@ -1331,136 +1265,6 @@ impl BridgeRuntimeState {
             }
             DamageState::Destroyed => StateOutcome::NoChange,
         }
-    }
-
-    /// Reverse counterpart to `body_cell_advance_state`. Repairs cells found
-    /// in `scan_cells`: collects unique `anchor_span_id`s, iterates each
-    /// span's cells (slots 0..6), and transitions
-    /// `Damaged`/`Destroyed`/`PartialCollapse{A,B}` → `Healthy { variant }`.
-    ///
-    /// The Rust model uses anchor-span iteration in place of the binary's
-    /// 3-cell-perpendicular-strip walker — the cell-state mutations are
-    /// equivalent; the binary's RNG draw count differs (per-strip vs
-    /// per-cell), locked across our Rust clients by the iteration-order pin
-    /// test.
-    ///
-    /// **Side-effect gating:**
-    ///   - `outcome.zones_dirty = true` iff at least one **main-deck**
-    ///     (Anchor/Body/Tail role) damaged or destroyed cell was repaired.
-    ///     Bridgehead-only repairs do NOT set this flag.
-    ///   - `outcome.radar_cells` contains the exact cells changed by a
-    ///     damage-variant clear, followed by destroyed-anchor restoration
-    ///     cells not already present. Native's radar queue rejects duplicates
-    ///     while retaining first insertion order.
-    ///
-    /// **RNG draws** (locked for lockstep across Rust clients):
-    ///   - Main-deck damaged/destroyed/partial-collapse → 1 draw per cell
-    ///     (`rng.next_range_u32(4)` → variant `0..=3`). MUST stay in `0..=3`
-    ///     because variants 4/5 are RESERVED for `update_ramp_perpendicular`
-    ///     to encode NS DamageA/B (they would render as damage-progression
-    ///     SHP frames).
-    ///   - Bridgehead damaged → write `Healthy { variant: 0 }`, **0 draws**.
-    ///   - Already-`Healthy` or non-bridge cells → skip, **0 draws**.
-    ///
-    /// **Iteration order** (parity-critical, locked by test):
-    ///   1. Anchor spans collected into `BTreeSet<u16>` for sorted iteration.
-    ///   2. Within each span, cells iterated in slot order 0..=5.
-    ///   3. `None` slots skipped.
-    #[cfg(test)]
-    pub fn body_cell_repair_state(
-        &mut self,
-        scan_cells: &[(u16, u16)],
-        rng: &mut crate::sim::rng::SimRng,
-        _terrain: &ResolvedTerrainGrid,
-    ) -> RepairOutcome {
-        let mut outcome = RepairOutcome::default();
-
-        // Step 1: Collect unique anchor spans from scan cells.
-        let mut spans: BTreeSet<u16> = BTreeSet::new();
-        for &(rx, ry) in scan_cells {
-            if let Some(cell) = self.cell(rx, ry) {
-                if let Some(span_id) = cell.anchor_span_id {
-                    spans.insert(span_id);
-                }
-            }
-        }
-
-        // Step 2: Iterate each span; for each cell, transition damage_state.
-        for span_id in spans {
-            // Clone span cell list to avoid borrow conflict.
-            let cells_list: [Option<(u16, u16)>; 6] = match self.anchor_span(span_id) {
-                Some(span) => span.cells,
-                None => continue,
-            };
-
-            for slot in 0..6 {
-                let Some(cell_pos) = cells_list[slot] else {
-                    continue;
-                };
-                let Some(prior_state) = self.cell(cell_pos.0, cell_pos.1).map(|c| c.damage_state)
-                else {
-                    continue;
-                };
-                let Some(role) = self.cell(cell_pos.0, cell_pos.1).map(|c| c.role) else {
-                    continue;
-                };
-
-                let new_state: DamageState = match (role, prior_state) {
-                    // Already healthy: skip, no RNG draw.
-                    (_, DamageState::Healthy { .. }) => continue,
-
-                    // Bridgehead: fixed variant, no RNG.
-                    (BridgeCellRole::Bridgehead, _) => DamageState::Healthy { variant: 0 },
-
-                    // Main-deck (Anchor/Body/Tail) damaged/destroyed/partial: RNG variant.
-                    (
-                        BridgeCellRole::Anchor | BridgeCellRole::Body | BridgeCellRole::Tail,
-                        DamageState::Damaged
-                        | DamageState::Destroyed
-                        | DamageState::PartialCollapseA
-                        | DamageState::PartialCollapseB,
-                    ) => {
-                        // Variant range MUST be 0..=3 (rng.next_range_u32(4));
-                        // variants 4/5 encode NS DamageA/B in our render model
-                        // and would draw damage-progression SHP frames.
-                        let variant = rng.next_range_u32(4) as u8;
-                        DamageState::Healthy { variant }
-                    }
-                };
-
-                if let Some(cell) = self.cell_mut(cell_pos.0, cell_pos.1) {
-                    cell.damage_state = new_state;
-                }
-                // This legacy state-only helper has no production caller.
-                // Ordinary native strip repair does not clear pavement here.
-                outcome.repaired_cells += 1;
-
-                let is_main_deck = matches!(
-                    role,
-                    BridgeCellRole::Anchor | BridgeCellRole::Body | BridgeCellRole::Tail
-                );
-                if is_main_deck {
-                    outcome.zones_dirty = true;
-                }
-                if matches!(prior_state, DamageState::Destroyed) {
-                    extend_unique_cells(&mut outcome.radar_cells, [cell_pos]);
-                }
-            }
-
-            // Step 3: Sync the AnchorSpan's mirror `damage_state` field with
-            // the anchor cell's new state (the span struct caches this for
-            // queries; existing forward state machine does the same).
-            let anchor_pos = self.anchor_span(span_id).map(|s| s.anchor);
-            if let Some((arx, ary)) = anchor_pos {
-                let new_anchor_state = self.cell(arx, ary).map(|c| c.damage_state);
-                if let (Some(state), Some(span)) = (new_anchor_state, self.anchor_span_mut(span_id))
-                {
-                    span.damage_state = state;
-                }
-            }
-        }
-
-        outcome
     }
 
     /// Bridgehead-cell state-machine driver.
@@ -1620,10 +1424,7 @@ impl BridgeRuntimeState {
             );
             let mut damaged_variant_cells = ramp_a.damaged_variant_cells;
             let mut setter_transcript = ramp_a.setter_transcript;
-            extend_unique_cells(
-                &mut damaged_variant_cells,
-                ramp_b.damaged_variant_cells,
-            );
+            extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
             setter_transcript.extend(ramp_b.setter_transcript);
             for &perp_dir in &[Direction::E, Direction::W, Direction::N, Direction::S] {
                 let (dx, dy) = perp_dir.offset();
@@ -1692,10 +1493,7 @@ impl BridgeRuntimeState {
             live_flags,
         );
         let mut damaged_variant_cells = ramp_a.damaged_variant_cells;
-        extend_unique_cells(
-            &mut damaged_variant_cells,
-            ramp_b.damaged_variant_cells,
-        );
+        extend_unique_cells(&mut damaged_variant_cells, ramp_b.damaged_variant_cells);
 
         StateOutcome::Absorbed {
             damaged_variant_cells,
@@ -1987,8 +1785,6 @@ fn compute_adjacent_bridges_dirty(rx: u16, ry: u16, axis: Axis) -> Vec<(u16, u16
     out
 }
 
-#[cfg(test)]
-mod repair_tests;
 #[cfg(test)]
 mod scan_tests;
 #[cfg(test)]

@@ -26,14 +26,9 @@ def rng_state(u,p):
  b=bytes(u.mem_read(p,1012));return dict(disabled=b[0],index_a=i32(u,p+4),index_b=i32(u,p+8),state=list(struct.unpack('<250I',b[12:])))
 
 def physical_map():
- raw=(ASSETS/'XShrapnel.MAP').read_bytes();sec=mapfacts.sections(raw)
- iso=mapfacts.unpack(sec['IsoMapPack5'],'lzo');overlay=mapfacts.unpack(sec['OverlayPack'],'lcw');frame=mapfacts.unpack(sec['OverlayDataPack'],'lcw')
- cells={}
- for p in range(0,len(iso),11):
-  x,y=struct.unpack_from('<hH',iso,p)
-  if(x,y)==(0,0):break
-  x,y,tile,sub,z,ice=struct.unpack_from('<hHiBBB',iso,p);linear=y*512+x
-  cells[x,y]=dict(tile=tile,subtile=sub,level=z,overlay=None if overlay[linear]==255 else overlay[linear],frame=frame[linear])
+ raw=(ASSETS/'XShrapnel.MAP').read_bytes();_,cells=mapfacts.decode_cells(raw)
+ # Preserve the original Shrapnel witness schema; ice is not a supplied input.
+ for cell in cells.values():cell.pop('ice')
  return raw,cells
 
 def input_case(hut,theater_inputs):

@@ -12,6 +12,7 @@ use crate::sim::mission::{MissionId, MissionTimer};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
 use crate::sim::timer::CdTimer;
+use crate::sim::world::bridge_test_evidence::restored_retail;
 use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
 
@@ -461,42 +462,6 @@ fn move_retail_fv(
         "ordinary FV Move failed {start:?}->{destination:?}, stop {stop_at:?}: {:?}",
         runtime.simulation.substrate.entities.get(id)
     );
-}
-
-pub(super) fn restored_retail(
-    scenario: &crate::headless_scenario::HeadlessScenario,
-    pristine: &ResolvedTerrainGrid,
-    bytes: &[u8],
-) -> Simulation {
-    use crate::sim::snapshot::GameSnapshot;
-    let live = scenario.sim();
-    let resources = &scenario.runtime.resources;
-    let mut restored = GameSnapshot::load_validated(
-        bytes,
-        scenario.map.ini.content_hash(),
-        resources.rules.simulation_config_hash(),
-        &live.session.map_name,
-    )
-    .unwrap()
-    .sim;
-    restored.retain_in_scenario_process_state_from(live);
-    restored.bind_shared_cell_dummy(crate::map::resolved_terrain::SharedCellDummy::fresh());
-    restored.reconstruct_cellclass_dummy_for_map_resize();
-    restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(
-        pristine.clone(),
-        live.terrain_speed_config.clone(),
-        &resources.rules,
-    );
-    restored
-        .restore_map_authority_after_snapshot_load(&resources.rules, &resources.overlay_registry)
-        .unwrap();
-    restored.resolve_type_handles(&resources.rules);
-    restored
-        .restore_move_sound_handles_after_load(&resources.rules)
-        .unwrap();
-    restored.rebuild_lighting_sources_after_load(&resources.rules);
-    restored
 }
 
 fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation, ids: [u64; 2]) {

@@ -59,3 +59,21 @@ def unpack(rows,codec):
         v=lcw(b[i:i+sn]) if codec=='lcw' else lzo(b[i:i+sn],dn)
         assert len(v)==dn,(len(v),dn);out.extend(v);i+=sn
     return bytes(out)
+
+
+def decode_cells(raw):
+    """Decode authored MAP cell packs; no derived native Cell state is inferred."""
+    parsed=sections(raw)
+    iso=unpack(parsed['IsoMapPack5'],'lzo')
+    overlays=unpack(parsed['OverlayPack'],'lcw')
+    frames=unpack(parsed['OverlayDataPack'],'lcw')
+    cells={}
+    for offset in range(0,len(iso),11):
+        x,y=struct.unpack_from('<hH',iso,offset)
+        if (x,y)==(0,0):break
+        x,y,tile,subtile,level,ice=struct.unpack_from('<hHiBBB',iso,offset)
+        linear=y*512+x
+        cells[x,y]=dict(tile=tile,subtile=subtile,level=level,ice=ice,
+                       overlay=None if overlays[linear]==255 else overlays[linear],
+                       frame=frames[linear])
+    return parsed,cells

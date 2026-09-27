@@ -44,7 +44,8 @@ def read_result(path):
     return json.loads(gzip.decompress(path.read_bytes()))
 
 
-def finish_vectors(data, default_path: Path, *, provenance, argv=None):
+def finish_vectors(data, default_path: Path, *, provenance, argv=None,
+                   promotion_path=None, projection=publication_projection):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='compare only (default)')
@@ -54,8 +55,9 @@ def finish_vectors(data, default_path: Path, *, provenance, argv=None):
     actual = data() if callable(data) else data
     # Normalize integer address keys and tuples exactly as finish_vectors does,
     # then canonicalize the normalized JSON object for a stable payload digest.
-    raw = _canonical(json.loads(_canonical(publication_projection(actual))))
-    expected_conversion = json.loads((HERE / 'promotion.json').read_bytes())['results']
+    raw = _canonical(json.loads(_canonical(projection(actual))))
+    promotion_path = promotion_path or HERE / 'promotion.json'
+    expected_conversion = json.loads(promotion_path.read_bytes())['results']
     identity = default_path.name.removesuffix('.gz')
     # Portability work must not silently accept new native values under --write.
     if digest(raw) != expected_conversion[identity]['published_payload_sha256']:

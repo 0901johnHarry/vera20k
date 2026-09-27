@@ -1,12 +1,12 @@
-//! Original CellClass callback487A10(0), called by all four ordinary repair
-//! walkers after their three synchronous Recalc calls. Evidence:
+//! Original CellClass callback487A10, called after synchronous bridge damage
+//! and repair Recalc calls. Evidence:
 //! tools/spatial_oracle/bridge_occupants.{py,json,meta.json}.
 //!
 //! This controller owns traversal order. The world host owns native-shaped
 //! admission, active locomotor coordinates and complete direct damage effects.
 use super::publication::CellCoord;
 
-pub(crate) trait RepairOccupantHost {
+pub(crate) trait BridgeOccupantHost {
     type Cell: Copy + Eq;
     type Object: Copy;
     type Error;
@@ -16,6 +16,8 @@ pub(crate) trait RepairOccupantHost {
     fn ground_head(&self, cell: Self::Cell) -> Option<Self::Object>;
     fn next_object(&self, object: Self::Object) -> Option<Self::Object>;
     fn is_foot(&self, object: Self::Object) -> bool;
+    fn is_techno(&self, object: Self::Object) -> bool;
+    fn type_is_jumpjet(&mut self, object: Self::Object) -> Result<bool, Self::Error>;
     /// Original +1AC(selectedCell, -1, -1, null, true). Sentinel direction
     /// changes the bridge traversal gate; ordinary movement queries differ.
     fn admission(&mut self, object: Self::Object, cell: Self::Cell) -> Result<i32, Self::Error>;
@@ -32,17 +34,22 @@ pub(crate) trait RepairOccupantHost {
     fn is_at_coord(&mut self, object: Self::Object, probe: [i32; 3]) -> Result<bool, Self::Error>;
 }
 
-/// Complete zero-argument branch. Nonzero487A10 callers have another type gate;
-/// none of the ordinary bridge repair walkers pass that argument.
-pub(crate) fn repair_occupants<H: RepairOccupantHost>(
+/// Damage mode is the byte loaded at487A27, not the entire stack dword. A
+/// nonzero mode adds the TechnoType.JumpJet resident gate; the neighbor pass
+/// always requires Is_At_Coord and numeric admission7.
+pub(crate) fn recheck_occupants<H: BridgeOccupantHost>(
     host: &mut H,
     selected: H::Cell,
+    damage_mode: u8,
 ) -> Result<(), H::Error> {
     let mut current = host.ground_head(selected);
     while let Some(object) = current {
         // 487A2D captures NextObject before admission, kind and damage callbacks.
         let next = host.next_object(object);
-        if host.admission(object, selected)? == 7 || host.abstract_kind(object)? == 2 {
+        if host.admission(object, selected)? == 7
+            || (damage_mode != 0 && host.is_techno(object) && host.type_is_jumpjet(object)?)
+            || host.abstract_kind(object)? == 2
+        {
             host.receive_damage(object, host.current_health(object))?;
         }
         current = next;
@@ -75,5 +82,5 @@ pub(crate) fn repair_occupants<H: RepairOccupantHost>(
 }
 
 #[cfg(test)]
-#[path = "repair_occupants_tests.rs"]
+#[path = "occupants_tests.rs"]
 mod tests;

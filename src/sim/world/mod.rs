@@ -16,6 +16,8 @@
 
 pub(crate) mod authored_load_host;
 mod bridge_hut_scatter;
+#[cfg(test)]
+pub(crate) mod bridge_test_evidence;
 pub(crate) mod bridge_orchestrator;
 pub(crate) mod building_anim;
 mod cell_content;

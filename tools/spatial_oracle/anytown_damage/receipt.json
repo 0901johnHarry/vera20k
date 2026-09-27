@@ -1,0 +1,265 @@
+{
+  "archive_inputs": {
+    "RA2_DIR": {
+      "expandmd01.mix": {
+        "bytes": 4813968,
+        "sha256": "0c0a64e741bdecdc3843a0beb6bb1f58aa2df5b86eb3bc4a953821ec98f3d6ec"
+      },
+      "langmd.mix": {
+        "bytes": 84883510,
+        "sha256": "ea608dca312cd59373f121d164b3bf4cec0472f460f6bf1d1238500959637c88"
+      },
+      "language.mix": {
+        "bytes": 53116040,
+        "sha256": "30345ccc41ab98d225cb87c8ea8629eb8cb1467ce0d7f15de87fb307424801e6"
+      },
+      "ra2.mix": {
+        "bytes": 281888480,
+        "sha256": "896a8b64f9f1bb8ad5e0bc64fc0b8ea8c84112494761ea1a43478d10c5ef9914"
+      },
+      "ra2md.mix": {
+        "bytes": 204527696,
+        "sha256": "69d886defad9114dd440a013b364c8c004e369b5221d1889957b49d00058559d"
+      }
+    }
+  },
+  "dependencies": {
+    "tools/native_oracle.py": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+    "tools/projectile_oracle/guided_step.py": "66862363b6ada9a83f71645f8d2f1684984bde8cd35cb52091607d40427e528e",
+    "tools/projectile_oracle/ordinary_collision.py": "5e0a862ae8e0169de9d2a7051a4152f9f757c2721f2d6b7f87a38fb84cbb77a3",
+    "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+    "tools/rmg_oracle/harness.py": "7bb907427ae09d76fceb9ad10b785c352f87c9fa47fb492e246d3a629b348014",
+    "tools/rules_oracle/bridge_anim_inputs.py": "f7f2941e11bbede50ffab19554a789e4e3e42f4969b04ad4e9697973e659d316",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+    "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+    "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+    "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/bridge_rim.py": "4227c24dcd27ea44a2de55a866057b1accffee8106c5029dedf0171b776fa32b",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+    "tools/spatial_oracle/naval_occupants.py": "95979c94da43df23f8d582a662d0269f0151c3f4ce926bae3a8b40167f1b36f5",
+    "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+    "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+    "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+    "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+    "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+    "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
+    "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "5f510f31b235acd1749aee6da2f512fbf3381892355b45fd7c5b9bccd472d347",
+    "tools/spatial_oracle/shrapnel_repair/validate_packet.py": "52ec7ec8d9b126b5d4bde9055b18618165240c39d27420c56d458fc7cc5260d4",
+    "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e"
+  },
+  "external_inputs": {
+    "VERA20K_ANYTOWN_INPUTS": {
+      "120mm.shp": {
+        "bytes": 48,
+        "sha256": "4c98740538c483eb9ff631d852b2a963eb08928763f1d8383e8098e3a5d6ab3b"
+      },
+      "H2O_EXP1.SHP": {
+        "bytes": 49344,
+        "sha256": "225fd22e2ae2b7f2b185d9e625bcb42dbfb469a668860beca1238485e17195dc"
+      },
+      "H2O_EXP2.SHP": {
+        "bytes": 28424,
+        "sha256": "05bf3a1f03993c6d1b39e0fbdee04dd9496946ece7c1021de4b3f6442294fb2d"
+      },
+      "H2O_EXP3.SHP": {
+        "bytes": 17600,
+        "sha256": "15d204a79c94212e8ffd439d862e3539049f1a6498dec1fba053faca69731585"
+      },
+      "Proad02.tem": {
+        "bytes": 5584,
+        "sha256": "3a0b2d8e83e9bcf4fbe2c9e144cee3cf0e6e670ce6202ceca5b3fad9f9be734b"
+      },
+      "S_CLSN16.SHP": {
+        "bytes": 6088,
+        "sha256": "771b2c8f180dc29d6296cd96084425bdb4323c708aa133fe1e339eb0b2d2d3da"
+      },
+      "S_CLSN22.SHP": {
+        "bytes": 9536,
+        "sha256": "4217fa39c3c970fa718c8e16d500a6bf39ecdb72c1dd7df21a1a6271abb0a294"
+      },
+      "Shore01.tem": {
+        "bytes": 7440,
+        "sha256": "d42e7913ed38b2ffd4f42de1d2c7865b16a22cfe77d6aa7664e5c494a2d9ccf2"
+      },
+      "Shore02.tem": {
+        "bytes": 7440,
+        "sha256": "42f6d7a15d70c0b47b91b87e907846829f403df7d69ffc8bddf3bbe198d972ff"
+      },
+      "Shore17.tem": {
+        "bytes": 7440,
+        "sha256": "7c2794562a923dc510f4a6270a51fd6c89fe1b8d8afb484600fac2e00ce1ed7a"
+      },
+      "Shore18.tem": {
+        "bytes": 7440,
+        "sha256": "c4c0c11d72d65bdff49f3a10302dabfba9afe6f363c0854be08325b61c7a757d"
+      },
+      "Water09.tem": {
+        "bytes": 1872,
+        "sha256": "783f941b2545e4cbafba70ba579bd8e8175879f47c6f709e5655726abb5af6a8"
+      },
+      "Water10.tem": {
+        "bytes": 1872,
+        "sha256": "6960703d3aafa650827e6d1b5d12f15ce15139a8db4c2d52e75c5130af40728d"
+      },
+      "Water11.tem": {
+        "bytes": 1872,
+        "sha256": "cd2216276e5e22d01a1d23fc5d9049a02983f9d45791a3ac25ce50dcc7d21bc1"
+      },
+      "Water12.tem": {
+        "bytes": 1872,
+        "sha256": "6564dfedea436444a37824b183eb2f12692c32aff8d7e8ed966ebdb952875ee5"
+      },
+      "Water13.tem": {
+        "bytes": 1872,
+        "sha256": "e42ce948f6634915aa4367dc724798e6b6965efe1483cce6df28236581835ef4"
+      },
+      "XMP03T4.MAP": {
+        "bytes": 156269,
+        "sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+      },
+      "gunfire.shp": {
+        "bytes": 792,
+        "sha256": "863ad6a6a184f8ca1863ea1546af75972f0af973c36efa7e270575ae28a161e9"
+      }
+    },
+    "VERA20K_SHRAPNEL_INPUTS": {
+      "ARTMD.INI": {
+        "bytes": 336535,
+        "sha256": "e1f0378394313c04ebbd5073f47785ee3e46f1b3c62d65724e8f3c310ee7ba31"
+      },
+      "LANGRULE.INI": {
+        "absent": true
+      },
+      "MPBattleMD.ini": {
+        "bytes": 295,
+        "sha256": "50406e81d7523f6be1954daab6b25bd85a8347c455f3d53dcf515d7f719b4963"
+      },
+      "RULESMD.INI": {
+        "bytes": 743215,
+        "sha256": "3d341ef8a13a4b5ab24af2eef48ac94931ac2bb87d950fe3330a07e2d25672ef"
+      },
+      "SOUNDMD.INI": {
+        "bytes": 99392,
+        "sha256": "0a8e85381aef1a0f97074c953bfe99504da00c6220fae1a023a1afd857023232"
+      },
+      "TEMPERATMD.INI": {
+        "bytes": 25269,
+        "sha256": "bf656852ad19636068f2dde6f9ddd1440ecf0e13e6e4de6cd7fb179a3592549d"
+      },
+      "XShrapnel.MAP": {
+        "bytes": 148622,
+        "sha256": "c32e412e938e1b9a0b29f89ff9bc0e6f410f75bc76701fb4acef6581fd19b438"
+      }
+    }
+  },
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "owned": {
+    "README.md": "493c36db75ef3c51adf9144565c90593774980c59da46d4e7d063470624f229f",
+    "__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+    "anytown_admission.json.gz": "f54a757f89ec6542e9de8fe96cbc80ade5fdb883436fedab06bcf404c11a9851",
+    "anytown_admission.meta.json": "74abc0acd8fafc4f3735bd6d5dba327adb72da2cdea20e1e1dd993476c73318d",
+    "anytown_admission.py": "71bee216e7b05e8371fa6e6be33276c300e5722c0bde160294a82474299fb01d",
+    "anytown_geometry.json.gz": "5f517ae7b60a0d6928577e1ff4b4c548fe3a68c1d7139570fd1de62a12184a4f",
+    "anytown_geometry.meta.json": "1297092cbdaa730cad344403d2fb4afd2f2a405dbec97e3824eb08a15fd0a001",
+    "anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+    "anytown_occupants.json.gz": "cbbdcb37bf3eb340a036fd13cedd18c1b568f309a10a37f3d64954f5239520ab",
+    "anytown_occupants.meta.json": "73c5bf0949cd02ce867a4357ad8140f0d80ab98cc9019f253222011424e6fbb6",
+    "anytown_occupants.py": "ffeca9bf9147d255c4cf312cae686aea57421cdc92cbfe3db00d873c510ab412",
+    "anytown_resident.json.gz": "a7ec3411940bded3acb5e24874b73565d64ccdb8c7e1a852cc78a6f747783e37",
+    "anytown_resident.meta.json": "54c29c9dc78bb6c8c7d8be41b8b2a48298fb26bfa0b6694f45b2a389d4af3d63",
+    "anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
+    "hut.json.gz": "624dface5dfb18ce8f517879c0dd1ced7b5cb24881cdbb2702b31899aa62b06f",
+    "hut.md": "114367c3c27e04fb79a2f12dbbbeef4292aef76fcb3264df8b8b18b24c4fa23c",
+    "hut.meta.json": "218f7bdd8d1491062fc9bdc8d5610334857d7b9cd6e1c6c346b8b127f33b56fb",
+    "hut.py": "000950121c307d77867148f5dd1f023b7dcc0236022d142117c82fe923f98435",
+    "hut_callsite_bytes.json": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
+    "hut_cursor.json.gz": "6b98261d5685e82bdd103cbfcd1b000dda37cf534bf172d0620fe96fa31d9aa4",
+    "hut_cursor.md": "e438363bdbde6acb489d5f0322fe3e3db783b2fac089cc1d2ca34df35be01325",
+    "hut_cursor.meta.json": "4ba011a6d6ccaceb20b043eed5b58c3c0cabf6d6d1ea5d437e08797324c7c884",
+    "hut_cursor.py": "52875c3734ad1b7422f1399f8e6baad0f8f14430520bf98c00ae9a62c651d5e9",
+    "hut_cursor_native_bytes.json": "70763ad54713244975a668ecba9c34e5e64d431de54ab4fde9d95adc3ba9429c",
+    "hut_cursor_promotion.json": "dbb5b28b7f6e5ab42867305d2823c88460ba2303ad64bc2f654a42c0edfdaac7",
+    "hut_cursor_receipt.json": "ba78474a388ca3e9738ae0cfe19ce9b073de5963cf18db604da7cc0a26137bc5",
+    "hut_cursor_summary.json.gz": "d0cc4c79eb57a4e4f13ddcaa9eb1d49a06378d575bd29e282a051000377c7d89",
+    "hut_promotion.json": "8519a2f8335746a09d83bfdf11a35d80cd80d7d0d824d6551f44c864feb7a98f",
+    "hut_publication.py": "ea7f83f536586f6d2e22351af4cdb007ddc707b6698ef3e6dd13e64382fd2c0f",
+    "hut_receipt.json": "3ad36a4ae8d8a853bc6da7957c28083ecfdf4068da65bd776e71b3dd7b086ab0",
+    "hut_summary.json.gz": "d35da0044074ffbd6376315540df63a8732ec4523b04b7cf7832cccf069c2a19",
+    "hut_test_vectors.json": "b9f7fd6921bb04fd4bc29f54babf9ef04a7560dff1c6c1c632f2a0274aacfab4",
+    "hut_test_vectors.meta.json": "bd082a1ac67599f6ceee78876352ee2b512920057fa967f23bea8b3fd319a2d2",
+    "hut_test_vectors.py": "d4bf8a42414b011a27ab778af251bf00b21b1ed80c29ea868cfc6a835db23cf5",
+    "inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+    "mission.json.gz": "baf23f248ac724807b76f3102fee89bbf698dfe49dea1677047abc002be2a04f",
+    "mission.md": "8274d8f8c5a293fa6a92384a91f143b57fac868dbda4d469700ff8c6376242c2",
+    "mission.meta.json": "5f16fe12f478e89a016dfec28611570af06664094f0a53acf7f6725970ee16ac",
+    "mission.py": "4c0ebd785de2a39bc832f2a5365b81e613fdc1d3ffb651f06252b0563f953b9a",
+    "mission_counter.input.json": "3ca42781e1b1e8385dabfa52170b625678c5be4231247ff8e300bcc4bf9ccdc8",
+    "mission_counter.json": "699a738930e8936a6544e6a873617246d2453852c88668c46184fe1eeb0a193c",
+    "mission_counter.meta.json": "a866f05ca0be41a0d0d3edde20855d2c4358f86f9100a364a90cb1d12961e21a",
+    "mission_counter.py": "6ad38e9778339909671173c1303d7a7ede089b29cc2ac44e2636ed86fda69922",
+    "mission_interleaving.input.json": "602ae9d3b9e686956bc542ef6f23276fee5f6f781fa44f9e2d939c47ba9e544b",
+    "mission_interleaving.json": "50c90949811e283202d40b2c1b8c0b15f0e200cabad8031d173f541d28f1100e",
+    "mission_interleaving.meta.json": "ef977df0af9293f907c4e858eb2b34eb8c5732f6071a21512e6ceb2ee9440a5f",
+    "mission_interleaving.py": "55397c7d0f2b22e75b18147ed5647a8d846e4698828dafba48cea5be94dbfc77",
+    "mission_promotion.json": "c2fab9ab3c87e5418a250344a67c6889dd696051cd246d1b03456929df818ce2",
+    "mission_publication.py": "658212dba467967a1d2673b96279f45303c5ebc1c2d00033a6a01f49d3938f3e",
+    "mission_receipt.json": "a33e8728299610c021e75c75732b9c6016ff17688a38494035050f396d3f3243",
+    "mission_test_vectors.json": "8934ab7c34d8738f8db6ff2bd0068ef14eb0874c4077cd89b74de3b944dfc32b",
+    "mission_test_vectors.meta.json": "a6d236ac67a8c5c4ecc98c311f860b6b179bbe70bdbc5b78e08167c88c7ed8cd",
+    "mission_test_vectors.py": "cdd796ded427c8258be5fee51505bdb75992c3a3d5c93f898789248f12afc521",
+    "mtnk_attack.json.gz": "026569a44e60b1646066331faa60319d5d685b987c2507bea0921e5d07823280",
+    "mtnk_attack.meta.json": "ad1f9035a567953f500b34753b6b8dee4fb146e877d63c495a42a2dffe51a2fe",
+    "mtnk_attack.py": "a167202ae128a3242ee4ff136aa74c603e9f627da7a5b94ce3b61f2c4fe31113",
+    "navigation.json.gz": "a2197179f0818a7b2c231c8956601b2269df164db04e05d856b99db380a15d35",
+    "navigation.md": "7dbedf55a3141ba06e182d77ae68d62c406410c1258f804ff3545d4514c1f303",
+    "navigation.meta.json": "3c68495e6af0b8dfbd8284ea397c70fd7f232e8d3721a8ab8ab4e481f837e992",
+    "navigation.py": "5836b1d4efa8ba1838185e60cb4962ded4bdb02a6fed672717474f2cdceb9192",
+    "navigation_compare.py": "249f7583a84b0e529b25b48b0ebf80bbf21d1e1adfd83d3d42ffdac6216c22a3",
+    "navigation_comparison.json": "35df6a325ec9b85b5d461554bb93e45248666290e24c4bf759326b82d6f6be5f",
+    "navigation_inputs.py": "bbfce3965c62fd3802ae60704b2b9465465cd618e8fd5d1f82188a73da8b5713",
+    "navigation_promotion.json": "5fe250b70786cb80f517ad799101fc47274052c928fd441b0d0dc3718f5d5098",
+    "navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+    "navigation_receipt.json": "06a0a3e87b04d82b7494b0da4a9683fac1465ec12ce6f7c0727e6ef8db23ea55",
+    "next_family_native.json.gz": "0f6c0ad83e8922bdb1cdb2cd47934263f03dec74a9984dec6ad0ea764cbf5220",
+    "next_family_native.meta.json": "2dab18534a84c1d62beb8973ff1c8a8dd4ec8f559622d6ece44bf36b38c081d8",
+    "next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+    "promotion.json": "d273aff7456ed9616d104b6e11f78c0f7785d4a9a8574f4447a95124b38d9505",
+    "publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+    "retail_manifest.json": "5e8059c02cdbe854d2f549cf4caa40beff4fcdf2cf6d63bd7c7825023439ee67",
+    "validate_packet.py": "cec57a1afbc65fb05ce2f3c8059ceb7d5c66c5315f616db7bfc834cc93e6b6f0",
+    "validation.json": "bc5a53c71a4416448f7e85f35dd89bab8a931a4bae2d2b66fac1a1f00184fdb0"
+  },
+  "projections": [
+    "tools.spatial_oracle.anytown_damage.hut_test_vectors",
+    "tools.spatial_oracle.anytown_damage.mission_test_vectors"
+  ],
+  "runners": [
+    "tools.spatial_oracle.anytown_damage.next_family_native",
+    "tools.spatial_oracle.anytown_damage.anytown_geometry",
+    "tools.spatial_oracle.anytown_damage.anytown_resident",
+    "tools.spatial_oracle.anytown_damage.anytown_admission",
+    "tools.spatial_oracle.anytown_damage.anytown_occupants",
+    "tools.spatial_oracle.anytown_damage.mtnk_attack",
+    "tools.spatial_oracle.anytown_damage.navigation",
+    "tools.spatial_oracle.anytown_damage.hut",
+    "tools.spatial_oracle.anytown_damage.hut_cursor",
+    "tools.spatial_oracle.anytown_damage.mission",
+    "tools.spatial_oracle.anytown_damage.mission_counter",
+    "tools.spatial_oracle.anytown_damage.mission_interleaving"
+  ],
+  "runtime": {
+    "capstone": "5.0.7",
+    "lzo_version": 8352,
+    "python_requires": ">=3.10",
+    "unicorn": "2.1.4"
+  },
+  "schema": 1,
+  "scope": "Native family identity, damage/repair geometry, selected Recalc, admission, MTNK occupants/Detach, host-scheduled FireAt/flight/impact, full physical Anytown navigation builders/updates, bounded concrete hut sweeps and physical concrete repair-cursor queries, original live MTNK command/Logic continuation, counter ordering and selected v8 first-shot RNG interleaving. Saved navigation production comparison covers loaded/first-damaged/collapsed and repaired states. Mission evidence excludes other-world scheduling except recorded v8 Terrain Next prefixes; no ordinary movement/head, full hut lifecycle or whole-bridge parity claim.",
+  "validation": "Separate --write and --check runs execute twelve native witnesses. Ten compressed witnesses guard their original unprojected payload and lexical-input projection. The v7 counter comparison guards its frozen original projection; v8 interleaving checks original execution against recorded production inputs. Both modes verify the frozen navigation/hut/cursor/mission receipts and two Rust projections. Manifest-only skips native execution and does not repeat the saved navigation production comparison."
+}

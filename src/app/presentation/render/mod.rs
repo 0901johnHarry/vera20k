@@ -21,6 +21,8 @@
 
 mod build_instances;
 mod draw_passes;
+#[cfg(test)]
+pub(crate) use draw_passes::draw_pooled_overlay_bodies;
 pub(crate) mod draw_plan_lowering;
 mod merge_passes;
 pub(crate) mod minimap_transaction;

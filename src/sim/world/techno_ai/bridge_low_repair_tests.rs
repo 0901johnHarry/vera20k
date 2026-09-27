@@ -6,7 +6,7 @@ use crate::headless_scenario::{HeadlessScenario, SIM_TICK_MS};
 use crate::rules::terrain_rules::LandType;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::snapshot::GameSnapshot;
+use crate::sim::world::bridge_test_evidence::save_scene;
 use serde_json::{Value, json};
 
 fn loaded_shrapnel() -> HeadlessScenario {
@@ -15,16 +15,6 @@ fn loaded_shrapnel() -> HeadlessScenario {
     // extracts packaged skirmish maps. Keep the fixture's source explicit.
     let map = std::env::var("VERA20K_SHRAPNEL_MAP").unwrap_or_else(|_| "XShrapnel.MAP".to_owned());
     crate::headless_scenario::load(&retail, &map, 0x0B21_D6E5).unwrap()
-}
-
-fn save_scene(scene: &HeadlessScenario, name: &str) -> Vec<u8> {
-    GameSnapshot::save_validated(
-        scene.sim(),
-        scene.map.ini.content_hash(),
-        scene.runtime.resources.rules.simulation_config_hash(),
-        name,
-        0,
-    )
 }
 
 fn export_scene(scene: &HeadlessScenario, phase: &str) {
@@ -188,9 +178,8 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
         ("approach", approach_snapshot.unwrap()),
         ("repaired", repaired_snapshot),
     ] {
-        let first = super::bridge_target_layer_tests::restored_retail(&scene, &pristine, &bytes);
-        let mut second =
-            super::bridge_target_layer_tests::restored_retail(&scene, &pristine, &bytes);
+        let first = super::bridge_test_evidence::restored_retail(&scene, &pristine, &bytes);
+        let mut second = super::bridge_test_evidence::restored_retail(&scene, &pristine, &bytes);
         scene.runtime.simulation = first;
         for frame in 0..120 {
             for _ in 0..2 {
@@ -680,8 +669,8 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
     // Native load restarts Scenario at zero. Compare independently restored
     // futures, retaining the active hull, counters and all non-reset authority.
     let bytes = active_snapshot.unwrap();
-    let first = super::bridge_target_layer_tests::restored_retail(&scene, &pristine, &bytes);
-    let mut second = super::bridge_target_layer_tests::restored_retail(&scene, &pristine, &bytes);
+    let first = super::bridge_test_evidence::restored_retail(&scene, &pristine, &bytes);
+    let mut second = super::bridge_test_evidence::restored_retail(&scene, &pristine, &bytes);
     scene.runtime.simulation = first;
     assert_retained_naval_ship(scene.sim(), ship, &native["after_damage"], initial_losses);
     assert_retained_naval_ship(&second, ship, &native["after_damage"], initial_losses);
