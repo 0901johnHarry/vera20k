@@ -8,15 +8,18 @@ description: "Build and launch the current branch's normal release game when ask
 Open the ordinary menu and leave a visible player session running.
 
 1. Resolve the checkout with `git rev-parse --show-toplevel`.
-2. Check `Get-Process cargo,rustc,vera20k -ErrorAction SilentlyContinue`.
-   Wait for active builds. Report an existing game instance instead of duplicating it.
+2. Check for an existing `vera20k` process (PowerShell `Get-Process vera20k` or
+   Unix `pgrep -x vera20k`). Report an existing game instead of duplicating it.
 3. Build this checkout:
 
    ```powershell
-   cargo build --release -p vera20k --bin vera20k
+   python -m tools.cargo_run --label <unique-label> -- build --release -p vera20k --bin vera20k
    ```
 
-4. Launch that executable with the primary worktree as working directory, so its
+   The runner waits for active builds. Read its preserved `manifest.json` for the
+   executable path; do not guess `target/release` or copy a prior build.
+
+4. Launch that preserved executable with the primary worktree as working directory, so its
    ignored `config.toml` supplies retail-data configuration. Preserve `RA2_DIR`
    when it supplies the configured data path.
 5. Remove every other inherited `RA2_*` variable from the child environment;

@@ -33,7 +33,7 @@ implementations. Follow the live `advance_tick`/`SPINE REGION` boundaries for
 ordering and lifecycle risks. Use `architecture-scan` for broader placement questions.
 
 Run this skill's `scripts/run_clippy.ps1` only when requested, from inside the
-repo. It checks Cargo ownership and uses the library target. Preserve diagnostics
+repo. It delegates build ownership to `tools.cargo_run` and uses the library target. Preserve diagnostics
 and exit status; unrelated build failure means incomplete validation.
 
 Report source-backed consequences, trigger/frequency, fix direction, scope/HEAD,
