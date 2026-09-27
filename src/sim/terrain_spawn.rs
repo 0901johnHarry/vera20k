@@ -847,9 +847,8 @@ pub fn seed_terrain_spawner_animation(
 
 /// Construct terrain objects and seed their spawner index in one call.
 ///
-/// Convenience for tests and preview/spawn-pick callers. The production load
-/// path calls the two halves separately so construction keeps its native
-/// position ahead of `[Units]`.
+/// Test convenience. The production load path calls the two halves separately
+/// so construction keeps its native position ahead of `[Units]`.
 #[cfg(test)]
 pub fn seed_terrain_spawners(
     sim: &mut crate::sim::world::Simulation,

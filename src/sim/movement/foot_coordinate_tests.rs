@@ -484,7 +484,6 @@ fn configured_teleporter_commands_keep_physical_z_through_save_relocate_and_rest
                         target_rx: 8,
                         target_ry: 9,
                         queue: false,
-                        group_id: None,
                     }
                 };
                 assert!(

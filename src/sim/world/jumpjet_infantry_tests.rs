@@ -161,7 +161,6 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
             target_rx: x + 8,
             target_ry: y,
             queue: false,
-            group_id: None,
         },
     );
     let mut orders = vec![order];
@@ -319,7 +318,6 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
             target_rx: x + 8,
             target_ry: y,
             queue: false,
-            group_id: None,
         },
     );
     let mut orders = vec![park];
@@ -428,7 +426,6 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
             target_rx: 56,
             target_ry: 52,
             queue: false,
-            group_id: None,
         },
     );
     let mut orders = vec![order];
@@ -568,7 +565,6 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
             target_rx: x + 8,
             target_ry: y,
             queue: false,
-            group_id: None,
         },
     );
     let mut orders = vec![hold];

@@ -4636,7 +4636,7 @@ mod infantry_hash_tests {
         assert_eq!(actor.navigation.path_runtime.scold_latch_raw(), 0);
         sim.substrate.entities.insert(actor);
         let clear_hash = sim.state_hash();
-        let old_hash = sim.state_hash_with_schema(super::HashSchema::Before(223));
+        let old_hash = sim.state_hash_with_schema(super::HashSchema::Before(224));
         assert_eq!(clear_hash, old_hash, "a zero byte adds no fold");
         let mut retained_hashes = Vec::new();
         let native: serde_json::Value = serde_json::from_str(include_str!(
@@ -4654,9 +4654,9 @@ mod infantry_hash_tests {
                 .set_scold_latch_for_test(raw);
             let current_hash = sim.state_hash();
             assert_eq!(
-                sim.state_hash_with_schema(super::HashSchema::Before(223)),
+                sim.state_hash_with_schema(super::HashSchema::Before(224)),
                 old_hash,
-                "schema222 never folded Foot+68A"
+                "schema223 never folded Foot+68A"
             );
             assert!(!retained_hashes.contains(&current_hash));
             retained_hashes.push(current_hash);

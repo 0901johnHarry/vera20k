@@ -399,7 +399,6 @@ fn walk_boundary_marks_current_xyz_without_replacing_head_or_consuming_path() {
             target_rx: 17,
             target_ry: 15,
             queue: false,
-            group_id: None,
         },
         Some(&rules),
         grid.as_deref(),
@@ -496,7 +495,6 @@ fn diagonal_walk_relinks_the_first_actual_side_cell_before_reaching_its_head() {
             target_rx: 16,
             target_ry: 16,
             queue: false,
-            group_id: None,
         },
         Some(&rules),
         grid.as_deref(),
@@ -567,7 +565,6 @@ fn refused_fresh_walk_head_restores_the_current_raw_occupation() {
             target_rx: 16,
             target_ry: 15,
             queue: false,
-            group_id: None,
         },
         Some(&rules),
         grid.as_deref(),
@@ -656,7 +653,6 @@ fn production_fresh_head_and_raw_history_match_original_walk_producer() {
                 target_rx: 10,
                 target_ry: 10,
                 queue: false,
-                group_id: None,
             },
             Some(&rules),
             grid.as_deref(),
@@ -1237,7 +1233,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 target_rx: 18,
                 target_ry: 15,
                 queue: false,
-                group_id: None
             },
             Some(&rules),
             grid.as_deref(),
@@ -1275,7 +1270,6 @@ fn walk_stop_and_retarget_finish_a_same_cell_committed_head() {
                 target_rx: 18,
                 target_ry: 16,
                 queue: false,
-                group_id: None,
             }
         };
         assert!(sim.apply_command(
@@ -1646,7 +1640,6 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     target_rx: 20,
                     target_ry: 15,
                     queue: false,
-                    group_id: None
                 },
                 Some(&rules),
                 grid.as_deref(),

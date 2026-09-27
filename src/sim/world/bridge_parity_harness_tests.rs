@@ -585,7 +585,6 @@ fn bridge_script() -> Vec<(u64, Command)> {
             target_rx: APPROACH_B_X,
             target_ry: SPAN_Y,
             queue: false,
-            group_id: None,
         },
     )]
 }

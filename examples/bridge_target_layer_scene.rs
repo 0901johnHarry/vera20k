@@ -76,7 +76,6 @@ fn move_existing_fv(
             target_rx: destination.0,
             target_ry: destination.1,
             queue: false,
-            group_id: None,
         },
     );
     let mut stop_sent = false;

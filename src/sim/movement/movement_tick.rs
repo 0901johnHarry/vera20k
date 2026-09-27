@@ -383,7 +383,6 @@ fn handle_path_exhaustion(
                     let saved_accel = target.accel_factor;
                     let saved_decel = target.decel_factor;
                     let saved_slowdown = target.slowdown_distance;
-                    let saved_group = target.group_id;
                     // Survives the repath: the wall arm's second refusal lands
                     // after this replan, and resetting here would mean the
                     // Override never fires.
@@ -401,7 +400,6 @@ fn handle_path_exhaustion(
                         move_dir_y: d_y,
                         move_dir_len: d_len,
                         final_goal: saved_goal,
-                        group_id: saved_group,
                         ignore_terrain_cost: false,
                         bypass_grid: false,
                         wall_refusal_cell: saved_wall_refusal,
@@ -3593,42 +3591,6 @@ pub(crate) fn finish_movement_pass(
 // ---------------------------------------------------------------------------
 // Post-loop helpers — extracted from tick_movement_with_grids
 // ---------------------------------------------------------------------------
-
-/// Formation speed sync (deep_113 lines 451-456).
-/// Cap grouped units to the slowest member's max speed so formations stay
-/// together instead of faster units pulling ahead.
-pub(crate) fn sync_formation_speeds_after_live_pass(entities: &mut EntityStore) {
-    let mut group_min_speed: BTreeMap<u32, SimFixed> = BTreeMap::new();
-    let mut grouped: Vec<(u64, u32, SimFixed)> = Vec::new();
-    for entity in entities.values() {
-        // A Dying corpse keeps its movement_target but won't move; it must not
-        // drag a living formation's speed down to its (possibly slower) value.
-        if entity.dying {
-            continue;
-        }
-        if let Some(ref mt) = entity.movement_target {
-            if let Some(gid) = mt.group_id {
-                let entry = group_min_speed.entry(gid).or_insert(mt.speed);
-                if mt.speed < *entry {
-                    *entry = mt.speed;
-                }
-                grouped.push((entity.stable_id(), gid, mt.speed));
-            }
-        }
-    }
-    // Only the members that are actually capped are taken mutably: an
-    // all-entity mutable walk would mark the whole store touched every frame.
-    for (id, gid, speed) in grouped {
-        let min_spd = group_min_speed[&gid];
-        if speed > min_spd
-            && let Some(mt) = entities
-                .get_mut(id)
-                .and_then(|entity| entity.movement_target.as_mut())
-        {
-            mt.speed = min_spd;
-        }
-    }
-}
 
 /// Remove movement targets from finished entities, reset sub-cell to final
 /// position, and transition locomotor to Idle.

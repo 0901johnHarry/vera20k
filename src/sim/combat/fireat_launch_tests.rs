@@ -237,7 +237,6 @@ fn a_moving_rhino_is_led() {
             target_rx: 20,
             target_ry: 28,
             queue: false,
-            group_id: None,
         },
     );
     duel.order(
@@ -301,7 +300,6 @@ fn a_homing_missile_fuses_on_the_unled_target() {
             target_rx: 20,
             target_ry: 28,
             queue: false,
-            group_id: None,
         },
     );
     duel.order(

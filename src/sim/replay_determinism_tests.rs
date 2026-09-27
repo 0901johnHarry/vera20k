@@ -48,7 +48,6 @@ fn make_move_command() -> CommandEnvelope {
             target_rx: 12,
             target_ry: 2,
             queue: false,
-            group_id: None,
         },
     )
 }

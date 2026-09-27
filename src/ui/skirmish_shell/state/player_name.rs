@@ -4,7 +4,7 @@ use crate::map::scenario_menu::MapMenuEntry;
 use crate::sim::game_options::GameOptions;
 use crate::skirmish_launch::{SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions};
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::{SkirmishCountry, SkirmishSettings, StartPosition};
+use crate::ui::main_menu::{SkirmishCountry, StartPosition};
 use crate::ui::shell::trackbar::TrackbarHold;
 
 use super::super::SkirmishStatics;
@@ -317,13 +317,12 @@ impl SkirmishShellState {
 
 impl Default for SkirmishShellState {
     fn default() -> Self {
-        let settings = SkirmishSettings::default();
         let options = SkirmishLaunchOptions::default();
         Self {
-            selected_map_idx: settings.selected_map_idx,
+            selected_map_idx: 0,
             selected_mode_id: 1,
             player_name_edit: PlayerNameEditState::default(),
-            player_country: settings.player_country,
+            player_country: SkirmishCountry::default(),
             player_country_random: false,
             player_color_index: 0,
             player_color_claimed: true,
@@ -341,8 +340,8 @@ impl Default for SkirmishShellState {
             build_off_ally: options.build_off_ally,
             crates: options.crates,
             mcv_redeploy: options.mcv_redeploy,
-            zoom_enabled: settings.zoom_enabled,
-            opponents: default_opponents(settings.ai_country),
+            zoom_enabled: true,
+            opponents: default_opponents(SkirmishCountry::Russia),
             selected_mode_allies_allowed: true,
             selected_mode_must_ally: false,
             pressed_owner_draw_button: None,

@@ -163,7 +163,6 @@ pub(crate) use movement_commands::issue_move_command_with_layered;
 pub(crate) use movement_path::{
     path_search_used_zone_grid_marker, reset_path_search_used_zone_grid_marker,
 };
-pub(crate) use movement_tick::sync_formation_speeds_after_live_pass;
 pub(crate) use navcom::{foot_stop_moving, set_destination_internal_cell, track_stop_moving};
 // Legacy batch tick used by focused movement fixtures.
 #[cfg(test)]

@@ -42,7 +42,6 @@ fn ordinary_move(
             target_rx: goal.0,
             target_ry: goal.1,
             queue: false,
-            group_id: None,
         },
     );
     // The active ordinary-click path calls this in context_order::finish_order.
@@ -538,7 +537,6 @@ fn direct_simulation_walk_move_is_an_already_resolved_destination() {
             target_rx: 9,
             target_ry: 5,
             queue: false,
-            group_id: None,
         },
     ));
     advance_input_fixture(&mut sim, &rules);
