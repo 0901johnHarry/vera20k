@@ -342,7 +342,10 @@ pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
         .then(|| NavTargetRef::cell(32, 32));
     entity.foot_locomotor_swap_active = input["swap"].as_bool().unwrap_or(false);
     if input["open_transport"].as_bool().unwrap_or(false) {
-        entity.passenger_role = PassengerRole::Inside { transport_id: 4 };
+        entity.passenger_role = PassengerRole::Inside {
+            transport_id: 4,
+            open_topped: true,
+        };
     }
     if input["bunker"].as_bool().unwrap_or(false) {
         entity.bunker_link = crate::sim::game_entity::BunkerLink::Installed(2);

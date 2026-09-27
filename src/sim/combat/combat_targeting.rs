@@ -99,8 +99,10 @@ pub(crate) struct AttackerSnapshot {
     /// snaps and vehicle turns. Facing gates and emission read its full
     /// 16-bit value rather than the byte mirrored for presentation.
     pub hull_facing: Option<crate::sim::movement::FacingClass>,
-    /// Weapon-selection override (Gunner-IFV slot OR open-topped passenger weapon).
+    /// Weapon-selection override (the Gunner-IFV slot).
     pub weapon_override: Option<super::combat_weapon::WeaponOverride>,
+    /// `TechnoClass+0x82` InOpenToppedTransport.
+    pub in_open_transport: bool,
     /// Garrison state — present only for garrisoned buildings (IsOccupied).
     pub garrison: Option<GarrisonSnapshot>,
     /// The threat mask this scan's CALLER pushed — `Greatest_Threat`'s second
@@ -170,35 +172,10 @@ pub(crate) fn acquire_best_target_for_entity(
         return None;
     }
 
+    // Dummy target: no current target when acquiring fresh.
     let snapshot = AttackerSnapshot {
-        stable_id: entity.stable_id(),
-        owner: entity.owner(),
-        category: entity.category,
-        target: super::TargetKind::Entity(0), // Dummy — no current target when acquiring fresh
-        pos_rx: entity.position.rx,
-        pos_ry: entity.position.ry,
-        pos_z: entity.position.z,
-        pos_exact_z_leptons: entity.position.exact_z_leptons,
-        sub_x: entity.position.sub_x,
-        sub_y: entity.position.sub_y,
-        type_id: entity.type_ref(),
-        facing: entity.facing,
-        veterancy: entity.veterancy,
-        animation_sequence: entity.animation.as_ref().map(|a| a.sequence),
-        animation_frame: entity.animation.as_ref().map(|a| a.frame_index),
-        is_prone: entity
-            .infantry
-            .as_ref()
-            .is_some_and(|infantry| infantry.is_prone),
-        is_fully_deployed: entity.is_fully_deployed(),
-        has_movement: entity.movement_target.is_some(),
-        pending_infantry_fire: None,
-        pending_building_fire: None,
-        barrel_facing: entity.barrel_facing,
-        hull_facing: entity.body_facing,
-        weapon_override: entity.weapon_override,
-        garrison: None,
         scan_mission: mask,
+        ..super::build_attacker_snapshot(entity, super::TargetKind::Entity(0), None, None, None)
     };
     acquire_best_target(
         entities,

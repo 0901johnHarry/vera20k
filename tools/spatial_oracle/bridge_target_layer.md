@@ -235,8 +235,9 @@ combat chains are not certified by these ordinary FV controls.
 
 ## Rust and production validation
 
-On 2026-09-27 the final candidate passed `VERA20K_REQUIRE_RETAIL_INI=1 cargo test
--p vera20k --lib`: 9589 passed, 0 failed, 165 ignored (62.31 seconds). The final
+On 2026-09-27 the final candidate, merged with origin/main8309fa17 (including
+PR567 open-topped fire and PR563 pause ownership), passed `VERA20K_REQUIRE_RETAIL_INI=1 cargo test
+-p vera20k --lib`: 9583 passed, 0 failed, 169 ignored (62.96 seconds). The final
 `cargo clippy -p vera20k --lib` exited 0 with 954 warnings. The earlier focused
 selection passed 145 tests, with four ignored. Native-derived checks live in
 `greatest_threat_bridge_tests`, `fire_error_cell_tests`, `in_range_cell_tests`,
@@ -257,13 +258,18 @@ additional native comparisons.
 
 The explicitly ignored production test
 `sim::world::techno_ai::bridge_target_layer_tests::retail_hills_passive_bridge_layers_survive_movement_and_restore`
-was run separately against the physical installation and passed in 7.45 seconds.
+was run separately against the physical installation and passed in 7.49 seconds.
 It loads Hills through the app's production loader, moves FV961 from `(64,72)`
 onto deck `(64,69)` at Z1040 in 21 frames, and moves FV962 from `(62,69)` toward
 `(68,69)`, stopping beneath the bridge at `(66,69)` and Z624 in 46 frames. Both
 use ordinary Move/Stop admission. Ready and busy opposite-layer scans remain
-unassigned. Two restored futures match for 40 frames, and bridge-receiver collapse
-plus two restored collapsed futures match for four further frames. This is Rust
+unassigned. Direct live-to-restored checks preserve actor position/layer, target,
+passive/rearm timer words, estimated/actual health and lifecycle, plus both Cells'
+height/raw bridge flags. Native loading reseeds Scenario RNG to zero and Map
+resize reconstructs the shared Dummy, so an uninterrupted future is not expected
+to match a restored future. Two restored futures match for 40 frames, and
+bridge-receiver collapse plus two restored collapsed futures match for four
+further frames. This is Rust
 production integration; supplied receiver damage is not an ordinary firing proof.
 
 The release example closes that firing boundary separately:
@@ -282,24 +288,26 @@ target/weapon/projectile owners. It recorded 52 projectiles and collapse after
 1400 frames; the former deck and ground actors were both retired. The intact save
 is frame69/hash`286e28169efa00f8`, the collapsed save frame1509/hash`3d10a7cf8f09e45a`,
 map hash`c045c269668aa87e`, rules hash`9bf711eab7834933`. Snapshot compatibility is
-218; the hash layout remains217.
+219; the hash layout remains217.
 
 The ordinary release app loaded both saves through Skirmish → in-game Load Game.
 The intact view shows the selected deck FV and hostile ground FV beneath it; the
 collapsed view shows the missing central span, absent former occupants and the
 bank FV on the surviving approach. Both cursor-free GPU screenshots use normal
-fog: SCRN0017.pcx SHA256`750ba7dfc27021d5f7870944bce41fcad30c49fe6bfd396f71968e43ce6e472a`
-and SCRN0018.pcx SHA256`9edb3816b52f5630a985baa0b19a9bbff95ffa841556795adb043b5903cef240`.
+fog: SCRN0019.pcx SHA256`4675ef2509d8cd88c64dcaa0e757957f73d7e281211b69128be3d6b93fc03f4e`
+and SCRN0020.pcx SHA256`e82674c16afc2c5051551609424b86400a9bfa1a6c44c7051a1cdd06c1597087`.
 Presentation-only full visibility and terrain diagnostics helped locate the
 bridge, then were disabled before capture. This is visible Rust smoke validation,
-not native image parity. Main-menu loading remains unsupported; an initial black
-view cleared through the pause menu and was not used as evidence.
+not native image parity. The initial intact load showed black at the inherited
+camera position; temporary full visibility revealed distant Cell(72,125). Panning
+to the saved actors and restoring normal fog produced the captured view. No
+rendered claim uses that initial black frame.
 
 Local logs, retained binaries, saves' generating output, PCX/PNG captures and
-`visible-captures.json` are under
+`visible-v219-captures.json` are under
 `/Users/halvor/Documents/vera20k-dev/bridge-target-evidence-20260927`.
-Release app SHA256`3635eeeb4fdc528733070734cda7c23416ac4590b8e3fda66179afea7798f4c4`;
-example SHA256`21a9328b358a3568129d7414e1e7cef69e3eb351e765ca833880e9f8abaec753`.
+Release app SHA256`cfa250702c4011c69a5cbcd3f2c719d918d9b3aa28e88c8cf14dee6fec6c80b1`;
+example SHA256`43210b8692b2c0c11abda54ae418de5160dec77645e024b047bfafd02d0479e9`.
 
 ## Required subsequent chains
 
@@ -325,11 +333,15 @@ as recorded below. The report is retained locally as `critic.md`.
 
 The critic also recommended comparing an uninterrupted future with a restored
 future, since two restored copies cannot detect a shared deterministic omission.
-The existing two-copy receipt above is deliberately bounded. Integration with
-subsequently fetched PR567 requires preserving its open-topped range bonus and
-using snapshot219, because both branches independently used218. That integration
-and its revalidation remain the owner's responsibility; no second critic is
-requested or implied.
+The final candidate adds direct actor-state and bridge-Cell comparisons across
+loading; the continuation receipt remains bounded because native loading
+intentionally reseeds Scenario RNG and recreates Dummy. Integration with PR567
+preserves its passenger schema and applies the open-topped range bonus before
+coordinates, MinimumRange and the arcing split for Abstract and retained Cell
+targets. Snapshot219 rejects the two incompatible earlier218 states. The merged
+full retail suite and Clippy passed, including the native walk-cell/cargo-range
+controls. All four explicitly ignored Battle Fortress production tests passed
+(15.30 seconds). The single critic was not repeated.
 
 ## Local annotation receipt
 

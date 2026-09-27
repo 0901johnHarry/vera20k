@@ -54,24 +54,21 @@ pub enum WeaponSlot {
     Secondary,
 }
 
-/// Weapon-selection override carried by a transport firing on a passenger's
-/// behalf. Both variants feed native inputs of the selection ladder:
+/// Weapon-selection override carried by a transport on a passenger's behalf.
 ///
 /// - **`IfvSlot(idx)`** — `Gunner=yes` transports (IFV). The passenger's
 ///   `IFVMode` becomes the transport's `CurrentWeaponNumber`
 ///   (`TechnoClass+0x138`, written by `TechnoClass::SetGunnerWeapon @
 ///   0x0070DC70` from the receive-gunner path at `0x007464CE`).
-/// - **`OpenTransport(slot)`** — VERA-internal bridge for open-topped
-///   passenger fire: the transport entity stands in for the passenger whose
-///   `InOpenToppedTransport` (`TechnoClass+0x82`) and `OpenTransportWeapon`
-///   would natively be read on the passenger itself (ladder arm G @
-///   `0x006F33D9`). The slot value is the passenger's `OpenTransportWeapon`.
+///
+/// An open-topped passenger's `OpenTransportWeapon` is read on the passenger
+/// itself (its `+0x82`, [`PassengerRole::in_open_transport`]).
+///
+/// [`PassengerRole::in_open_transport`]: crate::sim::passenger::PassengerRole::in_open_transport
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WeaponOverride {
     /// Transport's `CurrentWeaponNumber`, used when transport is `Gunner=yes`.
     IfvSlot(u32),
-    /// Passenger's `OpenTransportWeapon` slot (0 primary / 1 secondary).
-    OpenTransport(u32),
 }
 
 /// Result of weapon selection: the chosen weapon, its warhead, and the
@@ -515,9 +512,12 @@ pub(crate) fn aircraft_strafes(rules: &RuleSet, obj: &ObjectType, veterancy: u16
         .is_some_and(|projectile| projectile.rot <= 1 && !projectile.inviso)
 }
 
-/// Techno GetRange7012C0, used by Aircraft FindFireLocation4197C0. This is
-/// raw signed weapon range, capped by the shortest armed cargo weapon when
-/// OpenTopped. It deliberately excludes InRange's bonuses and range overrides.
+/// `TechnoClass::GetWeaponRange @ 0x007012C0` (vt+0x168, no class
+/// override): the raw signed range of `GetWeapon(index)`, 0 without one,
+/// capped by [`open_topped_cargo_range`]. It deliberately excludes InRange's
+/// bonuses and range overrides. Read by the flak scatter, the aircraft fire
+/// location, the scan radius (`Threat_Range`, `Greatest_Threat`), the
+/// base-defence threat score and an open-topped mover's per-cell stop.
 pub(crate) fn weapon_range(
     entity: &GameEntity,
     obj: &ObjectType,
@@ -531,28 +531,43 @@ pub(crate) fn weapon_range(
     else {
         return 0;
     };
-    let mut range = weapon.range_leptons;
-    if obj.open_topped
-        && let Some(cargo) = entity.passenger_role.cargo()
-    {
-        // Cargo owns the native head/+30 sequence. Neither limbo nor death
-        // filters belong to this reader; boarded passengers are in limbo.
-        for &id in &cargo.passengers {
-            let Some(passenger) = entities.get(id) else {
-                break;
-            };
-            let Some(kind) = rules.object(interner.resolve(passenger.type_ref())) else {
-                continue;
-            };
-            let index = current_weapon_index(kind, attacker_facts(passenger, kind));
-            if let Some(weapon) = weapon_for_index(kind, passenger.veterancy, index)
-                .and_then(|(name, _)| rules.weapon(name))
-            {
-                range = range.min(weapon.range_leptons);
-            }
+    let range = weapon.range_leptons;
+    open_topped_cargo_range(entity, obj, entities, rules, interner)
+        .map_or(range, |cargo| range.min(cargo))
+}
+
+/// GetWeaponRange's `OpenTopped=` arm (`0x007012ED..`, the same walk as
+/// `0x00710590`): the shortest range among the passengers' current weapons
+/// (`GetCurrentWeapon`, vt+0x3F4), walked from the cargo head. `None` when
+/// `obj` is not open-topped or no passenger is armed: native starts from
+/// `INT_MAX`, which caps nothing.
+pub(crate) fn open_topped_cargo_range(
+    entity: &GameEntity,
+    obj: &ObjectType,
+    entities: &crate::sim::entity_store::EntityStore,
+    rules: &RuleSet,
+    interner: &StringInterner,
+) -> Option<i32> {
+    if !obj.open_topped {
+        return None;
+    }
+    let mut shortest = None;
+    // Cargo owns the native head/+30 sequence. Neither limbo nor death
+    // filters belong to this reader; boarded passengers are in limbo.
+    for &id in &entity.passenger_role.cargo()?.passengers {
+        let Some(passenger) = entities.get(id) else {
+            break;
+        };
+        let Some(kind) = rules.object(interner.resolve(passenger.type_ref())) else {
+            continue;
+        };
+        if let Some(weapon) = current_weapon(passenger, kind).and_then(|name| rules.weapon(name)) {
+            shortest = Some(shortest.map_or(weapon.range_leptons, |range: i32| {
+                range.min(weapon.range_leptons)
+            }));
         }
     }
-    range
+    shortest
 }
 
 fn current_weapon_index(obj: &ObjectType, facts: AttackerFacts) -> i32 {
@@ -1201,11 +1216,10 @@ pub(crate) fn is_ally_by_object(
         })
 }
 
-fn open_transport_weapon_from_override(weapon_override: Option<WeaponOverride>) -> Option<i32> {
-    match weapon_override {
-        Some(WeaponOverride::OpenTransport(slot)) => i32::try_from(slot).ok(),
-        _ => None,
-    }
+/// Arm G's pair (`0x006F33D9`) and the DeployFire infantry arm's
+/// (`0x005218E0`): `+0x82` and the type's `OpenTransportWeapon (+0xD50) != -1`.
+fn open_transport_weapon(in_open_transport: bool, obj: &ObjectType) -> Option<i32> {
+    (in_open_transport && obj.open_transport_weapon != -1).then_some(obj.open_transport_weapon)
 }
 
 fn current_weapon_number_from_override(weapon_override: Option<WeaponOverride>) -> i32 {
@@ -1235,9 +1249,6 @@ fn current_weapon_number_from_override(weapon_override: Option<WeaponOverride>) 
 ///   `SpawnRetreat__Push 0x0054E47D`). Trigger: Hornet/ASW pushed to
 ///   retreat; effect: the collision secondary is never chosen; frequency:
 ///   every carrier/destroyer spawn cycle end.
-/// - `open_transport_weapon` is read from the transport-side override, not
-///   from a passenger's `+0x82` flag, because VERA's open-topped fire is
-///   emitted by the transport (passengers never reach the fire path).
 pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerFacts {
     let kind = TechnoKind::from_category(entity.category);
     let deploy_fire_active = match kind {
@@ -1259,7 +1270,10 @@ pub(crate) fn attacker_facts(entity: &GameEntity, obj: &ObjectType) -> AttackerF
         kind,
         veterancy: entity.veterancy,
         current_weapon_number: current_weapon_number_from_override(entity.weapon_override),
-        open_transport_weapon: open_transport_weapon_from_override(entity.weapon_override),
+        open_transport_weapon: open_transport_weapon(
+            entity.passenger_role.in_open_transport(),
+            obj,
+        ),
         gattling_stage: entity.gattling.stage(),
         deploy_fire_active,
         is_occupied_building,
@@ -1293,7 +1307,7 @@ pub(crate) fn attacker_facts_from_snapshot(
         kind,
         veterancy: snap.veterancy,
         current_weapon_number: current_weapon_number_from_override(snap.weapon_override),
-        open_transport_weapon: open_transport_weapon_from_override(snap.weapon_override),
+        open_transport_weapon: open_transport_weapon(snap.in_open_transport, obj),
         gattling_stage: 0,
         deploy_fire_active,
         is_occupied_building: kind == TechnoKind::Building
@@ -1474,6 +1488,7 @@ fn try_garrison_weapon<'a>(
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
+    use crate::sim::passenger::PassengerRole;
 
     #[test]
     fn passive_scan_occupied_building_uses_weapon_identity_without_target_fallback() {
@@ -1537,15 +1552,6 @@ mod tests {
                 "the clear belongs to Infantry"
             );
         }
-    }
-
-    #[test]
-    fn test_weapon_override_variants() {
-        let ifv = WeaponOverride::IfvSlot(16);
-        let open = WeaponOverride::OpenTransport(1);
-        assert_ne!(ifv, open);
-        assert_eq!(ifv, WeaponOverride::IfvSlot(16));
-        assert_eq!(open, WeaponOverride::OpenTransport(1));
     }
 
     #[test]
@@ -3494,15 +3500,23 @@ IsLocomotor=yes
         assert!(!attacker_facts(&siege, ggi_obj).deploy_fire_active);
         siege.deploy_state = Some(DeployPhase::Deployed);
         assert!(attacker_facts(&siege, ggi_obj).deploy_fire_active);
-        // Overrides.
+        // The gunner slot is the transport's; `+0x82` is the rider's own.
         siege.weapon_override = Some(WeaponOverride::IfvSlot(3));
         let f = attacker_facts(&siege, ggi_obj);
         assert_eq!(f.current_weapon_number, 3);
         assert_eq!(f.open_transport_weapon, None);
-        siege.weapon_override = Some(WeaponOverride::OpenTransport(1));
-        let f = attacker_facts(&siege, ggi_obj);
+        ggi.passenger_role = PassengerRole::Inside {
+            transport_id: 9,
+            open_topped: true,
+        };
+        let f = attacker_facts(&ggi, ggi_obj);
         assert_eq!(f.current_weapon_number, 0);
         assert_eq!(f.open_transport_weapon, Some(1));
+        ggi.passenger_role = PassengerRole::Inside {
+            transport_id: 9,
+            open_topped: false,
+        };
+        assert_eq!(attacker_facts(&ggi, ggi_obj).open_transport_weapon, None);
     }
 
     #[test]

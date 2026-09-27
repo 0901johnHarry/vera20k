@@ -927,6 +927,11 @@ impl Simulation {
                 // link (`PUSH 3; CALL [vt+0x280]` at `0x004C75DC`). Only the
                 // miner's refinery handshake is modelled on that bus here.
                 // A tethered miner never gets here (see the top of this arm).
+                // `0x004C7639..0x004C7650`: an open-topped transport's riders
+                // let go of their targets too.
+                if let Some(rules) = rules {
+                    self.open_topped_passengers_take_target(*entity_id, None, rules);
+                }
                 crate::sim::miner::miner_dock::break_for_retask(self, *entity_id, rules);
                 self.commit_stop_miner_guard(*entity_id);
                 // `0x004C769C..0x004C76AC`: Stop takes a Slave Miner off its
@@ -980,6 +985,15 @@ impl Simulation {
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
+                    // `0x004C7482..0x004C749D`: an open-topped transport's
+                    // riders take the ordered target.
+                    if let Some(rules) = rules {
+                        self.open_topped_passengers_take_target(
+                            *attacker_id,
+                            Some(combat::TargetKind::Entity(*target_id)),
+                            rules,
+                        );
+                    }
                 }
                 issued
             }
@@ -1020,6 +1034,15 @@ impl Simulation {
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
+                    // `0x004C7482..0x004C749D`: an open-topped transport's
+                    // riders take the ordered target.
+                    if let Some(rules) = rules {
+                        self.open_topped_passengers_take_target(
+                            *attacker_id,
+                            Some(combat::TargetKind::Entity(*target_id)),
+                            rules,
+                        );
+                    }
                 }
                 issued
             }
@@ -1058,6 +1081,14 @@ impl Simulation {
                 );
                 if issued {
                     self.finish_ordered_attack_destination(*attacker_id, rules);
+                    // `0x004C7482..0x004C749D`, a cell target included.
+                    if let Some(rules) = rules {
+                        self.open_topped_passengers_take_target(
+                            *attacker_id,
+                            Some(combat::TargetKind::Cell(*target_rx, *target_ry)),
+                            rules,
+                        );
+                    }
                 }
                 issued
             }

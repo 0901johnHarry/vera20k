@@ -1130,7 +1130,10 @@ mod tests {
         pax.sub_cell = sub_cell;
         pax.owner = sim.interner.intern(owner);
         pax.type_ref = sim.interner.intern("E1");
-        pax.passenger_role = PassengerRole::Inside { transport_id };
+        pax.passenger_role = PassengerRole::Inside {
+            transport_id,
+            open_topped: false,
+        };
         sim.substrate.entities.insert(pax);
         stable_id
     }

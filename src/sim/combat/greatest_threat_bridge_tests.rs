@@ -312,33 +312,13 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
     let firer = world.substrate.entities.get(1).unwrap();
     let candidate = world.substrate.entities.get(2).unwrap();
     let interner = &world.interner;
-    let snapshot = AttackerSnapshot {
-        stable_id: 1,
-        owner: firer.owner(),
-        category: firer.category,
-        target: super::super::TargetKind::Entity(2),
-        pos_rx: 10,
-        pos_ry: 20,
-        pos_z: 6,
-        pos_exact_z_leptons: Some(624),
-        sub_x: firer.position.sub_x,
-        sub_y: firer.position.sub_y,
-        type_id: firer.type_ref(),
-        facing: 0,
-        veterancy: 0,
-        animation_sequence: None,
-        animation_frame: None,
-        is_prone: false,
-        is_fully_deployed: false,
-        has_movement: false,
-        pending_infantry_fire: None,
-        pending_building_fire: None,
-        barrel_facing: firer.barrel_facing,
-        hull_facing: firer.body_facing,
-        weapon_override: None,
-        garrison: None,
-        scan_mission: super::super::ScanMission::Guard,
-    };
+    let snapshot = super::super::build_attacker_snapshot(
+        firer,
+        super::super::TargetKind::Entity(2),
+        None,
+        None,
+        None,
+    );
     let context = ScanContext {
         entities: &world.substrate.entities,
         los: Default::default(),

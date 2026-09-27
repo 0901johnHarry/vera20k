@@ -2223,9 +2223,17 @@ impl Simulation {
                     target_transport_id.hash(hasher);
                     (*phase as u8).hash(hasher);
                 }
-                crate::sim::passenger::PassengerRole::Inside { transport_id } => {
+                crate::sim::passenger::PassengerRole::Inside {
+                    transport_id,
+                    open_topped,
+                } => {
                     3u8.hash(hasher);
                     transport_id.hash(hasher);
+                    // `+0x82`, folded only when set so a closed transport's
+                    // cargo keeps its historical hash.
+                    if *open_topped {
+                        1u8.hash(hasher);
+                    }
                 }
             }
             entity.weapon_override.hash(hasher);

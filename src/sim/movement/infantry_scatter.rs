@@ -186,7 +186,7 @@ impl Simulation {
         super::movement_commands::clear_destination_path_head(
             self.substrate.entities.get_mut(id).unwrap(),
         );
-        if !self.begin_foot_destination(id, true, rules) {
+        if !self.begin_foot_destination(id, true) {
             return Ok(true);
         }
         super::prepare_walk_cell_destination(

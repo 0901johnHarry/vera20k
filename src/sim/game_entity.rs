@@ -1327,7 +1327,7 @@ impl GameEntity {
                 self.category,
                 EntityCategory::Structure | EntityCategory::Infantry
             )
-            && !self.passenger_role.is_inside_transport()
+            && self.guards_when_idle()
         {
             MissionType::Guard
         } else {
@@ -1417,13 +1417,20 @@ impl GameEntity {
         // covers missions {Move, Harvest, Guard} only, so idle Units must be
         // Guard for the later acquisition slice to ever fire). Units only this
         // slice: infantry is S6, aircraft already maps idle via
-        // aircraft_mission, buildings are S8. In-transport passengers keep the
-        // legacy None placeholder until the enter-transport mission commit is
-        // traced.
-        if self.category == EntityCategory::Unit && !self.passenger_role.is_inside_transport() {
+        // aircraft_mission, buildings are S8.
+        if self.category == EntityCategory::Unit && self.guards_when_idle() {
             return (MissionType::Guard, 0);
         }
         (MissionType::None, 0)
+    }
+
+    /// Whether the finished-job bridge reads an idle object as Guard. A closed
+    /// transport's passenger keeps the None placeholder: it has left the logic
+    /// list and runs no AI. An open-topped transport's rider stays on it and
+    /// was put on Guard as it boarded (`SetInOpenTransport @ 0x00710470` ->
+    /// `ResetOrdersToGuard`).
+    fn guards_when_idle(&self) -> bool {
+        !self.passenger_role.is_inside_transport() || self.passenger_role.in_open_transport()
     }
 
     /// Construct after the owning world funnel has resolved the explicit
@@ -2190,7 +2197,10 @@ mod mission_shadow_tests {
         // mission a passenger holds inside a transport is untraced (do NOT
         // guess Sleep/Guard); this pin flips with the traced value later.
         let mut e = GameEntity::test_default(1, "E1", "Americans", 3, 3);
-        e.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 99 };
+        e.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 99,
+            open_topped: false,
+        };
         assert_eq!(e.derived_mission(), (MissionType::None, 0));
     }
 

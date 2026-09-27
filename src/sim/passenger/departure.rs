@@ -80,12 +80,20 @@ pub(crate) fn depart_cargo_head(
             sim.temporal_remove_gunner(transport_id, passenger_id);
         }
     }
+    // A failed Unlimbo re-attaches the passenger with `+0x82` untouched; only
+    // a successful unload clears it (`0x0073DB98`).
+    let open_topped = sim
+        .substrate
+        .entities
+        .get(passenger_id)
+        .is_some_and(|passenger| passenger.passenger_role.in_open_transport());
     let result = attempt(sim, passenger_id);
     if let Err(failure) = result.as_ref() {
         restore_departure(
             sim,
             rules,
             transport_id,
+            open_topped,
             passenger_id,
             passenger_size,
             route,
@@ -99,6 +107,7 @@ fn restore_departure(
     sim: &mut Simulation,
     rules: &RuleSet,
     transport_id: u64,
+    open_topped: bool,
     passenger_id: u64,
     passenger_size: u32,
     route: DepartureRoute,
@@ -125,7 +134,10 @@ fn restore_departure(
                     if matches!(failure, DepartureFailure::ParachuteReveal(..)) {
                         passenger.parachute_state = None;
                     }
-                    passenger.passenger_role = PassengerRole::Inside { transport_id };
+                    passenger.passenger_role = PassengerRole::Inside {
+                        transport_id,
+                        open_topped,
+                    };
                     if let Some(locomotor) = passenger.locomotor.as_mut() {
                         locomotor.layer = prior_layer;
                     }
@@ -149,7 +161,10 @@ fn restore_departure(
                 "invalid ground departure phase"
             );
             if let Some(passenger) = sim.substrate.entities.get_mut(passenger_id) {
-                passenger.passenger_role = PassengerRole::Inside { transport_id };
+                passenger.passenger_role = PassengerRole::Inside {
+                    transport_id,
+                    open_topped,
+                };
             }
         }
     }
@@ -192,7 +207,8 @@ pub(crate) fn reveal_unloaded_passenger(
         debug_assert!(matches!(
             passenger.passenger_role,
             PassengerRole::Inside {
-                transport_id: current_transport
+                transport_id: current_transport,
+                ..
             } if current_transport == transport_id
         ));
         passenger.passenger_role = PassengerRole::None;

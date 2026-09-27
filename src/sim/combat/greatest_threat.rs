@@ -527,11 +527,25 @@ fn is_early_return_ring(ring: i32, radius: i32) -> bool {
 /// one — plain Guard on a type with no `GuardRange=` — bounds the walk at
 /// `wider weapon range + 1 + AirRangeBonus` cells instead, which is a SEARCH
 /// bound, deliberately wider than the acceptance the candidate gate applies.
-fn scan_radius_cells(rules: &RuleSet, obj: &ObjectType, veterancy: u16, range: ScanRange) -> i32 {
+///
+/// RESIDUAL: the bound's two other arms are not ported: a turreted type
+/// without `+0xCD5` takes `GetWeaponRange(CurrentWeaponNumber)`
+/// (`0x006F9068..0x006F908E`), and a type with `+0xD69`, `+0xD97` and
+/// `+0xD14` takes `+0x5B8` (`0x006F9090..0x006F90DC`). Trigger: plain Guard
+/// without `GuardRange=` on such a type (an IFV's gunner slot among them).
+/// Effect: the ring walk stops at a different ring. Frequency: every such
+/// scan. Risk: a candidate the native walk reaches is missed, or the reverse.
+fn scan_radius_cells(
+    rules: &RuleSet,
+    obj: &ObjectType,
+    veterancy: u16,
+    range: ScanRange,
+    cargo_range: Option<i32>,
+) -> i32 {
     match range {
         ScanRange::Hard(cells) => cells.to_num::<i32>(),
         ScanRange::CanFireAt => {
-            let weapon_cells = max_weapon_range(rules, obj, veterancy).to_num::<i32>();
+            let weapon_cells = max_weapon_range(rules, obj, veterancy, cargo_range).to_num::<i32>();
             let air_bonus_cells = obj.air_range_bonus.map_or(0, |bonus| bonus.to_num::<i32>());
             weapon_cells + 1 + air_bonus_cells
         }
@@ -795,6 +809,16 @@ pub(crate) fn greatest_threat(
     los: crate::sim::combat::line_of_fire::LineOfFireInputs<'_>,
     fire_world: Option<&crate::sim::world::Simulation>,
 ) -> Option<u64> {
+    // GetWeaponRange's cargo minimum for an open-topped scanner (`0x007012C0`).
+    let cargo_range = entities.get(attacker.stable_id).and_then(|entity| {
+        super::combat_weapon::open_topped_cargo_range(
+            entity,
+            attacker_obj,
+            entities,
+            rules,
+            interner,
+        )
+    });
     let range = match scan_range_override {
         Some(cells) => ScanRange::Hard(cells),
         None => scan_range(
@@ -802,6 +826,7 @@ pub(crate) fn greatest_threat(
             attacker_obj,
             attacker.veterancy,
             attacker.scan_mission,
+            cargo_range,
         ),
     };
 
@@ -874,7 +899,7 @@ pub(crate) fn greatest_threat(
         return global_list_scan(&ctx);
     }
 
-    let radius = scan_radius_cells(rules, attacker_obj, attacker.veterancy, range);
+    let radius = scan_radius_cells(rules, attacker_obj, attacker.veterancy, range, cargo_range);
     if radius <= 0 {
         // `for (r = 0; r < radius; r++)` never executes.
         return None;

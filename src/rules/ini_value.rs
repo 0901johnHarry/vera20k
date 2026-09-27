@@ -75,29 +75,32 @@ impl IniSection {
         strtrim_ascii(truncate_bytes(raw, capacity - 1)).to_string()
     }
 
-    /// ReadCoord529CA0: a 64-byte buffer, trim, then `%d,%d,%d`.
+    /// ReadCoord529CA0 (`CCINIClass` coordinate read `0x00529CA0`, the art FLH
+    /// keys): a 64-byte buffer, trim, then `%d,%d,%d` (`0x008189B0`), each `,`
+    /// a literal that must follow the previous number at once.
     /// Missing/empty input returns the current coordinate. Complete decimal
     /// triples retain signed32 wrapping and ignore text after the third number.
-    /// Original incomplete nonempty scans expose stale ABI argument bits;
-    /// modded malformed coordinates deterministically retain `default` here.
+    /// Original incomplete nonempty scans expose stale ABI argument bits (the
+    /// key, section and default pointers); modded malformed coordinates
+    /// deterministically retain `default` here. Stock coordinates are all
+    /// full triples.
     /// Executable coverage: tools/projectile_oracle/ifv_fire_coord.
     pub fn read_coord3(&self, key: &str, default: [i32; 3]) -> [i32; 3] {
+        self.read_coord3_value(key).unwrap_or(default)
+    }
+
+    /// [`Self::read_coord3`]'s scan alone: `None` wherever it keeps its default.
+    pub fn read_coord3_value(&self, key: &str) -> Option<[i32; 3]> {
         let raw = self.read_string(key, "", 64);
         let mut bytes = raw.as_bytes();
         let mut out = [0; 3];
         for (index, value) in out.iter_mut().enumerate() {
-            let Some(parsed) = scan_decimal_i32(&mut bytes) else {
-                return default;
-            };
-            *value = parsed;
+            *value = scan_decimal_i32(&mut bytes)?;
             if index < 2 {
-                if bytes.first() != Some(&b',') {
-                    return default;
-                }
-                bytes = &bytes[1..];
+                bytes = bytes.strip_prefix(b",")?;
             }
         }
-        out
+        Some(out)
     }
 
     /// Read3Int (P8): comma "%d,%d,%d". All-defaults on ABSENT key. Each field
@@ -687,6 +690,28 @@ mod tests {
         assert_eq!(s.read_point("P", (0, 0)), (3, 5));
         assert_eq!(s.read_rect("R", (0, 0, 0, 0)), (1, 2, 3, 4));
         assert_eq!(s.read_point("MISSING", (9, 9)), (9, 9)); // absent -> default
+    }
+
+    /// `0x00529CA0`: sscanf `"%d,%d,%d"` after the 63-byte cut and strtrim.
+    #[test]
+    fn read_coord3_scans_like_the_native_coordinate_read() {
+        let ini = IniFile::from_str(
+            "[S]\nFull=45,-190,90;gun port\nPad= 80, 0, 120 \nSpaced=80 ,0,120\n\
+             Pair=100,-25\nJunk=abc,1,2\nPlus=+7,-0,3x\nBlank=\n",
+        );
+        let section = ini.section("S").unwrap();
+        let default = [1, 2, 3];
+        assert_eq!(section.read_coord3("Full", default), [45, -190, 90]);
+        // `%d` skips the blanks before a number, never before the comma.
+        assert_eq!(section.read_coord3("Pad", default), [80, 0, 120]);
+        assert_eq!(section.read_coord3("Plus", default), [7, 0, 3]);
+        // Incomplete scans: native leaves stack words, VERA the default.
+        assert_eq!(section.read_coord3("Spaced", default), default);
+        assert_eq!(section.read_coord3("Pair", default), default);
+        assert_eq!(section.read_coord3("Junk", default), default);
+        assert_eq!(section.read_coord3_value("Junk"), None);
+        assert_eq!(section.read_coord3("Blank", default), default);
+        assert_eq!(section.read_coord3("Absent", default), default);
     }
 
     #[test] // P8 partial keeps default component

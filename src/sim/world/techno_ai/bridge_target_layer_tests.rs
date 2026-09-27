@@ -500,6 +500,54 @@ fn restored_retail(
     restored
 }
 
+fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation, ids: [u64; 2]) {
+    // Native Scenario load (683564) reseeds its RNG and Map resize recreates
+    // the shared Dummy. An uninterrupted future is therefore not expected to
+    // match a restored future. Compare the saved actors directly, then compare
+    // the two restored continuations below without normalizing either state.
+    assert_eq!(
+        restored.scenario_rng.logical_state(),
+        crate::sim::rng::SimRng::new(0).logical_state()
+    );
+    for id in ids {
+        let before = live.substrate.entities.get(id);
+        let after = restored.substrate.entities.get(id);
+        assert_eq!(before.is_some(), after.is_some(), "restored actor {id}");
+        if let (Some(before), Some(after)) = (before, after) {
+            assert_eq!(json!(before.position), json!(after.position));
+            assert_eq!(before.on_bridge, after.on_bridge);
+            assert_eq!(before.passive_scan_timer, after.passive_scan_timer);
+            assert_eq!(before.rearm_timer, after.rearm_timer);
+            assert_eq!(json!(before.attack_target), json!(after.attack_target));
+            assert_eq!(
+                before.passively_acquired_target,
+                after.passively_acquired_target
+            );
+            assert_eq!(before.estimated_health, after.estimated_health);
+            assert_eq!(before.health.current, after.health.current);
+            assert_eq!(before.lifecycle.object_alive, after.lifecycle.object_alive);
+            assert_eq!(before.lifecycle.in_limbo, after.lifecycle.in_limbo);
+            assert_eq!(before.dying, after.dying);
+        }
+    }
+    for xy in [(64, 69), (66, 69)] {
+        let before = live
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(xy.0, xy.1)
+            .unwrap();
+        let after = restored
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(xy.0, xy.1)
+            .unwrap();
+        assert_eq!(before.level, after.level);
+        assert_eq!(before.bridge_facts.raw_flags, after.bridge_facts.raw_flags);
+    }
+}
+
 #[test]
 #[ignore = "requires physical retail Hills and production movement/restore; no native whole-scene claim"]
 fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
@@ -601,6 +649,7 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
     );
     let mut first = restored_retail(&scenario, &pristine, &bytes);
     let second = restored_retail(&scenario, &pristine, &bytes);
+    assert_retail_target_state_restored(scenario.sim(), &first, [source, target]);
     assert_eq!(first.state_hash(), second.state_hash());
     for sim in [&first, &second] {
         for (id, deck, xy) in [(source, true, (64, 69)), (target, false, (66, 69))] {
@@ -662,7 +711,7 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
     println!(
         "retail Hills: legal opposite layers, busy/ready passive scans and two restored futures matched 40 frames"
     );
-    collapse_retail_scene(&mut scenario, &pristine);
+    collapse_retail_scene(&mut scenario, &pristine, [source, target]);
 }
 
 /// Continue the physical scene through existing world publication; damage is
@@ -670,6 +719,7 @@ fn retail_hills_passive_bridge_layers_survive_movement_and_restore() {
 fn collapse_retail_scene(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     pristine: &ResolvedTerrainGrid,
+    actors: [u64; 2],
 ) {
     use crate::sim::bridge_state::BridgeDamageEvent;
     use crate::sim::snapshot::GameSnapshot;
@@ -720,6 +770,7 @@ fn collapse_retail_scene(
     );
     let mut first = restored_retail(scenario, pristine, &bytes);
     let second = restored_retail(scenario, pristine, &bytes);
+    assert_retail_target_state_restored(scenario.sim(), &first, actors);
     assert_eq!(first.state_hash(), second.state_hash());
     for restored in [&first, &second] {
         assert!(

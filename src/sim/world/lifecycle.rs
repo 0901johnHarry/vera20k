@@ -3161,7 +3161,7 @@ impl Simulation {
             if let Some(passenger) = self.substrate.entities.get_mut(passenger_id) {
                 if matches!(
                     passenger.passenger_role,
-                    PassengerRole::Inside { transport_id } if transport_id == carrier_id
+                    PassengerRole::Inside { transport_id, .. } if transport_id == carrier_id
                 ) {
                     passenger.passenger_role = PassengerRole::None;
                 }
@@ -3677,7 +3677,7 @@ impl Simulation {
                 target_transport_id,
                 ..
             } => *target_transport_id == expired_id,
-            PassengerRole::Inside { transport_id } => *transport_id == expired_id,
+            PassengerRole::Inside { transport_id, .. } => *transport_id == expired_id,
             PassengerRole::None => false,
         };
         // `HomingState::expire_object_target` changes nothing for another

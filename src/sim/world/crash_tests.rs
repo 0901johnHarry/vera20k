@@ -721,7 +721,10 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
             .entities
             .get_mut(rider)
             .unwrap()
-            .passenger_role = PassengerRole::Inside { transport_id: 1 };
+            .passenger_role = PassengerRole::Inside {
+            transport_id: 1,
+            open_topped: false,
+        };
         sim.substrate
             .entities
             .get_mut(1)
@@ -1575,6 +1578,7 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
                 .unwrap()
                 .passenger_role = PassengerRole::Inside {
                 transport_id: nighthawk,
+                open_topped: false,
             };
             sim.substrate
                 .entities

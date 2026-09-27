@@ -206,15 +206,7 @@ impl FireSubject<'_> {
                 .map_or(0, |z| z as i32),
             berserk: firer.berserk.active,
             falling: firer.object_is_falling_down != 0,
-            // VERA's passengers never reach the fire path, so a passenger
-            // reaches T32/T33 only through a target of its own.
-            in_open_transport: crate::sim::passenger::open_topped_transport(
-                &self.world.substrate.entities,
-                self.rules,
-                &self.world.interner,
-                firer,
-            )
-            .is_some(),
+            in_open_transport: firer.passenger_role.in_open_transport(),
             transporter: match transport {
                 None => Transporter::None,
                 Some((transport, _)) if Some(transport.stable_id()) == target_id => {

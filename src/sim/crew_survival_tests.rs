@@ -488,6 +488,7 @@ fn load_absorbed(sim: &mut Simulation, rules: &RuleSet, building: u64, count: us
                 .expect("absorbed infantry");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
                 transport_id: building,
+                open_topped: false,
             };
             let cargo = sim
                 .substrate
@@ -826,9 +827,12 @@ fn load_passengers(
     owner: &str,
     count: usize,
 ) -> Vec<u64> {
-    let (rx, ry) = {
+    let (rx, ry, open_topped) = {
         let entity = sim.substrate.entities.get(transport).unwrap();
-        (entity.position.rx, entity.position.ry)
+        let open_topped = rules
+            .object(sim.interner.resolve(entity.type_ref()))
+            .is_some_and(|object| object.open_topped);
+        (entity.position.rx, entity.position.ry, open_topped)
     };
     let passengers: Vec<u64> = (0..count)
         .map(|_| {
@@ -839,6 +843,7 @@ fn load_passengers(
     for &id in passengers.iter().rev() {
         sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
             transport_id: transport,
+            open_topped,
         };
         let cargo = sim
             .substrate

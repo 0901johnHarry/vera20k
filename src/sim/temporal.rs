@@ -144,9 +144,6 @@
 //!   RemoveGunner (`0x0073A0C8`/`0x0073A0DF`); VERA has no grinding. A dying
 //!   transport's pop (`0x00737FD4`) runs RemoveGunner through
 //!   `DepartureRoute::DeathEscape`.
-//! - Open-topped passengers do not fire yet, so the open-topped release
-//!   (`0x0071A841`) has no production producer; the corpus pins its
-//!   boundary.
 //! - The cursor readers of `+0x270` (What_Action: Techno `0x006FFF07`,
 //!   `0x007005CD`, `0x00700731`; Infantry `0x0051E59B`; Unit `0x00740165`,
 //!   `0x007402CA`) belong to the app; the sim accepts an Attack order on a
@@ -609,9 +606,10 @@ impl Simulation {
             return;
         }
         // 0x0071A79D..0x0071A846: from an open transport, a target beyond
-        // OpenToppedWarpDistance cells lets go.
+        // OpenToppedWarpDistance cells lets go (a Chrono Legionnaire riding
+        // a Battle Fortress that drives off).
         if let Some(target) = link.target
-            && self.in_open_transport(head, rules)
+            && self.in_open_transport(head)
             && let (Some(owner), Some(victim)) =
                 (self.anim_owner_coords(head), self.anim_owner_coords(target))
         {
@@ -678,16 +676,11 @@ impl Simulation {
     }
 
     /// `TechnoClass+0x82` InOpenTransport: inside an `OpenTopped=` transport.
-    fn in_open_transport(&self, attacker: u64, rules: &RuleSet) -> bool {
-        self.substrate.entities.get(attacker).is_some_and(|entity| {
-            crate::sim::passenger::open_topped_transport(
-                &self.substrate.entities,
-                rules,
-                &self.interner,
-                entity,
-            )
-            .is_some()
-        })
+    fn in_open_transport(&self, attacker: u64) -> bool {
+        self.substrate
+            .entities
+            .get(attacker)
+            .is_some_and(|entity| entity.passenger_role.in_open_transport())
     }
 
     /// The erase (`0x0071A895..0x0071AB02`).
