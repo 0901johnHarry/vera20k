@@ -570,10 +570,12 @@ pub struct GeneralRules {
     /// A garrisoned building's `ThreatPosed` is `occupants * this` instead of
     /// its own type value (`TechnoClass::Get_ThreatPosed @ 0x00708B40`).
     pub threat_per_occupant: i32,
-    /// `NormalTargetingDelay=` ([General], stock 27) — frames between passive
-    /// target scans for every mission except Area Guard. The per-object scan
-    /// timer is re-armed to this value plus a 0..=2 scenario-RNG jitter.
-    pub normal_targeting_delay: u32,
+    /// `NormalTargetingDelay=` ([General], stock 27; `Rules+0xE08`, ReadInt
+    /// `0x006701BA..0x006701D3`, constructor 27 at `0x00666911`, no clamp) —
+    /// frames between passive target scans for every mission except Area
+    /// Guard. The per-object scan timer is re-armed to this value plus a
+    /// 0..=2 scenario-RNG jitter.
+    pub normal_targeting_delay: i32,
     /// `[General] DeadBodies=` (`Rules+0x124`): the corpse anims an
     /// infantryman's Die1..Die5 completion picks from when its type names none
     /// (`0x00520C42..0x00520C91`). Retail: `DEATH_A`..`DEATH_F`.
@@ -2053,7 +2055,6 @@ impl GeneralRules {
                 .collect(),
             normal_targeting_delay: general
                 .get_i32("NormalTargetingDelay")
-                .map(|v| v.max(0) as u32)
                 .unwrap_or(defaults.normal_targeting_delay),
             guard_area_targeting_delay: general
                 .get_i32("GuardAreaTargetingDelay")
@@ -7092,8 +7093,12 @@ DefaultSparkSystem=SparkSys
         ));
         assert_eq!(g.normal_targeting_delay, 9);
         assert_eq!(g.guard_area_targeting_delay, 13);
-        // ReadInt keeps a negative delay (no clamp at `0x006701B4`).
-        let g = GeneralRules::from_ini(&ini_with_general("GuardAreaTargetingDelay=-10"));
+        // ReadInt keeps a negative delay (no clamp at `0x006701B4` or
+        // `0x006701D3`).
+        let g = GeneralRules::from_ini(&ini_with_general(
+            "NormalTargetingDelay=-3\nGuardAreaTargetingDelay=-10",
+        ));
+        assert_eq!(g.normal_targeting_delay, -3);
         assert_eq!(g.guard_area_targeting_delay, -10);
     }
 

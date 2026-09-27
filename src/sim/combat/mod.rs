@@ -1551,18 +1551,33 @@ pub(crate) struct FireRequests {
 }
 
 /// Which FireAt of `BuildingClass::Update` a building's request stands for.
+/// Both FireAts shoot the `TarCom` (`+0x2B4`) of the visit that asked, so the
+/// request carries it: the combat phase fires at it, and FireAt's own TarCom
+/// reads see it, whatever retargets the building later in the frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuildingShot {
     /// Mission_Attack's FireAt arm (`0x0044B6D0`), with the weapon index
     /// SelectWeapon answered in that visit (`0x0044AFF2`). The visit's
     /// Gattling charge after the FireAt (`0x0044B6EF`) may step the stage
     /// before the combat phase fires, so the index is not asked again.
-    Mission { weapon: i32 },
+    Mission { weapon: i32, target: TargetKind },
     /// ProcessDelayedFire's mode-1 FireAt (`0x00450492`), with the weapon
     /// Mission_Attack saved when it armed the shot (`+0x708`). A launched
     /// bullet takes the building's support bonus
     /// (`Simulation::take_support_bonus`).
-    Delayed(combat_weapon::WeaponSlot),
+    Delayed {
+        slot: combat_weapon::WeaponSlot,
+        target: TargetKind,
+    },
+}
+
+impl BuildingShot {
+    /// The visit's TarCom the shot goes at.
+    pub(crate) fn target(self) -> TargetKind {
+        match self {
+            Self::Mission { target, .. } | Self::Delayed { target, .. } => target,
+        }
+    }
 }
 
 /// Ordinary fire prelude plus one consuming deferred-consequence packet.

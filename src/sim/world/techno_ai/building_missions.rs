@@ -74,8 +74,14 @@
 //!   Downstream: the Scenario stream's order in that frame. The pass's one
 //!   reader of another building's rearm, the Prism walk, counts a requested
 //!   shot as rearming ([`prism_supporter`]); the support count the shot
-//!   clears (`0x004504CD`) is read only in its own tower's visits. Later
-//!   owner: FireAt moving into each object's Logic visit.
+//!   clears (`0x004504CD`) is read only in its own tower's visits. The
+//!   request carries the visit's target and weapon ([`BuildingShot`]), so a
+//!   Gattling charge after the FireAt or a later retarget leaves the shot as
+//!   the visit made it. FireAt (`0x006FDD50`) draws `g_MainRng` only through
+//!   callees off the Gattling Cannon's path (SpawnRadEruption `0x006FD800`,
+//!   EBolt::Init `0x004C2A60`, audio; an instruction scan), so the charge's
+//!   loop draw keeps its native place in that stream. Later owner: FireAt
+//!   moving into each object's Logic visit.
 //! - The Prism beams are not drawn. A support beam (`0x0044ABD0`: a
 //!   LaserDrawClass from the supporter's weapon-0 FLH to the stored point in
 //!   the House's `LaserColor`, width 3, `PrismSupportDuration=` frames) and
@@ -104,11 +110,13 @@
 //!   (`0x0044B780`); the dock owners run the repair and reload meanwhile.
 //!   The WeaponsFactory's ClearBibArea (`0x00449540`) after the walk is
 //!   dormant: no retail WeaponsFactory type clears HasStupidGuardMode.
-//! - The Gattling Cannon's barrels do not spin: the building's voxel draw
+//! - A voxel building's HVA animation is not drawn: the building's voxel draw
 //!   (`0x0043DA80`, Building vt+0x4E4) takes its main and turret HVA frames
-//!   from `+0x148` modulo their frame counts, and VERA's building voxel
-//!   presentation (`emit_building_turret_vxl`) does not read the count.
-//!   Presentation only; its own presentation chain (#757).
+//!   from `+0x148` modulo their frame counts, which a Gattling type advances
+//!   while its value is above 0 (the Gattling Cannon's barrels spin) and any
+//!   other type on its OK and REARM arms; VERA's building voxel presentation
+//!   (`emit_building_turret_vxl`) draws frame 0. Presentation only; its own
+//!   presentation chain (#757).
 //! - Status 0's `Begin_Mode(1)` (`0x0044995D`): the idle body, presentation.
 //! - Dormant with retail data: the SAM arm (`0x0044AD07`, `SAM=` unset), the
 //!   upgrade arm (`0x0044B2BC`, no `PowersUpBuilding=`), Mission_Guard's
@@ -341,7 +349,7 @@ fn attack_arm(
 ) -> i32 {
     match code {
         FireError::Ok => {
-            fire_arm(sim, id, rules, weapon);
+            fire_arm(sim, id, rules, target, weapon);
             // The tail every OK arm reaches (`0x0044B6D6..0x0044B724`).
             if !gattling_step(sim, id, rules, StageCall::Increase) {
                 advance_turret_anim(sim, id);
@@ -410,7 +418,9 @@ fn clear_support_count(sim: &mut Simulation, id: u64) {
     }
 }
 
-/// `+0xC4 = 0` (`0x0044B174`).
+/// `+0xC4 = 0`: Mission_Attack's zeroes (`0x0044B131`, `0x0044B174`,
+/// `0x0044B1CB`, `0x0044B222`, `0x0044B271`, `0x0044B2B1`, `0x0044B6F4`) and
+/// Mission_Guard's (`0x004496DF`).
 fn clear_ai_counter(sim: &mut Simulation, id: u64) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.clear_ai_counter();
@@ -420,8 +430,7 @@ fn clear_ai_counter(sim: &mut Simulation, id: u64) {
 /// Whether the building's type is a Gattling one (TechnoType `+0xCD5`).
 fn is_gattling(sim: &Simulation, id: u64, rules: &RuleSet) -> bool {
     sim.substrate.entities.get(id).is_some_and(|entity| {
-        rules
-            .object(sim.interner.resolve(entity.type_ref()))
+        sim.object_type(entity.type_ref(), rules)
             .is_some_and(|obj| obj.is_gattling)
     })
 }
@@ -468,14 +477,20 @@ fn advance_turret_anim(sim: &mut Simulation, id: u64) {
 ///   the target), then `+0x148` again while the value is above 0
 ///   (`0x0043FF6C..0x0043FF8B`).
 pub(super) fn gattling_idle(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    if !super::ai_alive(sim, id) || !is_gattling(sim, id, rules) {
+    if !super::ai_alive(sim, id) {
         return;
     }
-    let now = sim.session.binary_frame as i32;
-    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+    let Some(obj) = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+        .filter(|obj| obj.is_gattling)
+    else {
         return;
     };
-    let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+    let now = sim.session.binary_frame as i32;
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return;
     };
     if entity.gattling.value() > 0 {
@@ -498,10 +513,11 @@ pub(super) fn gattling_idle(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// `IsAnimDelayedFire=` building arms its delayed shot (`0x0044B630..
 /// 0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the weapon, `+0x704`
 /// = 1) for [`process_delayed_fire`]; any other asks the combat phase for its
-/// FireAt (`0x0044B6D0`) with SelectWeapon's weapon, which the request
-/// carries: the tail's charge may step a Gattling type's stage before the
+/// FireAt (`0x0044B6D0`) at the visit's target with SelectWeapon's weapon,
+/// both of which the request carries: the tail's charge may step a Gattling
+/// type's stage, and a later object may retarget the building, before the
 /// combat phase fires.
-fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
+fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, weapon: i32) {
     let Some(obj) = sim
         .substrate
         .entities
@@ -537,7 +553,7 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, weapon: i32) {
         None => {
             sim.fire_requests
                 .buildings
-                .insert(id, BuildingShot::Mission { weapon });
+                .insert(id, BuildingShot::Mission { weapon, target });
         }
     }
 }
@@ -722,10 +738,10 @@ fn prism_supporter(
 /// (`0x00450401..0x00450419`); every end clears the mode (`0x00450452`,
 /// `0x004504D7`).
 /// - A shot (mode 1, `0x0045045E..0x00450492`) needs a target and
-///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt is
-///   asked of the combat phase ([`BuildingShot::Delayed`]), whose bullet
-///   takes the support bonus ([`Simulation::take_support_bonus`]). Otherwise
-///   the shot is dropped and `+0x664` kept.
+///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt at
+///   that target is asked of the combat phase ([`BuildingShot::Delayed`]),
+///   whose bullet takes the support bonus ([`Simulation::take_support_bonus`]).
+///   Otherwise the shot is dropped and `+0x664` kept.
 /// - A support beam (mode 2, `0x0044ABD0`): the beam (not drawn, module
 ///   doc), `+0x664 = 0` (`0x0044ACCA`) and the downtime: the rearm timer
 ///   becomes {Frame, `PrismSupportDelay=`} (`0x0044ACD0..0x0044ACDC`). No
@@ -767,7 +783,7 @@ pub(super) fn process_delayed_fire(
             {
                 sim.fire_requests
                     .buildings
-                    .insert(id, BuildingShot::Delayed(slot));
+                    .insert(id, BuildingShot::Delayed { slot, target });
             }
         }
         DelayedFire::SupportBeam { .. } => {

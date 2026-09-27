@@ -5,11 +5,10 @@
 //! multi-tower cadence of BuildingClass::Update's mission pieces, and
 //! ReadGeneral's Prism block through the production reader.
 //!
-//! Not compared: the turret counter (`+0x148`, presentation; module doc), the
-//! rearm timer's middle dword (`+0x2F0`, which the support beam fills from an
-//! uninitialised stack temporary and VERA's [`CdTimer`] does not hold), the
-//! laser (not drawn; module doc) and the raw Scenario draws of a Guard
-//! dispatch (see [`prism_cadence_matches_the_original`]).
+//! Not compared: the rearm timer's middle dword (`+0x2F0`, which the support
+//! beam fills from an uninitialised stack temporary and VERA's [`CdTimer`]
+//! does not hold), the laser (not drawn; module doc) and the raw Scenario
+//! draws of a Guard dispatch (see [`prism_cadence_matches_the_original`]).
 //!
 //! Native states VERA cannot hold, by row: a delayed-fire mode 0 with a
 //! countdown (`delayed_fire_countdown`) is held as a delayed shot, since the
@@ -355,7 +354,9 @@ impl Fixture {
     }
 
     /// `state` after the call: count, delayed-fire mode and countdown, rearm
-    /// [start, delay], mission (when the row records it) and target.
+    /// [start, delay], mission (when the row records it), target and the
+    /// turret counter (`+0x148`, when the row records it: the OK arm's tail
+    /// advances it after the Prism arm, `0x0044B713`).
     fn assert_state(&self, id: u64, native: &Value, at: &str) {
         let entity = self.sim.substrate.entities.get(id).unwrap();
         let name = self.name(id);
@@ -396,6 +397,13 @@ impl Fixture {
                 .map(|_| TargetKind::Entity(self.target)),
             "{at} {name} target"
         );
+        if let Some(counter) = native["turret_counter"].as_i64() {
+            assert_eq!(
+                i64::from(entity.turret_anim_frame),
+                counter,
+                "{at} {name} +0x148"
+            );
+        }
     }
 
     fn scenario_state(&self) -> crate::sim::rng::SimRngLogicalState {
@@ -668,13 +676,24 @@ fn prism_support_bonus_matches_the_original() {
             .find(|call| call[0] == "fire_at");
         match (requested, fire_at) {
             (None, None) => {}
-            (Some(BuildingShot::Delayed(slot)), Some(fire_at)) => {
+            (Some(BuildingShot::Delayed { slot, target }), Some(fire_at)) => {
                 let native_slot = if fire_at[2] == 1 {
                     WeaponSlot::Secondary
                 } else {
                     WeaponSlot::Primary
                 };
                 assert_eq!(slot, native_slot, "{name} weapon");
+                assert_eq!(
+                    Some(target),
+                    fixture
+                        .sim
+                        .substrate
+                        .entities
+                        .get(master)
+                        .and_then(|entity| entity.attack_target.as_ref())
+                        .map(|attack| attack.target),
+                    "{name} target"
+                );
                 let multiplier = fixture.sim.take_support_bonus(master, &fixture.rules);
                 assert_eq!(
                     Some(i64::from(multiplier)),
@@ -937,7 +956,13 @@ fn prism_cadence_matches_the_original() {
                     native_event("shot"),
                 ) {
                     (None, None) => fixture.assert_state(id, native, &at),
-                    (Some(BuildingShot::Delayed(WeaponSlot::Primary)), Some(shot)) => {
+                    (
+                        Some(BuildingShot::Delayed {
+                            slot: WeaponSlot::Primary,
+                            ..
+                        }),
+                        Some(shot),
+                    ) => {
                         let multiplier = shot[3].as_i64().unwrap();
                         served.push((id, multiplier, native, at));
                     }
@@ -947,7 +972,16 @@ fn prism_cadence_matches_the_original() {
             // The combat phase's FireAt, after every building's turn.
             for (id, native_multiplier, native, at) in served {
                 let request = fixture.sim.fire_requests.buildings.remove(&id);
-                assert_eq!(request, Some(BuildingShot::Delayed(WeaponSlot::Primary)));
+                assert!(
+                    matches!(
+                        request,
+                        Some(BuildingShot::Delayed {
+                            slot: WeaponSlot::Primary,
+                            ..
+                        })
+                    ),
+                    "{at}"
+                );
                 let multiplier = fixture.sim.take_support_bonus(id, &fixture.rules);
                 assert_eq!(i64::from(multiplier), native_multiplier, "{at} multiplier");
                 let entity = fixture.sim.substrate.entities.get_mut(id).unwrap();

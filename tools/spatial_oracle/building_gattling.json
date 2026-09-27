@@ -1051,7 +1051,7 @@
           "target",
           4,
           1,
-          5
+          8
         ],
         [
           "set_target",
@@ -1078,7 +1078,7 @@
       },
       "input": {
         "errors": [
-          5
+          8
         ],
         "mission": "attack",
         "name": "range_stage2",
@@ -39077,7 +39077,7 @@
               "target",
               2,
               1,
-              5
+              8
             ],
             [
               "set_target",
@@ -39720,7 +39720,7 @@
           ],
           [
             306,
-            "error:5"
+            "error:8"
           ]
         ],
         "frames": 340,

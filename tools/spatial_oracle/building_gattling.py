@@ -179,7 +179,7 @@ def attack_cases():
         dict(base, name='rearm_overshoot', errors=[3], state=dict(value=599, stage=1, latch=1, counter=2)),
         dict(base, name='facing_at_cap', errors=[2], state=dict(value=600, stage=2, latch=0, counter=2)),
         # RANGE at stage 2: the drop tail's decay, stage down once.
-        dict(base, name='range_stage2', errors=[5], state=dict(value=450, stage=2, latch=1, counter=3)),
+        dict(base, name='range_stage2', errors=[8], state=dict(value=450, stage=2, latch=1, counter=3)),
         # BUSY with no count: Update(0) zeroes the value.
         dict(base, name='busy_zero_ticks', errors=[10], state=dict(value=300, stage=1, latch=1, counter=0)),
         # The drop tail of a building whose effective mission is Wait.
@@ -319,7 +319,7 @@ def cadence_cases():
         dict(name='spin_to_cap', frames=700, events=[[5, 'acquire']]),
         # A RANGE answer mid-spin, on a frame whose rearm has run out (the
         # 18th shot's): the drop tail's decay, then Guard.
-        dict(name='range_mid_spin', frames=340, events=[[5, 'acquire'], [306, 'error:5']]),
+        dict(name='range_mid_spin', frames=340, events=[[5, 'acquire'], [306, 'error:8']]),
         # FACING answers for a stretch: the FACING arm charges too.
         dict(name='facing_stretch', frames=80, events=[[5, 'acquire'], *[[k, 'error:2'] for k in range(30, 50)]]),
         # A retaliation from Guard: the first Attack dispatch gets the Guard's

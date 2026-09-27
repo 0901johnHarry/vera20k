@@ -2391,11 +2391,11 @@ fn admit_attacker_fire<'r>(
 ) -> Option<AdmittedFire<'r>> {
     let sound_enabled = sound_enabled(world);
     let delayed_building_slot = match snap.building_shot {
-        Some(super::BuildingShot::Delayed(slot)) => Some(slot),
+        Some(super::BuildingShot::Delayed { slot, .. }) => Some(slot),
         _ => None,
     };
     let mission_building_weapon = match snap.building_shot {
-        Some(super::BuildingShot::Mission { weapon }) => Some(weapon),
+        Some(super::BuildingShot::Mission { weapon, .. }) => Some(weapon),
         _ => None,
     };
     let obj = match rules.object(world.interner.resolve(snap.type_id)) {
@@ -3655,7 +3655,8 @@ pub(super) fn emit_admitted_fire(
     // fails has still spent one.
     let bullet_id = world.allocate_stable_id();
     let native_unique_id = world.next_native_runtime_id();
-    fireat_estimate_debit(world, rules, snap.stable_id, obj, weapon);
+    let tarcom = fireat_tarcom(world, snap);
+    fireat_estimate_debit(world, rules, snap.stable_id, tarcom, obj, weapon);
     let launched = {
         let impact_world_z_leptons = attack_world_z_leptons(
             snap.target,
@@ -3734,14 +3735,9 @@ pub(super) fn emit_admitted_fire(
             i32::from(snap.pos_ry) * 256 + snap.sub_y.to_num::<i32>(),
             origin_world_z_leptons,
         );
-        // 70D590 reads the source's live current target, independently of the
-        // FireAt parameter and the scattered launch delta.
-        let current_target = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .and_then(|source| source.attack_target.as_ref())
-            .map(|attack| attack.target);
+        // 70D590 reads the source's current target (TarCom), independently of
+        // the FireAt parameter and the scattered launch delta.
+        let current_target = tarcom;
         let target_location = |target: TargetKind| -> Option<ProjectileCoord> {
             match target {
                 TargetKind::Entity(id) => object_get_coords(world, rules, id),
@@ -3890,7 +3886,7 @@ pub(super) fn emit_admitted_fire(
             // reads neither the bullet's multiplier nor the count, save the
             // laser width (`0x006FF52B`), which VERA does not draw.
             let damage_multiplier = match snap.building_shot {
-                Some(super::BuildingShot::Delayed(_)) => {
+                Some(super::BuildingShot::Delayed { .. }) => {
                     world.take_support_bonus(snap.stable_id, rules)
                 }
                 _ => ProjectilePayload::UNSCALED,
@@ -4127,6 +4123,37 @@ fn fireat_tail(
     }
 }
 
+/// What a firer shoots this frame, and its infantry fire latch: a building's
+/// request carries the target its visit fired at ([`super::BuildingShot`]);
+/// any other firer fires at its live target.
+fn shot_target(
+    entity: &crate::sim::game_entity::GameEntity,
+    building_shot: Option<super::BuildingShot>,
+) -> Option<(TargetKind, Option<super::PendingInfantryFire>)> {
+    match building_shot {
+        Some(shot) => Some((shot.target(), None)),
+        None => entity
+            .attack_target
+            .as_ref()
+            .map(|attack| (attack.target, attack.pending_infantry_fire)),
+    }
+}
+
+/// The firer's TarCom (`+0x2B4`) as FireAt reads it: a building's FireAt runs
+/// inside the visit whose TarCom its request carries; any other firer's is
+/// its live target.
+fn fireat_tarcom(world: &Simulation, snap: &AttackerSnapshot) -> Option<TargetKind> {
+    match snap.building_shot {
+        Some(shot) => Some(shot.target()),
+        None => world
+            .substrate
+            .entities
+            .get(snap.stable_id)
+            .and_then(|firer| firer.attack_target.as_ref())
+            .map(|attack| attack.target),
+    }
+}
+
 /// `TechnoClass::FireAt 0x006FE582..0x006FE622`, right after the bullet is
 /// built and before the launch math, so a launch that then fails has debited
 /// too. A Foot firer whose locomotor `Is_Moving` (vt `+0x10`) and whose type
@@ -4145,6 +4172,7 @@ fn fireat_estimate_debit(
     world: &mut Simulation,
     rules: &RuleSet,
     firer_id: u64,
+    tarcom: Option<TargetKind>,
     obj: &ObjectType,
     weapon: &WeaponType,
 ) {
@@ -4163,7 +4191,7 @@ fn fireat_estimate_debit(
         .as_deref()
         .and_then(|id| rules.projectile(id))
         .is_some_and(|projectile| projectile.inaccurate);
-    let Some(TargetKind::Entity(target_id)) = firer.attack_target.as_ref().map(|a| a.target) else {
+    let Some(TargetKind::Entity(target_id)) = tarcom else {
         return;
     };
     if marked || inaccurate {
@@ -4677,22 +4705,19 @@ pub(crate) fn tick_combat(
                     .aircraft_mission
                     .as_ref()
                     .is_some_and(|mission| mission.is_attacking()));
-        // A missing target does not acquire or drop another target.
-        let Some((attack_target, pending_infantry_fire)) = entity
-            .attack_target
-            .as_ref()
-            .map(|attack| (attack.target, attack.pending_infantry_fire))
-        else {
-            continue;
-        };
-        if blocked {
-            continue;
-        }
         // A building shoots only the FireAt its own visit asked for this
         // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
         // (`techno_ai::building_missions`).
         let building_shot = fire_requests.buildings.get(&id).copied();
         if entity.category == EntityCategory::Structure && building_shot.is_none() {
+            continue;
+        }
+        // A missing target does not acquire or drop another target.
+        let Some((attack_target, pending_infantry_fire)) = shot_target(entity, building_shot)
+        else {
+            continue;
+        };
+        if blocked {
             continue;
         }
 
@@ -4817,12 +4842,7 @@ pub(crate) fn tick_combat(
             .entities
             .get(snap.stable_id)
             .filter(|entity| attacker_reaches_fire(entity))
-            .and_then(|entity| {
-                entity
-                    .attack_target
-                    .as_ref()
-                    .map(|attack| (attack.target, attack.pending_infantry_fire))
-            })
+            .and_then(|entity| shot_target(entity, snap.building_shot))
         else {
             // A unit whose target went away earlier this frame reaches its
             // firing update with none.

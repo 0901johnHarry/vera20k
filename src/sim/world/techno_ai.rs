@@ -2920,7 +2920,7 @@ mod tests {
         assert_eq!(timer.start_frame, sim.session.binary_frame);
         assert_eq!(
             timer.duration,
-            rules.general.normal_targeting_delay + expected_jitter,
+            rules.general.normal_targeting_delay as u32 + expected_jitter,
             "re-armed duration must be the INI delay plus this scan's jitter draw"
         );
         assert_eq!(

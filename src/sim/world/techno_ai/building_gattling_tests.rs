@@ -270,7 +270,9 @@ fn assert_gattling(sim: &Simulation, id: u64, row: &Value, latch_before: bool, s
 /// the FireAt before the charge with SelectWeapon's `2s` (the request carries
 /// it), the report draw and loop, and the arms that make no call: the Wait
 /// drop, the null target and codes 4, 7 and 11. A plain building keeps its
-/// count and advances `+0x148` on OK and REARM.
+/// count and advances `+0x148` on OK and REARM. The combat phase then fires
+/// each requested shot with the FireAt's weapon, the stage's own even when
+/// the charge after it stepped the stage (`ok_stage_up`).
 #[test]
 fn gattling_attack_matches_the_original() {
     let golden = golden();
@@ -331,12 +333,95 @@ fn gattling_attack_matches_the_original() {
         assert_eq!(
             sim.fire_requests.buildings.get(&building).copied(),
             fire_at.map(|event| BuildingShot::Mission {
-                weapon: event[2].as_i64().unwrap() as i32
+                weapon: event[2].as_i64().unwrap() as i32,
+                target: TargetKind::Entity(target),
             }),
             "{name} FireAt"
         );
         assert_gattling(&sim, building, row, latch_before, stage_before);
+        if let Some(event) = fire_at {
+            let elite = state_is_elite(input);
+            let shot = combat_phase_shot(&mut sim, &rules, building);
+            assert_eq!(
+                shot,
+                Some((
+                    weapon_name(event[2].as_u64().unwrap(), elite),
+                    TargetKind::Entity(target)
+                )),
+                "{name} shot"
+            );
+        }
     }
+}
+
+/// Whether the row's building is elite (`+0x150` at 2.0 or more).
+fn state_is_elite(input: &Value) -> bool {
+    input["state"]["veterancy"].as_f64().unwrap_or(0.0) >= 2.0
+}
+
+/// The test types' weapon in slot `slot`: `W0`..`W5`, elite `E0`..`E5`.
+fn weapon_name(slot: u64, elite: bool) -> String {
+    format!("{}{slot}", if elite { 'E' } else { 'W' })
+}
+
+/// Runs the combat phase over the frame's requests and answers the
+/// building's shot: the weapon it fired and what at.
+fn combat_phase_shot(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+) -> Option<(String, TargetKind)> {
+    let requests = std::mem::take(&mut sim.fire_requests);
+    sim.fire_events.clear();
+    let _ = sim.tick_combat_with_fatal_lifecycle(
+        rules,
+        None,
+        67,
+        &[building],
+        &Default::default(),
+        &requests,
+        &[],
+        &[],
+    );
+    sim.fire_events
+        .iter()
+        .find(|event| event.attacker_id == building)
+        .map(|event| {
+            (
+                sim.interner.resolve(event.weapon_id).to_string(),
+                event.target,
+            )
+        })
+}
+
+/// A later object retargeting the building after its visit (a bullet's
+/// retaliation later in the Logic pass, say) leaves the visit's shot alone:
+/// native's FireAt ran inside the visit (`0x0044B6D0`), at that visit's
+/// TarCom with its weapon, so the combat phase fires the request's weapon at
+/// the request's target.
+#[test]
+fn a_retarget_after_the_visit_keeps_the_visits_shot() {
+    let rules = rules(36, 50, true);
+    let (mut sim, building, target) = fixture(&rules, "GAT", (8, 5));
+    let other = sim
+        .spawn_object("SHED", "Russians", 5, 8, 0, &rules, &BTreeMap::new())
+        .unwrap();
+    aim_at(&mut sim, building, target);
+    let (aimed, weapon) = attack_prelude(&mut sim, building, &rules).unwrap();
+    assert_eq!(
+        attack_arm(&mut sim, building, &rules, aimed, weapon, FireError::Ok),
+        1
+    );
+    aim_at(&mut sim, building, other);
+    assert_eq!(
+        combat_phase_shot(&mut sim, &rules, building),
+        Some(("W0".to_string(), TargetKind::Entity(target)))
+    );
+    let entity = sim.substrate.entities.get(building).unwrap();
+    assert_eq!(
+        entity.attack_target.as_ref().map(|attack| attack.target),
+        Some(TargetKind::Entity(other))
+    );
 }
 
 /// Every `guard` row: Mission_Guard's head decays by the whole count and
@@ -482,7 +567,7 @@ fn gattling_cadence_matches_the_original() {
                     "acquire" => Event::Acquire,
                     "lose" => Event::Lose,
                     "override" => Event::Override,
-                    "error:5" => Event::OutOfRange,
+                    "error:8" => Event::OutOfRange,
                     other => panic!("event {other}"),
                 };
                 (event[0].as_u64().unwrap(), kind)
