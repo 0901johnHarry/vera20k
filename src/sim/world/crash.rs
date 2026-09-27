@@ -473,7 +473,7 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(passenger)
                 && matches!(
                     entity.passenger_role,
-                    crate::sim::passenger::PassengerRole::Inside { transport_id }
+                    crate::sim::passenger::PassengerRole::Inside { transport_id, .. }
                         if transport_id == transport
                 )
             {

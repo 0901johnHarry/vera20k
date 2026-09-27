@@ -182,7 +182,7 @@ impl Simulation {
                 rules,
                 &fire_coord::FireSource::from(&snap),
                 object,
-                combat_weapon::WeaponSlot::Primary,
+                0,
                 entity.weapon_burst.index() as u8,
             )
             .coord;

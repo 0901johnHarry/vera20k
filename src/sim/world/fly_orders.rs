@@ -74,7 +74,7 @@ impl Simulation {
                 }
             }
         }
-        if !self.begin_foot_destination(id, requested.is_some(), rules) {
+        if !self.begin_foot_destination(id, requested.is_some()) {
             return;
         }
         let entity = self.substrate.entities.get_mut(id).unwrap();

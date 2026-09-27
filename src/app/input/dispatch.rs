@@ -63,7 +63,7 @@ pub(crate) fn handle_mouse_input(
     // Paused in-game Options overlay owns the mouse: route press/release/checkbox/
     // Back here and CONSUME the click so it never reaches the tactical viewport or
     // a gadget (no unit orders behind the overlay). KD-6.
-    if state.match_state.paused {
+    if state.match_state.paused() {
         // VERA-internal (gamemd has no pause overlay; gamemd equivalent
         // UNCHECKED): a release that arrives while the overlay owns the mouse
         // never reaches the tactical body, so the capture is dropped here.
@@ -670,7 +670,7 @@ pub(crate) fn handle_cursor_moved_in_game(state: &mut AppState) {
     // Paused in-game Options overlay: drive a live slider drag (visual/stored only —
     // cadence applies on close, KD-8) and swallow the move so it can't begin a
     // selection drag or camera pan behind the overlay.
-    if state.match_state.paused {
+    if state.match_state.paused() {
         if state.match_state.match_presentation.in_game_menu
             == crate::ui::pause_menu::InGameMenuState::Sound
         {
@@ -1329,13 +1329,13 @@ pub(crate) fn toggle_pathgrid_overlay(state: &mut AppState) {
 /// On resume, local frame admission is re-anchored so elapsed modal time
 /// cannot cause a catch-up frame.
 pub(crate) fn toggle_debug_pause(state: &mut AppState) {
-    state.match_state.paused = !state.match_state.paused;
-    if !state.match_state.paused {
+    state.match_state.debug_pause = !state.match_state.paused();
+    if !state.match_state.paused() {
         state.platform.frame_pacer.reset_for_immediate_frame();
     }
     log::info!(
         "Debug pause: {}",
-        if state.match_state.paused {
+        if state.match_state.paused() {
             "ON"
         } else {
             "OFF"
@@ -1679,20 +1679,7 @@ pub(crate) fn dispatch_command_bar(state: &mut AppState, command: usize, right: 
 // Native 653952 -> GameState1 -> 48C9BA/4F10E0 opens the pause menu.
 // The button calls this directly; Escape's cancel/resume priority is separate.
 fn open_pause_menu(state: &mut AppState) {
-    state.match_state.paused = true;
-    state
-        .match_state
-        .match_presentation
-        .in_game_options
-        .on_open();
-    if state
-        .match_state
-        .match_presentation
-        .software_cursor
-        .is_some()
-    {
-        state.platform.window.set_cursor_visible(true);
-    }
+    crate::app::App::enter_in_game_menu_state(state, crate::ui::pause_menu::InGameMenuState::Menu);
     log::info!("Game paused");
 }
 
@@ -1703,8 +1690,11 @@ fn open_diplomacy_menu(_state: &mut AppState) {
 }
 
 fn handle_options_hotkey(state: &mut AppState) {
-    if state.match_state.paused {
-        state.match_state.paused = false;
+    // Only Escape reaches a hotkey while paused, and the in-game menu takes
+    // Escape whenever it is open, so the only pause seen here is the debug one.
+    debug_assert!(!state.match_state.match_presentation.in_game_menu.is_open());
+    if state.match_state.debug_pause {
+        state.match_state.debug_pause = false;
         state.platform.frame_pacer.reset_for_immediate_frame();
         if state
             .match_state
@@ -1779,7 +1769,7 @@ fn handle_dev_hotkey_pressed(state: &mut AppState, code: winit::keyboard::KeyCod
                 .match_presentation
                 .software_cursor
                 .is_some()
-                && !state.match_state.paused
+                && !state.match_state.paused()
             {
                 // Re-hide OS cursor so the software cursor takes over.
                 state.platform.window.set_cursor_visible(false);
@@ -1858,7 +1848,7 @@ fn handle_dev_hotkey_pressed(state: &mut AppState, code: winit::keyboard::KeyCod
             toggle_debug_pause(state);
         }
         KeyCode::Period => {
-            if state.match_state.paused {
+            if state.match_state.paused() {
                 state.diag.debug_frame_step_requested = true;
             }
         }

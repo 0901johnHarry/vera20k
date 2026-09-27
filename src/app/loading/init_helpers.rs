@@ -1349,7 +1349,7 @@ mod tests {
         );
         assert_eq!(rules.general.paradrop_radius, 1024, "ParadropRadius");
         assert_eq!(rules.general.repair_step, 5, "RepairStep");
-        assert_eq!(rules.general.repair_percent, 25, "RepairPercent (25%)");
+        assert_eq!(rules.general.repair_percent, 0.25, "RepairPercent (.25)");
         assert_eq!(
             rules.general.unit_repair_rate_ticks, 14,
             "URepairRate .016 min -> 14 ticks"

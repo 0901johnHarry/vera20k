@@ -330,6 +330,14 @@ impl Simulation {
             // `BulletClass::AI 0x0046699D` reads the GLOBAL frame counter's
             // parity for the half-rate course-locked acceleration ramp, so the
             // Logic slot has to hand the flight loop the current frame.
+            let target_is_aircraft = match projectile.target {
+                crate::sim::projectile::ProjectileTarget::Entity(target) => {
+                    self.substrate.entities.get(target).is_some_and(|entity| {
+                        entity.category == crate::map::entities::EntityCategory::Aircraft
+                    })
+                }
+                _ => false,
+            };
             let binary_frame = self.session.binary_frame;
             let shared_cell_dummy = self.effective_shared_cell_dummy();
             let terrain = self.resolved_terrain.as_ref();
@@ -369,6 +377,11 @@ impl Simulation {
                         |rules| rules.general.gravity,
                     ),
                     source_is_jumpjet,
+                    target_is_aircraft,
+                    rules.map_or_else(
+                        || crate::rules::ruleset::GeneralRules::default().safety_altitude,
+                        |rules| rules.general.safety_altitude,
+                    ),
                     |projectile, candidate, phase| {
                         collision_world.collide(projectile, candidate, phase)
                     },
@@ -481,7 +494,8 @@ impl Simulation {
         rules: Option<&RuleSet>,
         ctx: ObjectAiCtx<'_>,
     ) -> bool {
-        self.object_ai_visit_one_with_effects(id, rules, ctx).visited
+        self.object_ai_visit_one_with_effects(id, rules, ctx)
+            .visited
     }
 
     /// [`Simulation::object_ai_stage`] with the world context the dispatched
@@ -579,9 +593,10 @@ fn techno_ai_shell(
         // call units do, so they run the same off-mission clear and passive
         // block in the same order. Idle infantry are the majority of on-map
         // objects; without this a squad holding a chokepoint does nothing until
-        // something shoots it. A passenger inside a transport is gated out by
-        // the mission read, and a garrisoned occupant fires through the garrison
-        // path instead.
+        // something shoots it. A passenger inside a closed transport is gated
+        // out by the mission read, an open-topped transport's rider scans from
+        // the Guard its boarding gave it (`SetInOpenTransport 0x00710470`), and
+        // a garrisoned occupant fires through the garrison path instead.
         // The supported Foot mission cadence branches run here as well.
         EntityCategory::Infantry => {
             if let Some(rules) = rules
@@ -604,6 +619,9 @@ fn techno_ai_shell(
             passive_acquire_step(sim, id, rules, ctx);
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            if let Some(rules) = rules {
+                open_transport_reach_step(sim, id, rules, ctx.overlay_registry);
+            }
         }
         EntityCategory::Structure => {
             if let Some(rules) = rules {
@@ -654,6 +672,12 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            // BuildingClass::UpdateRepairAndPower (`0x004401B6`) follows the
+            // Techno AI: the computer's low-credit sale or auto-repair start,
+            // then the repair step.
+            if let Some(rules) = rules {
+                crate::sim::production::update_repair_and_power(sim, rules, id);
+            }
             // BuildingClass::Update consumes the shared C4/PostMortem latch at
             // its late tail. Keep the forced receiver inline in this object's
             // LogicVector visit so nested death effects precede the next slot.
@@ -1027,6 +1051,100 @@ fn illegal_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
         && let Some(entity) = sim.substrate.entities.get_mut(id)
     {
         crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+    }
+}
+
+/// `TechnoClass::AI_Update @ 0x006FAAEF..0x006FABB8` for an open-topped
+/// transport's rider (`+0x82`): every frame, a rider holding a target it
+/// cannot hit from where it sits lets go of it.
+///
+/// The block admits a non-aircraft object with a target, outside a team
+/// (`vt+0x290`, VERA builds no production teams), whose NavCom is empty. It
+/// runs `Approach_Target(0)` (vt+0x53C; Infantry `0x00522340` chains into
+/// Foot `0x004D5690`) when the target is unreachable (`CanReachDestination`,
+/// vt+0x2C4) or, for a rider, always (`0x006FAB52`); then, NavCom still
+/// empty, it drops the target unless `CanFireAt(target, SelectWeapon)`
+/// (`0x006FAB86..0x006FABB2`). A rider never chases (`0x004D5782`) and is
+/// refused any destination (`0x004D94D7`), so out of range:
+/// - on its Guard (every rider: `SetInOpenTransport` puts it there) or any
+///   mission but the three below, Approach_Target itself drops the target and
+///   the destination (`0x004D571F..0x004D5744`);
+/// - on Attack, a human's Area Guard or a computer's Hunt, Approach_Target
+///   goes on to its approach search, and the block's own CanFireAt test drops
+///   the target.
+///
+/// In range, Approach_Target returns at `0x004D5A34` (a rider keeps its
+/// playfield byte `+0x3D5`). No draw.
+///
+/// RESIDUAL: the approach search a rider on Attack, Area Guard (human) or
+/// Hunt (computer) runs (`0x004D57EA..`) is not ported; nothing but a Guard
+/// rider is known to reach this block.
+///
+/// RESIDUAL: a unit rider runs `UnitClass::Approach_Target @ 0x007414E0`
+/// before the Foot body. Its three crush arms can steer toward the target
+/// and return early without Foot's Set_Destination(NULL):
+/// - a computer's `Crusher=` (`+0xD28`, or the CRUSHER ability) near a
+///   crushable techno;
+/// - a `BalloonHover=` type (`+0xD6A`);
+/// - an `OmniCrusher=` type (`+0xD29`).
+///
+/// VERA runs the Foot arm for every rider.
+/// - Trigger: a modded unit rider with one of those flags. Retail's only
+///   unit riders are the Terror and Chaos Drones (`Size=2`), which have none.
+/// - Effect: none in retail. A modded rider calls
+///   `UnitClass::Set_Destination @ 0x00741970` with the target, whose arms
+///   ahead of the Foot refusal are not reviewed. It skips Foot's
+///   Set_Destination(NULL). The block's CanFireAt test still drops the target
+///   in the same frame.
+/// - Frequency and risk: modded data only.
+///
+/// RESIDUAL: the unreachable-target arm for every other object (vt+0x2C4
+/// false). Trigger: a Foot object without NavCom holding a target its
+/// movement zone cannot reach, e.g. a tank with a target across water.
+/// Effect: native approaches and drops a target it cannot hit; VERA keeps it.
+/// Frequency: uncommon. Risk: the object keeps a target it can never fire at.
+fn open_transport_reach_step(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) {
+    use crate::sim::combat::TargetKind;
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    if !entity.passenger_role.in_open_transport() || entity.navigation.nav_com.is_some() {
+        return;
+    }
+    let Some(target) = entity.attack_target.as_ref().map(|attack| attack.target) else {
+        return;
+    };
+    // A target that no longer resolves is cleared natively (`PointerExpired`)
+    // before this block; the Attack handler owns VERA's clear of it.
+    if let TargetKind::Entity(target_id) = target
+        && sim.substrate.entities.get(target_id).is_none()
+    {
+        return;
+    }
+    let weapon = target_scan::select_weapon(sim, rules, id, Some(target));
+    if target_scan::can_fire_at(sim, rules, id, target, weapon, overlay_registry) {
+        return;
+    }
+    let human = sim
+        .houses
+        .get(&entity.owner())
+        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
+    let approaches = match entity.mission.current().known() {
+        Some(MissionType::Attack) => true,
+        Some(MissionType::AreaGuard) => human,
+        Some(MissionType::Hunt) => !human,
+        _ => false,
+    };
+    if let Some(entity) = sim.substrate.entities.get_mut(id) {
+        crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
+    }
+    if !approaches {
+        sim.assign_null_destination(id, Some(rules));
     }
 }
 
@@ -1452,6 +1570,9 @@ fn unit_techno_bracket(
     // block.
     if !ai_alive(sim, id) {
         return BracketReach::Dispatched;
+    }
+    if let Some(rules) = rules {
+        open_transport_reach_step(sim, id, rules, ctx.overlay_registry);
     }
     techno_common_post(sim, id, rules);
     BracketReach::Dispatched
@@ -2032,6 +2153,7 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         }
     }
 

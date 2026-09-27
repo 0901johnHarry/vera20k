@@ -302,6 +302,7 @@ pub(crate) fn tick_active_tube_object(
         if let Some(entity) = entities.get_mut(entity_id) {
             set_entity_world_coord(entity, next);
         }
+        riders_follow(entities, entity_id, rules, interner);
         return true;
     }
 
@@ -310,6 +311,7 @@ pub(crate) fn tick_active_tube_object(
         set_entity_world_coord(entity, state.target);
         entity.low_bridge_tube_state = Some(state);
     }
+    riders_follow(entities, entity_id, rules, interner);
     if usize::from(state.cursor) >= tube.path_len() {
         return finalize_tube_object(
             entities,
@@ -343,7 +345,22 @@ pub(crate) fn tick_active_tube_object(
         set_entity_world_coord(entity, next);
         entity.low_bridge_tube_state = Some(state);
     }
+    riders_follow(entities, entity_id, rules, interner);
     true
+}
+
+/// The steps above move the unit through `SetLocation` (vt+0x1B4 =
+/// `FootClass::SetLocation 0x004DB810`, at `0x00735B58` and `0x00735D27`),
+/// which brings an open-topped transport's riders along.
+fn riders_follow(
+    entities: &mut EntityStore,
+    entity_id: u64,
+    rules: Option<&RuleSet>,
+    interner: &StringInterner,
+) {
+    if let Some(rules) = rules {
+        crate::sim::passenger::open_topped_riders_follow(entities, entity_id, rules, interner);
+    }
 }
 
 fn active_tube_trig() -> Option<&'static TrigTable> {
@@ -920,6 +937,10 @@ mod tests {
     }
 
     fn unit(id: u64) -> GameEntity {
+        unit_of(id, "MTNK")
+    }
+
+    fn unit_of(id: u64, kind: &str) -> GameEntity {
         let mut entity = GameEntity::new_at_frame_zero_for_test(
             id,
             0,
@@ -928,7 +949,7 @@ mod tests {
             0,
             crate::sim::intern::test_intern("Americans"),
             Health { current: 100 },
-            crate::sim::intern::test_intern("MTNK"),
+            crate::sim::intern::test_intern(kind),
             EntityCategory::Unit,
             0,
             5,
@@ -1230,5 +1251,66 @@ mod tests {
         update_unit_final_facing(&mut entities, 1, &terrain, 0);
         // Exit has no tube index in this fixture: facing is preserved.
         assert_eq!(entities.get(1).unwrap().facing, 0);
+    }
+
+    /// A step that reaches its target moves the unit through
+    /// `SetLocation(target)` (vt+0x1B4 = `FootClass::SetLocation 0x004DB810`,
+    /// `0x00735B58`), and the leftover step through `0x00735D27`; the
+    /// `OpenTopped=` tail carries the riders along (`0x004DB88A` ->
+    /// `0x007104F0`).
+    #[test]
+    fn an_open_topped_transport_carries_its_riders_through_a_tube() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::sim::passenger::{PassengerCargo, PassengerRole};
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=BFRT\n[BFRT]\nSpeed=4\nOpenTopped=yes\nPassengers=5\n",
+        ))
+        .expect("rules");
+        let terrain = explicit_terrain(vec![2, 2]);
+        let mut transport = unit_of(1, "BFRT");
+        // Ten leptons short of the first step's target, inside the budget.
+        transport.position.rx = 1;
+        transport.position.sub_x = crate::util::fixed_math::SimFixed::from_num(118);
+        transport.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
+            tube_id: TubeId(0),
+            cursor: 0,
+            target: DriveCoord::cell(1, 0, 0),
+        });
+        let mut cargo = PassengerCargo::new(5, 2);
+        assert!(cargo.board(2, 1));
+        transport.passenger_role = PassengerRole::Transport { cargo };
+        let mut rider = unit_of(2, "E1");
+        rider.category = EntityCategory::Infantry;
+        rider.position.rx = 3;
+        rider.passenger_role = PassengerRole::Inside {
+            transport_id: 1,
+            open_topped: true,
+        };
+        let mut entities = EntityStore::new();
+        entities.insert(transport);
+        entities.insert(rider);
+        assert!(tick_active_tube_object(
+            &mut entities,
+            1,
+            &terrain,
+            None,
+            &mut OccupancyGrid::new(),
+            &mut CellOccupationGrid::new(),
+            &mut RawCellOccupationGrid::new(),
+            &mut EnterOrderCounter::new(),
+            Some(&rules),
+            &crate::sim::intern::test_interner(),
+            &mut SimRng::new(7),
+            21,
+        ));
+        let [transport, rider] = [1, 2].map(|id| &entities.get(id).unwrap().position);
+        let coord = |p: &Position| (position_world_x(p), position_world_y(p), p.exact_z_leptons);
+        // With the retail sine table loaded (another test may have), the
+        // leftover budget then steps on towards the next target as well.
+        assert!(
+            position_world_x(transport) >= 384,
+            "the step reached its target"
+        );
+        assert_eq!(coord(rider), coord(transport), "the rider came along");
     }
 }

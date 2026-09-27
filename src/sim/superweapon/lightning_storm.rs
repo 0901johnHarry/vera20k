@@ -323,33 +323,25 @@ fn spawn_bolt(
         // GroundStrike selects and starts its explosion AnimClass before it
         // enters Apply_area_damage; the anim's scorch or crater is its own
         // Middle, at its middle frame.
-        let mut explosions: Vec<crate::sim::combat::ExplosionEffect> = Vec::new();
-        crate::sim::combat::emit_warhead_detonation_effects(
+        // GroundStrike53A4C2 supplies the cell's land and the saved strike
+        // coordinate. Its LightningWarhead reference selects the retained
+        // WeatherConBoltExplosion through the common SelectAnim owner.
+        let coordinate = crate::sim::projectile::ProjectileCoord::new(
+            i32::from(rx) * 256 + 128,
+            i32::from(ry) * 256 + 128,
+            world_z_leptons,
+        );
+        let land = crate::sim::combat::detonation_anim::land_at(sim, coordinate);
+        if let Some(effect) = crate::sim::combat::detonation_anim::effect(
+            sim,
+            rules,
             warhead,
             rules.general.lightning_damage,
-            rx,
-            ry,
-            crate::util::lepton::CELL_CENTER_LEPTON,
-            crate::util::lepton::CELL_CENTER_LEPTON,
-            crate::sim::combat::impact_z_byte(impact_z),
-            world_z_leptons,
-            &mut sim.interner,
-            &mut explosions,
-        );
-        // The strike's explosion is the ordinary warhead `AnimList=` pick with
-        // the ordinary row (`0x0053A50E`: drawFlags 0x2600, the `0x0048ACE0`
-        // zAdjust), so it takes the combat explosion constructor.
-        for fx in &explosions {
-            sim.spawn_combat_explosion_anim(
-                rules,
-                fx.shp_name,
-                fx.rx,
-                fx.ry,
-                fx.sub_x,
-                fx.sub_y,
-                fx.z,
-                fx.world_z,
-            );
+            land,
+            coordinate,
+            coordinate,
+        ) {
+            crate::sim::world::damage_consequences::admit_explosion_effect(sim, rules, effect);
         }
 
         let scenario_no_damage = sim.session.no_damage;
@@ -758,7 +750,7 @@ mod tests {
              [Warheads]\n0=LWH\n\n\
              [DUMMY]\nStrength=100\nArmor=none\nSpeed=4\n\n\
              [GAPOWR]\nStrength=200\nArmor=wood\n\n\
-             [General]\nLightningDamage=100\nLightningWarhead=LWH\n\n\
+             [General]\nLightningDamage=100\nLightningWarhead=LWH\nWeatherConBoltExplosion=EXPLOSION\n\n\
              [LWH]\nCellSpread=1\nPercentAtMax=1\nAnimList=EXPLOSION\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         ))
@@ -803,7 +795,7 @@ Layer=ground
             anims.iter().any(|anim| anim.type_id == explosion_iid
                 && at_cell(anim)
                 && anim.draw_flags == 0x2600),
-            "the lightning warhead's AnimList pick takes the combat explosion row"
+            "the LightningWarhead selects WeatherConBoltExplosion and takes the combat explosion row"
         );
         assert!(
             anims.iter().any(|anim| {

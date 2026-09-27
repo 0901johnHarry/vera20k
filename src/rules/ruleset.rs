@@ -285,6 +285,15 @@ pub struct GeneralRules {
     /// missing section is undefined natively; retail defines all three, and
     /// VERA reads a missing one as 1.0.
     pub difficulty_rof: [f64; 3],
+    /// The same rows' `RepairDelay=` (`+0x38`, ReadDouble with an explicit
+    /// default of .02, `0x0066D317`; retail `.02`, `.02`, `.05`).
+    /// `HouseClass::SetDifficulty` copies the house's row into `+0x1C0`; the
+    /// computer's auto-repair start draws its latch time from it
+    /// (`0x00450727`). A missing section skips every read
+    /// (`0x0066D27C..0x0066D288`) and leaves the row the constructor never
+    /// writes, undefined natively as the ROF rows are; VERA reads a missing
+    /// one as the key's default .02.
+    pub difficulty_repair_delay: [f64; 3],
     /// Receiver-side divisor selected by the rank-specific `STRONGER`
     /// ability (`VeteranArmor=` in `[General]`).
     pub veteran_armor: f64,
@@ -340,12 +349,15 @@ pub struct GeneralRules {
     /// Underground travel speed for Tunnel locomotor units (TunnelSpeed=).
     /// Default 6.0 cells/second matching RA2 default.
     pub tunnel_speed: SimFixed,
-    /// `MissileROTVar=` from [General]. Amplitude of the sidewinder cosine
-    /// modulation in homing missile flight; the per-tick ROT scales by
-    /// `(1 + var) + cos(2π * frame / 15) * var`. Stock RA2/YR rules set
-    /// `.25`, yielding roughly 1.0 to 1.5 times the projectile's base ROT.
-    /// The parser fallback for a missing key remains 1.0.
-    pub missile_rot_var: SimFixed,
+    /// Rules+598: ReadDouble at 66EC37, constructor .25 at 665DBD.
+    /// Bullet guidance uses sin((signed native ID + frame) % 15 * 2pi/15).
+    pub missile_rot_var: f64,
+    /// Rules+5A0: ReadInt at 66EC57, constructor 500 at 665DC9.
+    /// Targetless guided flight detonates when old Object height reaches it.
+    pub safety_altitude: i32,
+    /// Rules+1863, AudioVisual66B77D ReadColorRGB. Any nonzero channel
+    /// replaces ObjectType ART LineTrailColor on trail construction.
+    pub line_trail_color_override: [u8; 3],
     /// Default cruise altitude for Fly-locomotor aircraft (FlightLevel= in [General]).
     /// Fallback 500 leptons matches the engine constructor default; retail
     /// rulesmd.ini always supplies its own (1500), so the fallback only fires
@@ -728,8 +740,13 @@ pub struct GeneralRules {
     /// Generic shell click sound from [AudioVisual] GenericClick
     /// (`Rules+0x70C`, read at `0x0066AD30` through `VocClass::FindByName`;
     /// retail `MenuClick`). A human player's sale order plays it too
-    /// (`Sell_Back @ 0x00447110`).
+    /// (`Sell_Back @ 0x00447110`), and so does switching a repair off, or on
+    /// below Strength (`BuildingClass::ToggleRepair @ 0x00446FF0`).
     pub generic_click_sound: Option<String>,
+    /// `[AudioVisual] ScoldSound=` (`Rules+0x700`, read at `0x0066ABE8`
+    /// through `VocClass::FindByName`; retail `MenuScold`): ToggleRepair's
+    /// sound when a repair is switched on at full Strength (`0x00447068`).
+    pub scold_sound: Option<String>,
     /// Launcher Options Sound/Voice preview cue from [AudioVisual] GenericBeep.
     pub generic_beep_sound: Option<String>,
     /// Sound event for shell checkboxes from [AudioVisual] GUICheckboxSound.
@@ -1023,13 +1040,16 @@ pub struct GeneralRules {
     /// Ticks between applying RepairStep HP when a unit is on a repair depot.
     /// Derived from URepairRate= in [General] (minutes). Default 0.016 min ≈ 14 ticks at 15 Hz.
     pub unit_repair_rate_ticks: u32,
-    /// HP healed per repair step on a service depot (RepairStep= in [General]).
-    /// Fallback 5 matches the engine constructor default; retail rulesmd sets 8.
-    pub repair_step: u16,
-    /// Percent of build cost charged for a full unit repair (RepairPercent= in [General]).
-    /// Fallback 25 (25%) matches the engine constructor default; retail rulesmd
-    /// sets 15%. Total cost = cost * repair_percent / 100.
-    pub repair_percent: u16,
+    /// `[General] RepairStep=` — `RulesClass+0x16CC`, ReadInt over the
+    /// constructor's 5 with no clamp (retail 8). TechnoTypeClass vt+0xB4
+    /// (`0x00712120`) returns it: the health a repair tick adds, and the
+    /// divisor of Strength in the repair step cost (`0x007120EC`).
+    pub repair_step: i32,
+    /// `[General] RepairPercent=` — `RulesClass+0x16D0`, ReadDouble
+    /// (`0x00670DB7`) over the constructor's .25 (retail `15%`, stored as
+    /// 0x3FC3333333333333). The repair step cost multiplies the per-step
+    /// share of the cost by it (`0x00712101`).
+    pub repair_percent: f64,
 
     // -- Aircraft ammo reload --
     /// Ticks to reload one ammo point at an airfield (from ReloadRate= minutes in [General]).
@@ -1103,8 +1123,15 @@ pub struct GeneralRules {
     /// Minimum manhattan distance between consecutive bolts (LightningSeparation= in [General]).
     /// Default 3.
     pub lightning_separation: i32,
-    /// Warhead ID for lightning bolt damage (LightningWarhead= in [General]). Default "IonWH".
+    /// [General] LightningWarhead (+17B4), constructor null.
+    /// Retained factory binding from General671053; empty string means null.
     pub lightning_warhead: String,
+    /// [General] WeatherConBoltExplosion (+2F4), constructor null;
+    /// selected by SelectAnim48A59A for LightningWarhead.
+    pub weather_con_bolt_explosion: String,
+    /// [General] WeaponNullifyAnim (+350), constructor null; retained reader
+    /// 66E2AF. Bullet46A2A1 uses it after AreaDamage returns IronCurtain (2).
+    pub weapon_nullify_anim: String,
     /// Whether `[General] AmbientChangeRate=` is nonzero before its native
     /// frame conversion. Kept separately because a nonzero mod value can chop
     /// to a zero-frame interval while still passing ScenarioClass's outer gate.
@@ -1262,6 +1289,10 @@ fn parse_paradrop_list(
     inf.into_iter().zip(nums.into_iter()).collect()
 }
 
+/// `RulesClass::ReadDifficulty @ 0x0066D270`'s `RepairDelay=` default, the
+/// double nearest .02 (`0x3F947AE147AE147B`, pushed at `0x0066D317`).
+const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
+
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
@@ -1275,6 +1306,7 @@ impl Default for GeneralRules {
             veteran_speed: 1.0,
             veteran_rof: 1.0,
             difficulty_rof: [1.0; 3],
+            difficulty_repair_delay: [DIFFICULTY_REPAIR_DELAY_DEFAULT; 3],
             veteran_armor: 1.0,
             curley_shuffle: false,
             repair_rate_minutes: 0.016,
@@ -1290,7 +1322,9 @@ impl Default for GeneralRules {
             gap_radius: 10,
             reveal_by_height: true,
             tunnel_speed: sim_from_f32(6.0),
-            missile_rot_var: sim_from_f32(1.0),
+            missile_rot_var: 0.25,
+            safety_altitude: 500,
+            line_trail_color_override: [0; 3],
             flight_level: 500,
             display_cruise_height: 400, // Rules constructor665C3A
             hover_height: 120,
@@ -1405,6 +1439,7 @@ impl Default for GeneralRules {
             gui_move_in_sound: None,
             gui_move_out_sound: None,
             generic_click_sound: None,
+            scold_sound: None,
             generic_beep_sound: None,
             gui_checkbox_sound: None,
             ore_twinkle: None,
@@ -1478,7 +1513,7 @@ impl Default for GeneralRules {
             // URepairRate=.016 min = 0.96 sec ≈ 14 ticks at 15 Hz.
             unit_repair_rate_ticks: 14,
             repair_step: 5,
-            repair_percent: 25,
+            repair_percent: 0.25,
             // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
             reload_rate_ticks: 270,
             // PathDelay=.01 min = 0.6 sec = 9 ticks at 15 Hz.
@@ -1505,7 +1540,9 @@ impl Default for GeneralRules {
             lightning_scatter_delay: 5,
             lightning_cell_spread: 10,
             lightning_separation: 3,
-            lightning_warhead: "IonWH".to_string(),
+            lightning_warhead: String::new(),
+            weather_con_bolt_explosion: String::new(),
+            weapon_nullify_anim: String::new(),
             ambient_change_rate_nonzero: true,
             ambient_change_interval_frames: 180,
             ambient_change_step: 20,
@@ -1549,9 +1586,15 @@ pub struct GarrisonRules {
     pub bunker_rof_multiplier: f32,
     /// Range bonus in cells for bunker passengers.
     pub bunker_weapon_range_bonus: i32,
-    /// Damage multiplier for open-topped passengers.
+    /// `[CombatDamage] OpenToppedDamageMultiplier=`, the single at
+    /// `Rules+0xF58` (constructor 1.0f `0x00666AD9`; ReadDouble stored with
+    /// `FSTP dword` at `0x0066C743..`). FireAt multiplies an open-topped
+    /// passenger's damage by it (`0x006FE43B`).
     pub open_topped_damage_multiplier: f32,
-    /// Range bonus in cells for open-topped passengers.
+    /// `[CombatDamage] OpenToppedRangeBonus=` in cells, `Rules+0xF5C`
+    /// (constructor 2, `0x00666AD9..`; ReadInt at `0x0066C743..0x0066C7AC`).
+    /// InRange adds it, shifted to leptons, for an open-topped passenger
+    /// (`0x006F72C8`).
     pub open_topped_range_bonus: i32,
 }
 
@@ -1565,7 +1608,7 @@ impl Default for GarrisonRules {
             bunker_rof_multiplier: 1.0,
             bunker_weapon_range_bonus: 0,
             open_topped_damage_multiplier: 1.0,
-            open_topped_range_bonus: 0,
+            open_topped_range_bonus: 2,
         }
     }
 }
@@ -1587,7 +1630,7 @@ impl GarrisonRules {
             bunker_rof_multiplier: get_f32("BunkerROFMultiplier", 1.0),
             bunker_weapon_range_bonus: get_i32("BunkerWeaponRangeBonus", 0),
             open_topped_damage_multiplier: get_f32("OpenToppedDamageMultiplier", 1.0),
-            open_topped_range_bonus: get_i32("OpenToppedRangeBonus", 0),
+            open_topped_range_bonus: get_i32("OpenToppedRangeBonus", 2),
         }
     }
 }
@@ -1978,6 +2021,12 @@ impl GeneralRules {
                 ini.section(name)
                     .map_or(1.0, |section| section.read_double("ROF", 1.0))
             }),
+            difficulty_repair_delay: ["Easy", "Normal", "Difficult"].map(|name| {
+                ini.section(name)
+                    .map_or(DIFFICULTY_REPAIR_DELAY_DEFAULT, |section| {
+                        section.read_double("RepairDelay", DIFFICULTY_REPAIR_DELAY_DEFAULT)
+                    })
+            }),
             veteran_armor: general.get_f64("VeteranArmor").unwrap_or(1.0),
             curley_shuffle: general
                 .get_bool("CurleyShuffle")
@@ -2011,10 +2060,17 @@ impl GeneralRules {
                 .get_f32("TunnelSpeed")
                 .map(sim_from_f32)
                 .unwrap_or(sim_from_f32(6.0)),
-            missile_rot_var: general
-                .get_f32("MissileROTVar")
-                .map(sim_from_f32)
-                .unwrap_or(sim_from_f32(1.0)),
+            missile_rot_var: general.read_double("MissileROTVar", defaults.missile_rot_var),
+            safety_altitude: general.read_int("MissileSafetyAltitude", defaults.safety_altitude),
+            line_trail_color_override: audio_visual.map_or(
+                defaults.line_trail_color_override,
+                |section| {
+                    section.read_color_rgb(
+                        "LineTrailColorOverride",
+                        defaults.line_trail_color_override,
+                    )
+                },
+            ),
             flight_level: general.get_i32("FlightLevel").unwrap_or(500),
             display_cruise_height,
             // Hover keys. gamemd reads these with the %-aware Get_Double (150% → 1.5),
@@ -2294,6 +2350,11 @@ impl GeneralRules {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
+            scold_sound: audio_visual
+                .and_then(|s| s.get("ScoldSound"))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
             generic_beep_sound: audio_visual
                 .and_then(|s| s.get("GenericBeep"))
                 .map(str::trim)
@@ -2489,22 +2550,18 @@ impl GeneralRules {
                 .get_f32("ShipSinkingWeight")
                 .map(sim_from_f32)
                 .unwrap_or(defaults.ship_sinking_weight),
-            tracked_uphill: SimFixed::from_num(general.read_double(
-                "TrackedUphill",
-                defaults.tracked_uphill.to_num::<f64>(),
-            )),
-            tracked_downhill: SimFixed::from_num(general.read_double(
-                "TrackedDownhill",
-                defaults.tracked_downhill.to_num::<f64>(),
-            )),
-            wheeled_uphill: SimFixed::from_num(general.read_double(
-                "WheeledUphill",
-                defaults.wheeled_uphill.to_num::<f64>(),
-            )),
-            wheeled_downhill: SimFixed::from_num(general.read_double(
-                "WheeledDownhill",
-                defaults.wheeled_downhill.to_num::<f64>(),
-            )),
+            tracked_uphill: SimFixed::from_num(
+                general.read_double("TrackedUphill", defaults.tracked_uphill.to_num::<f64>()),
+            ),
+            tracked_downhill: SimFixed::from_num(
+                general.read_double("TrackedDownhill", defaults.tracked_downhill.to_num::<f64>()),
+            ),
+            wheeled_uphill: SimFixed::from_num(
+                general.read_double("WheeledUphill", defaults.wheeled_uphill.to_num::<f64>()),
+            ),
+            wheeled_downhill: SimFixed::from_num(
+                general.read_double("WheeledDownhill", defaults.wheeled_downhill.to_num::<f64>()),
+            ),
             // RulesClass's AudioVisual pass stores these ReadDouble values as
             // signed milliunits after the active x87 chop-toward-zero conversion.
             extra_unit_light: (audio_visual
@@ -2541,14 +2598,8 @@ impl GeneralRules {
                         .max(1.0) as u32
                 })
                 .unwrap_or(defaults.unit_repair_rate_ticks),
-            repair_step: general
-                .get_i32("RepairStep")
-                .unwrap_or(defaults.repair_step as i32)
-                .max(1) as u16,
-            repair_percent: general
-                .get_percent("RepairPercent")
-                .map(|frac| (frac * 100.0).round() as u16)
-                .unwrap_or(defaults.repair_percent),
+            repair_step: general.read_int("RepairStep", defaults.repair_step),
+            repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
             reload_rate_ticks: general
                 .get_f32("ReloadRate")
                 .map(|minutes| {
@@ -2606,10 +2657,9 @@ impl GeneralRules {
             lightning_scatter_delay: general.get_i32("LightningScatterDelay").unwrap_or(5).max(1),
             lightning_cell_spread: general.get_i32("LightningCellSpread").unwrap_or(10),
             lightning_separation: general.get_i32("LightningSeparation").unwrap_or(3),
-            lightning_warhead: general
-                .get("LightningWarhead")
-                .unwrap_or("IonWH")
-                .to_string(),
+            lightning_warhead: general.read_string("LightningWarhead", "", 128),
+            weather_con_bolt_explosion: general.read_string("WeatherConBoltExplosion", "", 128),
+            weapon_nullify_anim: general.read_string("WeaponNullifyAnim", "", 128),
             ambient_change_rate_nonzero: ambient_change_rate != 0.0,
             ambient_change_interval_frames: (ambient_change_rate * 900.0) as i32,
             ambient_change_step: (ambient_change_step * 100.0) as i32,
@@ -3112,19 +3162,51 @@ impl RuleSet {
         rules.powerups = processed.powerups().clone();
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
+        rules.general.gravity = processed.gravity();
+        let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
+        rules.general.lightning_warhead = lightning.to_owned();
+        rules.general.weather_con_bolt_explosion = weather_anim.to_owned();
+        rules.general.weapon_nullify_anim = nullify_anim.to_owned();
+        rules.combat_damage.splash_list = splash.to_vec();
+        for (name, conventional, em_effect, anim_list) in processed.warhead_anim_states() {
+            if let Some(warhead) = rules
+                .warheads
+                .values_mut()
+                .find(|wh| wh.id.eq_ignore_ascii_case(name))
+            {
+                warhead.conventional = conventional;
+                warhead.em_effect = em_effect;
+                warhead.anim_list = anim_list.to_vec();
+            }
+        }
+        (
+            rules.general.missile_rot_var,
+            rules.general.safety_altitude,
+            rules.general.line_trail_color_override,
+        ) = processed.projectile_rule_controls();
+        for (name, speed, projectile) in processed.weapon_speeds_and_projectiles() {
+            if let Some(weapon) = rules
+                .weapons
+                .values_mut()
+                .find(|weapon| weapon.id.eq_ignore_ascii_case(name))
+            {
+                weapon.speed = speed;
+                weapon.projectile = projectile.map(str::to_owned);
+            }
+        }
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
             .collect();
         // The registry processor owns native read timing and retained values;
         // the runtime definition receives that result, not another ART read.
-        for (name, flat) in processed.projectile_flat_states() {
+        for (name, art) in processed.projectile_art_states() {
             if let Some(projectile) = rules
                 .projectiles
                 .values_mut()
                 .find(|projectile| projectile.id.eq_ignore_ascii_case(name))
             {
-                projectile.flat = flat;
+                art.apply_to(projectile);
             }
         }
         rules.source_ini_hash = processed.content_hash();
@@ -3919,8 +4001,33 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v7".hash(&mut hasher);
+        b"rules-simulation-config-v9".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
+        // Process-resident Gravity and Weapon postpass results can differ for
+        // identical current source stacks because earlier passes retained them.
+        self.general.gravity.hash(&mut hasher);
+        self.general.missile_rot_var.to_bits().hash(&mut hasher);
+        self.general.safety_altitude.hash(&mut hasher);
+        self.general.line_trail_color_override.hash(&mut hasher);
+        self.general.lightning_warhead.hash(&mut hasher);
+        self.general.weather_con_bolt_explosion.hash(&mut hasher);
+        self.general.weapon_nullify_anim.hash(&mut hasher);
+        self.combat_damage.splash_list.hash(&mut hasher);
+        self.warheads
+            .iter()
+            .map(|(name, wh)| {
+                (
+                    name.to_ascii_uppercase(),
+                    (wh.conventional, wh.em_effect, &wh.anim_list),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
+        self.weapons
+            .iter()
+            .map(|(id, weapon)| (id.to_ascii_uppercase(), (weapon.speed, &weapon.projectile)))
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
         // Selection order and duplicate references affect the scenario RNG's
         // consumers, including the truncated retail pool's unread AnimType D.
         self.general.metallic_debris.hash(&mut hasher);
@@ -3951,10 +4058,37 @@ impl RuleSet {
         // These effective ART values feed ordinary FireAt after load. Hash
         // consumed values in canonical type order, not ART insertion order,
         // authored-key presence, or unrelated presentation metadata.
-        b"art-projectile-launch-config-v2".hash(&mut hasher);
+        b"art-projectile-config-v3".hash(&mut hasher);
         self.projectiles
             .iter()
-            .map(|(id, projectile)| (id.to_ascii_uppercase(), (projectile.voxel, projectile.flat)))
+            .map(|(id, p)| {
+                (
+                    id.to_ascii_uppercase(),
+                    (
+                        (
+                            &p.image,
+                            &p.image_load,
+                            p.voxel,
+                            p.theater,
+                            p.new_theater,
+                            p.inviso,
+                        ),
+                        (p.rotates, p.flat, p.anim_palette),
+                        (
+                            p.use_line_trail,
+                            p.line_trail_color,
+                            p.line_trail_color_decrement,
+                        ),
+                        (
+                            p.anim_low,
+                            p.anim_high,
+                            p.anim_rate,
+                            p.spawn_delay,
+                            &p.trailer,
+                        ),
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>()
             .hash(&mut hasher);
         self.object_list
@@ -3965,6 +4099,46 @@ impl RuleSet {
                     object.id.to_ascii_uppercase(),
                     self.building_launch_height(object),
                 )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
+        // Actual selected FLH records and turret pivot, in canonical type order.
+        b"art-weapon-flh-v1".hash(&mut hasher);
+        self.object_list
+            .iter()
+            .map(|object| {
+                let art = self
+                    .art_registry
+                    .get(&object.image)
+                    .or_else(|| self.art_registry.get(&object.id));
+                // FireAt uses zero FLH/pivot when metadata is absent. Hash
+                // that same effective value, not the presence of an ART section.
+                let slots = (0..crate::rules::object_type::WEAPON_SLOT_COUNT)
+                    .map(|index| {
+                        let elite = object
+                            .elite_weapon_list
+                            .get(index)
+                            .is_some_and(Option::is_some);
+                        art.map_or_else(Default::default, |art| {
+                            (
+                                art.weapon_flh(
+                                    object.turret_count,
+                                    object.weapon_count,
+                                    index as i32,
+                                    false,
+                                ),
+                                art.weapon_flh(
+                                    object.turret_count,
+                                    object.weapon_count,
+                                    index as i32,
+                                    elite,
+                                ),
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let consumed = (art.map_or(0, |art| art.turret_offset), slots);
+                (object.id.to_ascii_uppercase(), consumed)
             })
             .collect::<BTreeMap<_, _>>()
             .hash(&mut hasher);
@@ -4282,16 +4456,8 @@ impl RuleSet {
         self.art_registry = art.clone();
         self.art_registry
             .apply_anim_type_read_states(&self.anim_type_art_read_states);
-        // ObjectRead 5F933B/5F962E precedes BulletRead 46C1E8. On a fresh
-        // type the Object image defaults to its ID, even though Bullet's later
-        // missing-Image read clears its separate rendering name. An explicit
-        // Image never falls back to the type ID or follows ART Image redirects.
-        for projectile in self.projectiles.values_mut() {
-            let image = projectile.image.as_deref().unwrap_or(&projectile.id);
-            if let Some(voxel) = art.get(image).and_then(|entry| entry.authored_voxel) {
-                projectile.voxel = voxel;
-            }
-        }
+        // Projectile ART is already projected from the per-pass registry owner.
+        // A final-image reread here would lose omission/cache/default semantics.
         let ai_base_spacing = self.ai_base_spacing;
         let mut patched: u32 = 0;
         let mut dock_patched: u32 = 0;
@@ -6534,34 +6700,26 @@ ParachuteMaxFallRate=-1
     }
 
     #[test]
-    fn test_missile_rot_var_missing_key_falls_back_to_one() {
+    fn test_missile_rot_var_missing_key_keeps_native_constructor() {
         let ini = IniFile::from_str("[General]\nFixtureOnly=1\n");
         let general = GeneralRules::from_ini(&ini);
-        assert_eq!(general.missile_rot_var, sim_from_f32(1.0));
+        assert_eq!(general.missile_rot_var, 0.25);
     }
 
     #[test]
     fn test_missile_rot_var_stock_rules_value_parsed() {
         let ini = IniFile::from_str("[General]\nMissileROTVar=.25\n");
         let general = GeneralRules::from_ini(&ini);
-        let diff = (general.missile_rot_var - SimFixed::lit("0.25")).abs();
-        assert!(
-            diff < SimFixed::lit("0.001"),
-            "got {:?}",
-            general.missile_rot_var
-        );
+        let diff = (general.missile_rot_var - 0.25).abs();
+        assert!(diff < 0.001, "got {:?}", general.missile_rot_var);
     }
 
     #[test]
     fn test_missile_rot_var_parsed() {
         let ini = IniFile::from_str("[General]\nMissileROTVar=2.5\n");
         let general = GeneralRules::from_ini(&ini);
-        let diff = (general.missile_rot_var - sim_from_f32(2.5)).abs();
-        assert!(
-            diff < SimFixed::lit("0.001"),
-            "got {:?}",
-            general.missile_rot_var
-        );
+        let diff = (general.missile_rot_var - 2.5).abs();
+        assert!(diff < 0.001, "got {:?}", general.missile_rot_var);
     }
 
     #[test]
@@ -6781,7 +6939,9 @@ DefaultSparkSystem=SparkSys
         );
         assert_eq!(
             general.condition_red.to_bits(),
-            section.read_double("ConditionRed", GeneralRules::default().condition_red).to_bits()
+            section
+                .read_double("ConditionRed", GeneralRules::default().condition_red)
+                .to_bits()
         );
         assert_ne!(
             general.condition_yellow.to_bits(),

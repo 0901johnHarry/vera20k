@@ -152,8 +152,10 @@ impl RepairResponse {
 /// `total = cost * repair_percent / 100`, `cost_per_step = max(1, total *
 /// repair_step / max_hp)`, funded ⇒ `Roger`, unfunded ⇒ `InsufficientFunds`
 /// (grace incremented), native ratio already-full ⇒ `RepairComplete`. No clock/RNG.
-/// VERA-internal cost math, gamemd equivalent UNCHECKED (Techno `0x1C` reads
-/// the type vtable `+0xB0/+0xB4`; adjacent lane).
+/// VERA-internal cost math. Natively the depot's repair reads the type's
+/// vt+0xB0/+0xB4 (`0x006F4CFE`): the repair step cost and `RepairStep=` the
+/// building repair uses (`production::repair_step_cost`); porting it is the
+/// depot repair's chain.
 pub fn repair_tick(
     hp: i32,
     strength: i32,
@@ -491,7 +493,7 @@ pub(crate) fn mission_enter_dispatch(sim: &mut Simulation, rules: &RuleSet, id: 
 
 /// Advance building dock state machines for all entities with `dock_state`.
 ///
-/// Called once per tick from `advance_tick()`, after `tick_repairs()`.
+/// Called once per tick from `advance_tick()`, after the factory step.
 /// Uses the two-phase snapshot pattern to avoid borrow conflicts. The
 /// waiter's `0x0E` probe and its epilogue draw are NOT here — they run in the
 /// unit's own dispatch slot ([`mission_enter_dispatch`]); this pass only
@@ -683,12 +685,14 @@ pub fn tick_building_docks(sim: &mut Simulation, rules: &RuleSet, path_grid: Opt
                         .map(|h| h.economy.credits)
                         .unwrap_or(0);
 
+                        // The adapter's whole percent and positive step, as
+                        // it read them before the rules kept the native values.
                         match repair_tick(
                             snap.hp,
                             snap.strength,
                             unit_cost,
-                            rules.general.repair_percent,
-                            rules.general.repair_step,
+                            (rules.general.repair_percent * 100.0).round() as u16,
+                            rules.general.repair_step.max(1) as u16,
                             credits,
                             snap.no_funds_ticks,
                         ) {

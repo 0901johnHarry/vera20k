@@ -26,6 +26,7 @@ pub(crate) mod combat_targeting;
 pub(crate) mod combat_weapon;
 pub(crate) mod damage;
 pub(crate) mod destruction_effects;
+pub(crate) mod detonation_anim;
 pub(crate) mod fire_coord;
 pub(crate) mod fire_error;
 pub(crate) mod fire_error_world;
@@ -84,14 +85,20 @@ mod combat_cloak_damage_tests;
 mod delayed_building_fire_tests;
 
 #[cfg(test)]
-#[path = "fireat_launch_tests.rs"]
-mod fireat_launch_tests;
+mod bridge_cluster_tests;
 #[cfg(test)]
 mod bridge_launch_tests;
 #[cfg(test)]
 mod bridge_live_chain_tests;
 #[cfg(test)]
-mod bridge_cluster_tests;
+#[path = "fireat_launch_tests.rs"]
+mod fireat_launch_tests;
+
+#[cfg(test)]
+mod ifv_fireat_tests;
+#[cfg(test)]
+#[path = "open_topped_fire_tests.rs"]
+mod open_topped_fire_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -123,7 +130,7 @@ use crate::sim::overlay_grid::WallMutation;
 use crate::sim::power_system::PowerState;
 use crate::sim::projectile::{
     ProjectileCollisionPolicy, ProjectileCoord, ProjectileDetonation, ProjectileGuidance,
-    ProjectilePayload, ProjectileSpawn, ProjectileTarget, ProjectileTrajectory, ProjectileVelocity,
+    ProjectilePayload, ProjectileSpawn, ProjectileTarget, ProjectileTrajectory,
     ProjectileVisualState, SpecialDetonationAction, SpecialDetonationFlags,
     SpecialDetonationTarget, TargetExpiryPolicy, projectile_next_cluster_coord,
     projectile_random_shrapnel_cell, projectile_shrapnel_count,
@@ -144,9 +151,6 @@ use super::animation::SequenceKind;
 use super::game_entity::{GameEntity, PendingBuildingFire};
 use super::occupancy::OccupancyGrid;
 use super::production::foundation_dimensions;
-
-/// Step size for selecting explosion anim from a warhead's AnimList: idx = damage / 25.
-const ANIM_LIST_DAMAGE_STEP: u16 = 25;
 
 /// One Unit's post-Foot Facing slot output for this tick — the write half of
 /// `UnitClass::Facing_Update @ 0x00736990` plus the `Fire_At_Target @
@@ -336,21 +340,17 @@ fn classify_projectile_delivery(
             .then_some(projectile.flak_scatter && !projectile.inviso),
         guidance: (projectile.rot > 0).then_some(ProjectileGuidance {
             rot: projectile.rot,
-            missile_rot_var: rules.general.missile_rot_var,
-            course_lock_duration: projectile
-                .course_lock_duration
-                .clamp(0, i32::from(u16::MAX)) as u16,
-            // The RE contract proves this is BulletClass-identity-derived but
-            // not its formula. Keep the raw phase as an explicit live seam.
-            sidewinder_phase: 0,
+            missile_rot_var: crate::util::native_x87::NativeF64Bits::from_bits(
+                rules.general.missile_rot_var.to_bits(),
+            ),
+            course_lock_duration: projectile.course_lock_duration,
+            course_frames: 0,
+            course_locked: true,
             airburst: projectile.airburst,
             inaccurate: projectile.inaccurate,
             very_high: projectile.very_high,
             level: projectile.level,
-            // Replaced at construction with the launch facing.
-            heading_bam: 0,
-            frames_elapsed: 0,
-            max_speed: weapon.speed.clamp(0, i32::from(u16::MAX)) as u16,
+            max_speed: weapon.speed,
             acceleration: projectile.acceleration,
             // Replaced at construction with the launch-time target coord.
             fuse_reference: ProjectileCoord::new(0, 0, 0),
@@ -985,8 +985,25 @@ pub(crate) fn pursuit_selected_weapon<'a>(
     terrain: Option<&ResolvedTerrainGrid>,
     alliances: Option<&HouseAllianceMap>,
 ) -> Option<&'a WeaponType> {
+    pursuit_selection(
+        entity, target, entities, rules, interner, terrain, alliances,
+    )
+    .map(|selected| selected.weapon)
+}
+
+/// [`pursuit_selected_weapon`]'s whole selection, native weapon index
+/// included.
+pub(crate) fn pursuit_selection<'a>(
+    entity: &GameEntity,
+    target: &TargetKind,
+    entities: &EntityStore,
+    rules: &'a RuleSet,
+    interner: &StringInterner,
+    terrain: Option<&ResolvedTerrainGrid>,
+    alliances: Option<&HouseAllianceMap>,
+) -> Option<combat_weapon::SelectedWeapon<'a>> {
     let attacker_obj = rules.object(interner.resolve(entity.type_ref()))?;
-    let selected = select_weapon_against(
+    select_weapon_against(
         rules,
         attacker_obj,
         &combat_weapon::attacker_facts(entity, attacker_obj),
@@ -996,8 +1013,7 @@ pub(crate) fn pursuit_selected_weapon<'a>(
         interner,
         terrain,
         alliances,
-    )?;
-    Some(selected.weapon)
+    )
 }
 
 /// What the pursuit stage should do with an attacker that is holding a target.
@@ -1487,47 +1503,6 @@ pub(crate) fn emit_infantry_death_anim(
     });
 }
 
-/// Emit the warhead's AnimList animation for one detonation at (rx, ry, z).
-/// Its scorch or crater is the anim's own `AnimClass::Middle`, which the anim
-/// runtime runs at the anim's middle frame.
-///
-/// Pushes nothing if `warhead.anim_list` is empty.
-///
-/// `base_damage` is the post-modifier damage at the impact center; it
-/// drives AnimList selection via `damage / 25`, clamped to `len - 1`.
-/// The dying object's OWN explosion is emitted separately, in the death loop —
-/// see `UnitClass::Death_Explosion @ 0x00738680` there. This function is only
-/// the warhead's half.
-pub(crate) fn emit_warhead_detonation_effects(
-    warhead: &WarheadType,
-    base_damage: i32,
-    rx: u16,
-    ry: u16,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
-    z: u8,
-    world_z_leptons: i32,
-    interner: &mut StringInterner,
-    explosion_effects: &mut Vec<ExplosionEffect>,
-) {
-    if warhead.anim_list.is_empty() {
-        return;
-    }
-    let idx = (base_damage / ANIM_LIST_DAMAGE_STEP as i32).max(0) as usize;
-    let idx = idx.min(warhead.anim_list.len() - 1);
-    let interned_name = interner.intern(&warhead.anim_list[idx]);
-    explosion_effects.push(ExplosionEffect {
-        shp_name: interned_name,
-        rx,
-        ry,
-        sub_x,
-        sub_y,
-        z,
-        world_z: world_z_leptons,
-        death: None,
-    });
-}
-
 /// One captured TerrainClass receiver in a fixed Apply_area_damage transaction.
 ///
 /// Transient only: stable identity, cell, distance, and isolation scope are
@@ -1557,6 +1532,9 @@ pub struct TiberiumReductionRequest {
 /// The frame admits bullets and applies facing before committing the packet at
 /// its existing post-SpawnManager boundary.
 pub struct CombatTickResult {
+    /// Test adapter observations of actual inline AnimStore construction.
+    #[cfg(test)]
+    pub(crate) fixture_anims: Vec<receiver_fixture::ConstructedAnimObservation>,
     /// Shrapnel bullets from detonations the combat pass committed; the frame
     /// admits them before its Logic tail visits the new objects. FireAt admits
     /// its own bullets directly.
@@ -1968,6 +1946,7 @@ fn throw_debris_for_death(
     (world_x, world_y): (i32, i32),
     world_z_leptons: i32,
     scenario_rng: &mut SimRng,
+    native_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     voxel_debris: &mut Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
     explosion_effects: &mut Vec<ExplosionEffect>,
 ) {
@@ -2013,14 +1992,30 @@ fn throw_debris_for_death(
         glam::IVec3::new(world_x, world_y, world_z_leptons),
         scenario_rng,
         &mut |source, index, rng| {
+            // The selected piece is allocated before Anim42203D assigns its
+            // identity, then RandomRate/Bouncer draws run before the next pick.
+            // Carry this constructor result through delayed world publication.
+            let native_unique_id =
+                crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_ids);
             let Some(config) = debris_name(source, index).and_then(|name| {
                 rules
                     .art_registry
                     .anim_runtime_config(&name.to_ascii_uppercase())
             }) else {
-                return Ok(None);
+                // A missing bound SHP still corresponds to a native Anim
+                // constructor. Admission reports the asset failure later.
+                return Ok(Some(crate::sim::anim_class::AnimConstructorDraws {
+                    native_unique_id: Some(native_unique_id),
+                    random_rate: None,
+                    bounce: None,
+                }));
             };
-            crate::sim::anim_class::anim_constructor_draws(config, anim_coord, rng).map(Some)
+            crate::sim::anim_class::anim_constructor_draws(config, anim_coord, rng).map(
+                |mut draws| {
+                    draws.native_unique_id = Some(native_unique_id);
+                    Some(draws)
+                },
+            )
         },
     ) else {
         // A launch velocity outside the verified x87 domain needs a modded
@@ -2460,22 +2455,29 @@ fn has_active_area_invulnerability(entity: &GameEntity, current_tick: u64) -> bo
     )
 }
 
+fn event_arms_ic_isolation(
+    event: &EntityDamageEvent,
+    entities: &EntityStore,
+    current_tick: u64,
+) -> bool {
+    event.near_center_ic_isolation_eligible
+        && event.distance_leptons.is_some_and(|distance| distance < 85)
+        && entities.get(event.target_id).is_some_and(|target| {
+            has_active_area_invulnerability(target, current_tick)
+                && target.invulnerability.as_ref().is_some_and(|state| {
+                    state.kind == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
+                })
+        })
+}
+
 fn near_center_ic_isolation_armed(
     damage_events: &[EntityDamageEvent],
     entities: &EntityStore,
     current_tick: u64,
 ) -> bool {
-    damage_events.iter().any(|event| {
-        event.near_center_ic_isolation_eligible
-            && event.distance_leptons.is_some_and(|distance| distance < 85)
-            && entities.get(event.target_id).is_some_and(|target| {
-                has_active_area_invulnerability(target, current_tick)
-                    && target.invulnerability.as_ref().is_some_and(|state| {
-                        state.kind
-                            == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
-                    })
-            })
-    })
+    damage_events
+        .iter()
+        .any(|event| event_arms_ic_isolation(event, entities, current_tick))
 }
 
 fn area_near_center_ic_isolation_armed(
@@ -2484,18 +2486,8 @@ fn area_near_center_ic_isolation_armed(
     current_tick: u64,
 ) -> bool {
     receivers.iter().any(|receiver| {
-        let combat_aoe::AreaDamageReceiver::Entity(event) = receiver else {
-            return false;
-        };
-        event.near_center_ic_isolation_eligible
-            && event.distance_leptons.is_some_and(|distance| distance < 85)
-            && entities.get(event.target_id).is_some_and(|target| {
-                has_active_area_invulnerability(target, current_tick)
-                    && target.invulnerability.as_ref().is_some_and(|state| {
-                        state.kind
-                            == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
-                    })
-            })
+        matches!(receiver, combat_aoe::AreaDamageReceiver::Entity(event)
+            if event_arms_ic_isolation(event, entities, current_tick))
     })
 }
 
@@ -2561,6 +2553,7 @@ fn emit_projectile_shrapnel(
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
     house_alliances: &HouseAllianceMap,
     scenario_rng: &mut SimRng,
+    native_unique_ids: &mut Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     out: &mut CombatEmit,
 ) {
     let Some(parent_weapon) = rules.weapon(interner.resolve(detonation.payload.weapon)) else {
@@ -2755,7 +2748,14 @@ fn emit_projectile_shrapnel(
                     .unwrap_or(ProjectileCoord::new(0, 0, 0)),
             }
         };
+        let native_unique_id =
+            crate::sim::native_identity::NativeUniqueIdCursor::assign_runtime(native_unique_ids);
         out.projectile_spawns.push(ProjectileSpawn {
+            native_unique_id,
+            line_trail: crate::sim::projectile::ProjectileLineTrail::from_type(
+                child_projectile,
+                rules.general.line_trail_color_override,
+            ),
             flat: child_projectile.flat,
             source_id: detonation.source_id,
             origin: detonation.impact,
@@ -2851,6 +2851,7 @@ pub(crate) fn build_attacker_snapshot(
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         weapon_override: entity.weapon_override,
+        in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
     }
@@ -2978,8 +2979,7 @@ pub(crate) fn award_kill_experience(
     };
     // Branch 1: a passenger firing from an OpenTopped transport pays its
     // transporter (the `+0x82`/`+0x11C` pair).
-    let open_transporter =
-        crate::sim::passenger::open_topped_transport(entities, rules, interner, killer);
+    let open_transporter = killer.passenger_role.open_transport_id();
     let recipient = if let Some(transporter) = open_transporter.and_then(trainable_cost) {
         Some(transporter)
     } else if killer_type.trainable {
@@ -3334,6 +3334,8 @@ mod impact_height_tests {
             assert_eq!(rng.native_state_hex(), row["rng_before"].as_str().unwrap());
             let mut voxels = Vec::new();
             let mut effects = Vec::new();
+            let mut native_ids =
+                Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
             throw_debris_for_death(
                 &object_type,
                 &rules,
@@ -3342,6 +3344,7 @@ mod impact_height_tests {
                 (at(0), at(1)),
                 at(2),
                 &mut rng,
+                &mut native_ids,
                 &mut voxels,
                 &mut effects,
             );
@@ -3375,9 +3378,14 @@ mod impact_height_tests {
                     std::array::from_fn(|i| location[i].as_i64().unwrap() as i32),
                     "{input}"
                 );
-                let draws = spawn.draws.expect("the resolved type supplies constructor draws");
+                let draws = spawn
+                    .draws
+                    .expect("the resolved type supplies constructor draws");
                 if native["is_bouncing"].as_u64().unwrap() == 0 {
-                    assert!(draws.bounce.is_none(), "unread retail D is not a Bouncer: {input}");
+                    assert!(
+                        draws.bounce.is_none(),
+                        "unread retail D is not a Bouncer: {input}"
+                    );
                     assert_eq!(native["type"], "D");
                     continue;
                 }
@@ -3559,7 +3567,10 @@ mod impact_height_tests {
 
     #[test]
     fn force_fire_on_raised_ground_places_the_explosion_at_the_terrain_height() {
-        let rules = impact_rules();
+        let mut rules = impact_rules();
+        rules.merge_art_data(&crate::rules::art_data::ArtRegistry::from_ini(
+            &IniFile::from_str(""),
+        ));
         let mut terrain = terrain_at_level(RAISED_LEVEL);
         let mut store = EntityStore::new();
         // `test_interner` snapshots the thread-local, so the entity's type and
@@ -3598,14 +3609,14 @@ mod impact_height_tests {
         );
 
         let effect = result
-            .consequences
-            .effects()
-            .explosion_effects
+            .fixture_anims
             .first()
-            .expect("force-fire should emit the warhead's impact animation");
-        assert_eq!((effect.rx, effect.ry), (5, 6));
+            .expect("force-fire should construct the warhead's impact animation");
+        let (rx, ry, _, _, _) = effect.world_coord.to_cell_sub_z();
+        assert_eq!((rx, ry), (5, 6));
         assert_eq!(
-            effect.z, RAISED_LEVEL,
+            effect.world_coord.z,
+            i32::from(RAISED_LEVEL) * 104,
             "the impact animation is placed at the impact height; a constant 0 \
              draws it 15 screen pixels per level below the ground it hit"
         );

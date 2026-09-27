@@ -31,25 +31,23 @@
 //! target adjustment (467CEC) runs only after admission. There is no separate
 //! distance-to-target expiry rule for ordinary shots.
 //!
-//! Ordinary and Vertical flight retain one binary64 velocity authority.
+//! All flight arms retain one binary64 velocity authority.
 //! `launch` owns the native scalar FireAt math; combat resolves its receivers.
 //! RESIDUAL (GSI-08.06/07): FLH/pivot slope translation, directed Building
-//! heading, homing launch/steering, the flight of `Inviso=` shrapnel children
+//! heading, the flight of `Inviso=` shrapnel children
 //! (native places them at their target, `BulletClass::Fire @ 0x00468670`) and
 //! active NukeMaker child production remain open. Those producers can still change the inputs delivered to this exact
 //! motion/collision consumer; the complete projectile row remains open.
 
+mod homing;
 pub(crate) mod launch;
+mod native_math;
 
 use std::collections::BTreeMap;
 
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, SharedCellDummy};
 use crate::sim::intern::InternedId;
-use crate::sim::movement::homing_movement::{
-    atan2_bam, cos_bam, sidewinder_cos, sin_bam, step_toward_bam_inclusive,
-};
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::SimFixed;
 
 /// Lepton-space position for an in-flight projectile.
 ///
@@ -125,168 +123,29 @@ pub enum ProjectileTrajectory {
     },
 }
 
-/// Persistent inputs and facing state for the `BulletClass::Update` ROT branch.
-///
-/// The native sidewinder phase includes a BulletClass-identity-derived value
-/// whose derivation is not yet closed. `sidewinder_phase` is therefore an
-/// explicit serialized seam rather than an invented stable-id formula.
+/// Native guided-flight controls. Velocity alone owns direction and magnitude.
+/// Bullet AI 4668D9..467032 reads the signed constructor identity and global
+/// binary frame; a bullet age or a stable Rust handle is not its phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ProjectileGuidance {
     pub rot: i32,
-    pub missile_rot_var: SimFixed,
-    /// `BulletTypeClass::CourseLockDuration` (`+0x2E0`). This is the authored
-    /// duration, not a countdown: `BulletClass::AI @ 0x0046695B` compares its
-    /// own frame counter against it and latches `IsCourseLocked` (`+0x105`,
-    /// constructed to 1 at `0x004663B6`) off exactly once.
-    pub course_lock_duration: u16,
-    pub sidewinder_phase: u8,
+    pub missile_rot_var: crate::util::native_x87::NativeF64Bits,
+    /// BulletType+2E0; Bullet+108 counts and +105 latches independently.
+    pub course_lock_duration: i32,
+    pub course_frames: i32,
+    pub course_locked: bool,
     pub airburst: bool,
-    /// `BulletTypeClass+0x2A2`, the common final-snap exclusion at `0x00467CDE`.
-    /// The earlier homing reach snap at `0x00466E22` does not test this flag.
     pub inaccurate: bool,
     pub very_high: bool,
     pub level: bool,
-    /// Flight heading as a math BAM (`0` = +X). Native keeps the direction
-    /// implicitly in the double velocity vector it renormalises each frame at
-    /// `0x004669F3`; VERA's velocity is integer leptons, so at the 1-lepton
-    /// launch magnitude the direction has to be carried explicitly.
-    /// `heading_bam == facing16 - 0x4000` for a native launch facing.
-    pub heading_bam: u16,
-    pub frames_elapsed: u32,
-    /// `Bullet+0x110`, written from the weapon's `Speed=` (`WeaponTypeClass
-    /// +0xA8`) at `TechnoClass::FireAt 0x006FEA46`. This is the ceiling the
-    /// `Acceleration=` ramp climbs toward, never the launch speed.
-    pub max_speed: u16,
-    /// `BulletTypeClass::Acceleration` (`+0x2D0`, constructor default 3),
-    /// consumed by the homing ramp at `BulletClass::AI 0x00466985`.
+    /// Bullet+110, retained converted Weapon Speed, not current magnitude.
+    pub max_speed: i32,
     pub acceleration: i32,
-    /// The proximity fuse's reference coordinate, frozen at launch.
-    /// `ProximityDetector::Setup @ 0x004E1130` (sole caller
-    /// `BulletClass::Fire 0x00468A93`) copies the target's launch-time
-    /// `GetTargetCoords` into detector `+0x18..+0x20` once;
-    /// `ProximityDetector::Check @ 0x004E11F0` (sole caller
-    /// `BulletClass::AI 0x00467C35`) measures the live bullet coordinate
-    /// against that stored copy and never rewrites it.
+    /// ProximityDetector Setup 4E1130 freezes the target's launch-time aim.
     pub fuse_reference: ProjectileCoord,
-    /// `Bullet+0x118`, the warm-up counter of the closing-rate detonation
-    /// heuristic on the homing arm. Native runs the plain accumulate while it
-    /// is below 60 and only then admits the decay test — `0x00466FB4
-    /// MOV EAX,[EBP+0x118] / CMP EAX,0x3C / JGE`, then `INC EAX /
-    /// MOV [EBP+0x118],EAX` on the warm-up side.
-    pub closing_frames: u16,
-    /// `Bullet+0x120`, the closing-rate accumulator of the same heuristic
-    /// (`0x00466FD8 FLD double ptr [EBP+0x120]` / `0x00466FEE FST double ptr
-    /// [EBP+0x120]`), held as native `double` bits because the native update is
-    /// `accum * 0.9833333333333333 + delta` in x87 doubles.
+    /// Bullet+118/+120, independent of the CourseLock counter.
+    pub closing_frames: i32,
     pub closing_accumulator_bits: u64,
-}
-
-/// The independently proved altitude-policy result of
-/// `BulletClass::ComputeArcingTrajectoryStep` at `0x005B20F0`.
-///
-/// Its live floor/bridge probe is intentionally left to the world collision
-/// substrate; ROT steering below does not substitute cell levels for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProjectileRotAltitudeDecision {
-    pub control_terrain_clearance: bool,
-    pub clearance_levels: i32,
-    pub z_delta: i32,
-    pub desired_pitch: Option<u16>,
-}
-
-/// Pack the proven high-byte ROT control word. Native FISTP rounding is used
-/// before the low-byte truncation.
-#[cfg(test)]
-pub fn projectile_rot_turn_word(varied_rot: f64, target_distance: i32, course_locked: bool) -> u16 {
-    if course_locked {
-        return 0;
-    }
-    let rate = if target_distance < 256 {
-        (varied_rot * 1.5).round_ties_even()
-    } else {
-        varied_rot.round_ties_even()
-    } as i32;
-    (rate as u16 & 0xff) << 8
-}
-
-fn projectile_rot_turn_word_fixed(
-    varied_rot: SimFixed,
-    target_distance: i32,
-    course_locked: bool,
-) -> u16 {
-    if course_locked {
-        return 0;
-    }
-    let varied_rot = if target_distance < 256 {
-        varied_rot * SimFixed::lit("1.5")
-    } else {
-        varied_rot
-    };
-    let bits = i64::from(varied_rot.to_bits());
-    let whole = bits / 65_536;
-    let remainder = bits.unsigned_abs() % 65_536;
-    let rounded = if remainder > 32_768 || (remainder == 32_768 && whole & 1 != 0) {
-        whole + i64::from(bits.is_positive()) - i64::from(bits.is_negative())
-    } else {
-        whole
-    };
-    (rounded as u16 & 0xff) << 8
-}
-
-/// Apply the closed VeryHigh/Airburst clearance admission and error bands.
-#[cfg(test)]
-pub fn projectile_rot_altitude_decision(
-    target_is_aircraft: bool,
-    airburst: bool,
-    very_high: bool,
-    level: bool,
-    horizontal_distance: i32,
-    target_height_difference: i32,
-    level_height: i32,
-    current_clearance_error: i32,
-    turn_word: u16,
-) -> ProjectileRotAltitudeDecision {
-    let close_threshold = if very_high { 6 } else { 3 } * 256;
-    let turn_quantum = (((u32::from(turn_word) >> 7) + 1) >> 1) as u8;
-    let clearance_levels = if airburst || very_high {
-        10
-    } else {
-        (target_height_difference / 256).min(5)
-    };
-    if target_is_aircraft
-        || (!airburst && horizontal_distance <= close_threshold)
-        || turn_quantum <= 1
-        || level
-    {
-        return ProjectileRotAltitudeDecision {
-            control_terrain_clearance: false,
-            clearance_levels,
-            z_delta: 0,
-            desired_pitch: None,
-        };
-    }
-
-    let z_delta = if current_clearance_error < -20 {
-        18
-    } else if current_clearance_error > 20 {
-        -18
-    } else {
-        0
-    };
-    let half_level = level_height / 2;
-    let desired_pitch = if current_clearance_error < -half_level {
-        0x2000
-    } else if current_clearance_error > half_level {
-        0x4800
-    } else {
-        0x4000
-    };
-    ProjectileRotAltitudeDecision {
-        control_terrain_clearance: true,
-        clearance_levels,
-        z_delta,
-        desired_pitch: Some(desired_pitch),
-    }
 }
 
 /// Serialized `BulletClass` SHP animation bytes (`this+0x12c/+0x12d`).
@@ -370,7 +229,9 @@ pub(crate) fn cell_target_coord(
         .is_some_and(|cell| cell.bridge_facts.has_structural_bridge());
     let mut coord = cell_ground_coord(terrain, rx, ry);
     if structural {
-        coord.z = coord.z.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        coord.z = coord
+            .z
+            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
     }
     coord
 }
@@ -403,7 +264,9 @@ pub(crate) fn dummy_cell_target_coord(dummy: &SharedCellDummy) -> ProjectileCoor
         dummy.retained_bridge_flags() & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0;
     let mut coord = dummy_cell_ground_coord(dummy);
     if structural {
-        coord.z = coord.z.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
+        coord.z = coord
+            .z
+            .wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32);
     }
     coord
 }
@@ -910,32 +773,13 @@ pub fn projectile_shrapnel_count(
 ///   vector, the piggyback lift links, the AirstrikeClass manager, the
 ///   disguise) with its own `SNAPSHOT_VERSION` bump.
 ///
-/// RESIDUAL — **the `[ESP+0xf]` ordinary-arm visual bypass is not modelled.**
-/// `0x004690c9` zeroes `[ESP+0xf]` on entry and `0x00469a9f` is its only
-/// writer: it sets 1 when `Apply_area_damage` (called at `0x00469a83`) returns
-/// exactly 2 and the `bullet+0x90` gate at `0x00469a94` passed
-/// (`0x00469a9a CMP EAX,0x2` / `0x00469a9d JNZ 0x00469aa4`). When set, the tail
-/// diverts at `0x00469bea` / `0x0046a299` to `0x0046a2a1`, which builds a
-/// different `0x1c8`-byte object from global `[0x008871e0] + 0x350` and falls
-/// straight into the epilogue — skipping the `AnimList=` anim, the combat
-/// light, the debris loop and the `Airburst=` fan entirely. It is the same
-/// `Apply_area_damage` return-value handling as the `bullet+0x90` gate above,
-/// and it suppresses far more than that gate does.
-/// - Trigger: an ordinary-arm impact where `Apply_area_damage` returns 2. What
-///   that return value means is **UNCHECKED** — settled by reading
-///   `Apply_area_damage @ 0x00489280`'s return contract.
-/// - Player effect: on native such an impact draws the alternate object
-///   instead of its explosion, crater, debris and `Airburst=` children; VERA
-///   always draws the ordinary set.
-/// - Frequency: UNCHECKED on the ordinary arm, and provably **zero on every
-///   arm in this enum** — `0x00469a9f` is the flag's only writer and it sits
-///   inside the final else at `0x00469a3f`, which `get_xrefs_to 0x00469a3f`
-///   shows is entered by exactly one jump, the `NukeMaker` test's `JZ` at
-///   `0x00469a34`. No special arm can reach it, so the flag is 0 for all of
-///   them.
-/// - Downstream risk: none for M15a. It belongs with the rest of the tail
-///   (`Inviso`, debris, `Airburst=`) and with the `bullet+0x90` gate, i.e. to
-///   whoever ports `Apply_area_damage`'s return contract.
+/// The ordinary-arm AreaDamage return2 means near-center Iron Curtain
+/// isolation (489968/489B3B), covered by ifv_area_receipt.json. The shared
+/// receiver now skips bridge continuation, executes SelectAnim including its
+/// RNG, then substitutes WeaponNullifyAnim (+350) for normal animation/light
+/// at469BEA..46A301. Entry4690C1 initializes the ordinary result to1, so none
+/// of these special arms applies the result0 water-unit gate. Future ordinary
+/// debris/Airburst tail implementations must preserve the same early return.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecialDetonationAction {
     /// `MindControl=` (`WarheadTypeClass+0x155`), test `0x00469211` ->
@@ -1109,9 +953,36 @@ pub struct ProjectilePayload {
     pub weapon: InternedId,
 }
 
+/// Presentation constructor receipt from ObjectType ART. This is emitted once
+/// by Object Unlimbo and is not persistent flight state or a simulation input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProjectileLineTrail {
+    pub color: [u8; 3],
+    pub decrement: i32,
+}
+
+impl ProjectileLineTrail {
+    pub(crate) fn from_type(
+        kind: &crate::rules::projectile_type::ProjectileType,
+        override_color: [u8; 3],
+    ) -> Option<Self> {
+        kind.use_line_trail.then_some(Self {
+            color: if override_color.iter().any(|&c| c != 0) {
+                override_color
+            } else {
+                kind.line_trail_color
+            },
+            decrement: kind.line_trail_color_decrement,
+        })
+    }
+}
+
 /// Immutable admission data for an ordinary, non-vertical projectile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectileSpawn {
+    /// Abstract constructor receipt, consumed before launch math.
+    pub native_unique_id: i32,
+    pub line_trail: Option<ProjectileLineTrail>,
     /// BulletType+2F7 (`Flat`): Fire468B6D submits through GetLayer468B90,
     /// selecting Surface when true and Air otherwise. The display owner retains
     /// membership; this admission input is not a second live layer authority.
@@ -1152,6 +1023,7 @@ pub struct ProjectileSpawn {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Projectile {
     pub id: u64,
+    pub native_unique_id: i32,
     /// LogicClass membership is reconstructed from the serialized mixed order.
     #[serde(skip)]
     pub in_logic_vector: bool,
@@ -1323,6 +1195,7 @@ impl ProjectileStore {
             id,
             Projectile {
                 id,
+                native_unique_id: spawn.native_unique_id,
                 in_logic_vector: false,
                 source_id: spawn.source_id,
                 position: spawn.origin,
@@ -1421,6 +1294,8 @@ impl ProjectileStore {
             shared_cell_dummy,
             crate::rules::ruleset::GeneralRules::default().gravity,
             false,
+            false,
+            crate::rules::ruleset::GeneralRules::default().safety_altitude,
             |projectile, candidate, phase| match phase {
                 ProjectileCollisionPhase::Ordinary { .. } => None,
                 ProjectileCollisionPhase::Shared => collides_at(projectile, candidate),
@@ -1440,6 +1315,8 @@ impl ProjectileStore {
         shared_cell_dummy: &SharedCellDummy,
         rules_gravity: i32,
         source_is_jumpjet: bool,
+        target_is_aircraft: bool,
+        safety_altitude: i32,
         collides_at: impl FnMut(
             &Projectile,
             ProjectileCoord,
@@ -1457,6 +1334,8 @@ impl ProjectileStore {
             shared_cell_dummy,
             rules_gravity,
             source_is_jumpjet,
+            target_is_aircraft,
+            safety_altitude,
             collides_at,
             false,
         ))
@@ -1472,6 +1351,8 @@ impl ProjectileStore {
         shared_cell_dummy: &SharedCellDummy,
         rules_gravity: i32,
         source_is_jumpjet: bool,
+        target_is_aircraft: bool,
+        safety_altitude: i32,
         mut collides_at: impl FnMut(
             &Projectile,
             ProjectileCoord,
@@ -1554,144 +1435,19 @@ impl ProjectileStore {
             let mut near_target = false;
 
             let mut ordinary_motion = None;
-            let mut candidate = if let Some(mut guidance) = projectile.guidance {
-                // ---- ARM C, `BulletClass::AI 0x004668D9`..`0x00466A33` ----
-                // The speed ramp runs before any steering. `Bullet+0x110` is
-                // MaxSpeed; the current magnitude is `ftol(|v|)`, which native
-                // keeps integral from the 1.0 launch onward.
-                let max_speed = i32::from(guidance.max_speed);
-                let current_speed = i32::from(projectile.speed_leptons_per_frame);
-                // `0x00466925`..`0x00466978`: with `CourseLockDuration == 0`
-                // the lock clears once MaxSpeed reaches 40 (`CMP ...,0x28` /
-                // `JGE`) or the magnitude comes within 0.5 of MaxSpeed;
-                // otherwise a per-bullet counter runs the authored duration
-                // out. Both releases latch, and both are monotone in the
-                // ramping speed, so deriving them per frame is equivalent to
-                // native's stored `IsCourseLocked` byte.
-                let course_locked = if guidance.course_lock_duration == 0 {
-                    max_speed < 40 && max_speed > current_speed
-                } else {
-                    guidance.frames_elapsed.saturating_add(1)
-                        < u32::from(guidance.course_lock_duration)
-                };
-                // `0x0046699D`: a still-locked bullet with no authored
-                // duration ramps at one lepton on even frames and none on odd.
-                let acceleration = if course_locked && guidance.course_lock_duration == 0 {
-                    i32::from(binary_frame.is_multiple_of(2))
-                } else {
-                    guidance.acceleration
-                };
-                let next_speed = if current_speed < max_speed {
-                    (current_speed + acceleration).min(max_speed)
-                } else if current_speed > max_speed {
-                    // `0x00466A33`: overspeed sheds `Acceleration / 2` a frame
-                    // and floors at zero.
-                    (current_speed - acceleration / 2).max(0)
-                } else {
-                    current_speed
-                };
-
-                // `BulletClass::HomingTrack` steering. The turn word is zero
-                // while course-locked (`bVar4 &= ~-(IsCourseLocked != 0)`).
-                let target_distance = horizontal_distance(projectile.position, target_position);
-                let phase = guidance
-                    .frames_elapsed
-                    .wrapping_add(u32::from(guidance.sidewinder_phase));
-                let varied_rot = (sidewinder_cos(phase) * guidance.missile_rot_var
-                    + guidance.missile_rot_var
-                    + SimFixed::from_num(1))
-                    * SimFixed::from_num(guidance.rot);
-                let turn_word =
-                    projectile_rot_turn_word_fixed(varied_rot, target_distance, course_locked);
-                let desired_yaw = atan2_bam(
-                    SimFixed::from_num(target_position.y - projectile.position.y),
-                    SimFixed::from_num(target_position.x - projectile.position.x),
+            let mut candidate = if projectile.guidance.is_some() {
+                let step = homing::step(
+                    projectile,
+                    target_position,
+                    binary_frame as i32,
+                    target_is_aircraft,
+                    safety_altitude,
+                    terrain,
+                    shared_cell_dummy,
                 );
-                let yaw = step_toward_bam_inclusive(guidance.heading_bam, desired_yaw, turn_word);
-                guidance.heading_bam = yaw;
-                let horizontal_velocity = ProjectileVelocity::new(
-                    (SimFixed::from_num(next_speed) * cos_bam(yaw)).to_num::<i32>(),
-                    (SimFixed::from_num(next_speed) * sin_bam(yaw)).to_num::<i32>(),
-                    0,
-                );
-                projectile.velocity.x = horizontal_velocity.x;
-                projectile.velocity.y = horizontal_velocity.y;
-                projectile.speed_leptons_per_frame =
-                    next_speed.clamp(0, i32::from(u16::MAX)) as u16;
-                guidance.frames_elapsed = guidance.frames_elapsed.wrapping_add(1);
-
-                let step = projectile.velocity.integer_projection();
-                let candidate = ProjectileCoord::new(
-                    projectile.position.x.wrapping_add(step.x),
-                    projectile.position.y.wrapping_add(step.y),
-                    projectile.position.z.wrapping_add(step.z),
-                );
-
-                // gamemd-derived: `BulletClass::AI 0x00466DB1..0x00466E6B`.
-                // The +0x1C8 receiver is ObjectClass::GetHeight @ 0x005F5F40
-                // on the OLD object coordinate; HomingTrack has only updated
-                // the stack candidate. Only an Inviso bullet can be OnBridge
-                // (`Projectile::on_bridge`); it measures from the deck.
-                let reached_distance = coord_distance(candidate, target_position);
-                let old_height = previous_position
-                    .z
-                    .wrapping_sub(projectile_ground_z(
-                        terrain,
-                        shared_cell_dummy,
-                        previous_position,
-                    ))
-                    .wrapping_sub(if projectile.on_bridge {
-                        crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32
-                    } else {
-                        0
-                    });
-                let (admit_impact, snap_to_target) = homing_impact_admission(
-                    reached_distance,
-                    projectile.velocity,
-                    old_height,
-                    guidance.airburst,
-                    target_position != ProjectileCoord::new(0, 0, 0),
-                );
-                if admit_impact {
-                    impact_flag = true;
-                    impact_reason = if old_height <= 0 {
-                        ProjectileDetonationReason::Collision
-                    } else {
-                        ProjectileDetonationReason::ReachedTarget
-                    };
-                    if snap_to_target {
-                        snap_impact = Some(target_position);
-                    }
-                }
-
-                // The closing-rate heuristic. `delta` is how much closer this
-                // step got; native accumulates it raw for the first 60 frames
-                // and then decays, detonating inside the `[0, 60)` window when
-                // the bullet is neither `Airburst` nor `VeryHigh`. It runs
-                // only once the course lock has cleared.
-                if !course_locked {
-                    let delta = f64::from(
-                        coord_distance(previous_position, target_position) - reached_distance,
-                    );
-                    let accumulator = f64::from_bits(guidance.closing_accumulator_bits);
-                    if guidance.closing_frames < 60 {
-                        guidance.closing_frames += 1;
-                        guidance.closing_accumulator_bits = (accumulator + delta).to_bits();
-                    } else {
-                        let decayed = accumulator * 0.983_333_333_333_333_3 + delta;
-                        guidance.closing_accumulator_bits = decayed.to_bits();
-                        if (0.0..60.0).contains(&decayed)
-                            && !guidance.airburst
-                            && !guidance.very_high
-                        {
-                            impact_flag = true;
-                            impact_reason = ProjectileDetonationReason::ReachedTarget;
-                        }
-                    }
-                }
-
-                projectile.guidance = Some(guidance);
-                candidate
+                impact_flag = step.impact;
+                impact_reason = step.reason;
+                step.candidate
             } else {
                 match projectile.trajectory {
                     ProjectileTrajectory::Straight => {
@@ -2046,9 +1802,8 @@ pub(crate) fn projectile_ground_z(
 
 /// `BulletClass::AI 0x00466DB1..0x00466E6B`, with its already-computed
 /// distance, represented velocity and OLD ObjectClass height as inputs.
-/// The persistent velocity retains native double components. The current
-/// integer XY homing producer remains an open trajectory discrepancy; this
-/// predicate reads the vector rather than substituting a cached scalar speed.
+/// The persistent velocity comes from the executed native-shaped guided
+/// step in homing.rs; this predicate reads its represented components.
 fn homing_impact_admission(
     distance: i32,
     velocity: ProjectileVelocity,
@@ -2310,6 +2065,23 @@ pub(crate) fn projectile_velocity_magnitude_double(
 
 /// Vertical AI 467371..4673C2 queries candidate floor first, then candidate
 /// Cell, then old Cell only if needed. The floor always belongs to candidate.
+fn structural_bridge_at(
+    terrain: Option<&ResolvedTerrainGrid>,
+    shared_cell_dummy: &SharedCellDummy,
+    coord: ProjectileCoord,
+) -> bool {
+    use crate::sim::cell_rect::{CellRef, get_cellclass_fallback_leptons};
+    let cell = if terrain.is_some() {
+        get_cellclass_fallback_leptons(terrain, coord.x, coord.y)
+    } else {
+        shared_cell_dummy.stamp_coord(coord.x / 256, coord.y / 256);
+        CellRef::Dummy {
+            cell: shared_cell_dummy.clone(),
+        }
+    };
+    cell.bridge_flags_0x1180() & crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL != 0
+}
+
 fn bridge_surface_z(
     terrain: Option<&ResolvedTerrainGrid>,
     shared_cell_dummy: &SharedCellDummy,
@@ -2333,22 +2105,18 @@ fn bridge_surface_z(
         .then(|| floor.wrapping_add(crate::util::lepton::BRIDGE_HEIGHT_DELTA_LEPTONS as i32))
 }
 
-fn squared_horizontal_distance(a: ProjectileCoord, b: ProjectileCoord) -> i64 {
-    let dx = i64::from(a.x) - i64::from(b.x);
-    let dy = i64::from(a.y) - i64::from(b.y);
-    dx * dx + dy * dy
-}
-
-fn horizontal_distance(a: ProjectileCoord, b: ProjectileCoord) -> i32 {
-    squared_horizontal_distance(a, b)
-        .isqrt()
-        .min(i64::from(i32::MAX)) as i32
-}
-
 /// YR `BulletClass_GetAnimFrame` @ 0x00468000.
-pub fn projectile_shp_frame(projectile: &Projectile) -> u8 {
+pub fn projectile_shp_frame(
+    projectile: &Projectile,
+    projectile_type: &crate::rules::projectile_type::ProjectileType,
+) -> u8 {
     if projectile.visual.anim_low != 0 || projectile.visual.anim_high != 0 {
         return projectile.visual.runtime_frame;
+    }
+    // 46800C..468014 uses the retained inverse ART Rotates byte. The
+    // animation override above wins even when the shape does not rotate.
+    if projectile_type.rotates {
+        return 0;
     }
     const FACING_FRAMES: [u8; 32] = [
         28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5,
@@ -2509,56 +2277,6 @@ mod tests {
     }
 
     #[test]
-    fn homing_impact_handoff_matches_executed_retail_vectors() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tools/projectile_oracle/homing_impact_vectors.json"
-        ))
-        .unwrap();
-        for row in vectors["handoffs"].as_array().unwrap() {
-            let height = row["height"].as_i64().unwrap() as i32;
-            let mode = row["fuse_mode"].as_i64().unwrap();
-            let mut shot = guided_spawn(4, 0);
-            shot.origin = ProjectileCoord::new(500, 128, 208 + height);
-            shot.speed_leptons_per_frame = 4;
-            shot.initial_target_position = ProjectileCoord::new(640, 128, 208);
-            shot.target = if row["target_present"].as_bool().unwrap() {
-                ProjectileTarget::Entity(42)
-            } else {
-                ProjectileTarget::None
-            };
-            shot.ranged_fuse = true;
-            let guidance = shot.guidance.as_mut().unwrap();
-            guidance.rot = 0; // Keep the externally supplied candidate fixed.
-            guidance.airburst = row["airburst"].as_bool().unwrap();
-            guidance.inaccurate = row["inaccurate"].as_bool().unwrap();
-            guidance.fuse_reference = ProjectileCoord::new(
-                match mode {
-                    1 => 504,
-                    2 => 604,
-                    _ => 4000,
-                },
-                128,
-                208 + height,
-            );
-            let dummy = SharedCellDummy::fresh();
-            dummy.set_level_slope(2, 0);
-            let mut store = ProjectileStore::new();
-            let id = store.spawn(1, shot);
-            store.projectiles.get_mut(&id).unwrap().last_distance_half = 0;
-            let targets = BTreeMap::from([(42, ProjectileCoord::new(640, 128, 208))]);
-            let result = store.advance(0, &targets, None, &dummy, |_, candidate| {
-                Some(ProjectileCollisionResponse::TargetZClamp(candidate))
-            });
-            let impact = result.detonations[0].impact;
-            assert_eq!(
-                serde_json::json!([impact.x, impact.y, impact.z]),
-                row["impact"],
-                "{row}"
-            );
-        }
-    }
-
-    #[test]
     fn homing_source_fuse_mode_matches_executed_retail_vectors() {
         let vectors: serde_json::Value = serde_json::from_str(include_str!(
             "../../tools/projectile_oracle/homing_impact_vectors.json"
@@ -2578,8 +2296,10 @@ mod tests {
         }
     }
 
-    fn spawn(target: ProjectileTarget) -> ProjectileSpawn {
+    pub(super) fn spawn(target: ProjectileTarget) -> ProjectileSpawn {
         ProjectileSpawn {
+            native_unique_id: 0,
+            line_trail: None,
             flat: false,
             source_id: 7,
             origin: ProjectileCoord::new(0, 0, 0),
@@ -2610,82 +2330,25 @@ mod tests {
     }
 
     #[test]
-    fn guided_rot_turn_word_matches_closed_vectors() {
-        assert_eq!(projectile_rot_turn_word(4.0, 255, false), 0x0600);
-        assert_eq!(projectile_rot_turn_word(4.0, 256, false), 0x0400);
-        assert_eq!(projectile_rot_turn_word(4.0, 10, true), 0);
-    }
-
-    #[test]
-    fn guided_rot_altitude_policy_matches_closed_very_high_vectors() {
-        assert_eq!(
-            projectile_rot_altitude_decision(false, false, false, false, 769, 2048, 104, -53, 1024),
-            ProjectileRotAltitudeDecision {
-                control_terrain_clearance: true,
-                clearance_levels: 5,
-                z_delta: 18,
-                desired_pitch: Some(0x2000),
-            }
-        );
-        assert_eq!(
-            projectile_rot_altitude_decision(false, false, true, false, 1536, 0, 104, 100, 1024),
-            ProjectileRotAltitudeDecision {
-                control_terrain_clearance: false,
-                clearance_levels: 10,
-                z_delta: 0,
-                desired_pitch: None,
-            }
-        );
-        assert_eq!(
-            projectile_rot_altitude_decision(false, true, false, false, 100, 0, 104, 53, 1024),
-            ProjectileRotAltitudeDecision {
-                control_terrain_clearance: true,
-                clearance_levels: 10,
-                z_delta: -18,
-                desired_pitch: Some(0x4800),
-            }
-        );
-        assert_eq!(
-            projectile_rot_altitude_decision(false, false, false, true, 1000, 2048, 104, 100, 1024),
-            ProjectileRotAltitudeDecision {
-                control_terrain_clearance: false,
-                clearance_levels: 5,
-                z_delta: 0,
-                desired_pitch: None,
-            }
-        );
-        assert_eq!(
-            projectile_rot_altitude_decision(false, false, false, false, 1000, 0, 104, 20, 1024),
-            ProjectileRotAltitudeDecision {
-                control_terrain_clearance: true,
-                clearance_levels: 0,
-                z_delta: 0,
-                desired_pitch: Some(0x4000),
-            }
-        );
-    }
-
-    #[test]
     fn guided_projectile_turns_with_persisted_rot_state() {
         let mut store = ProjectileStore::new();
         let mut guided = spawn(ProjectileTarget::Cell { rx: 0, ry: 4 });
         guided.origin.z = 1; // Steering fixture: above the native ground-impact plane.
         guided.guidance = Some(ProjectileGuidance {
             rot: 4,
-            missile_rot_var: SimFixed::from_num(0),
+            missile_rot_var: crate::util::native_x87::NativeF64Bits::from_bits(0),
             course_lock_duration: 0,
-            sidewinder_phase: 0,
+            course_frames: 0,
+            course_locked: true,
             airburst: false,
             inaccurate: false,
             very_high: true,
             level: false,
-            heading_bam: 0,
             max_speed: 0,
             acceleration: 3,
             fuse_reference: ProjectileCoord::new(0, 0, 0),
             closing_frames: 0,
             closing_accumulator_bits: 0,
-            frames_elapsed: 0,
         });
         let id = store.spawn(1, guided);
 
@@ -2704,7 +2367,7 @@ mod tests {
             f64::from_bits(guided.velocity.y.bits()) > 0.0,
             "ROT turns toward the +Y target"
         );
-        assert_eq!(guided.guidance.unwrap().frames_elapsed, 1);
+        assert!(!guided.guidance.unwrap().course_locked);
     }
 
     #[test]
@@ -2904,7 +2567,13 @@ mod tests {
     fn shp_facing_and_animation_match_yr_vectors() {
         let mut store = ProjectileStore::new();
         let id = store.spawn(1, spawn(ProjectileTarget::Cell { rx: 0, ry: 0 }));
-        assert_eq!(projectile_shp_frame(store.get(id).unwrap()), 20);
+        let ini = crate::rules::ini_parser::IniFile::from_str("[P]\nImage=P\nRotates=yes\n");
+        let kind = crate::rules::projectile_type::ProjectileType::from_ini_section(
+            "P",
+            ini.section("P").unwrap(),
+            ini.section("P"),
+        );
+        assert_eq!(projectile_shp_frame(store.get(id).unwrap(), &kind), 20);
 
         let projectile = store.projectiles.get_mut(&id).unwrap();
         projectile.visual = ProjectileVisualState {
@@ -2917,6 +2586,49 @@ mod tests {
         projectile.visual.advance();
         assert_eq!(projectile.visual.runtime_frame, 2);
         assert_eq!(projectile.visual.runtime_countdown, 3);
+    }
+
+    #[test]
+    fn frame_inverse_rotates_and_animation_precedence_match_original_draws() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tools/projectile_oracle/bridge_render.json"
+        ))
+        .unwrap();
+        let ini = crate::rules::ini_parser::IniFile::from_str("[P]\nImage=P\n");
+        let mut kind = crate::rules::projectile_type::ProjectileType::from_ini_section(
+            "P",
+            ini.section("P").unwrap(),
+            None,
+        );
+        let mut compared = 0;
+        for row in corpus["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["input"]["name"].as_str().unwrap().starts_with("frame_"))
+        {
+            let input = &row["input"];
+            kind.rotates = input["inverse_rotates"] == 1;
+            let mut store = ProjectileStore::new();
+            let id = store.spawn(1, spawn(ProjectileTarget::None));
+            let projectile = store.get_mut(id).unwrap();
+            if let Some(v) = input["velocity"].as_array() {
+                projectile.velocity = ProjectileVelocity::new(
+                    v[0].as_f64().unwrap() as i32,
+                    v[1].as_f64().unwrap() as i32,
+                    v[2].as_f64().unwrap() as i32,
+                );
+            }
+            projectile.visual.anim_low = input["anim_low"].as_u64().unwrap_or(0) as u8;
+            projectile.visual.anim_high = input["anim_high"].as_u64().unwrap_or(0) as u8;
+            projectile.visual.runtime_frame = input["runtime_frame"].as_u64().unwrap_or(0) as u8;
+            let frame = projectile_shp_frame(projectile, &kind);
+            for draw in row["draws"].as_array().unwrap() {
+                assert_eq!(u64::from(frame), draw["frame"].as_u64().unwrap(), "{input}");
+            }
+            compared += 1;
+        }
+        assert_eq!(compared, 4);
     }
 
     #[test]
@@ -3219,22 +2931,21 @@ mod tests {
         );
     }
 
-    fn guided_spawn(max_speed: u16, acceleration: i32) -> ProjectileSpawn {
+    fn guided_spawn(max_speed: i32, acceleration: i32) -> ProjectileSpawn {
         let mut spawn = spawn(ProjectileTarget::Entity(42));
         spawn.origin.z = 1; // Flight/fuse fixtures must not start in ground contact.
         spawn.speed_leptons_per_frame = 1;
         spawn.velocity = ProjectileVelocity::new(1, 0, 0);
         spawn.guidance = Some(ProjectileGuidance {
             rot: 4,
-            missile_rot_var: SimFixed::from_num(0),
+            missile_rot_var: crate::util::native_x87::NativeF64Bits::from_bits(0),
             course_lock_duration: 0,
-            sidewinder_phase: 0,
+            course_frames: 0,
+            course_locked: true,
             airburst: false,
             inaccurate: false,
             very_high: false,
             level: false,
-            heading_bam: 0,
-            frames_elapsed: 0,
             max_speed,
             acceleration,
             fuse_reference: ProjectileCoord::new(0, 0, 0),
@@ -3242,53 +2953,6 @@ mod tests {
             closing_accumulator_bits: 0,
         });
         spawn
-    }
-
-    /// `TechnoClass::FireAt 0x006FEA3A` launches at one lepton per frame and
-    /// `BulletClass::AI 0x004669CD` adds `Acceleration=` per frame up to
-    /// `Bullet+0x110`. A `MaxSpeed >= 40` bullet clears the course lock on its
-    /// first AI frame (`CMP [EBP+0x110],0x28` / `JGE` at `0x00466936`), so it
-    /// gets the full acceleration immediately.
-    #[test]
-    fn gsi_08_06_fast_missile_ramps_from_one_by_full_acceleration() {
-        let mut store = ProjectileStore::new();
-        let id = store.spawn(1, guided_spawn(100, 3));
-        let targets = BTreeMap::from([(42, ProjectileCoord::new(10_000, 0, 0))]);
-
-        store.advance(0, &targets, None, &SharedCellDummy::fresh(), |_, _| None);
-        let after_one = store.get(id).expect("missile still flying");
-        assert_eq!(after_one.speed_leptons_per_frame, 4);
-        assert_eq!(after_one.position, ProjectileCoord::new(4, 0, 1));
-
-        store.advance(1, &targets, None, &SharedCellDummy::fresh(), |_, _| None);
-        let after_two = store.get(id).expect("missile still flying");
-        assert_eq!(after_two.speed_leptons_per_frame, 7);
-        assert_eq!(after_two.position, ProjectileCoord::new(11, 0, 1));
-    }
-
-    /// With `CourseLockDuration = 0` and `MaxSpeed < 40` the lock survives, and
-    /// `0x0046699D` replaces `Acceleration=` with one lepton on even global
-    /// frames and none on odd ones. The parity is the GLOBAL frame counter's,
-    /// not the bullet's own age.
-    #[test]
-    fn gsi_08_06_course_locked_missile_ramps_at_half_rate_on_even_frames() {
-        let mut store = ProjectileStore::new();
-        let id = store.spawn(1, guided_spawn(25, 3));
-        let targets = BTreeMap::from([(42, ProjectileCoord::new(10_000, 0, 0))]);
-
-        for (frame, expected) in [(0u32, 2u16), (1, 2), (2, 3), (3, 3), (4, 4)] {
-            store.advance(frame, &targets, None, &SharedCellDummy::fresh(), |_, _| {
-                None
-            });
-            assert_eq!(
-                store
-                    .get(id)
-                    .expect("missile still flying")
-                    .speed_leptons_per_frame,
-                expected,
-                "frame {frame}"
-            );
-        }
     }
 
     /// `BulletClass::AI 0x004671E0`: the `Vertical` arm applies no gravity,

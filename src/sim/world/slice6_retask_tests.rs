@@ -72,6 +72,7 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -491,7 +492,13 @@ const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_RELEASE_V186: u64 = 0xD7C6_B3FA_0CBC_464
 // reproduces every one. Per-tick record/replay equality, the RNG streams and
 // the actors' health are unchanged: the only change to these pins is the
 // removed fold. Old values: the commit that moved them.
-const SLICE6_BASELINE_HASH: u64 = 0xBC54_5E9B_173C_AEC2;
+// Schema217 composition only for this fixture: the native constructor cursor,
+// native object IDs and retained fallback-cell Land now enter the hash. The
+// repair diagnostic reproduced the prior current pin with Before(217), and
+// all earlier projections, replay/behavior checks and RNG receipts still passed.
+// These Rust regression receipts do not establish native gameplay parity.
+const SLICE6_BASELINE_HASH: u64 = 0xE8CC_96D3_473B_D3FB;
+const SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xBC54_5E9B_173C_AEC2;
 const SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208: u64 = 0x2A32_AF12_7767_94D1;
 const SLICE6_BASELINE_HASH_PRE_REARM_TIMER_V202: u64 = 0xE873_DCE2_1778_7464;
 
@@ -798,6 +805,11 @@ fn replay_hash_stable_through_slice6() {
         sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(208)),
         SLICE6_BASELINE_HASH_PRE_AIRCRAFT_CRASH_V208,
         "v208 only folds the crash latch, its AI edge and the Fly fall counter"
+    );
+    assert_eq!(
+        sim.state_hash_with_schema(super::hash_schema::HashSchema::Before(217)),
+        SLICE6_BASELINE_HASH_PRE_NATIVE_IDENTITY_V217,
+        "schema217 must preserve this fixture's prior hash after excluding native identity and fallback-cell Land"
     );
     assert_eq!(
         hash, SLICE6_BASELINE_HASH,

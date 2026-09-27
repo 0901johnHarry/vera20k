@@ -709,6 +709,7 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     let yard = deployed_type(&sim, "GACNST");
     assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
     assert!(yard.building_up.is_some());
+    assert!(yard.ai_repairable, "a computer's yard is AI-repairable");
     let owner = sim.interner.get("Americans").unwrap();
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, Some((19, 21)));
@@ -725,6 +726,56 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     );
     sim.flush_pending_delete();
     assert!(sim.substrate.entities.get(mcv).is_none());
+}
+
+/// A computer's damaged MCV deploys into a damaged yard, which starts its
+/// repair on the frame its build-up completes, not during it: native
+/// Get_Mission already reads the Guard that Grand_Opening queued there
+/// (`tools/spatial_oracle/building_repair.json` `build` rows). Through
+/// `advance_tick`, the yard's object visit (`production::update_repair_and_power`)
+/// runs before the late build-up step completes it.
+#[test]
+fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
+    let mut rules = make_recalc_mcv_rules("0,0,0");
+    rules.set_buildup_control_for_test("GACNST", [0, 3, 2]);
+    let mut sim = Simulation::new();
+    sim.session.game_mode_nonzero = true;
+    add_house(&mut sim, "Americans", false);
+    let owner = sim.interner.get("Americans").unwrap();
+    sim.houses.get_mut(&owner).unwrap().current_iq = 5;
+    let height_map = BTreeMap::new();
+    let mcv = sim
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules, &height_map)
+        .expect("spawn MCV");
+    sim.substrate.entities.get_mut(mcv).unwrap().health.current = 225;
+    let deployed_at = sim.session.binary_frame;
+    assert!(sim.deploy_mcv(mcv, &rules, &height_map));
+    sim.flush_pending_delete();
+    let yard = deployed_type(&sim, "GACNST").stable_id;
+    let mut frames = Vec::new();
+    for _ in 0..7 {
+        let frame = sim.session.binary_frame - deployed_at;
+        tick_n(&mut sim, &rules, 1);
+        let entity = sim.substrate.entities.get(yard).unwrap();
+        let house = &sim.houses[&owner];
+        frames.push((
+            frame,
+            entity.building_up.is_some(),
+            entity.repairing,
+            house.repair_start_latch,
+        ));
+    }
+    // A deploy's 3x2 build-up completes at D + 1 + (3 - 1) * 2 (the
+    // `building_construction.json` `route` rows).
+    let expected: Vec<_> = (0..7)
+        .map(|frame| (frame, frame < 5, frame >= 5, frame >= 5))
+        .collect();
+    assert_eq!(frames, expected);
+    assert_eq!(
+        sim.houses[&owner].repair_latch_timer.start_frame,
+        i64::from(deployed_at + 5),
+        "the latch timer starts on the completion frame"
+    );
 }
 
 #[test]
@@ -747,6 +798,9 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
 
         assert!(sim.deploy_mcv(mcv, &rules, &height_map));
         assert!(deployed_type(&sim, "GACNST").building_up.is_some());
+        // UnitClass::Deploy marks a computer's building AI-repairable in a
+        // campaign too (`0x007397E4..0x007397F4`); Unlimbo does not there.
+        assert_eq!(deployed_type(&sim, "GACNST").ai_repairable, !is_human);
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
         assert_eq!(house.base_plan_center, (0, 0));
@@ -773,6 +827,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
     let _replacement_constructor_word = expected_rng.next_u32();
     assert!(sim.deploy_mcv(miner, &rules, &height_map));
     assert!(deployed_type(&sim, "YAREFN").building_up.is_some());
+    assert!(deployed_type(&sim, "YAREFN").ai_repairable);
     assert_eq!(sim.houses[&owner].base_center, None);
     assert_eq!(sim.houses[&owner].base_plan_center, (0, 0));
     assert!(sim.houses[&owner].base_plan.nodes.is_empty());

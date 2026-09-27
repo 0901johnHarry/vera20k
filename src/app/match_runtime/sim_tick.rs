@@ -370,9 +370,10 @@ pub(crate) fn monotonic_frame_pacer_ms(state: &AppState, now: Instant) -> u64 {
 /// Pause is the explicit `GamePause::Enter @ 0x00406F00` path: suspend every
 /// event, stop the playing channels, and pause the EVA/speech stream.
 ///
-/// `match_state.paused` **is** VERA's in-game-menu state — `in_game.rs` sets
-/// it from `InGameMenuState::is_open()`, and apart from the `J` debug toggle
-/// VERA has no other pause. That is not a divergence from gamemd; it is
+/// `MatchState::paused` **is** VERA's in-game-menu state: it reads
+/// `InGameMenuState::is_open()`, and apart from the `J` debug pause and the
+/// fullscreen movie below no other pause reaches the SFX player. That is not
+/// a divergence from gamemd; it is
 /// exactly gamemd's pause. `State_Machine @ 0x0048C8B0` brackets its entire
 /// dialog switch — case 5 `OptionsClass::ShowInGameDialog`, case 8
 /// `Show_Diplomacy_Menu`, case 9 `ScenarioClass::ShowMissionRestateBriefing`
@@ -388,6 +389,13 @@ pub(crate) fn monotonic_frame_pacer_ms(state: &AppState, now: Instant) -> u64 {
 /// straight into `set_paused` is the correct behaviour — do **not** add a
 /// "menu open is not really a pause" carve-out here; that would be a
 /// regression against the binary.
+///
+/// A fullscreen movie also pauses: `Play_Movie @ 0x005BED40` pauses the EVA
+/// stream (`Audio__PauseForMovie @ 0x005BF580`, behind guard `0x00ABF35C`)
+/// and suspends the sound events (`0x00406EA0`) for the whole movie, and
+/// resumes the events after it (`0x00406EC0`). This pump is the only writer of
+/// the SFX pause, so the sources are combined here, one frame after the movie
+/// starts and ends.
 pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
     // `AudioSystem__Pump @ 0x00406F70` reaches `ThemeClass__AI @ 0x007209D0`
     // on every screen (menu, loading, in-game, pause, score, inactive window);
@@ -400,7 +408,7 @@ pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
     ) {
         state.audio.update_theme(assets, now_ms);
     }
-    let paused = state.match_state.paused;
+    let paused = state.match_state.paused() || state.frontend.fullscreen_movie.is_some();
     let registry = &state.audio.sound_registry;
     let audio_indices = &state.audio.audio_indices;
     let (Some(sfx), Some(assets)) = (&mut state.audio.sfx_player, state.process_assets.manager())
@@ -699,7 +707,7 @@ fn advance_in_game_runtime_mode(
         window_active: state.platform.window_active,
         startup_admitted,
         frame_stepping,
-        paused: state.match_state.paused,
+        paused: state.match_state.paused(),
         menu_open: state.match_state.match_presentation.in_game_menu.is_open(),
         session_mode: current_session_mode(state),
         pacer_timing_admits,
@@ -954,6 +962,22 @@ fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bo
         // direct attachment or retained audio handle.
         for output in drained_lifecycle_outputs {
             match output {
+                LifecycleOutput::LineTrailConstructed { stable_id, style } => {
+                    let presentation = &mut state.match_state.match_presentation;
+                    presentation.line_trails.attach(
+                        stable_id,
+                        style.color,
+                        style.decrement,
+                        presentation.in_game_options.detail_level as i32,
+                    );
+                }
+                LifecycleOutput::LineTrailDetached { stable_id } => {
+                    state
+                        .match_state
+                        .match_presentation
+                        .line_trails
+                        .detach(stable_id);
+                }
                 // Attached anims are simulation objects; the store detaches
                 // them itself.
                 LifecycleOutput::DetachAttachedAnims { .. } => {}
@@ -1470,8 +1494,7 @@ mod tests {
     use crate::sim::combat::combat_weapon::WeaponSlot;
     use crate::sim::intern::{InternedId, StringInterner, test_intern};
     use crate::sim::terrain_object::{
-        TerrainObjectState, mark_terrain_occupation,
-        unmark_terrain_occupation,
+        TerrainObjectState, mark_terrain_occupation, unmark_terrain_occupation,
     };
     use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
     use crate::util::fixed_math::SimFixed;

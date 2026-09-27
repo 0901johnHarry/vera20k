@@ -943,7 +943,10 @@ fn lifecycle_authority_combat_leaves_transport_cargo_for_carrier_uninit() {
     store.insert(carrier);
 
     let mut passenger = make_infantry_entity(2, "E1", 5, 5, 125);
-    passenger.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 1 };
+    passenger.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+        transport_id: 1,
+        open_topped: false,
+    };
     passenger.selected = true;
     passenger.attack_target = Some(AttackTarget::new(3));
     passenger.movement_target = Some(crate::sim::components::MovementTarget::default());
@@ -961,7 +964,10 @@ fn lifecycle_authority_combat_leaves_transport_cargo_for_carrier_uninit() {
     assert!(!passenger.dying);
     assert!(matches!(
         passenger.passenger_role,
-        crate::sim::passenger::PassengerRole::Inside { transport_id: 1 }
+        crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 1,
+            ..
+        }
     ));
     assert!(passenger.selected);
     assert!(passenger.attack_target.is_some());
@@ -2384,6 +2390,7 @@ fn gsi_04_07_a_garrison_retaliates_with_its_occupants_weapon() {
     occupant.category = EntityCategory::Infantry;
     occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside {
         transport_id: GATE_VICTIM,
+        open_topped: false,
     };
     sim.substrate.entities.insert(occupant);
     let mut cargo = crate::sim::passenger::PassengerCargo::new(5, 1);
@@ -5481,7 +5488,10 @@ fn garrison_fire_keeps_occupant_anim_and_sound_path() {
     building.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
     store.insert(building);
     let mut occupant = make_infantry_entity(1, "E1", 5, 5, 125);
-    occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 10 };
+    occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+        transport_id: 10,
+        open_topped: false,
+    };
     store.insert(occupant);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));
 
@@ -6526,12 +6536,20 @@ fn pursuit_weapon_range_none_for_unarmed_attacker() {
     assert_eq!(range, None);
 }
 
+/// The app loader publishes the canonical AnimType read receipt through this
+/// owner before combat. These phase fixtures supply no ART/SHP, so registered
+/// AnimList types retain real constructor-only End0 state; they still create
+/// AnimClass objects. Do not fabricate spawn observations or loaded frames.
+fn initialize_fixture_anim_types(rules: &mut RuleSet) {
+    rules.merge_art_data(&crate::rules::art_data::ArtRegistry::empty());
+}
+
 #[test]
 fn v3_non_killing_aoe_emits_one_detonation_anim() {
     // V3-style splash hits a heavy-armor target with HP > splash damage.
     // The target survives; the shot still starts one AnimList anim, whose
     // own Middle marks the ground.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=MTNK\n1=V3\n\n\
          [AircraftTypes]\n\n\
@@ -6543,6 +6561,7 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("v3 test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "MTNK", 5, 5, 300));
@@ -6569,11 +6588,9 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
     );
     let v3exp = interner.intern("V3EXP");
     let anims: Vec<_> = result
-        .consequences
-        .effects()
-        .explosion_effects
+        .fixture_anims
         .iter()
-        .map(|effect| effect.shp_name)
+        .map(|effect| effect.type_id)
         .collect();
     assert_eq!(
         anims,
@@ -6586,7 +6603,7 @@ fn v3_non_killing_aoe_emits_one_detonation_anim() {
 fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
     // V3 splash kills a low-HP target with no Explosion= list. Only ONE
     // detonation occurred, so ONE AnimList anim starts; the kill adds none.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=MTNK\n1=WEAK\n\n\
          [AircraftTypes]\n\n\
@@ -6598,6 +6615,7 @@ fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("v3 kill test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "MTNK", 5, 5, 300));
@@ -6624,7 +6642,7 @@ fn v3_killing_aoe_emits_exactly_one_detonation_anim() {
         "target must die (test setup invariant)"
     );
     assert_eq!(
-        result.consequences.effects().explosion_effects.len(),
+        result.fixture_anims.len(),
         1,
         "kill must start exactly one anim — no double from the kill handler"
     );
@@ -6636,7 +6654,7 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     // AnimList) is killed by a tank with a different warhead and AnimList.
     // ReceiveDamage synchronously completes the demo's UCEXPLOD death weapon;
     // only then does the outer Bullet detonation start TANKEXP.
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\n\
          [VehicleTypes]\n0=TNK\n1=DEMO\n\n\
          [AircraftTypes]\n\n\
@@ -6651,6 +6669,7 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("demo-truck test rules should parse");
+    initialize_fixture_anim_types(&mut rules);
 
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "TNK", 5, 5, 300));
@@ -6675,11 +6694,9 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     let ucexplod = interner.intern("UCEXPLOD");
     assert_eq!(
         result
-            .consequences
-            .effects()
-            .explosion_effects
+            .fixture_anims
             .iter()
-            .map(|effect| effect.shp_name)
+            .map(|effect| effect.type_id)
             .collect::<Vec<_>>(),
         vec![ucexplod, tankexp]
     );
@@ -6935,9 +6952,22 @@ fn explosion_coord(effect: &ExplosionEffect) -> (u16, u16, SimFixed, SimFixed) {
     (effect.rx, effect.ry, effect.sub_x, effect.sub_y)
 }
 
+fn constructed_anim_coord(
+    anim: &super::receiver_fixture::ConstructedAnimObservation,
+) -> (u16, u16, SimFixed, SimFixed) {
+    let p = anim.world_coord;
+    (
+        p.x.div_euclid(256) as u16,
+        p.y.div_euclid(256) as u16,
+        SimFixed::from_num(p.x.rem_euclid(256)),
+        SimFixed::from_num(p.y.rem_euclid(256)),
+    )
+}
+
 #[test]
 fn inviso_scatter_uses_scenario_rng_only_for_effect_and_paired_smudge() {
-    let rules = inviso_weapon_rules(true, true);
+    let mut rules = inviso_weapon_rules(true, true);
+    initialize_fixture_anim_types(&mut rules);
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
     store.insert(make_entity(2, "TARGET", 8, 5, 500));
@@ -6970,9 +7000,9 @@ fn inviso_scatter_uses_scenario_rng_only_for_effect_and_paired_smudge() {
 
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
     assert_eq!(store.get(2).unwrap().health.current, 490);
-    assert_eq!(result.consequences.effects().explosion_effects.len(), 1);
+    assert_eq!(result.fixture_anims.len(), 1);
     assert_eq!(
-        explosion_coord(&result.consequences.effects().explosion_effects[0]),
+        constructed_anim_coord(&result.fixture_anims[0]),
         expected_effect
     );
     assert_ne!(expected_effect, target_coord);
@@ -7082,7 +7112,8 @@ fn gsi_08_05_non_inviso_projectile_advances_scenario_rng_by_the_reload_jitter() 
 /// detonates next frame.
 #[test]
 fn two_inviso_attackers_fire_in_live_order_and_the_second_bullet_waits_a_frame() {
-    let rules = inviso_weapon_rules(true, true);
+    let mut rules = inviso_weapon_rules(true, true);
+    initialize_fixture_anim_types(&mut rules);
     let mut store = EntityStore::new();
     store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
     store.insert(make_entity(2, "SHOOTER", 6, 5, 300));
@@ -7133,11 +7164,8 @@ fn two_inviso_attackers_fire_in_live_order_and_the_second_bullet_waits_a_frame()
         vec![2, 1]
     );
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
-    assert_eq!(result.consequences.effects().explosion_effects.len(), 1);
-    assert_eq!(
-        explosion_coord(&result.consequences.effects().explosion_effects[0]),
-        expected
-    );
+    assert_eq!(result.fixture_anims.len(), 1);
+    assert_eq!(constructed_anim_coord(&result.fixture_anims[0]), expected);
     assert_eq!(
         result.projectile_spawns.len(),
         1,
@@ -7183,7 +7211,8 @@ fn inviso_special_arms_claim_the_impact_and_keep_the_shared_tail() {
         "MakesDisguise=yes",
         "NukeMaker=yes",
     ] {
-        let rules = inviso_special_rules(special_key);
+        let mut rules = inviso_special_rules(special_key);
+        initialize_fixture_anim_types(&mut rules);
         let mut store = EntityStore::new();
         store.insert(make_entity(1, "SHOOTER", 5, 5, 300));
         store.insert(make_entity(2, "TARGET", 8, 5, 500));
@@ -7227,10 +7256,10 @@ fn inviso_special_arms_claim_the_impact_and_keep_the_shared_tail() {
             expected_rng.logical_state(),
             "{special_key}: the reload jitter, then the tail's scatter and cluster draws"
         );
-        let effects = result.consequences.effects();
-        assert_eq!(effects.explosion_effects.len(), 1, "{special_key}");
+        let anims = &result.fixture_anims;
+        assert_eq!(anims.len(), 1, "{special_key}");
         assert_eq!(
-            explosion_coord(&effects.explosion_effects[0]),
+            constructed_anim_coord(&anims[0]),
             expected_effect,
             "{special_key}: the shared tail places the AnimList anim"
         );
@@ -7333,117 +7362,8 @@ fn retail_special_inviso_weapons_claim_their_impact() {
     }
 }
 
-// --- emit_warhead_detonation_effects helper tests ---------------------------
-
-fn emit_helper_test_warhead(animlist: &[&str]) -> crate::rules::warhead_type::WarheadType {
-    let animlist_csv = animlist.join(",");
-    let ini_text = format!("[WH]\nFixtureOnly=1\nAnimList={}\n", animlist_csv);
-    let ini = IniFile::from_str(&ini_text);
-    let section = ini.section("WH").expect("section parses");
-    crate::rules::warhead_type::WarheadType::from_ini_section("WH", section)
-}
-
-#[test]
-fn emit_warhead_detonation_effects_empty_animlist_emits_nothing() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&[]);
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        100,
-        5,
-        5,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert!(explosions.is_empty());
-}
-
-#[test]
-fn emit_warhead_detonation_effects_single_animlist_entry_emits_one_anim() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&["EXPLOSION1"]);
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        100,
-        5,
-        5,
-        SimFixed::from_num(160),
-        SimFixed::from_num(96),
-        0,
-        731,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions.len(), 1);
-    let expected_id = interner.intern("EXPLOSION1");
-    assert_eq!(explosions[0].shp_name, expected_id);
-    assert_eq!(explosions[0].rx, 5);
-    assert_eq!(explosions[0].ry, 5);
-    assert_eq!(explosions[0].sub_x.to_num::<i32>(), 160);
-    assert_eq!(explosions[0].sub_y.to_num::<i32>(), 96);
-    assert_eq!(explosions[0].z, 0);
-    assert_eq!(explosions[0].world_z, 731);
-}
-
-#[test]
-fn emit_warhead_detonation_effects_animlist_index_is_damage_div_25_clamped() {
-    let mut interner = crate::sim::intern::StringInterner::new();
-    let wh = emit_helper_test_warhead(&["EXP1", "EXP2", "EXP3"]);
-
-    // damage=0 → idx=0 → EXP1.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        0,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP1"));
-
-    // damage=50 → idx=2 (50/25) → EXP3.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        50,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP3"));
-
-    // damage=10000 → idx clamped to len-1 (2) → EXP3.
-    let mut explosions: Vec<ExplosionEffect> = Vec::new();
-    emit_warhead_detonation_effects(
-        &wh,
-        10000,
-        0,
-        0,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        0,
-        0,
-        &mut interner,
-        &mut explosions,
-    );
-    assert_eq!(explosions[0].shp_name, interner.intern("EXP3"));
-}
+// SelectAnim behavior and RNG are compared against the original executable
+// in detonation_anim::tests, including the native zero-damage no-animation case.
 
 #[test]
 fn combat_resolves_in_live_object_order_not_stable_id() {
@@ -7619,7 +7539,13 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
             .unwrap()
     };
     let rules = radiation_rules();
-    for (index, verse) in rules.warhead("RadSite").unwrap().verses_f64.iter().enumerate() {
+    for (index, verse) in rules
+        .warhead("RadSite")
+        .unwrap()
+        .verses_f64
+        .iter()
+        .enumerate()
+    {
         assert_eq!(
             format!("{:016x}", verse.to_bits()),
             native_row(16, 5)["verses_bits"][index],
@@ -7690,8 +7616,14 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
     assert_eq!(native_row(17, 0)["admitted"], false);
     assert_eq!(native_row(17, 5)["admitted"], false);
     rad_combat_tick(&mut sim, &rules, 17);
-    assert_eq!(sim.substrate.entities.get(inf).unwrap().health.current, inf_hp);
-    assert_eq!(sim.substrate.entities.get(tank).unwrap().health.current, tank_hp);
+    assert_eq!(
+        sim.substrate.entities.get(inf).unwrap().health.current,
+        inf_hp
+    );
+    assert_eq!(
+        sim.substrate.entities.get(tank).unwrap().health.current,
+        tank_hp
+    );
 }
 
 #[test]
@@ -7888,8 +7820,14 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
             .known()
             == Some(crate::sim::mission::MissionType::Selling)
     };
+    // Each building's UpdateRepairAndPower, in its LogicVector visit.
+    let repair_and_power = |sim: &mut crate::sim::world::Simulation| {
+        for id in [hostile_target, allied_target, null_target] {
+            crate::sim::production::update_repair_and_power(sim, &rules, id);
+        }
+    };
     let low_iq_rng = sim.scenario_rng.logical_state();
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         !selling(&sim, hostile_target),
         "scenario CurrentIQ 1 stays below RepairSell/SellBack 2"
@@ -7908,7 +7846,7 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
         expected_rng.next_range_u32_inclusive(0, 0x32) < 51,
         "TechLevel 51 makes every inclusive native roll win"
     );
-    crate::sim::production::tick_repairs(&mut sim, &rules);
+    repair_and_power(&mut sim);
     assert!(
         selling(&sim, hostile_target),
         "the computer's Sell_Back(1) starts the Selling mission"
@@ -8515,7 +8453,7 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
     assert_eq!(child.initial_target_position, center);
     assert_eq!(
         child.velocity,
-        crate::sim::projectile::launch::shrapnel_launch_velocity(impact, center, 40, false)
+        crate::sim::projectile::launch::shrapnel_launch_velocity(impact, center, rules.weapon("CHILD").unwrap().speed, false)
     );
 }
 
@@ -8599,6 +8537,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
         Some(&terrain),
         &HouseAllianceMap::default(),
         &mut scenario_rng,
+        &mut Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation()),
         &mut out,
     );
 
@@ -8620,7 +8559,7 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
             crate::sim::projectile::launch::shrapnel_launch_velocity(
                 detonation.impact,
                 expected_positions[index],
-                40,
+                rules.weapon("CHILD").unwrap().speed,
                 true
             )
         );
@@ -8700,14 +8639,11 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
 
         let terrain_id = 700;
         let terrain_ref = sim.interner.intern("TREE01");
-        sim.production.terrain_objects.insert(
-            terrain_id,
-            {
-                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
-                terrain.occupation_bits = 4;
-                terrain
-            },
-        );
+        sim.production.terrain_objects.insert(terrain_id, {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.occupation_bits = 4;
+            terrain
+        });
         sim.production
             .terrain_object_cells
             .insert((5, 5), terrain_id);
@@ -8782,16 +8718,13 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
         .expect("fatal vehicle spawns");
     let terrain_id = 701;
     let terrain_ref = sim.interner.intern("TREE01");
-    sim.production.terrain_objects.insert(
-        terrain_id,
-        {
-            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
-            terrain.health = 10;
-            terrain.max_health = 10;
-            terrain.occupation_bits = 4;
-            terrain
-        },
-    );
+    sim.production.terrain_objects.insert(terrain_id, {
+        let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+        terrain.health = 10;
+        terrain.max_health = 10;
+        terrain.occupation_bits = 4;
+        terrain
+    });
     sim.production
         .terrain_object_cells
         .insert((5, 5), terrain_id);
@@ -9099,7 +9032,10 @@ fn gsi_08_05_a_garrison_shot_takes_the_f32_occupy_multiplier() {
     building.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
     store.insert(building);
     let mut occupant = make_infantry_entity(1, "E1", 5, 5, 125);
-    occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 10 };
+    occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+        transport_id: 10,
+        open_topped: false,
+    };
     store.insert(occupant);
     store.insert(make_infantry_entity(2, "E2", 8, 5, 125));
     let mut interner = test_interner();
@@ -9252,7 +9188,10 @@ fn gsi_08_12_a_garrison_kill_pays_the_occupant_next_in_line() {
     for id in [1, 3] {
         let mut occupant = make_infantry_entity(id, "E1", 5, 5, 125);
         occupant.owner = test_intern("Soviet");
-        occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 10 };
+        occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 10,
+            open_topped: false,
+        };
         store.insert(occupant);
     }
     let mut victim = make_infantry_entity(2, "E2", 8, 5, 1);
@@ -9323,7 +9262,10 @@ fn gsi_08_05_a_mixed_garrison_rearms_with_the_next_occupants_weapon() {
     for (id, kind) in [(shooter, "E1"), (next, "E2")] {
         let mut occupant = make_infantry_entity(id, kind, 5, 5, 125);
         occupant.owner = test_intern("Soviet");
-        occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside { transport_id: 10 };
+        occupant.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 10,
+            open_topped: false,
+        };
         store.insert(occupant);
     }
     let mut victim = make_infantry_entity(2, "E3", 8, 5, 400);
@@ -9548,17 +9490,21 @@ fn gsi_08_06_homing_launch_uses_one_lepton_and_stores_speed_as_the_ceiling() {
         "every ROT > 0 launch starts at one lepton per frame"
     );
     let guidance = spawn.guidance.expect("a ROT > 0 shot carries guidance");
-    assert_eq!(guidance.max_speed, 30, "weapon Speed= is only the ceiling");
+    // Original ReadSpeed528A90 converts authored30 to76; the saved
+    // weapon_speed.json control establishes the native retained DWORD.
+    assert_eq!(guidance.max_speed, 76, "effective weapon Speed is the ceiling");
     assert_eq!(guidance.acceleration, 3, "BulletTypeClass ctor default");
-    assert_eq!(
-        guidance.heading_bam, 0,
-        "the turret faces east (0x4000), which is heading BAM 0"
-    );
     assert_eq!(
         guidance.fuse_reference, spawn.initial_target_position,
         "the ProximityDetector reference is frozen on the launch-time target"
     );
-    assert_eq!(spawn.velocity, ProjectileVelocity::new(1, 0, 0));
+    // This fixture checks the shot's facing, not an idealized unit vector:
+    // native Bullet::Fire renormalizes using its approximate square root.
+    // Full launch bits are compared with execution in projectile::launch.
+    assert_eq!(
+        spawn.velocity.integer_projection(),
+        ProjectileCoord::new(1, 0, 0)
+    );
 }
 
 /// A launch with no ballistic solution skips the rest of the shot. Under
@@ -9954,6 +9900,8 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
                 &dummy,
                 rules.general.gravity,
                 false,
+                false,
+                rules.general.safety_altitude,
                 |_, _, _| None,
             )
             .expect("the bomb is still in flight");
@@ -10280,7 +10228,7 @@ fn gsi_05_14_a_type_without_maxdebris_takes_no_draw() {
 /// `AnimList=YURICNTL`, so a Yuri beam impact must still draw.
 #[test]
 fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n0=TARGET\n\
          [AircraftTypes]\n\
@@ -10293,6 +10241,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("Controller/Plain warhead rules");
+    initialize_fixture_anim_types(&mut rules);
 
     struct TailOutcome {
         damage_events: usize,
@@ -10319,7 +10268,8 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
         };
         let mut scenario_rng = SimRng::new(9);
         let mut emitted = CombatEmit::default();
-        let mut inline_hooks = None;
+        let mut trace = FixtureTrace::default();
+        let mut inline_hooks = Some(&mut trace);
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(rules, &mut interner);
         emit_projectile_detonations(
@@ -10341,16 +10291,15 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
             &mut inline_hooks,
             &mut emitted,
         );
-        let anims: Vec<(String, u16, u16, u8)> = emitted
-            .effects
-            .explosion_effects
+        let anims: Vec<(String, u16, u16, u8)> = trace
+            .constructed_anims
             .iter()
             .map(|effect| {
                 (
-                    interner.resolve(effect.shp_name).to_string(),
-                    effect.rx,
-                    effect.ry,
-                    effect.z,
+                    interner.resolve(effect.type_id).to_string(),
+                    (effect.world_coord.x / 256) as u16,
+                    (effect.world_coord.y / 256) as u16,
+                    (effect.world_coord.z / 104) as u8,
                 )
             })
             .collect();
@@ -10388,7 +10337,7 @@ fn gsi_08_08_special_arm_suppresses_damage_but_keeps_the_detonation_tail() {
 /// the previous cluster.
 #[test]
 fn clusters_scatter_around_the_impact() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n\
          [VehicleTypes]\n0=LAUNCHER\n\
          [AircraftTypes]\n\
@@ -10401,6 +10350,7 @@ fn clusters_scatter_around_the_impact() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("cluster rules");
+    initialize_fixture_anim_types(&mut rules);
     let mut interner = test_interner();
     let mut entities = EntityStore::new();
     let occupancy = OccupancyGrid::new();
@@ -10419,7 +10369,8 @@ fn clusters_scatter_around_the_impact() {
     };
     let mut scenario_rng = SimRng::new(11);
     let mut emitted = CombatEmit::default();
-    let mut inline_hooks = None;
+    let mut trace = FixtureTrace::default();
+    let mut inline_hooks = Some(&mut trace);
     let handles =
         crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
     emit_projectile_detonations(
@@ -10441,16 +10392,10 @@ fn clusters_scatter_around_the_impact() {
         &mut inline_hooks,
         &mut emitted,
     );
-    let points: Vec<(i32, i32)> = emitted
-        .effects
-        .explosion_effects
+    let points: Vec<(i32, i32)> = trace
+        .constructed_anims
         .iter()
-        .map(|effect| {
-            (
-                i32::from(effect.rx) * 256 + effect.sub_x.to_num::<i32>(),
-                i32::from(effect.ry) * 256 + effect.sub_y.to_num::<i32>(),
-            )
-        })
+        .map(|effect| (effect.world_coord.x, effect.world_coord.y))
         .collect();
     assert_eq!(points.len(), 5, "one anim per cluster");
     assert_eq!(points[0], (impact.x, impact.y), "the first at the impact");
@@ -10474,7 +10419,7 @@ fn clusters_scatter_around_the_impact() {
 /// `DirectRocker=` line — but kept correct.
 #[test]
 fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[InfantryTypes]\n0=FOOT\n\
          [VehicleTypes]\n0=TARGET\n\
          [AircraftTypes]\n\
@@ -10486,6 +10431,7 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("DirectRocker warhead rules");
+    initialize_fixture_anim_types(&mut rules);
     assert!(
         rules.warhead("Rocker").expect("Rocker").direct_rocker,
         "DirectRocker= must reach the parsed field, not a dead raw byte"
@@ -10512,7 +10458,8 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
         };
         let mut scenario_rng = SimRng::new(9);
         let mut emitted = CombatEmit::default();
-        let mut inline_hooks = None;
+        let mut trace = FixtureTrace::default();
+        let mut inline_hooks = Some(&mut trace);
         let handles =
             crate::sim::type_handle_table::ResolvedRuleHandles::resolve(rules, &mut interner);
         emit_projectile_detonations(
@@ -10535,7 +10482,7 @@ fn gsi_08_33_direct_rocker_only_claims_a_vehicle_target() {
             &mut emitted,
         );
         assert_eq!(
-            emitted.effects.explosion_effects.len(),
+            trace.constructed_anims.len(),
             1,
             "both branches reach LAB_00469AA4"
         );

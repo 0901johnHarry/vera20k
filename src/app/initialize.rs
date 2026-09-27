@@ -157,6 +157,7 @@ impl App {
         let batch_renderer: BatchRenderer = BatchRenderer::new(&gpu);
         let terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
             &gpu.device,
+            &gpu.queue,
             gpu.surface_format,
             &batch_renderer,
         );
@@ -565,6 +566,7 @@ impl App {
                     show_hotkey_help: false,
                     show_save_load_panel: false,
                     combat_lights: Default::default(),
+                    line_trails: Default::default(),
                     minimap: None,
                     radar_anim: None,
                     radar_animation_source: None,
@@ -577,8 +579,6 @@ impl App {
                     target_lines: startup_target_lines,
                     idle_anim_elapsed_ms: 0,
                     cached_overlay_instances: Vec::new(),
-                    cached_unit_instances: Vec::new(),
-                    cached_unit_pages: Vec::new(),
                     terrain_grid: None,
                     installed_playfield_authority: None,
                     overlays: Default::default(),
@@ -615,7 +615,7 @@ impl App {
                 configured_input_delay_ticks: input_delay_ticks,
                 local_owner_override: None,
                 sandbox_full_visibility: false,
-                paused: false,
+                debug_pause: false,
                 // KD-3: unify the two game-speed sources. `in_game_options.game_speed`
                 // (in the presentation owner) is the single source of truth; seed it
                 // from the skirmish-setup speed (internal 1) and derive

@@ -46,17 +46,21 @@ pub(crate) struct MatchState {
     pub(crate) local_owner_override: Option<String>,
     /// Seeded empty-map sandbox keeps full map visibility while still locking control.
     pub(crate) sandbox_full_visibility: bool,
-    /// True when the game is paused (an in-scenario modal is open, sim frozen).
-    ///
-    /// Derived from `in_game_menu` for every player-driven modal; the debug
-    /// pause (dev overlay / hotkey) also sets it without opening a menu.
-    pub(crate) paused: bool,
+    /// The debug pause (`J` hotkey / dev overlay): the simulation is frozen
+    /// without an in-scenario modal. Every modal transition ends it.
+    pub(crate) debug_pause: bool,
     /// Effective simulation ticks per second — controls game speed.
     /// Default follows retail/YR skirmish stored game speed 1.
     pub(crate) sim_speed_tps: u32,
 }
 
 impl MatchState {
+    /// True when the game is paused and the simulation frozen: an in-scenario
+    /// modal is open, or the debug pause is on.
+    pub(crate) fn paused(&self) -> bool {
+        self.match_presentation.in_game_menu.is_open() || self.debug_pause
+    }
+
     /// The live scenario's pinned player, including a successfully restored save.
     pub(crate) fn local_player_owner(&self) -> Option<&str> {
         self.sim_runtime

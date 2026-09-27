@@ -450,12 +450,14 @@ mod tests {
             recruitable_b: true,
             structure_upgrades: [None, None, None],
             structure_ai_sellable: false,
+            structure_ai_repairable: false,
         };
         let inits = GeneratedTechnoInitTable::try_new([GeneratedTechnoInit {
             entity_index: 0,
             techno_type: "MTNK".to_string(),
             cell: (7, 9),
             techno_ctor_random_word: 0xA55A,
+            native_unique_id: 0,
         }])
         .expect("one exact generated binding");
         let mut sim = Simulation::with_seed(0xC701_0412);

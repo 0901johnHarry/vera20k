@@ -78,7 +78,7 @@ fn assert_flh(sim: &Simulation, rules: &RuleSet, row: &Value) {
         rules,
         &fire_coord::FireSource::from(&snapshot),
         rules.object("TEST").unwrap(),
-        combat_weapon::WeaponSlot::Primary,
+        0,
         entity.weapon_burst.index() as u8,
     )
     .coord;

@@ -165,6 +165,11 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
                 },
             });
     state.match_state.match_presentation.combat_lights.clear();
+    state
+        .match_state
+        .match_presentation
+        .line_trails
+        .clear_on_load();
     // A new simulation is a new scenario for `SidebarClass::AddCameo`'s
     // init gate: its first projection must seed the strip silently.
     state

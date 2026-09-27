@@ -190,44 +190,17 @@ fn dispatch_in_game_options_transaction(
     true
 }
 
-fn finish_in_game_options_close(state: &mut AppState) {
-    state.match_state.paused = false;
-    state.platform.frame_pacer.reset_for_immediate_frame();
-    if state
-        .match_state
-        .match_presentation
-        .software_cursor
-        .is_some()
-    {
-        state.platform.window.set_cursor_visible(false);
-    }
-    log::info!(
-        "In-game Options closed; resumed at {} tps",
-        state.match_state.sim_speed_tps
-    );
-}
-
-/// Native close transaction: result 1 mutates the retained profile, applies
-/// consumers, then performs one complete write. Result 2 performs none of
-/// those operations, but both results leave the modal and resume presentation.
+/// Native close transaction for the Options dialog's result 1: mutate the
+/// retained profile, apply consumers, then perform one complete write. Result
+/// 2 performs none of those operations. It runs when the dialog returns (Back
+/// or Escape) and before Sound or Keyboard opens over it; leaving the dialog
+/// belongs to the in-game menu state machine (`App::route_in_game_menu_escape`).
 ///
 /// Retail provenance: `OptionsClass__ShowInGameDialog @ 0x004E1D00` and
 /// `OptionsClass__ApplyFromInGameDialog @ 0x004E1DE0`.
 pub(crate) fn accept_in_game_options(state: &mut AppState) {
     let mut operations = AppStateOptionsTransaction { state };
     dispatch_in_game_options_transaction(&mut operations, IN_GAME_OPTIONS_RESULT_BACK);
-}
-
-fn in_game_options_close_with_result(state: &mut AppState, result: i32) {
-    {
-        let mut operations = AppStateOptionsTransaction { state };
-        dispatch_in_game_options_transaction(&mut operations, result);
-    }
-    finish_in_game_options_close(state);
-}
-
-pub(crate) fn in_game_options_close(state: &mut AppState) {
-    in_game_options_close_with_result(state, IN_GAME_OPTIONS_RESULT_BACK);
 }
 
 #[cfg(test)]

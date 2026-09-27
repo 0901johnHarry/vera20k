@@ -1,9 +1,11 @@
 //! Release-mode composition witness on unmodified retail Hills.mmx.
-//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin] [map-file] [game-speed]
+//! Run: cargo run --release --example bridge_forcefire -- /path/to/retail [collapse-save.bin] [map-file] [game-speed] [live-flight-save.bin] [MTNK|FV]
 //! The optional map file supports an unchanged Hills payload exposed as a
 //! loose `.yrm` in the ordinary chooser. Its name is retained by save validation.
 //! Optional game-speed 0..6 uses the ordinary first-frame command; 6 leaves
 //! more wall-clock time to capture live debris after restoring in the app.
+//! The optional fifth argument saves the first already-moved live projectile
+//! after an ordinary production frame. The sixth selects MTNK (default) or FV.
 //! Native scalar comparisons: tools/spatial_oracle/bridge_damage_admission.py.
 //! Continues 200 frames after collapse through debris flight and expiration.
 //! This uses the production headless loader/runtime; it is not rendered parity
@@ -16,6 +18,33 @@ use std::io::Write;
 use std::path::Path;
 use vera20k::sim::command::{Command, CommandEnvelope};
 
+fn save_snapshot(
+    simulation: &vera20k::sim::world::Simulation,
+    map_hash: u64,
+    rules_hash: u64,
+    description: &str,
+    path: &str,
+) {
+    let bytes = vera20k::sim::snapshot::GameSnapshot::save_validated(
+        simulation,
+        map_hash,
+        rules_hash,
+        description,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("wall clock after Unix epoch")
+            .as_secs(),
+    );
+    // Use the production envelope without overwriting any player save. Reload
+    // in the same map through the ordinary pause menu for visual checks.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .expect("create a new production snapshot");
+    file.write_all(&bytes).expect("write production snapshot");
+}
+
 fn main() {
     let retail = std::env::args().nth(1).expect("retail installation path");
     let snapshot_path = std::env::args().nth(2);
@@ -27,6 +56,13 @@ fn main() {
         assert!(speed <= 6, "game-speed must be 0..6");
         speed
     });
+    let mut live_flight_snapshot_path = std::env::args().nth(5);
+    let vehicle = std::env::args().nth(6).unwrap_or_else(|| "MTNK".into());
+    let projectile = match vehicle.as_str() {
+        "MTNK" => "Cannon",
+        "FV" => "AAHeatSeeker2",
+        _ => panic!("vehicle must be MTNK or FV"),
+    };
     let mut scenario = vera20k::headless_scenario::load(Path::new(&retail), &map_file, 0x0B21_D6E5)
         .expect("load retail Hills through the production loader");
     let owner = scenario
@@ -54,7 +90,7 @@ fn main() {
     let attacker = runtime
         .simulation
         .spawn_object(
-            "MTNK",
+            &vehicle,
             &owner_name,
             64,
             72,
@@ -62,7 +98,7 @@ fn main() {
             &runtime.resources.rules,
             &runtime.resources.height_map,
         )
-        .expect("spawn Grizzly on the retail bank");
+        .expect("spawn selected vehicle on the retail bank");
     runtime
         .simulation
         .resolve_type_handles(&runtime.resources.rules);
@@ -199,6 +235,51 @@ fn main() {
             assert_eq!(shell.launch_target.z, 1040, "retail deck aim");
             seen.insert(id);
             prior.insert(id, shell.position);
+            if let Some(path) = live_flight_snapshot_path.as_deref()
+                && shell.in_logic_vector
+                && shell.position != shell.launch_origin
+                && runtime
+                    .resources
+                    .rules
+                    .weapon(runtime.simulation.interner.resolve(shell.payload.weapon))
+                    .and_then(|weapon| weapon.projectile.as_deref())
+                    .is_some_and(|kind| kind.eq_ignore_ascii_case(projectile))
+            {
+                let mapped_cell = (shell.position.x / 256, shell.position.y / 256);
+                let cell_flags = runtime
+                    .simulation
+                    .resolved_terrain
+                    .as_ref()
+                    .and_then(|terrain| {
+                        let rx = u16::try_from(mapped_cell.0).ok()?;
+                        let ry = u16::try_from(mapped_cell.1).ok()?;
+                        terrain.cell(rx, ry)
+                    })
+                    .map(|cell| cell.bridge_flags());
+                let bridge_state = runtime
+                    .simulation
+                    .bridge_state
+                    .as_ref()
+                    .and_then(|bridge| bridge.cell(target.0, target.1))
+                    .map(|bridge| bridge.damage_state);
+                save_snapshot(
+                    &runtime.simulation,
+                    map_hash,
+                    runtime.resources.rules.simulation_config_hash(),
+                    &format!("{vehicle} projectile in flight toward bridge - Hills"),
+                    path,
+                );
+                println!(
+                    "Saved production live-flight snapshot to {path}: frame {frame}, tick {}, binary frame {}, {projectile} {id}, source {attacker}, XYZ {:?}, launch {:?}, in_logic_vector {}, on_bridge {}, mapped cell {mapped_cell:?}, cell flags {cell_flags:?}, target bridge {target:?} {bridge_state:?}",
+                    runtime.simulation.session.tick,
+                    runtime.simulation.session.binary_frame,
+                    shell.position,
+                    shell.launch_origin,
+                    shell.in_logic_vector,
+                    shell.on_bridge,
+                );
+                live_flight_snapshot_path = None;
+            }
         }
         let bridge = runtime
             .simulation
@@ -234,29 +315,17 @@ fn main() {
                     .is_none()
             );
             println!(
-                "{map_file}: {target:?} collapsed at frame {frame}; {} Cannon shells, flight and target release observed",
+                "{map_file}: {target:?} collapsed at frame {frame}; {} {projectile} projectiles, flight and target release observed",
                 seen.len()
             );
             if let Some(path) = snapshot_path.as_deref() {
-                let bytes = vera20k::sim::snapshot::GameSnapshot::save_validated(
+                save_snapshot(
                     &runtime.simulation,
                     map_hash,
                     runtime.resources.rules.simulation_config_hash(),
                     "Bridge debris at collapse - Hills",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .expect("wall clock after Unix epoch")
-                        .as_secs(),
+                    path,
                 );
-                // Tooling output uses the production envelope; no existing
-                // player save may be overwritten. Load into the same Hills
-                // scenario through the ordinary pause menu for visual checks.
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(path)
-                    .expect("create a new collapse snapshot");
-                file.write_all(&bytes).expect("write collapse snapshot");
                 println!("Saved production collapse snapshot to {path}");
             }
             collapsed_at = Some(frame);
@@ -298,6 +367,10 @@ fn main() {
                     "This unchanged retail seed did not select D; native and focused tests cover it."
                 );
             }
+            assert!(
+                live_flight_snapshot_path.is_none(),
+                "requested live-flight snapshot never found a moved selected projectile"
+            );
             return;
         }
     }

@@ -192,14 +192,18 @@ impl Fixture {
     /// Board `count` conscripts in spawn order (native `AddPassenger` prepends,
     /// so the last of these sits at the cargo head).
     fn board(&mut self, transport: u64, count: usize) -> Vec<u64> {
-        let (trx, try_) = {
+        let (trx, try_, open_topped) = {
             let t = self
                 .sim
                 .substrate
                 .entities
                 .get(transport)
                 .expect("transport");
-            (t.position.rx, t.position.ry)
+            let open_topped = self
+                .rules
+                .object(self.sim.interner.resolve(t.type_ref()))
+                .is_some_and(|object| object.open_topped);
+            (t.position.rx, t.position.ry, open_topped)
         };
         let mut ids = Vec::new();
         for i in 0..count {
@@ -223,6 +227,7 @@ impl Fixture {
                 .expect("passenger")
                 .passenger_role = PassengerRole::Inside {
                 transport_id: transport,
+                open_topped,
             };
             ids.push(pax);
         }
@@ -749,7 +754,10 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
         .entities
         .get_mut(bggy)
         .expect("passenger")
-        .passenger_role = PassengerRole::Inside { transport_id: bfrt };
+        .passenger_role = PassengerRole::Inside {
+        transport_id: bfrt,
+        open_topped: true,
+    };
     // Facing 0: state 0 picks octant 5 (SW) and turns the hull to NE (0x20),
     // so the state-3 scan starts at octant 5; the strict pass fails
     // everywhere (ring two is water) and the relaxed restart accepts octant

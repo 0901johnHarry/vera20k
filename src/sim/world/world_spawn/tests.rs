@@ -43,6 +43,7 @@ fn map_entity(type_id: &str, category: EntityCategory, cell: (u16, u16)) -> MapE
         recruitable_b: true,
         structure_upgrades: [None, None, None],
         structure_ai_sellable: false,
+        structure_ai_repairable: false,
     }
 }
 
@@ -1496,11 +1497,13 @@ fn techno_constructor_generated_projection_installs_without_a_second_draw() {
         techno_type: "MTNK".to_string(),
         cell: (7, 9),
         techno_ctor_random_word: 0xA55A,
+        native_unique_id: -17,
     }])
     .unwrap();
     let mut sim = Simulation::with_seed(0xC701_0003);
     install_american_house(&mut sim);
     let before = sim.scenario_rng.logical_state();
+    let native_before = sim.native_unique_ids.as_ref().unwrap().current_raw();
 
     assert_eq!(
         sim.spawn_generated_from_map_with_resolved(
@@ -1514,6 +1517,11 @@ fn techno_constructor_generated_projection_installs_without_a_second_draw() {
         1
     );
     assert_eq!(sim.scenario_rng.logical_state(), before);
+    assert_eq!(
+        sim.native_unique_ids.as_ref().unwrap().current_raw(),
+        native_before
+    );
+    assert_eq!(sim.substrate.entities.get(1).unwrap().native_unique_id, -17);
     assert_eq!(
         sim.substrate
             .entities
@@ -1530,12 +1538,14 @@ fn techno_constructor_generated_projection_installs_without_a_second_draw() {
                 techno_type: "MTNK".to_string(),
                 cell: (7, 9),
                 techno_ctor_random_word: 1,
+                native_unique_id: 0,
             },
             GeneratedTechnoInit {
                 entity_index: 0,
                 techno_type: "MTNK".to_string(),
                 cell: (7, 9),
                 techno_ctor_random_word: 2,
+                native_unique_id: 0,
             },
         ]),
         Err(GeneratedTechnoInitError::DuplicateEntityIndex(0))
@@ -1557,6 +1567,7 @@ fn generated_projection_validates_the_whole_table_before_any_mutation() {
         techno_type: "MTNK".to_string(),
         cell: (7, 9),
         techno_ctor_random_word: 0x1111,
+        native_unique_id: 0,
     };
 
     let missing = GeneratedTechnoInitTable::try_new([valid_first()]).unwrap();
@@ -1574,6 +1585,7 @@ fn generated_projection_validates_the_whole_table_before_any_mutation() {
             techno_type: "MTNK".to_string(),
             cell: (9, 9),
             techno_ctor_random_word: 0x2222,
+            native_unique_id: 0,
         },
     ])
     .unwrap();
@@ -1591,6 +1603,7 @@ fn generated_projection_validates_the_whole_table_before_any_mutation() {
             techno_type: "ORCA".to_string(),
             cell: (8, 9),
             techno_ctor_random_word: 0x3333,
+            native_unique_id: 0,
         },
     ])
     .unwrap();
@@ -1614,6 +1627,7 @@ fn generated_projection_validates_the_whole_table_before_any_mutation() {
             techno_type: "MTNK".to_string(),
             cell: (9, 9),
             techno_ctor_random_word: 0x4444,
+            native_unique_id: 0,
         },
     ])
     .unwrap();
@@ -1660,10 +1674,18 @@ fn techno_constructor_authored_upgrades_are_distinct_attached_live_entities_with
     );
     let parent = sim.substrate.entities.get(1).unwrap();
     assert_eq!(parent.techno_ctor_random_word, words[0]);
+    assert_eq!(
+        parent.native_unique_id,
+        native_before.wrapping_add(1) as i32
+    );
     assert!(parent.lifecycle.cell_marked);
     for (stable_id, slot) in [(2, 0), (3, 1)] {
         let upgrade = sim.substrate.entities.get(stable_id).unwrap();
         assert_eq!(upgrade.techno_ctor_random_word, words[slot + 1]);
+        assert_eq!(
+            upgrade.native_unique_id,
+            native_before.wrapping_add(slot as u32 + 2) as i32
+        );
         assert_eq!(
             upgrade.structure_upgrade_link,
             Some(StructureUpgradeLink {
@@ -1689,6 +1711,8 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
     let seed = 0xC701_0006;
     let rules = constructor_rules();
     let mut sim = Simulation::with_seed(seed);
+    sim.native_unique_ids =
+        Some(crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(1000));
     let mut expected = SimRng::new(seed);
     let word = (expected.next_u32() & 0xFFFF) as u16;
     let stable_id = sim
@@ -1710,6 +1734,8 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
     let held = sim.substrate.entities.get(stable_id).unwrap();
     assert!(held.lifecycle.in_limbo);
     assert_eq!(held.techno_ctor_random_word, word);
+    assert_eq!(held.native_unique_id, 1001);
+    assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(sim.discard_constructed_limbo(stable_id));
     assert!(sim.substrate.entities.get(stable_id).is_none());
@@ -2029,4 +2055,49 @@ fn a_building_s_ai_sale_byte_follows_its_buildup_or_its_map_line() {
         .map(|id| byte(&authored, id))
         .collect();
     assert_eq!(bytes, [true, false], "the map line decides");
+}
+
+/// The AI repair byte (`BuildingClass+0x6CB`): a map line's AI Repairable
+/// field (`BuildingClass::ReadFromINI` `0x0044FB70`), which Unlimbo sets
+/// outside a campaign for a house no human controls whose type is not
+/// `MultiplayPassive=` (`0x00440B4F..0x00440B7A`), and never clears.
+#[test]
+fn a_building_s_ai_repair_byte_follows_its_map_line_or_its_computer_owner() {
+    let rules = constructor_rules();
+    for (game_mode_nonzero, owner, field, expected) in [
+        (true, "Computer", false, true),
+        (true, "Human", false, false),
+        (true, "Passive", false, false),
+        (true, "Human", true, true),
+        (false, "Computer", false, false),
+        (false, "Human", false, false),
+        (false, "Computer", true, true),
+    ] {
+        let mut sim = Simulation::with_seed(0x6CB);
+        install_constructor_test_playfield(&mut sim);
+        sim.session.game_mode_nonzero = game_mode_nonzero;
+        for (name, human, passive) in [
+            ("Computer", false, false),
+            ("Human", true, false),
+            ("Passive", false, true),
+        ] {
+            let id = sim.interner.intern(name);
+            let mut house = crate::sim::house_state::HouseState::new(id, 0, None, human, 0, 10);
+            house.player_control = human;
+            house.multiplay_passive = passive;
+            sim.houses.insert(id, house);
+        }
+        let mut line = map_entity("UP1", EntityCategory::Structure, (6, 5));
+        line.owner = owner.to_string();
+        line.structure_ai_repairable = field;
+        assert_eq!(
+            sim.spawn_from_map(&[line], Some(&rules), &BTreeMap::new()),
+            1
+        );
+        let building = sim.substrate.entities.values().next().unwrap();
+        assert_eq!(
+            building.ai_repairable, expected,
+            "game mode {game_mode_nonzero}, {owner}, field {field}"
+        );
+    }
 }

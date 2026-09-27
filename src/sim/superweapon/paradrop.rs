@@ -257,6 +257,7 @@ fn spawn_pdplane(
         if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
             pax.passenger_role = PassengerRole::Inside {
                 transport_id: pdplane_id,
+                open_topped: false,
             };
         }
         let boarded = sim

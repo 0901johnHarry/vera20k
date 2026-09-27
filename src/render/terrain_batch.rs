@@ -1,27 +1,25 @@
-//! Dependency waves for pixel-local native TREE edits.
+//! Dependency waves for pixel-local native destination edits.
 //!
 //! VERA scheduling only: original 4990E0/497390 pixel semantics stay in the
 //! existing shaders. Overlapping conservative clips keep strict source order;
 //! disjoint clips commute and may share one immutable destination snapshot.
 
-use super::TerrainPiece;
+use super::DestinationEditCommand;
 
 const TILE: u32 = 32;
 const END: usize = usize::MAX;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TerrainCommand {
-    pub index: u32,
-    pub piece: TerrainPiece,
+    pub draw: DestinationEditCommand,
     pub rect: [u32; 4],
     next: usize,
 }
 
 impl TerrainCommand {
-    pub fn new(index: u32, piece: TerrainPiece, rect: [u32; 4]) -> Self {
+    pub fn new(draw: DestinationEditCommand, rect: [u32; 4]) -> Self {
         Self {
-            index,
-            piece,
+            draw,
             rect,
             next: END,
         }
@@ -31,7 +29,10 @@ impl TerrainCommand {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TerrainBatchStats {
     pub pieces: usize,
+    /// Independent snapshot/commit transactions, including read-only chunks.
     pub waves: usize,
+    /// Actual render passes; read-only reduction uses four per transaction.
+    pub passes: usize,
     pub tile_dependencies: usize,
 }
 
@@ -39,6 +40,7 @@ impl TerrainBatchStats {
     pub fn accumulate(&mut self, other: Self) {
         self.pieces += other.pieces;
         self.waves += other.waves;
+        self.passes += other.passes;
         self.tile_dependencies += other.tile_dependencies;
     }
 }
@@ -130,6 +132,7 @@ impl TerrainBatches {
         TerrainBatchStats {
             pieces: self.commands.len(),
             waves: self.heads.len(),
+            passes: self.heads.len() * 2,
             tile_dependencies: self.tile_dependencies,
         }
     }
@@ -167,11 +170,15 @@ mod tests {
 
     fn command(index: u32, rect: [u32; 4]) -> TerrainCommand {
         TerrainCommand::new(
-            index,
-            if index % 2 == 0 {
-                TerrainPiece::Body
-            } else {
-                TerrainPiece::Shadow
+            DestinationEditCommand {
+                index,
+                piece: if index % 2 == 0 {
+                    super::super::TerrainPiece::Body
+                } else {
+                    super::super::TerrainPiece::Shadow
+                },
+                render_z: crate::render::tactical_draw_plan::RenderZPolicy::ReadWrite,
+                atlas_slot: 0,
             },
             rect,
         )
@@ -197,7 +204,7 @@ mod tests {
         assert_eq!(
             batches
                 .waves()
-                .map(|w| w.map(|c| c.index).collect::<Vec<_>>())
+                .map(|w| w.map(|c| c.draw.index).collect::<Vec<_>>())
                 .collect::<Vec<_>>(),
             vec![vec![0, 1, 3], vec![2]]
         );
@@ -239,7 +246,7 @@ mod tests {
         for (wave, commands) in batches.waves().enumerate() {
             let mut previous = None;
             for command in commands {
-                let index = command.index as usize;
+                let index = command.draw.index as usize;
                 assert_eq!(assigned[index], usize::MAX, "each piece once");
                 assert!(
                     previous.is_none_or(|old| old < index),
@@ -269,6 +276,7 @@ mod tests {
             TerrainBatchStats {
                 pieces: 20_000,
                 waves: 20_000,
+                passes: 40_000,
                 tile_dependencies: 160_000
             }
         );
@@ -278,7 +286,7 @@ mod tests {
             batches
                 .waves()
                 .enumerate()
-                .all(|(i, mut w)| w.next().unwrap().index == i as u32 && w.next().is_none())
+                .all(|(i, mut w)| w.next().unwrap().draw.index == i as u32 && w.next().is_none())
         );
     }
 }

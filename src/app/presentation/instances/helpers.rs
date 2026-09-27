@@ -194,11 +194,11 @@ pub(crate) enum CellVisibilityState {
 }
 
 /// Presentation buckets for retained native Display membership.
-/// Air and Top still share an upper stream; their complete interleaving with
-/// effects remains a renderer migration, independent of membership authority.
+/// Air and Top retain their distinct native Display vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntityDrawBand {
     Ground,
+    Air,
     Top,
 }
 
@@ -213,7 +213,8 @@ pub(crate) fn entity_draw_band(
     use crate::sim::world::display_layers::DisplayLayer;
     match display.layer_of(id)? {
         DisplayLayer::GROUND => Some(EntityDrawBand::Ground),
-        DisplayLayer::AIR | DisplayLayer::TOP => Some(EntityDrawBand::Top),
+        DisplayLayer::AIR => Some(EntityDrawBand::Air),
+        DisplayLayer::TOP => Some(EntityDrawBand::Top),
         _ => None,
     }
 }
@@ -502,7 +503,10 @@ mod tests {
         };
 
         assert!(admitted(&entity, "Americans", false));
-        entity.passenger_role = PassengerRole::Inside { transport_id: 9 };
+        entity.passenger_role = PassengerRole::Inside {
+            transport_id: 9,
+            open_topped: false,
+        };
         assert!(!admitted(&entity, "Americans", false));
         entity.passenger_role = PassengerRole::None;
         entity.lifecycle.in_limbo = true;
@@ -667,7 +671,7 @@ mod tests {
         // Reproduce the stale-registration boundary: physical descent has
         // reached the ground, but the phase transaction has not resubmitted.
         // A fresh altitude classifier used to choose Ground and then lose the
-        // body because NativeGroundOrder correctly had no entry for this ID.
+        // body because NativeDisplayOrder correctly had no entry for this ID.
         sim.entities_mut()
             .get_mut(1)
             .unwrap()
@@ -679,7 +683,7 @@ mod tests {
             entity_draw_band(sim.display_layers(), 1),
             Some(EntityDrawBand::Top)
         );
-        let ground = crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder::new(
+        let ground = crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder::new(
             sim.display_layers().members(DisplayLayer::GROUND),
         );
         assert!(
@@ -697,7 +701,7 @@ mod tests {
             entity_draw_band(sim.display_layers(), 1),
             Some(EntityDrawBand::Ground)
         );
-        let ground = crate::app::presentation::render::draw_plan_lowering::NativeGroundOrder::new(
+        let ground = crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder::new(
             sim.display_layers().members(DisplayLayer::GROUND),
         );
         assert!(

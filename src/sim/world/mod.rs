@@ -74,8 +74,6 @@ mod aircraft_deployment_tests;
 #[cfg(test)]
 mod crash_tests;
 #[cfg(test)]
-mod jumpjet_infantry_tests;
-#[cfg(test)]
 mod damage_consequence_tests;
 #[cfg(test)]
 mod eva_dispatch_tests;
@@ -87,6 +85,8 @@ pub(crate) mod gap_generator_tests;
 mod gsi_04_18_tests;
 #[cfg(test)]
 mod house_ai_activation_tests;
+#[cfg(test)]
+mod jumpjet_infantry_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
@@ -951,7 +951,7 @@ pub struct Simulation {
     /// Native numeric IDs may duplicate and are neither stable handles nor RNG.
     /// Original689310/689470 preserve the cursor across save/load, including
     ///683560's post-read Scenario reinitialization. See native_id_snapshot.
-    /// Runtime constructors still need to consume this shared continuation.
+    /// Runtime constructors consume this continuation before class admission.
     pub(crate) native_unique_ids: Option<crate::sim::native_identity::NativeUniqueIdCursor>,
     /// `MapClass+0x134` (`0x0087F91C`) analogue: the wrapping signed total that
     /// authored `ScenarioClass::Full_Init @ 0x00686B20` stores from
@@ -1740,11 +1740,15 @@ impl Simulation {
                 // An absorbing building's passengers leave through
                 // SpawnSurvivors' Phase A; its KillPassengers (`0x00441F27`)
                 // runs after that and finds the list empty.
-                let absorbs = self.substrate.entities.get(stable_id).is_some_and(|entity| {
-                    rules
-                        .object(self.interner.resolve(entity.type_ref()))
-                        .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
-                });
+                let absorbs = self
+                    .substrate
+                    .entities
+                    .get(stable_id)
+                    .is_some_and(|entity| {
+                        rules
+                            .object(self.interner.resolve(entity.type_ref()))
+                            .is_some_and(|object| object.infantry_absorb || object.unit_absorb)
+                    });
                 if let Some(event) = garrison {
                     production::eject_destruction_garrison_with_context(
                         self,
@@ -2485,21 +2489,24 @@ impl Simulation {
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
     ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
-        let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_area(
-            self,
-            &mut run,
-            receivers,
-            rules,
-            overlay_registry,
-        );
+        let (effects, under_attack_events, area_result) =
+            crate::sim::combat::world_receiver::commit_area_with_dispatch(
+                self,
+                &mut run,
+                receivers,
+                rules,
+                overlay_registry,
+            );
         let terrain_navigation_changed_cells = run.finish();
-        self.absorb_noncombat_damage_effects(
+        let mut receipt = self.absorb_noncombat_damage_effects(
             rules,
             overlay_registry,
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
-        )
+        );
+        receipt.area_result = Some(area_result);
+        receipt
     }
 
     /// World-owned half of a non-combat damage transaction. Physical death
@@ -2914,7 +2921,10 @@ impl Simulation {
             &crate::sim::scenario_session::ScenarioDescriptor::default(),
         );
         session.seed = seed;
-        Self::construct(session)
+        let mut simulation = Self::construct(session);
+        simulation.native_unique_ids =
+            Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
+        simulation
     }
 
     /// Construct a session simulation from an app-layer launch descriptor.
@@ -3842,6 +3852,10 @@ impl Simulation {
             .spawn_at(stable_id, self.session.binary_frame, spawn);
         let registered = self.register_projectile(stable_id, spawn.flat);
         debug_assert!(registered);
+        if let Some(style) = spawn.line_trail {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::LineTrailConstructed { stable_id, style });
+        }
         stable_id
     }
 
@@ -4511,11 +4525,13 @@ impl Simulation {
             crate::sim::house_tracking::HouseTracking::add_tracking,
         );
         // `BuildingClass::ChangeOwner @ 0x00448723` marks every transferred
-        // building HasBeenCaptured (+0x6E3); survivors read it at death.
+        // building HasBeenCaptured (+0x6E3); survivors read it at death. Its
+        // repair stops without a sound (`+0x6E8 = 0`, `0x00448CE8`).
         if category == EntityCategory::Structure
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {
             entity.has_been_captured = true;
+            entity.repairing = false;
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.
@@ -5418,6 +5434,10 @@ impl Simulation {
                         HouseAiActivationOrderTestEvent::HouseActivation(owner),
                     );
                 }
+                self.houses
+                    .get_mut(&owner)
+                    .expect("represented House remains registered during its update")
+                    .release_repair_latch(self.session.binary_frame);
 
                 #[cfg(test)]
                 if self
@@ -5554,7 +5574,9 @@ impl Simulation {
             if let Some(bu) = self
                 .substrate
                 .entities
-                .get_mut_if(sid, |entity| entity.building_up.is_some() && !entity.ai_frozen())
+                .get_mut_if(sid, |entity| {
+                    entity.building_up.is_some() && !entity.ai_frozen()
+                })
                 .and_then(|entity| entity.building_up.as_mut())
                 && bu.frame(now, options)
                     == crate::sim::building_construction::ConstructionFrame::Complete
@@ -5622,10 +5644,15 @@ impl Simulation {
             if visit != PackUpFrame::NoVisit {
                 entity.mission.set_handler_state(status);
                 entity.mission.write_dispatch_epilogue(now, 1);
-                entity.repairing = false;
             }
             visit
         };
+        // Every visit stops a repair first (`ToggleRepair(0)`, `0x00449C41`).
+        if visit != PackUpFrame::NoVisit
+            && let Some(rules) = rules
+        {
+            production::toggle_repair(self, rules, sid, production::RepairControl::Stop);
+        }
         let spawned = match visit {
             PackUpFrame::StageZero => {
                 production::sell_stage_zero(self, rules, sid);
@@ -6445,7 +6472,7 @@ impl Simulation {
                 }
             }
 
-            // --- Phase 7: Production + Repairs + Docks + Ore ---
+            // --- Phase 7: Production + Docks + Ore ---
             // DEPENDS ON: combat (dead entities removed), movement (positions stable).
             // PRODUCES: new entities (spawned units), credit changes, ore growth.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
@@ -6455,24 +6482,24 @@ impl Simulation {
             // insertion_seq (temporal) order; the spawn/placement pass below then
             // delivers completed builds and advances the queue-of-record.
             //
-            // DRIFT (same-tick transaction ordering; repair lane's to fix):
+            // DRIFT (same-tick transaction ordering; the depot repair's to fix):
             // `LogicClass::PerTickUpdate @ 0x0055AFB0` runs the object loop
             // first — every depot repair debit
-            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) and every
-            // building's own repair debit are spent inside that object's `AI`
-            // visit — then Tactical, then a SEPARATE pass over
-            // `g_FactoryClass_Array` at 0x0055B66A where each factory's
-            // per-step charge (`FactoryClass::AI`) sees the wallet, then the
-            // houses (see
+            // (`BuildingClass::MissionRepairAndProduce @ 0x0044B780`) is spent
+            // inside that object's `AI` visit, as a building's own repair debit
+            // already is here (`production::update_repair_and_power`) — then
+            // Tactical, then a SEPARATE pass over `g_FactoryClass_Array` at
+            // 0x0055B66A where each factory's per-step charge
+            // (`FactoryClass::AI`) sees the wallet, then the houses (see
             // docs/research/ADVANCE_TICK_PHASE_PARTITION_NATIVE_SPINE_GHIDRA_REPORT.md).
-            // So within one frame EVERY repair/depot debit precedes EVERY
-            // factory step natively; VERA charges every factory here first,
-            // then `tick_repairs` and `tick_building_docks` below. Trigger: a house whose credits fall
-            // below one factory step plus one repair step in the same frame.
-            // Player effect: which of the two stalls for that frame differs.
-            // Frequency: only while a player is nearly broke with both a
-            // factory and a repair running. Downstream risk: credit trajectory
-            // and stall cadence, no lifecycle or RNG effect.
+            // So within one frame EVERY depot debit precedes EVERY factory step
+            // natively; VERA charges every factory here first, then
+            // `tick_building_docks` below. Trigger: a house whose credits fall
+            // below one factory step plus one depot repair step in the same
+            // frame. Player effect: which of the two stalls for that frame
+            // differs. Frequency: only while a player is nearly broke with both
+            // a factory and a depot repair running. Downstream risk: credit
+            // trajectory and stall cadence, no lifecycle or RNG effect.
             production::revalidate_and_step_factories(self, rules);
             spawned_entities |= production::tick_production_with_overlay_registry(
                 self,
@@ -6485,7 +6512,6 @@ impl Simulation {
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            production::tick_repairs(self, rules);
             building_dock::tick_building_docks(self, rules, phase_six_path_grid);
             crate::sim::docking::bunker_install::tick_bunker_install(
                 self,
@@ -6883,11 +6909,11 @@ pub(crate) mod tests;
 mod smudge_integration_tests;
 
 #[cfg(test)]
-#[path = "refinery_dock_oracle_tests.rs"]
-mod refinery_dock_oracle_tests;
-#[cfg(test)]
 #[path = "harvest_field_oracle_tests.rs"]
 mod harvest_field_oracle_tests;
+#[cfg(test)]
+#[path = "refinery_dock_oracle_tests.rs"]
+mod refinery_dock_oracle_tests;
 
 #[cfg(test)]
 #[path = "harvest_field_cycle_tests.rs"]
@@ -6904,6 +6930,10 @@ mod slave_manager_cycle_tests;
 #[cfg(test)]
 #[path = "building_sale_oracle_tests.rs"]
 mod building_sale_oracle_tests;
+
+#[cfg(test)]
+#[path = "building_repair_oracle_tests.rs"]
+mod building_repair_oracle_tests;
 
 #[cfg(test)]
 #[path = "refinery_dock_cycle_tests.rs"]

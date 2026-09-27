@@ -27,6 +27,7 @@ pub(crate) struct DamageConsequences {
 }
 
 pub(crate) struct DamageCommitReceipt {
+    pub(crate) area_result: Option<crate::sim::combat::world_receiver::AreaDamageResult>,
     pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
     pub(crate) bridge_state_changed: bool,
@@ -179,21 +180,7 @@ impl DamageConsequences {
         // plays the art type's `Report=`/`StartSound=`, and only the real
         // AnimType carries its `Translucent=` and `Rate=`.
         for fx in std::mem::take(&mut effects.explosion_effects) {
-            match fx.death {
-                Some(spawn) => world.admit_death_anim(rules, fx.shp_name, spawn),
-                None => {
-                    world.spawn_combat_explosion_anim(
-                        rules,
-                        fx.shp_name,
-                        fx.rx,
-                        fx.ry,
-                        fx.sub_x,
-                        fx.sub_y,
-                        fx.z,
-                        fx.world_z,
-                    );
-                }
-            }
+            admit_explosion_effect(world, rules, fx);
         }
         if let DamageDelivery::Ordinary { fire_events, .. } = &delivery {
             admit_electric_sparks(world, rules, fire_events);
@@ -230,10 +217,35 @@ impl DamageConsequences {
                 .append(&mut effects.smudge_spawn_requests);
         }
         DamageCommitReceipt {
+            area_result: None,
             fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
             path_grid,
+        }
+    }
+}
+
+/// One constructor authority for immediate native tails and deferred receiver
+/// packets. Bullet469C40 calls this before its next Cluster draw469057.
+pub(crate) fn admit_explosion_effect(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    fx: crate::sim::combat::ExplosionEffect,
+) {
+    match fx.death {
+        Some(spawn) => world.admit_death_anim(rules, fx.shp_name, spawn),
+        None => {
+            world.spawn_combat_explosion_anim(
+                rules,
+                fx.shp_name,
+                fx.rx,
+                fx.ry,
+                fx.sub_x,
+                fx.sub_y,
+                fx.z,
+                fx.world_z,
+            );
         }
     }
 }

@@ -130,8 +130,6 @@ impl App {
         // simulation gate, and carries its own `> 33 ms` rate limit.
         crate::app::match_runtime::sim_tick::pump_audio_service(state, scenario_now_ms);
 
-        Self::sync_in_game_menu_with_options_overlay(state);
-
         // Deactivated windows do not simulate. gamemd parks its main tick in a
         // sleep-and-network-only loop while the app is not the foreground, so
         // the world is exactly where the player left it on Alt+Tab return. The
@@ -526,7 +524,7 @@ impl App {
                 // overlay drawn above; the menu and the abort confirmation are
                 // drawn here and their routes committed immediately.
                 Self::handle_in_game_menu(state);
-                if state.match_state.paused {
+                if state.match_state.paused() {
                     // The dev overlay rides along with any in-scenario modal —
                     // push its own light visuals so its chrome matches the
                     // debug panels.

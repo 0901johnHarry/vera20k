@@ -585,25 +585,13 @@ impl crate::sim::world::Simulation {
     /// Class preprocessing precedes this call; publication, locomotor dispatch
     /// and accepted timers follow it. Linked-lift and retained-particle cleanup
     /// still require their missing native owners and are not implied here.
-    pub(crate) fn begin_foot_destination(
-        &mut self,
-        id: u64,
-        nonnull: bool,
-        rules: &crate::rules::ruleset::RuleSet,
-    ) -> bool {
+    pub(crate) fn begin_foot_destination(&mut self, id: u64, nonnull: bool) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        let open_transport = crate::sim::passenger::open_topped_transport(
-            &self.substrate.entities,
-            rules,
-            &self.interner,
-            entity,
-        )
-        .is_some();
         let refused = nonnull
             && (entity.foot_locomotor_swap_active
-                || open_transport
+                || entity.passenger_role.in_open_transport()
                 || entity.bunker_link.installed_in().is_some());
         self.substrate
             .entities

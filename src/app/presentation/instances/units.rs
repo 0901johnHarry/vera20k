@@ -12,7 +12,7 @@ use super::helpers::{
 };
 use crate::app::AppState;
 use crate::app::presentation::render::draw_plan_lowering::{
-    GroundPieceInstance, GroundTexture, NativeGroundOrder, PlannedGroundObjectInstance,
+    NativeDisplayOrder, ObjectPieceInstance, ObjectTexture, PlannedObjectInstance,
 };
 use crate::map::entities::EntityCategory;
 use crate::map::lighting;
@@ -175,10 +175,9 @@ fn unit_render_slope_state(
         locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Jumpjet
     });
     // A body that has left the floor has no cell slope to sit on, so it never
-    // enters the drive-track tilt transition. This also keeps every Top-band
-    // body on the stable-atlas path, which is the only path the Top stream
-    // carries.
-    if jumpjet || band == EntityDrawBand::Top {
+    // enters the drive-track tilt transition. Upper-layer bodies therefore
+    // keep their stable atlas shape.
+    if jumpjet || band != EntityDrawBand::Ground {
         return UnitRenderSlopeState::Stable(0);
     }
 
@@ -248,20 +247,12 @@ fn body_sort_depth(
 /// sprites: Body at body facing, Turret + Barrel at turret facing with screen
 /// offset computed from art.ini TurretOffset.
 ///
-/// `top_instances` receives bodies registered in Display layers above the
-/// Ground band — an aircraft off its pad, a jumpjet at hover height, a missile
-/// in flight. That band is drawn after every ground object, so it is kept
-/// separate from `instances` rather than merged by depth.
+/// All pieces retain the body's Display parent, including Air and Top objects.
+/// Atlas pages select textures only; they never replace native member order.
 pub(crate) fn build_unit_instances(
     state: &AppState,
-    instances: &mut Vec<SpriteInstance>,
-    instance_pages: &mut Vec<usize>,
-    top_instances: &mut Vec<SpriteInstance>,
-    top_instance_pages: &mut Vec<usize>,
-    transition_instances: &mut Vec<Vec<SpriteInstance>>,
-    shp_paged: &mut [Vec<SpriteInstance>],
-    ground_objects: &mut Vec<PlannedGroundObjectInstance>,
-    ground_order: &NativeGroundOrder,
+    objects: &mut Vec<PlannedObjectInstance>,
+    display_order: &NativeDisplayOrder,
 ) {
     let (sim, atlas) = match (
         state
@@ -443,12 +434,7 @@ pub(crate) fn build_unit_instances(
         let alpha: f32 = 1.0;
         // 0x73B140's split is inside the same native parent draw call.
         // Ground units, including those below bridges, keep LayerClass order.
-        let collect_ground = band == EntityDrawBand::Ground;
-        let mut ground_pieces = Vec::new();
-        let (target_instances, target_instance_pages) = match band {
-            EntityDrawBand::Top => (&mut *top_instances, &mut *top_instance_pages),
-            EntityDrawBand::Ground => (&mut *instances, &mut *instance_pages),
-        };
+        let mut pieces = Vec::new();
 
         let tilt_crash_jumpjet = state
             .rules()
@@ -465,8 +451,7 @@ pub(crate) fn build_unit_instances(
             };
             emit_crash_pose_sprite(
                 state,
-                target_instances,
-                target_instance_pages,
+                &mut pieces,
                 entity,
                 &key,
                 tilt,
@@ -479,8 +464,6 @@ pub(crate) fn build_unit_instances(
         } else if let BodyDraw::Turret(turret_facing) = body {
             // Turret unit: emit body, turret, and barrel as separate sprites.
             emit_turret_unit_sprites(
-                target_instances,
-                target_instance_pages,
                 atlas,
                 art_reg,
                 entity,
@@ -500,10 +483,8 @@ pub(crate) fn build_unit_instances(
                 turret_frame,
                 dock_depth_y_offset,
                 slope_state,
-                transition_instances,
                 band,
-                collect_ground,
-                &mut ground_pieces,
+                &mut pieces,
             );
         } else {
             // Non-turret unit: single composite sprite.
@@ -535,8 +516,6 @@ pub(crate) fn build_unit_instances(
                     emit_unit_shadow_sprite(
                         native_shadow,
                         voxel_adjust,
-                        target_instances,
-                        target_instance_pages,
                         atlas,
                         entity,
                         type_str,
@@ -545,10 +524,8 @@ pub(crate) fn build_unit_instances(
                         depth,
                         draw_state,
                         slope_state,
-                        transition_instances,
                         band,
-                        collect_ground,
-                        &mut ground_pieces,
+                        &mut pieces,
                     );
                 }
                 let (composite_rect, split) = composite_depth_rect(
@@ -571,21 +548,11 @@ pub(crate) fn build_unit_instances(
                     zshape_origin: composite_rect,
                     ..Default::default()
                 };
-                push_unit_sprite(
-                    target_instances,
-                    target_instance_pages,
-                    transition_instances,
-                    texture_source,
-                    sprite,
-                    collect_ground,
-                    &mut ground_pieces,
-                );
+                push_unit_sprite(texture_source, sprite, &mut pieces);
                 if native_shadow {
                     emit_unit_shadow_sprite(
                         native_shadow,
                         voxel_adjust,
-                        target_instances,
-                        target_instance_pages,
                         atlas,
                         entity,
                         type_str,
@@ -594,10 +561,8 @@ pub(crate) fn build_unit_instances(
                         depth,
                         draw_state,
                         slope_state,
-                        transition_instances,
                         band,
-                        collect_ground,
-                        &mut ground_pieces,
+                        &mut pieces,
                     );
                 }
             }
@@ -630,32 +595,24 @@ pub(crate) fn build_unit_instances(
                 draw_state,
             )
         {
-            if collect_ground {
-                ground_pieces.push(GroundPieceInstance {
-                    target: GroundTexture::ShpPage(page),
-                    render_z: RenderZPolicy::ReadOnly,
-                    instance,
-                });
-            } else if let Some(bucket) = shp_paged.get_mut(page) {
-                bucket.push(instance);
-            }
+            pieces.push(ObjectPieceInstance {
+                target: ObjectTexture::ShpPage(page),
+                render_z: RenderZPolicy::ReadOnly,
+                instance,
+            });
         }
 
-        if collect_ground && !ground_pieces.is_empty() {
-            let parent = ground_order.object_draw(
+        if !pieces.is_empty() {
+            let parent = display_order.object_draw(
                 entity.stable_id(),
                 crate::render::tactical_draw_plan::SpriteEncoding::Voxel,
             );
             if let Some(parent) = parent {
-                ground_objects.push(PlannedGroundObjectInstance::object(parent, ground_pieces));
+                objects.push(PlannedObjectInstance::object(parent, pieces));
             }
         }
     }
 }
-
-/// The page index a Top-band instance carries when it was drawn on this
-/// frame's crash-pose page (`render::unit_pose_cache`) instead of the atlas.
-pub(crate) const POSE_PAGE: usize = usize::MAX;
 
 /// How an object's body is drawn this frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -708,7 +665,7 @@ fn crash_body_tilt(
         rocking.angle_forwards.to_num::<f32>(),
     ];
     match kind {
-        LocomotorKind::Fly if entity.crashing && band == EntityDrawBand::Top => {
+        LocomotorKind::Fly if entity.crashing && band != EntityDrawBand::Ground => {
             Some(CrashTilt::Fly(angles))
         }
         LocomotorKind::Jumpjet
@@ -726,8 +683,7 @@ fn crash_body_tilt(
 #[allow(clippy::too_many_arguments)]
 fn emit_crash_pose_sprite(
     state: &AppState,
-    instances: &mut Vec<SpriteInstance>,
-    instance_pages: &mut Vec<usize>,
+    pieces: &mut Vec<ObjectPieceInstance>,
     entity: &crate::sim::game_entity::GameEntity,
     key: &UnitSpriteKey,
     tilt: crate::render::unit_atlas::CrashTilt,
@@ -753,21 +709,24 @@ fn emit_crash_pose_sprite(
     let depth = body_sort_depth(state, entity, EntityDrawBand::Top, depth_y, z);
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
     let (composite_rect, split) = composite_depth_rect([(entry, [center_x, center_y])], false);
-    instances.push(SpriteInstance {
-        position: [center_x + entry.offset_x, center_y + entry.offset_y],
-        size: entry.pixel_size,
-        uv_origin: entry.uv_origin,
-        uv_size: entry.uv_size,
-        depth,
-        tint,
-        palette_light,
-        alpha: 1.0,
-        draw_state: composite_draw_state(state, draw_state, split),
-        z_adjust: voxel_adjust,
-        z_gradient: pack_voxel_z_gradient(ZGradient::Vertical, split),
-        zshape_origin: composite_rect,
+    pieces.push(ObjectPieceInstance {
+        target: ObjectTexture::UnitPose,
+        render_z: RenderZPolicy::ReadOnly,
+        instance: SpriteInstance {
+            position: [center_x + entry.offset_x, center_y + entry.offset_y],
+            size: entry.pixel_size,
+            uv_origin: entry.uv_origin,
+            uv_size: entry.uv_size,
+            depth,
+            tint,
+            palette_light,
+            alpha: 1.0,
+            draw_state: composite_draw_state(state, draw_state, split),
+            z_adjust: voxel_adjust,
+            z_gradient: pack_voxel_z_gradient(ZGradient::Vertical, split),
+            zshape_origin: composite_rect,
+        },
     });
-    instance_pages.push(POSE_PAGE);
 }
 
 /// Compute the screen-space offset for a turret pivot point from art.ini TurretOffset.
@@ -929,17 +888,6 @@ fn unit_entry_for_slope_state(
         .map(|entry| (entry, UnitTextureSource::Stable(entry.page)))
 }
 
-fn push_transition_sprite(
-    transition_instances: &mut Vec<Vec<SpriteInstance>>,
-    page: usize,
-    sprite: SpriteInstance,
-) {
-    if transition_instances.len() <= page {
-        transition_instances.resize_with(page + 1, Vec::new);
-    }
-    transition_instances[page].push(sprite);
-}
-
 /// First-fill mask owner for the supported ordinary flat ground path. The
 /// input entries are precisely the parts selected for this parent's draw;
 /// cache hits skip their pixel work and retain the first completed mask.
@@ -1006,8 +954,6 @@ fn shadow_lookup_key(mut key: UnitSpriteKey, native_shadow: bool) -> UnitSpriteK
 fn emit_unit_shadow_sprite(
     native_shadow: bool,
     voxel_adjust: f32,
-    stable_instances: &mut Vec<SpriteInstance>,
-    stable_instance_pages: &mut Vec<usize>,
     atlas: &crate::render::unit_atlas::UnitAtlas,
     entity: &crate::sim::game_entity::GameEntity,
     type_id: &str,
@@ -1016,10 +962,8 @@ fn emit_unit_shadow_sprite(
     depth: f32,
     draw_state: DrawState,
     slope_state: UnitRenderSlopeState,
-    transition_instances: &mut Vec<Vec<SpriteInstance>>,
     band: EntityDrawBand,
-    collect_ground: bool,
-    ground_pieces: &mut Vec<GroundPieceInstance>,
+    pieces: &mut Vec<ObjectPieceInstance>,
 ) {
     if entity.category != EntityCategory::Unit || band != EntityDrawBand::Ground {
         return;
@@ -1055,47 +999,23 @@ fn emit_unit_shadow_sprite(
         z_gradient: VOXEL_Z_GRADIENT,
         ..Default::default()
     };
-    push_unit_sprite(
-        stable_instances,
-        stable_instance_pages,
-        transition_instances,
-        UnitTextureSource::Stable(entry.page),
-        sprite,
-        collect_ground,
-        ground_pieces,
-    );
+    push_unit_sprite(UnitTextureSource::Stable(entry.page), sprite, pieces);
 }
 
 fn push_unit_sprite(
-    stable_instances: &mut Vec<SpriteInstance>,
-    stable_instance_pages: &mut Vec<usize>,
-    transition_instances: &mut Vec<Vec<SpriteInstance>>,
     texture_source: UnitTextureSource,
     sprite: SpriteInstance,
-    collect_ground: bool,
-    ground_pieces: &mut Vec<GroundPieceInstance>,
+    pieces: &mut Vec<ObjectPieceInstance>,
 ) {
-    if collect_ground {
-        let target = match texture_source {
-            UnitTextureSource::Transition(page) => GroundTexture::UnitTransitionPage(page),
-            UnitTextureSource::Stable(page) => GroundTexture::UnitAtlasPage(page),
-        };
-        ground_pieces.push(GroundPieceInstance {
-            target,
-            render_z: RenderZPolicy::ReadOnly,
-            instance: sprite,
-        });
-        return;
-    }
-    match texture_source {
-        UnitTextureSource::Transition(page) => {
-            push_transition_sprite(transition_instances, page, sprite);
-        }
-        UnitTextureSource::Stable(page) => {
-            stable_instances.push(sprite);
-            stable_instance_pages.push(page);
-        }
-    }
+    let target = match texture_source {
+        UnitTextureSource::Transition(page) => ObjectTexture::UnitTransitionPage(page),
+        UnitTextureSource::Stable(page) => ObjectTexture::UnitAtlasPage(page),
+    };
+    pieces.push(ObjectPieceInstance {
+        target,
+        render_z: RenderZPolicy::ReadOnly,
+        instance: sprite,
+    });
 }
 
 /// Select the rectangle consumed by Unit's 0x73B140 split. Atlas padding is
@@ -1151,8 +1071,6 @@ fn composite_draw_state(state: &AppState, mut draw_state: DrawState, split: bool
 /// shifted by the art.ini TurretOffset (rotated by body facing) so the turret
 /// sits on its correct pivot point on the hull.
 fn emit_turret_unit_sprites(
-    instances: &mut Vec<SpriteInstance>,
-    instance_pages: &mut Vec<usize>,
     atlas: &crate::render::unit_atlas::UnitAtlas,
     art_reg: Option<&crate::rules::art_data::ArtRegistry>,
     entity: &crate::sim::game_entity::GameEntity,
@@ -1172,10 +1090,8 @@ fn emit_turret_unit_sprites(
     turret_frame: u32,
     dock_depth_y_offset: f32,
     slope_state: UnitRenderSlopeState,
-    transition_instances: &mut Vec<Vec<SpriteInstance>>,
     band: EntityDrawBand,
-    collect_ground: bool,
-    ground_pieces: &mut Vec<GroundPieceInstance>,
+    pieces: &mut Vec<ObjectPieceInstance>,
 ) {
     let slope_type = stable_slope_for_key(slope_state);
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
@@ -1256,8 +1172,6 @@ fn emit_turret_unit_sprites(
         emit_unit_shadow_sprite(
             native_shadow,
             voxel_adjust,
-            instances,
-            instance_pages,
             atlas,
             entity,
             type_id,
@@ -1266,10 +1180,8 @@ fn emit_turret_unit_sprites(
             entity_depth,
             draw_state,
             slope_state,
-            transition_instances,
             band,
-            collect_ground,
-            ground_pieces,
+            pieces,
         );
     }
     let (composite_rect, split) = composite_depth_rect(
@@ -1299,15 +1211,7 @@ fn emit_turret_unit_sprites(
             z_gradient: pack_voxel_z_gradient(ZGradient::Vertical, split),
             zshape_origin: composite_rect,
         };
-        push_unit_sprite(
-            instances,
-            instance_pages,
-            transition_instances,
-            texture_source,
-            sprite,
-            collect_ground,
-            ground_pieces,
-        );
+        push_unit_sprite(texture_source, sprite, pieces);
     }
 
     for (entry, texture_source) in turret_layers {
@@ -1328,22 +1232,12 @@ fn emit_turret_unit_sprites(
             z_gradient: pack_voxel_z_gradient(ZGradient::Vertical, split),
             zshape_origin: composite_rect,
         };
-        push_unit_sprite(
-            instances,
-            instance_pages,
-            transition_instances,
-            texture_source,
-            sprite,
-            collect_ground,
-            ground_pieces,
-        );
+        push_unit_sprite(texture_source, sprite, pieces);
     }
     if native_shadow {
         emit_unit_shadow_sprite(
             native_shadow,
             voxel_adjust,
-            instances,
-            instance_pages,
             atlas,
             entity,
             type_id,
@@ -1352,10 +1246,8 @@ fn emit_turret_unit_sprites(
             entity_depth,
             draw_state,
             slope_state,
-            transition_instances,
             band,
-            collect_ground,
-            ground_pieces,
+            pieces,
         );
     }
 }
@@ -1893,62 +1785,6 @@ mod tests {
             assert!((actual - expected).abs() < 0.0001);
         }
         assert_ne!(unit, aircraft);
-    }
-
-    #[test]
-    fn stable_and_transition_body_pieces_keep_one_ground_parent_order() {
-        let sprite = SpriteInstance::default();
-        let mut stable = Vec::new();
-        let mut stable_pages = Vec::new();
-        let mut transition = Vec::new();
-        let mut ground_pieces = Vec::new();
-        for source in [
-            UnitTextureSource::Stable(5),
-            UnitTextureSource::Transition(1),
-        ] {
-            push_unit_sprite(
-                &mut stable,
-                &mut stable_pages,
-                &mut transition,
-                source,
-                sprite,
-                true,
-                &mut ground_pieces,
-            );
-        }
-        assert!(stable.is_empty());
-        assert!(transition.is_empty());
-        assert_eq!(ground_pieces.len(), 2);
-        assert_eq!(ground_pieces[0].target, GroundTexture::UnitAtlasPage(5));
-        assert_eq!(
-            ground_pieces[1].target,
-            GroundTexture::UnitTransitionPage(1)
-        );
-        assert!(
-            ground_pieces
-                .iter()
-                .all(|piece| piece.render_z == RenderZPolicy::ReadOnly)
-        );
-        push_unit_sprite(
-            &mut stable,
-            &mut stable_pages,
-            &mut transition,
-            UnitTextureSource::Stable(3),
-            sprite,
-            false,
-            &mut ground_pieces,
-        );
-        push_unit_sprite(
-            &mut stable,
-            &mut stable_pages,
-            &mut transition,
-            UnitTextureSource::Transition(2),
-            sprite,
-            false,
-            &mut ground_pieces,
-        );
-        assert_eq!(stable_pages, [3]);
-        assert_eq!(transition[2].len(), 1);
     }
 
     #[test]

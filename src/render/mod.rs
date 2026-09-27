@@ -32,6 +32,7 @@ pub mod egui_integration;
 pub mod frame_readback;
 pub(crate) mod foot_depth;
 pub mod gpu;
+pub(crate) mod line_trail;
 pub mod loading_screen_chrome;
 pub mod locomotor_visual;
 pub mod main_menu_shell_chrome;

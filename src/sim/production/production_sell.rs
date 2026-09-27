@@ -1,5 +1,6 @@
-//! Building sale and repair: the Selling mission's visits, the refund, the
-//! garrison ejection and the repair tick.
+//! Building sale: the Selling mission's visits, the refund and the garrison
+//! ejection. The computer's low-credit sale is `BuildingClass::
+//! UpdateRepairAndPower`'s (`production_repair`).
 //!
 //! A sale starts at `BuildingClass::Sell_Back @ 0x00447110` ([`sell_back`];
 //! a Slave Miner refinery's relocation queues the mission itself,
@@ -71,7 +72,7 @@ use crate::sim::world::{
 };
 use crate::util::lepton;
 
-use super::production_queue::{credits_entry_for_owner, credits_for_owner};
+use super::production_queue::credits_entry_for_owner;
 use super::production_tech::foundation_dimensions;
 
 /// `TechnoTypeClass::GetRefund @ 0x00711F60` for a BuildingType and a live
@@ -282,7 +283,7 @@ pub(crate) fn undeploy_target<'r>(rules: &'r RuleSet, type_id: &str) -> Option<&
     rules.object(target).map(|_| target)
 }
 
-fn undeploys(rules: &RuleSet, object: &crate::rules::object_type::ObjectType) -> bool {
+pub(super) fn undeploys(rules: &RuleSet, object: &crate::rules::object_type::ObjectType) -> bool {
     undeploy_target(rules, &object.id).is_some()
 }
 
@@ -1057,220 +1058,12 @@ pub(crate) fn eject_red_hp_garrison(
     ejected
 }
 
-/// Toggle repair mode on a building. If already repairing, stop. Otherwise start.
-pub fn toggle_repair(sim: &mut Simulation, rules: &RuleSet, stable_id: u64) -> bool {
-    let Some(strength) = sim
-        .substrate
-        .entities
-        .get(stable_id)
-        .and_then(|entity| sim.object_type(entity.type_ref(), rules))
-        .map(|obj| obj.strength)
-    else {
-        return false;
-    };
-    let Some(entity) = sim.substrate.entities.get_mut(stable_id) else {
-        return false;
-    };
-    if entity.category != EntityCategory::Structure {
-        return false;
-    }
-    if entity.repairing {
-        entity.repairing = false;
-        log::info!("Repair stopped on entity {}", stable_id);
-    } else {
-        entity.repairing = true;
-        log::info!("Repair started on entity {}", stable_id);
-        // `BuildingClass::ToggleRepair @ 0x00446FF0`: once the flag is on
-        // and `Health != Type.Strength` (`0x00447059`), the local owner
-        // (`0x004470A4 CALL 0x0050B6F0`) gets the sidebar flash and
-        // `PlayEVA("EVA_Repairing")` (`0x004470B7`). The app applies the
-        // local-owner half.
-        if entity.health.current != strength {
-            let owner = entity.owner();
-            sim.sound_events.push(SimSoundEvent::Repairing { owner });
-        }
-    }
-    true
-}
-
-/// Repair cost: 25% of building cost spread across all HP.
-const REPAIR_COST_PERCENT: u32 = 25;
-/// HP healed per sim tick (at 15 Hz this is ~60 HP/sec).
-const REPAIR_HP_PER_TICK: i32 = 4;
-
-/// The computer's low-credit sale in `BuildingClass::UpdateRepairAndPower @
-/// 0x00450630`, for every building in stable order. Before its roll
-/// (`0x00450645..0x004507B2`): the owner's CurrentIQ (`+0x24C`) reaches
-/// `[IQ] RepairSell=`; the building is on neither Construction nor Selling
-/// (Get_Mission) and can be repaired ([`can_repair_building`]); the owner's
-/// available money is below `[AI] CreditReserve=`; a campaign building
-/// carries its AI sale byte (`+0x6DC`, `0x00450781`); an enemy has hit it
-/// (`+0x3D1`); and the owner's authored IQ (`+0x1D0`, unsigned) reaches
-/// `[IQ] SellBack=`. A skirmish house's authored IQ is zero, so under the
-/// retail `SellBack=2` no skirmish building gets this far and none draws.
-/// Then `RandomRanged(0, 0x32)` on the Scenario stream (`0x004507C4`) must
-/// fall below the owner's TechLevel (unsigned), and a tagged building
-/// (`+0x34`, `0x004507D7`; VERA has no per-object tags), a construction yard
-/// (`Factory=BuildingType`, `Type+0xEB8 == 7`, `0x004507DE`) and one at or
-/// above ConditionRed (`0x004507ED`) stay. The rest take [`sell_back`]'s
-/// computer order (`0x0045080D`).
-///
-/// RESIDUAL (UpdateRepairAndPower's port, the next chain): native rolls inside
-/// each building's Update (`0x004401B6`), in LogicVector order among the
-/// frame's other objects' draws; VERA rolls for every building after the
-/// object pass, in stable order. Trigger: a computer house below its credit
-/// reserve with a damaged building an enemy hit. Effect: the Scenario
-/// stream's order within the frame. Frequency: every frame while it lasts.
-fn tick_ai_low_credit_sell_decisions(sim: &mut Simulation, rules: &RuleSet) {
-    let building_ids: Vec<u64> = sim
-        .substrate
-        .entities
-        .values()
-        .filter(|entity| entity.category == EntityCategory::Structure)
-        .map(|entity| entity.stable_id())
-        .collect();
-
-    for stable_id in building_ids {
-        let Some(entity) = sim.substrate.entities.get(stable_id) else {
-            continue;
-        };
-        // UpdateRepairAndPower's only caller (`0x004401B6`) lies past the
-        // frozen jump.
-        if !entity.is_active() || entity.lifecycle.in_limbo || entity.ai_frozen() {
-            continue;
-        }
-        let Some(house) = sim.houses.get(&entity.owner()) else {
-            continue;
-        };
-        let admitted = house.current_iq >= rules.general.iq_repair_sell
-            && !matches!(
-                entity.mission.effective().known(),
-                Some(MissionType::Construction | MissionType::Selling)
-            )
-            && can_repair_building(sim, rules, stable_id)
-            && crate::sim::credit_income::available_money(sim, entity.owner())
-                < rules.general.credit_reserve
-            && (sim.session.game_mode_nonzero || entity.ai_sellable)
-            && entity.was_attacked_by_enemy
-            && house.authored_iq as u32 >= rules.general.iq_sell_back as u32;
-        if !admitted {
-            continue;
-        }
-        let tech_level = house.tech_level;
-        let Some(object) = sim.object_type(entity.type_ref(), rules) else {
-            continue;
-        };
-        let yard = object.factory == Some(crate::rules::object_type::FactoryType::BuildingType);
-        // 4507F7..450805 tests x87 C0: less and unordered both sell.
-        let below_red = matches!(
-            entity
-                .health
-                .compare_ratio(object.strength, rules.general.condition_red),
-            crate::util::native_x87::MaskedX87Ordering::Less
-                | crate::util::native_x87::MaskedX87Ordering::Unordered
-        );
-        let roll = sim.scenario_rng.next_range_u32_inclusive(0, 0x32);
-        if roll >= tech_level as u32 || yard || !below_red {
-            continue;
-        }
-        let _ = sell_back(sim, rules, stable_id, SellOrder::Computer);
-    }
-}
-
-/// `BuildingClass::Can_Repair @ 0x00452630` (vt+0x94): a building with
-/// Health (`+0x6C`), of a `ClickRepairable=` type (`+0x157A`) that is not a
-/// 1x1 `UndeploysInto=` type (`BuildingTypeClass 0x00465D40`), whose
-/// `Repairable=` type (TechnoType `+0xCCC`) has it below Strength
-/// (`0x00701140`).
-pub(crate) fn can_repair_building(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return false;
-    };
-    let Some(object) = sim.object_type(entity.type_ref(), rules) else {
-        return false;
-    };
-    let one_cell_undeploy =
-        undeploys(rules, object) && foundation_dimensions(&object.foundation) == (1, 1);
-    entity.category == EntityCategory::Structure
-        && entity.health.current != 0
-        && object.click_repairable
-        && !one_cell_undeploy
-        && object.repairable
-        && entity.health.current != object.strength
-}
-
-/// Tick all repairing buildings: heal HP and deduct credits.
-pub fn tick_repairs(sim: &mut Simulation, rules: &RuleSet) {
-    // UpdateRepairAndPower evaluates the low-credit sale arm before its active
-    // repair tick for the same building.
-    tick_ai_low_credit_sell_decisions(sim, rules);
-    // Collect snapshot of repairing structures.
-    let actions: Vec<(u64, String, i32, i32, i32)> = sim
-        .substrate
-        .entities
-        .values()
-        .filter(|entity| {
-            !entity.dying
-                && entity.repairing
-                && entity.category == EntityCategory::Structure
-                && !entity.ai_frozen()
-        })
-        .filter_map(|entity| {
-            let obj = sim.object_type(entity.type_ref(), rules)?;
-            Some((
-                entity.stable_id(),
-                sim.interner.resolve(entity.owner()).to_string(),
-                entity.health.current,
-                obj.strength,
-                obj.cost,
-            ))
-        })
-        .collect();
-    let mut stop_repairing: Vec<u64> = Vec::new();
-    for (stable_id, owner, current_hp, strength, cost) in actions {
-        // Existing VERA cost/cadence adapter, not native type vslots B0/B4.
-        // Widen before multiplication; the final per-HP amount fits signed32.
-        let total_repair_cost = i64::from(cost.max(0)) * i64::from(REPAIR_COST_PERCENT) / 100;
-        let divisor = i64::from(strength.max(1));
-        let cost_per_hp = i32::try_from(((total_repair_cost + divisor - 1) / divisor).max(1))
-            .expect("25 percent of signed positive cost fits i32");
-        if credits_for_owner(sim, &owner) < cost_per_hp {
-            stop_repairing.push(stable_id);
-            continue;
-        }
-        // Preserve the adapter's reduced charge for the last partial step;
-        // actual/estimated health receive the full native-style ADD separately.
-        let billed_hp = i32::try_from(
-            (i64::from(strength) - i64::from(current_hp)).clamp(1, i64::from(REPAIR_HP_PER_TICK)),
-        )
-        .expect("bounded repair charge");
-        *credits_entry_for_owner(sim, &owner) -= cost_per_hp * billed_hp;
-        if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-            entity.health.current = entity.health.current.wrapping_add(REPAIR_HP_PER_TICK);
-            entity.estimated_health.add_repair(REPAIR_HP_PER_TICK);
-            // Building4508A8..CD: independent ADDs, then signed actual >= Strength.
-            if entity.health.current >= strength {
-                entity.health.current = strength;
-                entity.estimated_health.reset(strength);
-                stop_repairing.push(stable_id);
-            }
-        }
-        sim.refresh_building_damage_state(stable_id, rules);
-        sim.retire_damage_smoke_after_heal(stable_id, rules);
-    }
-    for stable_id in stop_repairing {
-        if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-            entity.repairing = false;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::production_queue::credits_for_owner;
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::occupancy::CellListInsertion;
@@ -1322,22 +1115,6 @@ mod tests {
         RuleSet::from_ini(&ini).expect("garrison edge rules should parse")
     }
 
-    fn repair_damage_state_rules() -> RuleSet {
-        repair_damage_state_rules_with_strength(100)
-    }
-
-    fn repair_damage_state_rules_with_strength(strength: i32) -> RuleSet {
-        let ini = IniFile::from_str(&format!(
-            "[InfantryTypes]\n\
-             [VehicleTypes]\n\
-             [AircraftTypes]\n\
-             [BuildingTypes]\n0=GAPOWR\n\n\
-             [GAPOWR]\nStrength={strength}\nArmor=wood\nCost=800\n\n\
-             [AudioVisual]\nConditionYellow=50%\n",
-        ));
-        RuleSet::from_ini(&ini).expect("repair damage-state rules should parse")
-    }
-
     fn insert_hidden_passenger_with_subcell(
         sim: &mut Simulation,
         stable_id: u64,
@@ -1353,7 +1130,10 @@ mod tests {
         pax.sub_cell = sub_cell;
         pax.owner = sim.interner.intern(owner);
         pax.type_ref = sim.interner.intern("E1");
-        pax.passenger_role = PassengerRole::Inside { transport_id };
+        pax.passenger_role = PassengerRole::Inside {
+            transport_id,
+            open_topped: false,
+        };
         sim.substrate.entities.insert(pax);
         stable_id
     }
@@ -1417,44 +1197,6 @@ mod tests {
     }
 
     #[test]
-    fn building_repair_preserves_signed_adds_and_live_strength() {
-        for (strength, actual, estimate, expected_actual, expected_estimate, repairing) in [
-            (100_000, 70_000, -20, 70_004, -16, true),
-            (
-                i32::MAX,
-                i32::MAX - 1,
-                i32::MAX - 2,
-                i32::MIN + 2,
-                i32::MIN + 1,
-                true,
-            ),
-            (-10, -20, -50, -16, -46, true),
-            (-10, -12, -50, -10, -10, false),
-            (100, 100, -50, 100, 100, false),
-        ] {
-            let rules = repair_damage_state_rules_with_strength(strength);
-            let mut sim = Simulation::new();
-            insert_structure(&mut sim, 1, "GAPOWR", "Americans");
-            let building = sim.substrate.entities.get_mut(1).unwrap();
-            building.health.current = actual;
-            building.estimated_health =
-                crate::sim::estimated_health::EstimatedHealth::from_raw(estimate);
-            building.repairing = true;
-            tick_repairs(&mut sim, &rules);
-            let building = sim.substrate.entities.get(1).unwrap();
-            assert_eq!(
-                (
-                    building.health.current,
-                    building.estimated_health.get(),
-                    building.repairing
-                ),
-                (expected_actual, expected_estimate, repairing),
-                "strength={strength} actual={actual}"
-            );
-        }
-    }
-
-    #[test]
     fn selling_refund_does_not_scale_with_signed_health_or_strength() {
         for (actual, strength) in [
             (0, 0),
@@ -1471,56 +1213,6 @@ mod tests {
             assert!(sell_building_now_for_test(&mut sim, &rules, 10));
             assert_eq!(credits_for_owner(&sim, "Americans") - before, 200);
         }
-    }
-
-    #[test]
-    fn building_repair_crosses_live_condition_yellow_and_resets_only_on_completion() {
-        let rules = repair_damage_state_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        let type_ref = sim.interner.intern("GAPOWR");
-        let mut building = GameEntity::new_at_frame_zero_for_test(
-            1,
-            10,
-            10,
-            0,
-            0,
-            owner,
-            Health { current: 49 },
-            type_ref,
-            EntityCategory::Structure,
-            0,
-            5,
-            false,
-        );
-        building.repairing = true;
-        building.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
-        sim.substrate.entities.insert(building);
-
-        tick_repairs(&mut sim, &rules);
-
-        let building = sim
-            .substrate
-            .entities
-            .get(1)
-            .expect("building should remain");
-        assert_eq!(building.health.current, 53);
-        assert_eq!(building.estimated_health.get(), -16);
-        assert_eq!(
-            building.health.compare_ratio(
-                rules.object("GAPOWR").unwrap().strength,
-                rules.general.condition_yellow
-            ),
-            crate::util::native_x87::MaskedX87Ordering::Greater
-        );
-
-        let building = sim.substrate.entities.get_mut(1).unwrap();
-        building.health.current = 99;
-        building.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-20);
-        tick_repairs(&mut sim, &rules);
-        let building = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(building.health.current, 100);
-        assert_eq!(building.estimated_health.get(), 100);
     }
 
     fn insert_captured_player_owned_garrison(
@@ -2037,41 +1729,5 @@ mod tests {
             0,
             "a Construction Yard (UndeploysInto=) sale is silent"
         );
-    }
-
-    /// `BuildingClass::ToggleRepair 0x00447053..0x004470B7`: the line needs the
-    /// flag to end up ON and `Health != Type.Strength`.
-    #[test]
-    fn repair_toggle_announces_only_when_switching_on_a_damaged_building() {
-        let rules = repair_damage_state_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        insert_structure(&mut sim, 1, "GAPOWR", "Americans");
-        insert_structure(&mut sim, 2, "GAPOWR", "Americans");
-        {
-            let damaged = sim.substrate.entities.get_mut(1).expect("damaged plant");
-            damaged.health = Health { current: 40 };
-            let intact = sim.substrate.entities.get_mut(2).expect("intact plant");
-            intact.health = Health { current: 100 };
-        }
-        let repairing = |sim: &Simulation| {
-            sim.sound_events
-                .iter()
-                .filter(
-                    |event| matches!(event, SimSoundEvent::Repairing { owner: o } if *o == owner),
-                )
-                .count()
-        };
-
-        assert!(toggle_repair(&mut sim, &rules, 1));
-        assert_eq!(
-            repairing(&sim),
-            1,
-            "switching repair on a damaged building speaks"
-        );
-        assert!(toggle_repair(&mut sim, &rules, 1));
-        assert_eq!(repairing(&sim), 1, "switching it off is silent");
-        assert!(toggle_repair(&mut sim, &rules, 2));
-        assert_eq!(repairing(&sim), 1, "a building at full strength is silent");
     }
 }

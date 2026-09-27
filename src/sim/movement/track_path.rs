@@ -818,7 +818,7 @@ impl Simulation {
             actor.navigation.nav_queue.clear();
         }
         let skip_move_to = teleporter && self.unit_teleporter_arm(id, Some(cell), rules);
-        if !self.begin_foot_destination(id, true, rules) {
+        if !self.begin_foot_destination(id, true) {
             return false;
         }
         let frame = self.session.binary_frame;

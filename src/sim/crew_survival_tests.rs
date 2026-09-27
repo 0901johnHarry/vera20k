@@ -263,16 +263,27 @@ fn survivor_count_divides_the_refund_by_the_side_divisor() {
     }
 }
 
-/// `BuildingClass::ChangeOwner @ 0x00448723` marks the transferred building.
+/// `BuildingClass::ChangeOwner @ 0x00448723` marks the transferred building,
+/// and its repair stops without a sound (`0x00448CE8`).
 #[test]
 fn a_captured_building_remembers_it() {
     let rules = rules();
     let mut sim = sim_with_houses(1);
     let id = spawn(&mut sim, &rules, "GAPOWR", "Americans", 10, 10);
     assert!(!sim.substrate.entities.get(id).unwrap().has_been_captured);
+    sim.substrate.entities.get_mut(id).unwrap().repairing = true;
+    sim.sound_events.clear();
     let russians = sim.interner.intern("Russians");
     sim.change_owner_with_rules(id, russians, &rules);
-    assert!(sim.substrate.entities.get(id).unwrap().has_been_captured);
+    let building = sim.substrate.entities.get(id).unwrap();
+    assert!(building.has_been_captured);
+    assert!(!building.repairing);
+    assert!(
+        !sim.sound_events
+            .iter()
+            .any(|event| matches!(event, crate::sim::world::SimSoundEvent::VocAt { .. })),
+        "no ToggleRepair"
+    );
 }
 
 /// Phase B on an uncaptured ConYard: per cell, the survivor roll (while any
@@ -477,6 +488,7 @@ fn load_absorbed(sim: &mut Simulation, rules: &RuleSet, building: u64, count: us
                 .expect("absorbed infantry");
             sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
                 transport_id: building,
+                open_topped: false,
             };
             let cargo = sim
                 .substrate
@@ -815,9 +827,12 @@ fn load_passengers(
     owner: &str,
     count: usize,
 ) -> Vec<u64> {
-    let (rx, ry) = {
+    let (rx, ry, open_topped) = {
         let entity = sim.substrate.entities.get(transport).unwrap();
-        (entity.position.rx, entity.position.ry)
+        let open_topped = rules
+            .object(sim.interner.resolve(entity.type_ref()))
+            .is_some_and(|object| object.open_topped);
+        (entity.position.rx, entity.position.ry, open_topped)
     };
     let passengers: Vec<u64> = (0..count)
         .map(|_| {
@@ -828,6 +843,7 @@ fn load_passengers(
     for &id in passengers.iter().rev() {
         sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
             transport_id: transport,
+            open_topped,
         };
         let cargo = sim
             .substrate

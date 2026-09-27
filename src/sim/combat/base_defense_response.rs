@@ -454,7 +454,9 @@ pub(crate) fn respond_to_base_attack(
                 primary_range_leptons: primary_range_leptons(
                     candidate,
                     candidate_object,
+                    context.entities,
                     context.rules,
+                    context.interner,
                 ),
                 existing_target: current_target_disposition(
                     candidate,
