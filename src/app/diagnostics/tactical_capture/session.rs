@@ -989,7 +989,7 @@ impl TacticalCaptureSession {
         let radar_authority = state.rules()
             .is_some_and(|rules| crate::sim::radar::has_radar_for_owner(sim, rules, owner));
         let bound_structures_ready = self.bound_structures_ready(state)?;
-        let no_modal_or_debug = !state.match_state.paused
+        let no_modal_or_debug = !state.match_state.paused()
             && !state.match_state.match_presentation.show_save_load_panel
             && !state.main_menu_dialog_open()
             && !state.diag.debug_show_pathgrid

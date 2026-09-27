@@ -81,27 +81,11 @@ impl Simulation {
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
-            // Aircraft41B920 overrides +54 for the two Rules-designated missile
-            // types. Rocket661F90 reads phase3..5, independently of Mark/height.
-            if entity.category == EntityCategory::Aircraft
-                && rules.is_some_and(|rules| {
-                    let name = self.interner.resolve(entity.type_ref());
-                    name.eq_ignore_ascii_case(&rules.missile_spawn.v3.type_name)
-                        || name.eq_ignore_ascii_case(&rules.missile_spawn.dmisl.type_name)
-                })
-            {
-                return entity
-                    .rocket_state
-                    .as_ref()
-                    .is_some_and(|rocket| rocket.phase.is_moving_now());
-            }
-            // Object virtual+54 checks Mark before GetHeight5F5F40. Use the
-            // existing physical-height authority, including ground/OnBridge.
-            entity.lifecycle.cell_marked
-                && crate::sim::movement::air_movement::current_fly_height(
-                    entity,
-                    self.resolved_terrain.as_ref(),
-                ) >= 208
+            crate::sim::movement::air_movement::is_high_flying(
+                entity,
+                self.resolved_terrain.as_ref(),
+                rules.map(|rules| (rules, &self.interner)),
+            )
         })
     }
 

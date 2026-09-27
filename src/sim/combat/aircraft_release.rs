@@ -38,6 +38,8 @@ fn live_shot<'r>(
                     entity.owner(),
                     target.owner(),
                 ),
+                rules,
+                &world.interner,
             ))
         }),
         Some(TargetKind::Cell(rx, ry)) => Some(combat_weapon::cell_target_facts(
@@ -47,7 +49,7 @@ fn live_shot<'r>(
         )),
         None => None,
     };
-    let selected = combat_weapon::select_weapon_for_emission(
+    let selected = combat_weapon::resolve_selected_weapon(
         rules,
         obj,
         &combat_weapon::attacker_facts(entity, obj),
@@ -226,6 +228,8 @@ impl CombatStrike<'_, '_> {
                         firer.owner(),
                         target.owner(),
                     ),
+                    self.rules,
+                    &world.interner,
                 ))
             }),
             TargetKind::Cell(rx, ry) => Some(combat_weapon::cell_target_facts(

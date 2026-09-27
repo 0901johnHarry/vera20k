@@ -947,9 +947,14 @@ pub(crate) fn can_fire_at_target(
     ) else {
         return false;
     };
-    let Some(source) =
-        in_range::fire_source_coords(attacker, target, selected.weapon, entities, terrain)
-    else {
+    let Some(source) = in_range::fire_source_coords(
+        attacker,
+        target,
+        selected.weapon,
+        entities,
+        terrain,
+        (rules, interner),
+    ) else {
         return false;
     };
     in_range::compute_in_range(
@@ -1104,7 +1109,9 @@ pub(crate) fn pursuit_in_range(
         };
     };
 
-    let Some(src) = in_range::fire_source_coords(entity, target, weapon, entities, terrain) else {
+    let Some(src) =
+        in_range::fire_source_coords(entity, target, weapon, entities, terrain, (rules, interner))
+    else {
         // The attacker has no resolvable ground height (off-grid). Report
         // "keep closing" rather than freezing; the fire gate returns without
         // firing on the same condition.

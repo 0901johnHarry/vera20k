@@ -142,7 +142,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         // Native starts at6FE4F2, after admission. Its supplied six-cell
         // target is outside retail HoverMissile's range; do not bypass that
         // real gate by changing rules or claim this fixture proves admission.
-        let selected = super::combat_weapon::select_weapon_for_emission(
+        let selected = super::combat_weapon::resolve_selected_weapon(
             &rules,
             fv_type,
             &super::combat_weapon::attacker_facts(

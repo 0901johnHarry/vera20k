@@ -757,15 +757,35 @@ fn a_dog_released_on_a_bridge_deck_stays_on_the_deck() {
     // height included, and Owner OnBridge = Victim OnBridge; Unlimbo keeps it.
     let rules = rules();
     let mut arena = Arena::new(&rules);
+    // The release boundary supplies a real structural deck beneath both
+    // objects. OnBridge alone on the old clear cells made the low target's
+    // native InRange ground snap fall to Z0, outside BadTeeth's range.
+    for (x, y) in [(10, 10), (11, 10)] {
+        let cell = arena
+            .sim
+            .resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(x, y)
+            .unwrap();
+        cell.bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+        cell.has_bridge_deck = true;
+        cell.bridge_walkable = true;
+        cell.bridge_deck_level = 4;
+    }
+    assert!(arena.sim.rebuild_dynamic_navigation(&rules));
+    arena.grid = (*arena.sim.path_grid_snapshot().unwrap()).clone();
     let dog = arena.spawn(&rules, "DOG", "Russians", (10, 10));
     let gi = arena.spawn(&rules, "E1", "Americans", (11, 10));
     // Both stand on a deck four levels up.
     let deck = 4 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
     for id in [dog, gi] {
+        arena.sim.remove_entity_occupancy(id);
         let entity = arena.sim.substrate.entities.get_mut(id).unwrap();
         entity.on_bridge = true;
         entity.position.z = 4;
         entity.position.exact_z_leptons = Some(deck);
+        arena.sim.add_entity_occupancy(id);
     }
     arena.attack(dog, gi);
     arena.until(&rules, 60, |sim| {

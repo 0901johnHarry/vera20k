@@ -341,8 +341,10 @@ mod tests {
                 },
             ),
             (
+                // An open menu is a pause (`MatchState::paused`).
                 "menu redraw",
                 RuntimePassInputs {
+                    paused: true,
                     menu_open: true,
                     ..admitting
                 },

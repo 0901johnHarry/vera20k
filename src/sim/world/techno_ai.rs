@@ -7099,3 +7099,7 @@ mod bounce_terrain;
 #[cfg(test)]
 #[path = "techno_ai/signed_health_tests.rs"]
 mod signed_health_tests;
+
+#[cfg(test)]
+#[path = "techno_ai/bridge_target_layer_tests.rs"]
+mod bridge_target_layer_tests;

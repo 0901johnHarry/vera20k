@@ -460,7 +460,7 @@ impl ApplicationHandler for App {
         // interactive content.
         let egui_consumed: bool = egui_response.consumed
             && !crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(state)
-            && (state.frontend.screen != GameScreen::InGame || state.match_state.paused || state.match_state.match_presentation.show_save_load_panel);
+            && (state.frontend.screen != GameScreen::InGame || state.match_state.paused() || state.match_state.match_presentation.show_save_load_panel);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -545,10 +545,11 @@ impl ApplicationHandler for App {
             WindowEvent::ModifiersChanged(modifiers) => {
                 // Native's paused input capture admits Escape only and does not
                 // mutate the recorded keyboard state for other input.
+                let paused = state.match_state.paused();
                 crate::app::input::hotkeys::record_modifier_event(
                     &mut state.platform.live_modifiers,
                     &mut state.match_state.input.hotkey_modifiers,
-                    modifiers.state(), state.match_state.paused,
+                    modifiers.state(), paused,
                 );
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -574,7 +575,7 @@ impl ApplicationHandler for App {
                     let is_escape: bool =
                         code == KeyCode::Escape && event.state.is_pressed() && !event.repeat;
                     let in_game: bool = state.frontend.screen == GameScreen::InGame;
-                    let paused_at_event = in_game && state.match_state.paused;
+                    let paused_at_event = in_game && state.match_state.paused();
 
                     if crate::app::frontend::shell_transition::blocks_shell_input(state) {
                         return;
@@ -1040,7 +1041,7 @@ impl ApplicationHandler for App {
                 }
                 if !egui_consumed
                     && (state.frontend.screen == GameScreen::SpawnPick
-                        || (state.frontend.screen == GameScreen::InGame && !state.match_state.paused))
+                        || (state.frontend.screen == GameScreen::InGame && !state.match_state.paused()))
                 {
                     // Every wheel notch scrolls the active build strip by one
                     // row, wherever the cursor is. gamemd routes the wheel

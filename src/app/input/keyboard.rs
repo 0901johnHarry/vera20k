@@ -46,7 +46,6 @@ pub(crate) fn open(state: &mut AppState, parent: KeyboardParent) {
         crate::app::persistence::options::accept_in_game_options(state);
         state.match_state.match_presentation.in_game_menu =
             crate::ui::pause_menu::InGameMenuState::Keyboard;
-        state.match_state.paused = true;
     }
     let commands = registered_commands()
         .iter()

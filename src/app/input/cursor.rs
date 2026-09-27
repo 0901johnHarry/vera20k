@@ -834,6 +834,9 @@ fn resolved_unit_in_range(
     let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
         return false;
     };
+    // Height predicates execute native map queries. Keep their shared fallback
+    // identity local to this input probe, across source/range and both slots.
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::isolated);
     for slot in [obj.primary.as_ref(), obj.secondary.as_ref()] {
         let weapon = match slot.and_then(|w| rules.weapon(w)) {
             Some(w) => w,
@@ -842,18 +845,19 @@ fn resolved_unit_in_range(
         if weapon.range <= crate::util::fixed_math::SIM_ZERO {
             continue;
         }
-        let in_range = if let Some(t) = terrain {
+        let in_range = if let Some(cells) = cells.as_ref() {
             let entity_target = combat::TargetKind::Entity(target_id);
-            let Some(src) = combat::in_range::fire_source_coords(
+            let Some(src) = combat::in_range::fire_source_coords_in_query(
                 entity,
                 &entity_target,
                 weapon,
                 sim.entities(),
-                t,
+                cells,
+                (rules, &sim.interner),
             ) else {
                 continue;
             };
-            combat::in_range::compute_in_range(
+            combat::in_range::compute_in_range_in_query(
                 entity,
                 src,
                 &entity_target,
@@ -861,7 +865,7 @@ fn resolved_unit_in_range(
                 rules,
                 &sim.interner,
                 sim.entities(),
-                t,
+                cells,
                 &combat::line_of_fire::LineOfFireInputs {
                     overlay_grid: sim.overlay_grid.as_ref(),
                     overlay_registry,
@@ -1633,6 +1637,105 @@ mod tests {
             .spawn_object("MTNK", "Americans", 2, 2, 0, &rules, &height_map)
             .expect("tank spawned");
         (sim, rules, tank)
+    }
+
+    #[test]
+    fn attack_cursor_missing_cell_queries_preserve_simulation_dummy_and_hash() {
+        use crate::map::resolved_terrain::ResolvedTerrainGrid;
+        use crate::sim::combat::{TargetKind, in_range, line_of_fire::LineOfFireInputs};
+
+        let (mut sim, rules, actor_id) = sim_with_tank();
+        let target_id = sim
+            .spawn_object("MTNK", "Soviets", 3, 2, 0, &rules, &BTreeMap::new())
+            .expect("enemy target");
+        // Both live objects deliberately miss this allocated map. Their exact
+        // Z and marked state force source +54 and target +50/+54 to read the
+        // native fallback Cell rather than bypassing the query as limbo objects.
+        for id in [actor_id, target_id] {
+            let entity = sim.entities_mut().get_mut(id).unwrap();
+            entity.position.exact_z_leptons = Some(900);
+            entity.lifecycle.cell_marked = true;
+        }
+        let mut retained_cell = flat_land_cell(0, 0);
+        // A bridge anchor retaining Dummy makes its requested coordinate a
+        // deterministic future input. World hashing intentionally omits that
+        // transient coordinate when no Bullet or bridge anchor retains it.
+        retained_cell.bridge_facts.native_anchor =
+            Some(crate::map::cell_index::NativeCellIdentity::Dummy);
+        sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+            1,
+            1,
+            vec![retained_cell],
+        ));
+        let dummy = sim.effective_shared_cell_dummy();
+        dummy.stamp_coord(111, -222);
+        dummy.set_level_slope(2, 1);
+        dummy.test_set_land_type(4);
+        dummy.test_set_retained_bridge_flags(0x1180);
+        let initial = dummy.snapshot();
+        let initial_hash = sim.state_hash();
+        let hover = HoverTargetKindWithId {
+            kind: HoverTargetKind::EnemyUnit,
+            stable_id: target_id,
+        };
+        for _ in 0..3 {
+            assert_eq!(
+                capability_cursor_for_hover(
+                    &sim,
+                    &[actor_id],
+                    Some(actor_id),
+                    &hover,
+                    Some(&rules),
+                    None,
+                    None,
+                ),
+                CursorFeedbackKind::EnemyUnit,
+            );
+            assert_eq!(
+                dummy.snapshot(),
+                initial,
+                "cursor must not stamp canonical Dummy"
+            );
+            assert_eq!(dummy.land_type(), 4);
+            assert_eq!(
+                sim.state_hash(),
+                initial_hash,
+                "input probing must not change simulation"
+            );
+        }
+
+        // The ordinary simulation wrappers must still perform these same
+        // lookups canonically. This also proves the fixture really reaches
+        // missing-cell source and target reads instead of an early return.
+        let terrain = sim.resolved_terrain.as_ref().unwrap();
+        let actor = sim.entities().get(actor_id).unwrap();
+        let target = TargetKind::Entity(target_id);
+        let weapon = rules.weapon("105mm").unwrap();
+        let source = in_range::fire_source_coords(
+            actor,
+            &target,
+            weapon,
+            sim.entities(),
+            terrain,
+            (&rules, &sim.interner),
+        )
+        .unwrap();
+        assert_eq!(dummy.snapshot().coord, (2, 2));
+        assert!(in_range::compute_in_range(
+            actor,
+            source,
+            &target,
+            weapon,
+            &rules,
+            &sim.interner,
+            sim.entities(),
+            terrain,
+            &LineOfFireInputs::terrain_only(),
+        ));
+        // InRange's final source-cell bridge query6F7601 follows the
+        // target height/ground queries, restoring the source's Dummy XY.
+        assert_eq!(dummy.snapshot().coord, (2, 2));
+        assert_ne!(sim.state_hash(), initial_hash);
     }
 
     /// gamemd answers action 2 (no-move) for a cell its occupancy probe rejects,
