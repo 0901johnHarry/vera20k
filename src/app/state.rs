@@ -41,12 +41,7 @@ pub(crate) fn reset_scenario_exit_runtime(state: &mut AppState) {
     state.match_state.scenario_outcome = None;
     state.match_state.scenario_exit = None;
     state.audio.cancel_scenario_theme_request();
-    if let Some(player) = state.audio.music_player.as_mut() {
-        player.set_output_scale(1.0);
-    }
-    if let Some(player) = state.audio.sfx_player.as_mut() {
-        player.set_output_scale(1.0);
-    }
+    state.audio.set_master_output_scale(1.0);
 }
 
 impl AppState {

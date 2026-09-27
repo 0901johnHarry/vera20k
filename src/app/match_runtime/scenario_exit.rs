@@ -108,11 +108,9 @@ enum ScenarioExitPhase {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub(crate) struct ScenarioExitTick {
-    /// Effective multiplier for live music. Abort combines Theme and master
-    /// fades, while an outcome has only the master fade.
-    pub music_output_scale: Option<f64>,
-    /// Master multiplier for live SFX and voices.
-    pub sfx_output_scale: Option<f64>,
+    /// The audio master's multiplier over live music, SFX and voices. On abort
+    /// the music also carries Theme's own fade, which the Theme owner runs.
+    pub master_output_scale: Option<f64>,
     /// One-shot hard-stop/queue-clear edge before committing the destination.
     pub stop_audio: bool,
     /// One-shot audio action issued after hard-stop and scale restoration.
@@ -169,27 +167,20 @@ impl ScenarioExitCascade {
     /// gamemd provenance: ordinary offline scenario exit; verified
     /// `0x00685670` and `0x00685DC0` both run master target-zero + wait, then
     /// pump voices for at most 300 16-ms buckets, then stop audio before the
-    /// score dialog. `0x00686570` first starts Theme's own fade and then the
-    /// independent master fade, so abort music receives the product of both.
+    /// score dialog. `0x00686570` first starts Theme's own fade
+    /// (`ThemeClass::Stop(1)` @ `0x006865FA`, which the route entry hands to
+    /// the Theme owner) and then this independent master fade
+    /// (`[0x0087E758]` @ `0x00686605`), so abort music receives the product
+    /// of both.
     pub(crate) fn tick(&mut self, wall_ms: u64, voices_active: bool) -> ScenarioExitTick {
         let fade_elapsed_ms = wall_ms.saturating_sub(self.started_at_ms);
         match self.phase {
-            ScenarioExitPhase::FadeAudio if fade_elapsed_ms < AUDIO_FADE_MS => {
-                let master_scale = (1.0 - fade_elapsed_ms as f64 / AUDIO_FADE_MS as f64).max(0.0);
-                let theme_scale = if matches!(
-                    self.destination.as_ref(),
-                    Some(ScenarioExitDestination::MainMenu)
-                ) {
-                    master_scale
-                } else {
-                    1.0
-                };
-                ScenarioExitTick {
-                    music_output_scale: Some(master_scale * theme_scale),
-                    sfx_output_scale: Some(master_scale),
-                    ..Default::default()
-                }
-            }
+            ScenarioExitPhase::FadeAudio if fade_elapsed_ms < AUDIO_FADE_MS => ScenarioExitTick {
+                master_output_scale: Some(
+                    (1.0 - fade_elapsed_ms as f64 / AUDIO_FADE_MS as f64).max(0.0),
+                ),
+                ..Default::default()
+            },
             ScenarioExitPhase::FadeAudio => {
                 self.phase = ScenarioExitPhase::WaitForVoices;
                 // Native takes a fresh timer reading only after its blocking
@@ -216,8 +207,7 @@ impl ScenarioExitCascade {
         if !voices_active || elapsed_buckets >= VOICE_WAIT_BUCKETS {
             self.phase = ScenarioExitPhase::Done;
             ScenarioExitTick {
-                music_output_scale: Some(0.0),
-                sfx_output_scale: Some(0.0),
+                master_output_scale: Some(0.0),
                 stop_audio: true,
                 after_stop: matches!(
                     self.destination.as_ref(),
@@ -228,8 +218,7 @@ impl ScenarioExitCascade {
             }
         } else {
             ScenarioExitTick {
-                music_output_scale: Some(0.0),
-                sfx_output_scale: Some(0.0),
+                master_output_scale: Some(0.0),
                 ..Default::default()
             }
         }
@@ -271,14 +260,12 @@ mod tests {
         assert_eq!(exit.take_start_voice_action(), None);
 
         let half = exit.tick(515, false);
-        assert_eq!(half.music_output_scale, Some(0.5));
-        assert_eq!(half.sfx_output_scale, Some(0.5));
+        assert_eq!(half.master_output_scale, Some(0.5));
         assert!(!half.stop_audio && !half.finished);
         assert!(exit.take_destination().is_none());
 
         let fade_edge = exit.tick(1_015, true);
-        assert_eq!(fade_edge.music_output_scale, Some(0.0));
-        assert_eq!(fade_edge.sfx_output_scale, Some(0.0));
+        assert_eq!(fade_edge.master_output_scale, Some(0.0));
         assert!(!fade_edge.stop_audio && !fade_edge.finished);
         assert!(exit.take_destination().is_none());
 
@@ -303,9 +290,10 @@ mod tests {
         );
         assert_eq!(exit.take_start_voice_action(), None);
 
+        // Theme's own fade is the Theme owner's; the master fade is the
+        // same as an outcome's.
         let half = exit.tick(515, true);
-        assert_eq!(half.music_output_scale, Some(0.25));
-        assert_eq!(half.sfx_output_scale, Some(0.5));
+        assert_eq!(half.master_output_scale, Some(0.5));
         assert!(!exit.needs_voice_poll(1_014));
         assert!(exit.needs_voice_poll(1_015));
 
