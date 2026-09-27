@@ -1,7 +1,9 @@
-//! Concrete ground-bridge damage57CCF0/57CF60/57D530 and sibling57E7A0/57ED00.
+//! Ordinary wooden57BAA0/57BCF0/57C2B0 and concrete57CCF0/57CF60/57D530
+//! bridge damage, with sibling57DD50/57E2A0 and57E7A0/57ED00 propagation.
 //! Cell writes, Recalc and live occupants are synchronous. Neither first
 //! damage nor final collapse calls structural BlowUpBridge47DD70.
-//! Native executable corpus: tools/spatial_oracle/bridge_ordinary_damage.
+//! Native executable corpora: tools/spatial_oracle/bridge_ordinary_damage
+//! and tools/spatial_oracle/shrapnel_damage/scalar.
 use super::Axis;
 use super::ordinary::{OrdinaryBridgeHost, centered, member, offset};
 use super::publication::CellCoord;
@@ -14,11 +16,12 @@ pub(crate) trait OrdinaryDamageHost: OrdinaryBridgeHost {
 pub(crate) fn damage<H: OrdinaryDamageHost>(
     host: &mut H,
     input: CellCoord,
+    family: Family,
 ) -> Result<bool, H::Error> {
-    let Some((point, ns)) = centered(host, input, Family::High) else {
+    let Some((point, ns)) = centered(host, input, family) else {
         return Ok(false);
     };
-    root(host, point, ns)
+    root(host, point, ns, family)
 }
 
 fn group<H: OrdinaryBridgeHost>(host: &mut H, point: CellCoord, ns: bool) -> [H::Cell; 3] {
@@ -44,12 +47,21 @@ fn recalc_and_occupants<H: OrdinaryBridgeHost>(
     Ok(())
 }
 
-fn root<H: OrdinaryDamageHost>(host: &mut H, point: CellCoord, ns: bool) -> Result<bool, H::Error> {
+fn root<H: OrdinaryDamageHost>(
+    host: &mut H,
+    point: CellCoord,
+    ns: bool,
+    family: Family,
+) -> Result<bool, H::Error> {
     let [center, negative, positive] = group(host, point, ns);
     let prior = host.overlay(center);
-    let threshold = if ns { 211 } else { 220 };
-    let end = if ns { 223 } else { 227 };
-    let destroyed = if ns { 231 } else { 232 };
+    let base = match family {
+        Family::Low => 74,
+        Family::High => 205,
+    };
+    let threshold = base + if ns { 6 } else { 15 };
+    let end = base + if ns { 18 } else { 22 };
+    let destroyed = base + if ns { 26 } else { 27 };
     let (next, before, after, collapsed) = if prior == end {
         (end + 1, ns, !ns, false)
     } else if prior == end + 2 {
@@ -61,7 +73,7 @@ fn root<H: OrdinaryDamageHost>(host: &mut H, point: CellCoord, ns: bool) -> Resu
     } else {
         return Ok(false);
     };
-    // Root57D71B/57CF60 stores both sides before center. The retained
+    // Both families' roots store both sides before center. The retained
     // identities survive propagation callbacks and their recursive damage.
     for cell in [negative, positive, center] {
         host.write_overlay(cell, next as u8);
@@ -73,25 +85,26 @@ fn root<H: OrdinaryDamageHost>(host: &mut H, point: CellCoord, ns: bool) -> Resu
     }
     let along = if ns { (1, 0) } else { (0, 1) };
     if before {
-        propagate(host, offset(point, -along.0, -along.1), ns)?;
+        propagate(host, offset(point, -along.0, -along.1), ns, family)?;
     }
     if after {
-        propagate(host, offset(point, along.0, along.1), ns)?;
+        propagate(host, offset(point, along.0, along.1), ns, family)?;
     }
     if collapsed {
-        //57DC20/57DAF0 scan after sibling callbacks. Endpoint membership is
+        //57C990/57C870 and57DC20/57DAF0 scan after sibling callbacks. Membership is
         // live, and the untagged575EE0 traversal still performs cell lookups.
-        let first = endpoint(host, point, -along.0, -along.1);
-        let last = endpoint(host, point, along.0, along.1);
+        let first = endpoint(host, point, -along.0, -along.1, family);
+        let last = endpoint(host, point, along.0, along.1, family);
         host.notify_span(first, last)?;
     }
     host.redraw(center);
-    // Concrete NS uses its final-collapse byte; EW always passes1, including
-    // first damage. Executed corpus proves this intentional asymmetry.
+    // Wooden57C24D/57C80D and concrete NS use the final-collapse byte.
+    // Concrete EW always passes1, including first damage. Both native corpora
+    // execute these distinct caller modes; family names do not imply height.
     recalc_and_occupants(
         host,
         [center, negative, positive],
-        u8::from(!ns || collapsed),
+        u8::from((family == Family::High && !ns) || collapsed),
     )?;
     if collapsed {
         host.connectivity()?;
@@ -100,12 +113,18 @@ fn root<H: OrdinaryDamageHost>(host: &mut H, point: CellCoord, ns: bool) -> Resu
     Ok(collapsed)
 }
 
-fn endpoint<H: OrdinaryBridgeHost>(host: &mut H, start: CellCoord, dx: i16, dy: i16) -> CellCoord {
+fn endpoint<H: OrdinaryBridgeHost>(
+    host: &mut H,
+    start: CellCoord,
+    dx: i16,
+    dy: i16,
+    family: Family,
+) -> CellCoord {
     let mut point = start;
     loop {
         let next = offset(point, dx, dy);
         let cell = host.lookup(next);
-        if !member(host.overlay(cell), Family::High) {
+        if !member(host.overlay(cell), family) {
             return point;
         }
         point = next;
@@ -116,22 +135,27 @@ fn propagate<H: OrdinaryBridgeHost>(
     host: &mut H,
     point: CellCoord,
     ns: bool,
+    family: Family,
 ) -> Result<(), H::Error> {
     let selected = host.lookup(point);
-    if !member(host.overlay(selected), Family::High) {
+    if !member(host.overlay(selected), family) {
         return Ok(());
     }
     let [center, negative, positive] = group(host, point, ns);
-    //57CAB0 reads east then west;57CBE0 reads north then south. Keep lookup
+    //57B870/57CAB0 read east then west;57B990/57CBE0 north then south. Keep lookup
     // order even for a shared dummy. The center is reread after both probes.
     let step = if ns { (1, 0) } else { (0, -1) };
     let first = host.lookup(offset(point, step.0, step.1));
     let first = host.overlay(first);
     let second = host.lookup(offset(point, -step.0, -step.1));
     let second = host.overlay(second);
-    let base = if ns { 205 } else { 214 };
-    let end = if ns { 223 } else { 227 };
-    let destroyed = if ns { 231 } else { 232 };
+    let family_base = match family {
+        Family::Low => 74,
+        Family::High => 205,
+    };
+    let base = family_base + if ns { 0 } else { 9 };
+    let end = family_base + if ns { 18 } else { 22 };
+    let destroyed = family_base + if ns { 26 } else { 27 };
     let mut index = 0;
     if [base + 4, base + 6, base + 8, end + 1].contains(&first) {
         index |= 1;
@@ -151,7 +175,7 @@ fn propagate<H: OrdinaryBridgeHost>(
         let Some(next) = crate::sim::bridge_specs::pick_destruction_overlay(
             index,
             if ns { Axis::NS } else { Axis::EW },
-            true,
+            family == Family::High,
         ) else {
             return Ok(());
         };

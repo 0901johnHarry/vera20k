@@ -1178,8 +1178,8 @@ pub(crate) fn build_parachute_instances(
 }
 
 #[cfg(test)]
-#[path = "concrete_bridge_gpu_tests.rs"]
-mod concrete_bridge_gpu_tests;
+#[path = "ordinary_bridge_gpu_tests.rs"]
+mod ordinary_bridge_gpu_tests;
 
 #[cfg(test)]
 #[path = "terrain_render_tests.rs"]

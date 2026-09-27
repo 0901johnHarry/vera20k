@@ -10,13 +10,14 @@ use crate::sim::bridge_state::ordinary_repair::OrdinaryRepairHost;
 use crate::sim::bridge_state::ramp_repair::{Family, Rect, RepairHost};
 use crate::sim::bridge_state::{ordinary_repair, ramp_repair};
 
-/// Already-admitted57CCF0 receiver. The area-damage caller owns strength RNG
+/// Already-admitted57BAA0/57CCF0 receiver. The area-damage caller owns strength RNG
 /// and detaches the original impact cell only when this driver returns true.
-pub(crate) fn damage_concrete(
+pub(crate) fn damage_ordinary(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
+    family: Family,
 ) -> Result<BodyResult, String> {
     let mut live = LivePublication {
         sim,
@@ -30,6 +31,7 @@ pub(crate) fn damage_concrete(
             changed: false,
         },
         input,
+        family,
     )?;
     Ok(BodyResult {
         returned,
@@ -252,7 +254,9 @@ impl OrdinaryBridgeHost for LiveOrdinary<'_, '_> {
     }
     fn write_overlay(&mut self, cell: Cell, overlay: u8) {
         self.changed = true;
-        if matches!(overlay, 231 | 232) && self.overlay_identity(cell) != i32::from(overlay) {
+        if matches!(overlay, 100 | 101 | 231 | 232)
+            && self.overlay_identity(cell) != i32::from(overlay)
+        {
             self.live.collapsed = true;
         }
         self.live
@@ -308,7 +312,7 @@ impl OrdinaryDamageHost for LiveOrdinary<'_, '_> {
         crate::sim::bridge_state::rim::visit_span_cells(first, end, |point| {
             let cell = self.live.lookup(point);
             // The same tagged event31 dependency remains open as in the rim
-            // publisher. The selected stock Anytown span has no CellTags.
+            // publisher. The selected stock Anytown/Shrapnel spans have no CellTags.
             self.live.coord(cell)
         });
         Ok(())
@@ -318,6 +322,10 @@ impl OrdinaryDamageHost for LiveOrdinary<'_, '_> {
 #[cfg(test)]
 #[path = "bridge_concrete_damage_tests.rs"]
 mod concrete_tests;
+
+#[cfg(test)]
+#[path = "bridge_wood_damage_tests.rs"]
+mod wood_tests;
 
 #[cfg(test)]
 #[path = "bridge_repair_publication_tests.rs"]
@@ -335,3 +343,7 @@ mod walk_failed_path_tests;
 #[cfg(test)]
 #[path = "walk_prehead_response_tests.rs"]
 mod walk_prehead_response_tests;
+
+#[cfg(test)]
+#[path = "bridge_wood_occupant_tests.rs"]
+mod wood_occupant_tests;

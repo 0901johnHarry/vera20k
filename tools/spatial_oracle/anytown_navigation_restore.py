@@ -37,17 +37,19 @@ class AtBoundary(Exception):
 
 
 class RestoreProbe(Navigation):
-    def __init__(self, readers, theater, tiles, stop_after):
+    def __init__(self, readers, theater, tiles, stop_after, *,
+                 primitive_entries=(0x57CCF0, 0x573540), **navigation_inputs):
         self.capture_enabled = False
         self.stop_after = stop_after
+        self.primitive_entries = primitive_entries
         self.primitive_calls = []
         self.rebuild_trace = []
-        super().__init__(readers, theater, tiles)
+        super().__init__(readers, theater, tiles, **navigation_inputs)
         self.capture_enabled = True
 
     def call(self, address, *args, **kwargs):
         result = super().call(address, *args, **kwargs)
-        if self.capture_enabled and address in (0x57CCF0, 0x573540):
+        if self.capture_enabled and address in self.primitive_entries:
             self.primitive_calls.append(dict(entry=address, returned_eax=result,
                                             returned_low_byte=result & 255))
             if len(self.primitive_calls) == self.stop_after:
@@ -70,18 +72,24 @@ class RestoreProbe(Navigation):
         return super().observe(u, address, size, data)
 
 
-def generate():
-    frozen_bytes = FROZEN.read_bytes()
-    assert sha(frozen_bytes) == FROZEN_SHA256
+def generate(*, frozen_path=FROZEN, frozen_sha256=FROZEN_SHA256,
+             frozen_payload_sha256=FROZEN_PAYLOAD_SHA256, stages=STAGES,
+             input_factory=None):
+    frozen_bytes = frozen_path.read_bytes()
+    assert sha(frozen_bytes) == frozen_sha256
     frozen = json.loads(gzip.decompress(frozen_bytes))
-    assert sha(_canonical(frozen)) == FROZEN_PAYLOAD_SHA256
-    theater = identity.theater()
-    readers = Inputs(theater)
-    tiles, assets = extract_tiles(theater)
+    assert sha(_canonical(frozen)) == frozen_payload_sha256
+    if input_factory is None:
+        theater = identity.theater()
+        readers = Inputs(theater)
+        tiles, assets = extract_tiles(theater)
+        machine_factory = lambda stop_after: RestoreProbe(readers, theater, tiles, stop_after)
+    else:
+        readers, assets, machine_factory = input_factory()
     cases = []
-    for index, stage in enumerate(STAGES):
+    for index, stage in enumerate(stages):
         print('Preparing independent native boundary:', stage, flush=True)
-        machine = RestoreProbe(readers, theater, tiles, index + 1)
+        machine = machine_factory(index + 1)
         assert not first_difference(frozen['initial'], normalized(machine.initial))
         try:
             machine.run()  # Exact frozen owner driver; no copied primitive dispatch loop.
@@ -128,9 +136,9 @@ def generate():
               '->', [len(g['records']) for g in after['graphs']], flush=True)
         del machine
         gc.collect()
-    return dict(schema=1, frozen_navigation_file=FROZEN.name,
-                frozen_navigation_sha256=FROZEN_SHA256,
-                frozen_navigation_payload_sha256=FROZEN_PAYLOAD_SHA256,
+    return dict(schema=1, frozen_navigation_file=frozen_path.name,
+                frozen_navigation_sha256=frozen_sha256,
+                frozen_navigation_payload_sha256=frozen_payload_sha256,
                 source_evidence_sha256=sha(SOURCE_EVIDENCE.read_bytes()),
                 native_inputs=readers.snapshot(), assets=assets,
                 native_size=frozen['case']['size'], cases=cases)
@@ -171,12 +179,13 @@ def publish(data=generate, argv=None):
                              promotion_path=HERE / 'anytown_navigation_restore.promotion.json')
 
 
-def compare_restored_prefix(prefix):
+def compare_restored_prefix(prefix, *, native_path=None,
+                            suffixes=('damaged', 'collapsed', 'repaired')):
     """Compare complete post-load graphs and base source facts for all three states."""
-    native_path = HERE / 'anytown_navigation_restore.json.gz'
+    native_path = native_path or HERE / 'anytown_navigation_restore.json.gz'
     native = packet_io.read_result(native_path)
     rows = []
-    for case, suffix in zip(native['cases'], ('damaged', 'collapsed', 'repaired'), strict=True):
+    for case, suffix in zip(native['cases'], suffixes, strict=True):
         path = Path(str(prefix) + '.restored_' + suffix + '.json')
         exported = json.loads(path.read_bytes())
         actual = exported.get('navigation', exported)
@@ -199,10 +208,11 @@ def compare_restored_prefix(prefix):
                          native_graph_record_counts=[len(g['records']) for g in expected['graphs']],
                          production_graph_record_counts=[len(g['records']) for g in actual['graphs']],
                          all_compared_equal=all(row['equal'] for row in checks.values())))
+    count = 'three' if len(suffixes) == 3 else str(len(suffixes))
     return dict(schema=1, native_file=native_path.name,
                 native_sha256=sha(native_path.read_bytes()),
                 native_payload_sha256=sha(_canonical(native)),
-                scope='Complete class/height/base-ID planes,13 movement rows,base zone count,native map size and all ordered hierarchy IDs/padding/records/edges for three restored bridge states. No full native save/load or actor-world comparison.',
+                scope=f'Complete class/height/base-ID planes,13 movement rows,base zone count,native map size and all ordered hierarchy IDs/padding/records/edges for {count} restored bridge states. No full native save/load or actor-world comparison.',
                 states=rows, all_compared_equal=all(row['all_compared_equal'] for row in rows))
 
 
@@ -230,4 +240,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

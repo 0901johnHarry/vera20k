@@ -23,9 +23,16 @@ class Occupied(Native):
    ordered=[entries[crc(k)] for k in keys];end=self.alloc(0x20)
    if ordered:self.u.mem_write(sec+0x18,dwords(ordered[0]))
    for j,p in enumerate(ordered):self.u.mem_write(p+4,dwords(ordered[j+1] if j+1<len(ordered) else end,ordered[j-1] if j else end))
- def __init__(self,donor,t,case):
+ def __init__(self,donor,t,case,*,scene=None):
+  # Scene data only: other ordinary bridge families reuse the same native
+  # actor/Drive/receiver/lifetime owner. Defaults preserve the frozen Anytown
+  # execution, including its separately declared physical layer boundaries.
+  self.scene=scene or dict(impact_cell=[87,54],ground_z=416,
+   map_path=identity.ASSETS/'XMP03T4.MAP',area_entry=0x48A2B4,area_stop=0x48A2C4,
+   span=[(x,y) for y in range(51,58) for x in range(86,89)])
+  impact=self.scene['impact_cell'];ground_z=self.scene['ground_z']
   self.visit=0;self.events2=[];self.return_events=[];self.samples=[];self.symbols={};self.active_stage='setup';self.case2=case
-  super().__init__(dict(type='MTNK',current=[87*256+128,54*256+128,416],target=[115,59],member=[115,59]))
+  super().__init__(dict(type='MTNK',current=[impact[0]*256+128,impact[1]*256+128,ground_z],target=[115,59],member=[115,59]))
   u=self.u;self.phase='setup'
   self.read_extra()
   self.inputs['type']=self.type_state();self.inputs.pop('ship_vtable');self.inputs.pop('ship_at_coord')
@@ -36,18 +43,18 @@ class Occupied(Native):
    if start>=0x40000000:u.mem_map(start,end-start+1,perms);u.mem_write(start,bytes(donor.u.mem_read(start,end-start+1)))
   for p,n in ((MAP,0x200),(0xC00000,0x100000),(0xABDC50,0x200),(0xA8ED2C,4),(0xA8ED38,4),(0xA83D84,4),(0x89EA40,12*36)):
    u.mem_write(p,bytes(donor.u.mem_read(p,n)))
-  self.cells=dict(donor.ptrs);self.current=tuple(case['current_cell']);self.current_cell=self.cells[self.current];self.selected=self.cells[87,54]
+  self.cells=dict(donor.ptrs);self.current=tuple(case['current_cell']);self.current_cell=self.cells[self.current];self.selected=self.cells[tuple(impact)]
   for p in self.cells.values():u.mem_write(p,dwords(0x7E4EEC));u.mem_write(p+0xE4,dwords(0,0));u.mem_write(p+0x122,b'\x10')
   for p,v in t['globals'].items():u.mem_write(p,dwords(v))
   u.mem_write(RULES+0x664,bytes(donor.u.mem_read(0x44400664,1)))
   self.invoke(0x4AF4A0,0)
   for a in (0x561710,0x5617A0,0x5617C0,0x5617E0):self.invoke(a,0)
   self.invoke(0x6D1C20,self.alloc(0x2000));self.invoke(0x5F5B90,self.actor,(0,self.alloc(0x80)))
-  u.mem_write(self.actor+0x9C,dwords(self.current[0]*256+128,self.current[1]*256+128,416))
+  u.mem_write(self.actor+0x9C,dwords(self.current[0]*256+128,self.current[1]*256+128,ground_z))
   u.mem_write(self.actor+0x55C,packed(*self.current));u.mem_write(self.current_cell+0xE4,dwords(self.actor));u.mem_write(self.current_cell+0x124,dwords(0x20));u.mem_write(self.actor+0x74,b'\1')
   u.mem_write(self.actor+0x8C,b'\0');u.mem_write(self.actor+0xAC,dwords(5));u.mem_write(self.actor+0xB0,dwords(-1))
   if case.get('head_cell'):
-   x,y=case['head_cell'];u.mem_write(self.loco+0x40,dwords(x*256+128,y*256+128,416+case.get('head_dz',0)))
+   x,y=case['head_cell'];u.mem_write(self.loco+0x40,dwords(x*256+128,y*256+128,ground_z+case.get('head_dz',0)))
    u.mem_write(self.loco+0x58,dwords(-1,0));u.mem_write(self.loco+0x63,b'\1');u.mem_write(self.actor+0x8D,b'\1');u.mem_write(self.loco+0x50,struct.pack('<d',0.75))
   u.mem_write(self.actor+0x2B4,dwords(self.selected if case.get('target_impact') else 0))
   u.mem_write(0xB0F698,dwords(0x7E91EC,self.alloc(128),32,1,0,10))
@@ -84,7 +91,8 @@ class Occupied(Native):
   self.make_ini(wanted);u.mem_write(0x87E2A0,dwords(1));u.mem_write(0x87E294,dwords(self.alloc(0x100)));self.invoke(0x4072C0,0x87E250);u.mem_write(0xB1D378,dwords(0x7EB6D4,self.alloc(64),16,1,0,10));self.invoke(0x7510D0,INI)
   assert self.invoke(0x7514D0,self.cstring('GenVehicleDie'))==0
   self.extra_layers=[]
-  for name,p in [('RULESMD.INI',ASSETS/'RULESMD.INI'),('MPBattleMD.ini',ASSETS/'MPBattleMD.ini'),('XMP03T4.MAP',identity.ASSETS/'XMP03T4.MAP')]:
+  map_path=self.scene['map_path']
+  for name,p in [('RULESMD.INI',ASSETS/'RULESMD.INI'),('MPBattleMD.ini',ASSETS/'MPBattleMD.ini'),(map_path.name,map_path)]:
    raw=p.read_bytes();sec,_=lexical(raw,{'MTNK','General','AudioVisual'});self.make_ini(sec)
    if 'AudioVisual' in sec:self.block(0x66A6C0,0x66A6E9,{UC_X86_REG_ESI:RULES,UC_X86_REG_EDI:INI})
    if 'General' in sec:self.block(0x66DA90,0x66DB93,{UC_X86_REG_ESI:RULES,UC_X86_REG_EDI:INI})
@@ -155,9 +163,10 @@ class Occupied(Native):
   for stage in ('first_damage','final_collapse'):
    self.active_stage=stage;self.visit=0;self.events2=[];self.calls=[];self.writes=[];self.accesses={};before=self.snapshot();rng0={k:bytes(self.u.mem_read(p,1012)).hex() for k,p in self.rngs.items()}
    self.u.mem_write(SP,dwords(self.selected+0x24));self.u.reg_write(UC_X86_REG_ESP,SP);self.u.reg_write(UC_X86_REG_EDI,self.selected)
-   end=run_checked(self.u,0x48A2B4,0x48A2C4,count=5000000)
+   self.u.reg_write(UC_X86_REG_ECX,MAP)
+   end=run_checked(self.u,self.scene['area_entry'],self.scene['area_stop'],count=5000000)
    assert not self.return_events,self.return_events
-   rows.append(dict(stage=stage,before=before,after=self.snapshot(),events=self.events2,calls=self.calls,writes=self.writes,reads=[dict(region=k[0],offset=hex(k[1]),size=k[2],initial_hex=v)for k,v in sorted(self.accesses.items())],rng_before=rng0,rng_after={k:bytes(self.u.mem_read(p,1012)).hex() for k,p in self.rngs.items()},span=[[x,y,signed(self.read32(self.cells[x,y]+0x44)),signed(self.read32(self.cells[x,y]+0xEC))] for y in range(51,58) for x in range(86,89)]))
+   rows.append(dict(stage=stage,before=before,after=self.snapshot(),events=self.events2,calls=self.calls,writes=self.writes,reads=[dict(region=k[0],offset=hex(k[1]),size=k[2],initial_hex=v)for k,v in sorted(self.accesses.items())],rng_before=rng0,rng_after={k:bytes(self.u.mem_read(p,1012)).hex() for k,p in self.rngs.items()},span=[[x,y,signed(self.read32(self.cells[x,y]+0x44)),signed(self.read32(self.cells[x,y]+0xEC))] for x,y in self.scene['span']]))
    assert sha(bytes(self.u.mem_read(0x401000,0x3E0000)))==self.code_hash
   return rows
 

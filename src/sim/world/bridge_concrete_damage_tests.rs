@@ -7,8 +7,8 @@ use crate::rules::terrain_rules::LandType;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::DriveCoord;
 use crate::sim::world::bridge_test_evidence::{
-    damage_anytown_concrete, load_anytown_concrete as loaded, repair_anytown_concrete,
-    restored_retail, save_scene,
+    assert_navigation_fields_equal, damage_anytown_concrete, load_anytown_concrete as loaded,
+    navigation_authority, rebuilt_graphs, repair_anytown_concrete, restored_retail, save_scene,
 };
 use serde_json::{Value, json};
 
@@ -44,7 +44,10 @@ fn retail_concrete_damage_repair_and_restore_publish_navigation() {
         saved.push((
             phase,
             save_scene(&scene, phase),
-            navigation_authority(scene.sim()),
+            navigation_authority(
+                scene.sim(),
+                (49..=59).flat_map(|y| (84..=90).map(move |x| (x, y))),
+            ),
         ));
         for hut in [(85, 58), (89, 51)] {
             assert_eq!(
@@ -61,12 +64,22 @@ fn retail_concrete_damage_repair_and_restore_publish_navigation() {
     saved.push((
         "repaired",
         save_scene(&scene, "repaired"),
-        navigation_authority(scene.sim()),
+        navigation_authority(
+            scene.sim(),
+            (49..=59).flat_map(|y| (84..=90).map(move |x| (x, y))),
+        ),
     ));
     for (phase, bytes, expected_navigation) in saved {
         let first = restored_retail(&scene, &pristine, &bytes);
         let mut second = restored_retail(&scene, &pristine, &bytes);
-        assert_navigation_fields_equal(&navigation_authority(&first), &expected_navigation, phase);
+        assert_navigation_fields_equal(
+            &navigation_authority(
+                &first,
+                (49..=59).flat_map(|y| (84..=90).map(move |x| (x, y))),
+            ),
+            &expected_navigation,
+            phase,
+        );
         let first_graphs = rebuilt_graphs(&first);
         assert!(
             first_graphs == rebuilt_graphs(&second),
@@ -97,41 +110,6 @@ fn retail_concrete_damage_repair_and_restore_publish_navigation() {
     }
 }
 
-fn assert_navigation_fields_equal(actual: &Value, expected: &Value, phase: &str) {
-    let mismatched: Vec<_> = expected
-        .as_object()
-        .unwrap()
-        .keys()
-        .filter(|key| actual[*key] != expected[*key])
-        .collect();
-    assert!(
-        mismatched.is_empty(),
-        "{phase} retained navigation fields differ: {mismatched:?}"
-    );
-}
-
-fn rebuilt_graphs(sim: &Simulation) -> Value {
-    crate::sim::world::bridge_test_evidence::navigation_snapshot(sim, "restored", [])["graphs"]
-        .take()
-}
-
-fn navigation_authority(sim: &Simulation) -> Value {
-    let mut result = crate::sim::world::bridge_test_evidence::navigation_snapshot(
-        sim,
-        "saved",
-        (49..=59).flat_map(|y| (84..=90).map(move |x| (x, y))),
-    );
-    // Map resize reconstructs the shared dummy; it isn't saved cell authority.
-    result.as_object_mut().unwrap().remove("dummy");
-    result.as_object_mut().unwrap().remove("origin");
-    // Native successful Load_Game_Content67E8CD calls581F50: it clears all
-    // three graph record vectors and rebuilds via581F90 (IDs reset58200F).
-    // Live incremental graph IDs/history do not survive load; retained Cell
-    // and base-zone facts above do. Compare separately rebuilt graphs/futures.
-    result.as_object_mut().unwrap().remove("graphs");
-    result
-}
-
 #[test]
 #[ignore = "requires unmodified physical Anytown and retail TEMPERATE assets"]
 fn retail_concrete_hut_damage_matches_native_both_huts_and_three_states() {
@@ -155,11 +133,12 @@ fn retail_concrete_hut_damage_matches_native_both_huts_and_three_states() {
         for _ in 0..stages {
             // The native witness produces these prerequisites with the same
             // already-admitted primitive, before the measured hut call.
-            damage_concrete(
+            damage_ordinary(
                 &mut runtime.simulation,
                 &runtime.resources.rules,
                 Some(&runtime.resources.overlay_registry),
                 (87, 54),
+                crate::sim::bridge_state::ramp_repair::Family::High,
             )
             .unwrap();
         }

@@ -14,27 +14,39 @@ from unicorn.x86_const import *
 sha=lambda raw:hashlib.sha256(raw).hexdigest()
 MAPFILE=ASSETS/'XMP03T4.MAP'
 
-def map_inputs():
- raw=MAPFILE.read_bytes();sections,cells=decode_cells(raw)
+def map_inputs(map_file=None):
+ raw=Path(map_file or MAPFILE).read_bytes();sections,cells=decode_cells(raw)
  return raw,sections,cells
 
-def extract_tiles(t):
- root=Path(os.environ['RA2_DIR']);archive=(root/'ra2.mix').read_bytes();iso=mix(archive)[mix_hash('isotemp.mix')];members=mix(iso);rows=[];data={}
+def extract_tiles(t, *, theater_archive='isotemp.mix', theater_override='isotemmd.mix', tile_suffix='tem', disjoint_theater_additions=False):
+ root=Path(os.environ['RA2_DIR']);archive=(root/'ra2.mix').read_bytes();iso=mix(archive)[mix_hash(theater_archive)];members=mix(iso);rows=[];data={}
  for i,name in t['tiles'].items():
   entry=mix_hash(name);raw=members.get(entry)
   if raw is not None:data[i]=raw
   rows.append(dict(tile=i,file=name,entry=f'{entry:08X}',bytes=len(raw) if raw else 0,sha256=sha(raw) if raw else None))
  wanted={mix_hash(name) for name in t['tiles'].values()};yr=(root/'ra2md.mix').read_bytes();outer=mix(yr);checks=[]
- for name in ('isotemmd.mix','isogenmd.mix','genermd.mix','localmd.mix','cachemd.mix'):
-  raw=outer[mix_hash(name)];hits=sorted(set(mix(raw))&wanted);assert not hits,(name,hits);checks.append(dict(archive='ra2md.mix/'+name,sha256=sha(raw),primary_tem_name_hits=hits))
+ for name in (theater_override,'isogenmd.mix','genermd.mix','localmd.mix','cachemd.mix'):
+  raw=outer[mix_hash(name)];entries=mix(raw);hits=sorted(set(entries)&wanted)
+  if disjoint_theater_additions and name==theater_override:
+   # The stock SNOW additions have no base-name overlap. This admits unique
+   # physical files without claiming to execute the native archive resolver.
+   assert not (set(hits)&set(members)),('ambiguous TMP winner',name)
+   for row in rows:
+    entry=int(row['entry'],16)
+    if entry in hits:
+     blob=entries[entry];data[row['tile']]=blob
+     row.update(bytes=len(blob),sha256=sha(blob),source='ra2md.mix/'+name)
+  else:assert not hits,(name,hits)
+  checks.append(dict(archive='ra2md.mix/'+name,sha256=sha(raw),**{f'primary_{tile_suffix}_name_hits':hits}))
  for name in ('expandmd01.mix','langmd.mix','language.mix'):
-  raw=(root/name).read_bytes();hits=sorted(set(mix(raw))&wanted);assert not hits,(name,hits);checks.append(dict(archive=name,sha256=sha(raw),primary_tem_name_hits=hits))
+  raw=(root/name).read_bytes();hits=sorted(set(mix(raw))&wanted);assert not hits,(name,hits);checks.append(dict(archive=name,sha256=sha(raw),**{f'primary_{tile_suffix}_name_hits':hits}))
  loose={p.name.upper() for p in root.iterdir() if p.is_file()}&{n.upper() for n in t['tiles'].values()};assert not loose,loose
- return data,dict(archive='ra2.mix/isotemp.mix',outer_sha256=sha(archive),inner_sha256=sha(iso),members=rows,selected_override_checks=checks,loose_primary_tem_hits=sorted(loose))
+ return data,dict(archive='ra2.mix/'+theater_archive,outer_sha256=sha(archive),inner_sha256=sha(iso),members=rows,selected_override_checks=checks,**{f'loose_primary_{tile_suffix}_hits':sorted(loose)})
 
 class Inputs(ri.Rules):
- def __init__(self,t):
-  super().__init__();self.receipts=[];raw,sections,cells=map_inputs();self.physical=cells;self.map_sections=sections
+ def __init__(self,t,*,map_file=None,theater_file='TEMPERATMD.INI',damage_overlays=range(205,233)):
+  self.map_file=Path(map_file or MAPFILE);self.theater_file=theater_file;self.damage_overlays=tuple(damage_overlays)
+  super().__init__();self.receipts=[];raw,sections,cells=map_inputs(self.map_file);self.physical=cells;self.map_sections=sections
   self.invoke(0x71D580,0)
   self.u.mem_write(0xA8B230,ri.dwords(self.alloc(0x1300)))
   self.u.mem_write(0x8871E0,ri.dwords(self.rules))
@@ -53,7 +65,7 @@ class Inputs(ri.Rules):
    p=self.alloc(0x200);self.invoke(0x7216C0,p,(self.cstring(name),));self.tiberium_ptrs[name]=p
   self.u.mem_write(0xA83CE0,ri.dwords(0x7EB6D4,self.alloc(1024),256,1,0,10));self.mtnk=self.alloc(0xF00);self.invoke(0x7470D0,self.mtnk,(self.cstring('MTNK'),))
   self.terrain_layers=[]
-  for name,path in [('RULESMD.INI',ri.ASSETS/'RULESMD.INI'),('LANGRULE.INI',ri.ASSETS/'LANGRULE.INI'),('MPBattleMD.ini',ri.ASSETS/'MPBattleMD.ini'),('XMP03T4.MAP',MAPFILE)]:
+  for name,path in [('RULESMD.INI',ri.ASSETS/'RULESMD.INI'),('LANGRULE.INI',ri.ASSETS/'LANGRULE.INI'),('MPBattleMD.ini',ri.ASSETS/'MPBattleMD.ini'),(self.map_file.name,self.map_file)]:
    if not path.exists():assert name=='LANGRULE.INI';self.receipts.append(dict(file=name,absent=True));continue
    raw=path.read_bytes();lex,_=lexical(raw,set(self.names.values())|set(self.land_names)|{'General'}|set(names)|set(self.tiberium_ptrs)|{'MTNK'}|{v.split(',')[1] for k,v,line in sections['Structures']});self.make_ini(lex)
    rules_ini=self.alloc(0x40);self.u.mem_write(rules_ini,bytes(self.u.mem_read(ri.INI,0x40)));self.u.mem_write(ri.INI,art_ini)
@@ -81,7 +93,7 @@ class Inputs(ri.Rules):
   assert all(self.string(p+0x1F8)==n for n,p in self.terrain_ptrs.items()), 'ART alias cache requires expansion'
   self.theater=t
   allnames={f'TileSet{i:04d}' for i in range(300)}
-  raw=(ri.ASSETS/'TEMPERATMD.INI').read_bytes();baselex,_=lexical(raw,allnames);allnames|={v.get('SetName','No Name') for v in baselex.values()};full,_=lexical(raw,allnames);self.make_ini(full);self.tile_properties=[]
+  raw=(ri.ASSETS/self.theater_file).read_bytes();baselex,_=lexical(raw,allnames);allnames|={v.get('SetName','No Name') for v in baselex.values()};full,_=lexical(raw,allnames);self.make_ini(full);self.tile_properties=[]
   for row in t['sets']:
    sec=f"TileSet{row['ordinal']:04d}";sn=self.cstring(sec);lex=full[sec];setname=lex.get('SetName','No Name');shadow=self.invoke(0x5295F0,ri.INI,(sn,self.cstring('ShadowCaster'),0))&255;count=self.invoke(0x5276D0,ri.INI,(sn,self.cstring('ShadowTiles'),0)) if shadow else 0
    last=self.invoke(0x5276D0,ri.INI,(sn,self.cstring('LastTilesInSet'),-1));assert last in (0xFFFFFFFF,row['count'])
@@ -95,8 +107,19 @@ class Inputs(ri.Rules):
      animations[j]=dict(name=aname,index=index,values=values)
    self.tile_properties.append(dict(ordinal=row['ordinal'],base=row['base'],count=row['count'],setname=setname,shadow=shadow,shadow_tiles=count,last_tiles_in_set=last,animations=animations))
   assert all(not self.u.mem_read(p+0x16BF,1)[0] and not self.u.mem_read(p+0x16C0,1)[0] for p in self.building_ptrs.values())
+ def read_map_theater(self):
+  # Full_Init687631..68764F executes the exact Map/Theater read, original
+  # 475870 -> 528A10 -> 48DBE0 lookup and Scenario+1258 store. The surrounding
+  # Scenario allocation and lexical INI cache remain declared host boundaries.
+  raw=self.map_file.read_bytes();lex,_=lexical(raw,{'Map'});self.make_ini(lex)
+  scenario=self.read32(0xA8B230);before=self.read32(scenario+0x1258)
+  self.block(0x687631,0x68764F,{UC_X86_REG_EBP:ri.INI,UC_X86_REG_EBX:0})
+  return dict(map_sha256=sha(raw),section='Map',key='Theater',default=0,
+              source_value=lex.get('Map',{}).get('Theater'),before=before,
+              value=self.read32(scenario+0x1258),reader='0x475870',
+              lookup='0x48DBE0',caller='0x687631..0x68764F',field='Scenario+0x1258')
  def snapshot(self):
-  used=sorted({c['overlay'] for c in self.physical.values() if c['overlay'] is not None}|set(range(205,233)))
+  used=sorted({c['overlay'] for c in self.physical.values() if c['overlay'] is not None}|set(self.damage_overlays))
   terrains={}
   for n,p in self.terrain_ptrs.items():
    row=Landing.terrainstate(self,p);f=self.read32(p+0x2B8);cells=[]
@@ -107,4 +130,3 @@ class Inputs(ri.Rules):
    else:raise AssertionError(('unterminated Terrain occupy list',n))
    row.update(image=self.string(p+0x1F8),occupy_list=cells,map_occupied=self.u.mem_read(p+0x235,1)[0]);terrains[n]=row
   return dict(art_sha256=sha((ri.ASSETS/'ARTMD.INI').read_bytes()),bootstrap_layers=[dict(file=v['file'],absent=v.get('absent',False),sha256=v.get('sha256'),sections=sorted(v.get('sections',{}))) for v in self.layers],mtnk=dict(strength=self.read32(self.mtnk+0xA0),speed_type=self.read32(self.mtnk+0x67C),movement_zone=self.read32(self.mtnk+0x5B4),crusher=self.u.mem_read(self.mtnk+0xD28,1)[0]),tiberiums={n:dict(index=self.read32(p+0x98),value=self.read32(p+0xB8),base_overlay=self.read32(self.read32(p+0xE0)+0x294),images=self.read32(p+0xE8),extra=self.read32(p+0xEC)) for n,p in self.tiberium_ptrs.items()},building_zone_gate_bytes={n:bytes(self.u.mem_read(p+0x16BF,2)).hex() for n,p in self.building_ptrs.items()},tile_properties=self.tile_properties,layers=self.receipts,cliff=self.u.mem_read(self.rules+0x664,1)[0],land_table_hex=bytes(self.u.mem_read(0x89EA40,432)).hex(),overlays=[dict(index=i,name=self.names[i],land=self.read32(self.overlay_ptrs[i]+0x298),crushable=self.u.mem_read(self.overlay_ptrs[i]+0x22D,1)[0],wall=self.u.mem_read(self.overlay_ptrs[i]+0x2A8,1)[0],tiberium=self.u.mem_read(self.overlay_ptrs[i]+0x2A9,1)[0],no_use_tile_land=self.u.mem_read(self.overlay_ptrs[i]+0x2AC,1)[0],rubble=self.u.mem_read(self.overlay_ptrs[i]+0x2B4,1)[0],rock=self.u.mem_read(self.overlay_ptrs[i]+0x2B5,1)[0]) for i in used],terrains=terrains)
-

@@ -4,13 +4,11 @@
 //! destroyable runtime state used by combat, layered pathing, and bridge-deck
 //! fallout handling.
 //!
-//! The low-bridge overlay progression this note used to say was unwired has
-//! since landed: `world::bridge_orchestrator` dispatches both the
-//! `LowStateMachine` and `LowDirect` paths, writes overlay bytes through the
-//! mutable state below, and applies the per-path BridgeStrength RNG gate. The
-//! remaining recorded gaps for this system live on their own owners in
-//! `world::bridge_orchestrator` — the VERA-chosen effect frame delay and
-//! frame-count fallbacks, and the hut fallback starter/anchor heuristic.
+//! Ordinary wooden74..101 and concrete205..232 overlays share scalar
+//! `ordinary_damage` / `ordinary_repair` controllers and synchronous world
+//! publication. Raw Cell overlay fields own those states; this module's
+//! per-cell overlay is a derived mirror. Structural ramp/body state machines
+//! retain their separate native flags, anchors and ordered fallout.
 
 //!
 //! ## Tagged natives with no counterpart in this crate
@@ -47,7 +45,6 @@ pub(crate) mod publication;
 pub(crate) mod ramp_repair;
 mod record_scan;
 pub(crate) mod rim;
-pub mod walker;
 mod zone_activation;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
