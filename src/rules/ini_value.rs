@@ -587,7 +587,7 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
 /// bridge_landing_inputs.json; arbitrary extreme CRT rounding/range behavior
 /// is not certified here.
 pub(crate) fn parse_leading_f64(s: &str) -> f64 {
-    let s = s.trim_start_matches(|c| matches!(c, '\t' | '\n' | '\x0b' | '\x0c' | '\r' | ' '));
+    let s = s.trim_start_matches(['\t', '\n', '\x0b', '\x0c', '\r', ' ']);
     leading_float_token(s)
         .and_then(|token| token.parse::<f64>().ok())
         .unwrap_or(0.0)
