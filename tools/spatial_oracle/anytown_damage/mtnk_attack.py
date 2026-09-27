@@ -14,7 +14,7 @@ from capstone import Cs,CS_ARCH_X86,CS_MODE_32
 from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,run_checked,provenance
 from tools.projectile_oracle.bridge_render_inputs import BulletReader,lexical
 from tools.projectile_oracle.guided_step import i32,xyz,vec
-from tools.projectile_oracle.ordinary_collision import slope_matrices
+from tools.native_slope import slope_matrices
 from tools.spatial_oracle.building_body_rules import RULES,SP,INI,dwords
 from tools.rules_oracle.bridge_child_sound import Sound,sections as sound_sections
 

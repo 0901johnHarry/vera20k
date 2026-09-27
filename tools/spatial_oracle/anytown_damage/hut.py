@@ -5,19 +5,18 @@ Already-entered Map574000 is supplied; no hut/Bomb/Building lifecycle is claimed
 Animation construction, graphs and presentation stop at declared request seams.
 """
 from pathlib import Path
-import hashlib,json,struct,sys
+import hashlib,struct
 from unicorn.x86_const import *
 
 from tools.native_oracle import NATIVE_SHA256,RET_MAGIC,provenance
 from .hut_publication import finish_vectors
 from tools.spatial_oracle.anytown_damage.anytown_resident import Resident,rules,inputs,identity,sr
-from tools.spatial_oracle.anytown_damage.validate_packet import inputs as validate_inputs
+from tools.spatial_oracle.anytown_damage.validate_packet import inputs as validate_inputs, source_provenance
 from tools.spatial_oracle.shrapnel_repair import retail_inputs as ri
 from tools.rules_oracle.bridge_anim_lists import Lists,TYPE,HEAP
 from tools.projectile_oracle.bridge_render_inputs import lexical
 
 HERE=Path(__file__).resolve().parent
-ROOT=HERE.parents[2]
 DISPLAY=0x46008000
 FRAME=1000
 ENTRIES={0x574000:'hut',0x5749C0:'selector',0x575870:'x_walker',0x575BA0:'y_walker',
@@ -164,12 +163,6 @@ def generate():
 
 
 def metadata():
-    sources={}
-    for module in list(sys.modules.values()):
-        file=getattr(module,'__file__',None)
-        if file:
-            p=Path(file).resolve()
-            if p.suffix=='.py' and p.is_relative_to(ROOT/'tools'):sources[p.relative_to(ROOT).as_posix()]=sha(p.read_bytes())
     result=provenance(scope=__doc__,assumptions=[
         'Unmodified stock Anytown map and native-read concrete overlay/TMP bindings from the frozen anytown_damage owner. Both authored huts are supplied directly to original Map574000. First-damaged/collapsed prerequisites are produced by one/two actual57CCF0 calls at87,54, not manufactured overlay writes.',
         'The complete original lookup, primary selection, physical Y-axis bounded sweep, retries and57CCF0 execute. Native future cell reads observe each prior mutation immediately. Both function return EAX and low byte are recorded mechanically; hut root/walker have no declared Boolean return contract.',
@@ -186,7 +179,7 @@ def metadata():
                     'scenario_range':0x65C7E0,'animation_request_boundary':0x421EA0,
                     'fallback_dispatch_instruction_only':0x587180,'bridge_explosion_reader':0x66DB93,
                     'map_height_initializer':0x5617E0})
-    result.update(harness_sha256=sha(Path(__file__).read_bytes()),sources=dict(sorted(sources.items())))
+    result.update(source_provenance(__file__))
     return result
 
 
