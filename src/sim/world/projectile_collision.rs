@@ -462,13 +462,17 @@ mod tests {
             let slope = row["slope"].as_u64().unwrap() as u8;
             let flags = row["flags"].as_u64().unwrap() as u32;
             let mut cells = (0..32)
-                .flat_map(|y| (0..32).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y)))
+                .flat_map(|y| {
+                    (0..32).map(move |x| crate::map::resolved_terrain::test_flat_cell(x, y))
+                })
                 .collect::<Vec<_>>();
             let cell = &mut cells[usize::from(cell_y) * 32 + usize::from(cell_x)];
             cell.level = level as u8;
             cell.slope_type = slope;
             cell.bridge_facts.raw_flags = flags;
-            sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(32, 32, cells));
+            sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(
+                32, 32, cells,
+            ));
             let target = if row["dummy"].as_bool().unwrap() {
                 sim.shared_cell_dummy
                     .stamp_coord(i32::from(cell_x), i32::from(cell_y));
@@ -587,12 +591,11 @@ mod tests {
             shot.trajectory = ProjectileTrajectory::Ballistic;
             shot.collision.subject_to_walls = shared_wall;
             shot.arm_frames = 5;
-            shot.payload = crate::sim::projectile::ProjectilePayload {
-                base_damage: 1,
-                warhead: sim.interner.intern("WALLWH"),
-                weapon: sim.interner.intern("MISSING"),
-                damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
-            };
+            shot.payload = crate::sim::projectile::ProjectilePayload::new(
+                1,
+                sim.interner.intern("WALLWH"),
+                sim.interner.intern("MISSING"),
+            );
             admit_existing(&mut sim, shot);
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
@@ -1241,12 +1244,11 @@ mod tests {
         shot.initial_target_position = ProjectileCoord::new(1408, 1408, 0);
         shot.velocity = ProjectileVelocity::new(16, 0, 0);
         shot.trajectory = ProjectileTrajectory::Ballistic;
-        shot.payload = crate::sim::projectile::ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSING"),
-            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
-        };
+        shot.payload = crate::sim::projectile::ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSING"),
+        );
         admit_existing(&mut sim, shot);
         let mut runtime = SimRuntime::from_simulation(sim);
         runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
@@ -1292,12 +1294,11 @@ mod tests {
             [20.0f64, 3.0, -5.5].map(|v| NativeF64Bits::from_bits(v.to_bits())),
         );
         shot.trajectory = ProjectileTrajectory::Ballistic;
-        shot.payload = crate::sim::projectile::ProjectilePayload {
-            base_damage: 1,
-            warhead: sim.interner.intern("WALLWH"),
-            weapon: sim.interner.intern("MISSING"),
-            damage_multiplier: crate::sim::projectile::ProjectilePayload::UNSCALED,
-        };
+        shot.payload = crate::sim::projectile::ProjectilePayload::new(
+            1,
+            sim.interner.intern("WALLWH"),
+            sim.interner.intern("MISSING"),
+        );
         admit_existing(&mut sim, shot);
         let mut runtime = SimRuntime::from_simulation(sim);
         runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();

@@ -429,12 +429,11 @@ mod tests {
             origin,
             target: ProjectileTarget::Cell { rx: 0, ry: 0 },
             initial_target_position: ProjectileCoord::new(128, 128, 0),
-            payload: ProjectilePayload {
-                base_damage: 0,
-                warhead: InternedId::from_index(0),
-                weapon: InternedId::from_index(0),
-                damage_multiplier: ProjectilePayload::UNSCALED,
-            },
+            payload: ProjectilePayload::new(
+                0,
+                InternedId::from_index(0),
+                InternedId::from_index(0),
+            ),
             speed_leptons_per_frame: 1,
             velocity: ProjectileVelocity::new(0, 0, 0),
             trajectory: ProjectileTrajectory::Straight,

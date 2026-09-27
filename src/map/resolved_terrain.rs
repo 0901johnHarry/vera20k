@@ -6865,12 +6865,7 @@ mod tests {
                     origin: ProjectileCoord::new(896, 896, 500),
                     target: ProjectileTarget::None,
                     initial_target_position: ProjectileCoord::new(1408, 896, 0),
-                    payload: ProjectilePayload {
-                        base_damage: 0,
-                        warhead: key,
-                        weapon: key,
-                        damage_multiplier: ProjectilePayload::UNSCALED,
-                    },
+                    payload: ProjectilePayload::new(0, key, key),
                     speed_leptons_per_frame: 16,
                     velocity: ProjectileVelocity::new(16, 0, 0),
                     trajectory: ProjectileTrajectory::Ballistic,

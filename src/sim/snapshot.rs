@@ -6654,12 +6654,11 @@ mod tests {
             origin: ProjectileCoord::new(0, 0, 0),
             target,
             initial_target_position: ProjectileCoord::new(256, 256, 0),
-            payload: ProjectilePayload {
-                base_damage: 1,
-                warhead: InternedId::from_index(0),
-                weapon: InternedId::from_index(0),
-                damage_multiplier: ProjectilePayload::UNSCALED,
-            },
+            payload: ProjectilePayload::new(
+                1,
+                InternedId::from_index(0),
+                InternedId::from_index(0),
+            ),
             speed_leptons_per_frame: 64,
             velocity: ProjectileVelocity::new(64, 0, 0),
             trajectory: ProjectileTrajectory::Straight,
