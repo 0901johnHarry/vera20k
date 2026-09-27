@@ -361,7 +361,7 @@ def resolve_target(root: Path, raw_target: str) -> Path:
 
 
 def rel_posix(path: Path, root: Path) -> str:
-    return path.resolve().relative_to(root).as_posix()
+    return path.resolve().relative_to(root.resolve()).as_posix()
 
 
 def discover_rust_files(root: Path, target: Path) -> list[Path]:

@@ -697,7 +697,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_fingerprint_cannot_describe_a_different_valid_online_transition(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "child"
             def mutate(manifest):
@@ -710,16 +710,18 @@ class OrchestratorTests(unittest.TestCase):
                 validate_capture_bundle(capture, self.profile, self.contract, environment)
 
     def test_command_is_argument_list_with_exact_profile_contract_and_output(self) -> None:
+        executable = Path("C:/build/vera20k.exe")
+        output = Path("C:/runs/run/capture")
         command = build_capture_command(
-            Path("C:/build/vera20k.exe"),
+            executable,
             self.profile,
             self.contract,
-            Path("C:/runs/run/capture"),
+            output,
         )
         self.assertEqual(
             command,
             [
-                "C:\\build\\vera20k.exe",
+                str(executable),
                 "--tactical-capture",
                 "radar-online-v2",
                 "--profile",
@@ -727,13 +729,13 @@ class OrchestratorTests(unittest.TestCase):
                 "--contract",
                 str(self.contract.path),
                 "--output",
-                "C:\\runs\\run\\capture",
+                str(output),
             ],
         )
 
     def test_complete_bundle_validates_exact_artifacts_and_bgra(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             frame = _nonuniform_frame(self.profile)
             capture = root / "child"
@@ -753,7 +755,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_formerly_accepted_partial_stable_object_is_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "child"
             _write_capture(
@@ -871,7 +873,7 @@ class OrchestratorTests(unittest.TestCase):
             mutations
         ):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary).absolute()
+                root = Path(temporary).resolve()
                 environment = _fake_environment(root)
                 capture = root / f"child-{index}"
                 _write_capture(
@@ -1112,7 +1114,7 @@ class OrchestratorTests(unittest.TestCase):
         )
         for index, (label, mutate, expected_error) in enumerate(mutations):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary).absolute()
+                root = Path(temporary).resolve()
                 environment = _fake_environment(root)
                 capture = root / f"contradiction-{index}"
                 _write_capture(
@@ -1133,7 +1135,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_uniform_tactical_frame_is_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "child"
             _write_capture(
@@ -1154,7 +1156,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_failure_manifest_with_frame_and_link_artifacts_are_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             frame = _nonuniform_frame(self.profile)
             capture = root / "child"
@@ -1183,7 +1185,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_repeat_compares_full_stable_object_and_exact_frame(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             frame = _nonuniform_frame(self.profile)
             first = root / "first"
@@ -1261,7 +1263,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_repeat_rejects_same_directory_and_normalized_alias(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "capture"
             _write_capture(
@@ -1301,7 +1303,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_manifest_mutated_after_snapshot_fails_final_recheck(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "capture"
             _write_capture(
@@ -1337,7 +1339,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_inventory_mutated_during_validation_fails_final_recheck(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             capture = root / "capture"
             _write_capture(
@@ -1371,15 +1373,19 @@ class OrchestratorTests(unittest.TestCase):
             self.assertGreaterEqual(inventory_calls, 2)
 
     def test_real_preflight_hashes_archive_font_and_rejects_loose_shadow(self) -> None:
-        project = repository_root()
-        if not (project / "config.toml").is_file():
-            primary = project.parent / "ra2-rust-game"
-            if (primary / "config.toml").is_file():
-                project = primary
+        if os.environ.get("VERA20K_TEST_RETAIL") != "1":
+            self.skipTest("set VERA20K_TEST_RETAIL=1 to check the sealed retail environment")
+        configured_project = os.environ.get("VERA20K_TEST_PROJECT_DIR")
+        project = (
+            Path(configured_project).expanduser().absolute()
+            if configured_project else repository_root()
+        )
         config = project / "config.toml"
-        executable = Path(sys.executable).absolute()
-        if not config.is_file():
-            self.skipTest("local project config.toml is not available")
+        executable = Path(sys.executable).resolve()
+        self.assertTrue(
+            config.is_file(),
+            f"retail test requires {config}; set VERA20K_TEST_PROJECT_DIR to the configured checkout",
+        )
         environment = validate_environment_inputs(
             executable, project, self.profile
         )
@@ -1393,7 +1399,7 @@ class OrchestratorTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as temporary:
-            working = Path(temporary).absolute()
+            working = Path(temporary).resolve()
             (working / "config.toml").write_bytes(config.read_bytes())
             (working / "Fight.MAP").write_bytes(b"shadow")
             with self.assertRaisesRegex(ValidationError, "loose map shadow"):
@@ -1401,7 +1407,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_capture_launch_uses_no_shell_devnull_regular_files_and_720_seconds(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             calls: dict[str, object] = {}
 
@@ -1485,7 +1491,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_timeout_kills_only_still_live_popen_child_and_drains_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).absolute()
+            root = Path(temporary).resolve()
             environment = _fake_environment(root)
             calls = {"wait": 0, "kill": 0}
 

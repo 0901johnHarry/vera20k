@@ -11,7 +11,7 @@ class SkillSyncTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.source = self.root / "source"
         self.destination = self.root / "destination"
         self.put(self.source / "example/SKILL.md", b"canonical\n")

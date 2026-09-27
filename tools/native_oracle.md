@@ -188,6 +188,8 @@ behavior for the entire oracle directory from the listed examples.
 Run the runner's synthetic failure checks with:
 
 ```powershell
+python -m tools.run_tests
+# Focus only the shared native-runner failure contracts:
 python -m unittest tools.test_native_oracle -v
 ```
 
