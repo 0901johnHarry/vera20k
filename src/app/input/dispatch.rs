@@ -1033,8 +1033,9 @@ fn sidebar_cameo_press(
             cancel_build_by_type(state, type_id, all);
         }
         // Residual (building path): `HouseClass::Manual_Place @ 0x004FB840`
-        // ignores the click while a placement is pending (`0x004FB852..
-        // 0x004FB859`); VERA's second click leaves placement mode instead.
+        // ignores the click while any placement is pending (`0x004FB852..
+        // 0x004FB859`); VERA's click leaves placement mode for the same
+        // building and switches it to another finished one.
         Some(sidebar_eva::CameoOrder::Place) => {
             let armed = state
                 .armed_building_type()

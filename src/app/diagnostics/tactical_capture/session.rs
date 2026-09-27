@@ -866,7 +866,6 @@ impl TacticalCaptureSession {
             in_game: state.frontend.screen == GameScreen::InGame,
             local_owner: owner.clone(),
             match_ended,
-            build_options_strict: production::has_build_option_for_owner(sim, rules, &owner),
             entities,
             build_options,
             queued_production,

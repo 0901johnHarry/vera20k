@@ -572,7 +572,9 @@ pub enum BuildEligibility {
     PermanentlyBlocked,
 }
 
-/// Borrow-only sidebar projection (render seam). Never mutates; never hashed.
+/// Borrow-only read view of one factory, for the lifecycle and delivery code and
+/// tests. Never mutates; never hashed. The user hold is not in it: the sidebar reads
+/// that through `production_queue::queue_view_for_owner`.
 pub struct FactoryView<'a> {
     pub progress: u16,
     pub on_hold: bool,

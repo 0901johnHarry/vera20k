@@ -766,7 +766,10 @@ pub struct GeneralRules {
     /// `[AudioVisual] GUIBuildSound=` (`Rules+0x18C`, read at `0x006693C1`
     /// through `VocClass::FindByName`; retail `MenuClick`): the sidebar cameo
     /// click sound, played by `SelectClass::Action @ 0x006AAD00` for every
-    /// click that acts (e.g. `0x006AAE2A`, `0x006AB713`).
+    /// click that acts (e.g. `0x006AAE2A`, `0x006AB713`). Residual: gamemd
+    /// resolves the name as it reads it and keeps the previous layer's sound
+    /// when the name does not resolve; VERA stores the name and resolves it at
+    /// play time. Retail's `MenuClick` resolves.
     pub gui_build_sound: Option<String>,
     /// Sidebar tab click sound from [AudioVisual] GUITabSound (retail
     /// `MenuTab`). The key→tab-click mapping is name-inferred — flagged for a

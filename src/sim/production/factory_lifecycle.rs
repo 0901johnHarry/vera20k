@@ -233,9 +233,10 @@ fn remove_ready_entry(sim: &mut Simulation, owner: InternedId, type_id: Interned
     true
 }
 
-/// C7 StartNextQueued after a successful delivery (or a completed-but-undeliverable refund):
-/// clear the delivered active object and promote the next queued entry into the active slot,
-/// cost-seeded from `rules` and started at this frame.
+/// C7 StartNextQueued once the active object is gone: after a successful delivery, an
+/// abandon or a completed-but-undeliverable refund. Clear the active object and promote
+/// the next queued entry into the active slot, cost-seeded from `rules` and started at
+/// this frame.
 ///
 /// Residual: gamemd delivers a human player's finished unit through a PLACE event
 /// that `StripClass::AI` queues (`0x006A8EB8..0x006A8F18`). Its execution

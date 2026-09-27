@@ -95,11 +95,18 @@ pub(crate) struct CameoClick {
 /// build's first left click. Rare.
 ///
 /// Residual (building path): a right click on a cameo with its own factory
-/// first drops a pending building placement (`0x006AADC9..0x006AADF8`). VERA
-/// drops it only when the placed building itself is abandoned
-/// (`sidebar_render::sync_targeting_mode`). Trigger: a right click on another
-/// producing cameo while a building is being placed. Effect: the placement
-/// cursor stays up.
+/// first drops a pending building placement (`0x006AADC9..0x006AADF8`), and
+/// Abandon_Production drops it for the local player's abandon of any building
+/// (`0x004FAB79..0x004FAB9F`). VERA drops it only when the placed building
+/// itself is abandoned (`sidebar_render::sync_targeting_mode`). Trigger: a
+/// right click on another producing cameo, or another building's abandon,
+/// while a building is being placed. Effect: the placement cursor stays up.
+///
+/// Residual (building path): a left click on a finished building asks it for
+/// its builder (`vt+0x190` at `0x006AB31A`); with none, gamemd sends ABANDON
+/// and says `EVA_UnableToComply` (`0x006AB33F..0x006AB3B1`), while VERA
+/// enters placement. Trigger: the house's only builder of that building is
+/// being sold or is gone. Rare.
 pub(crate) fn cameo_click(
     queue: &[QueueItemView],
     category: ProductionCategory,

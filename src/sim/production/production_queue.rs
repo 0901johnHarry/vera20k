@@ -76,14 +76,14 @@ pub(in crate::sim) fn credits_entry_for_owner<'a>(
 /// Items with missing prerequisites, wrong faction, or no factory are hidden
 /// entirely — only items at their build limit are shown while not buildable.
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
-    let strict: Vec<BuildOption> =
+    let options: Vec<BuildOption> =
         super::production_tech::all_build_options_for_owner(sim, rules, owner);
 
     // Diagnostic: log reason breakdown when nothing is buildable.
-    let enabled_count = strict.iter().filter(|o| o.enabled).count();
+    let enabled_count = options.iter().filter(|o| o.enabled).count();
     if enabled_count == 0 && sim.session.tick % 90 == 0 {
         let mut reason_counts: BTreeMap<&str, usize> = BTreeMap::new();
-        for opt in &strict {
+        for opt in &options {
             let key = match &opt.reason {
                 Some(BuildDisabledReason::UnbuildableTechLevel) => "UnbuildableTechLevel",
                 Some(BuildDisabledReason::WrongOwner) => "WrongOwner",
@@ -101,7 +101,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
             "[BUILD-DIAG] owner='{}' tick={} total_items={} reasons={:?}",
             owner,
             sim.session.tick,
-            strict.len(),
+            options.len(),
             reason_counts
         );
         // Log owned structures and their factory status.
@@ -119,7 +119,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
             }
         }
         // Log a few sample failures to show the exact reason per item.
-        for opt in strict.iter().filter(|o| !o.enabled).take(5) {
+        for opt in options.iter().filter(|o| !o.enabled).take(5) {
             let type_str = sim.interner.resolve(opt.type_id);
             log::warn!(
                 "[BUILD-DIAG]   sample: '{}' reason={:?}",
@@ -129,7 +129,7 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         }
     }
 
-    let visible: Vec<BuildOption> = strict
+    let visible: Vec<BuildOption> = options
         .into_iter()
         .filter(BuildOption::visible_in_sidebar)
         .collect();

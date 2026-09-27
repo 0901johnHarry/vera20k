@@ -277,10 +277,10 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
 }
 
 /// (P5d derived-state) An underfunded mid-build factory (on_hold) renders as Building in
-/// the sidebar build queue, NOT "On Hold"/NoFunds — the pre-P5d front never surfaced NoFunds
-/// during a stall (it stayed Building; on_hold is internal). The sibling of the blocked-exit
-/// Done case: the derived view state must reproduce the exact observed label set
-/// {Building, Paused, Done, Queued}.
+/// the sidebar build queue, NOT "On Hold": a cash stall keeps the factory's rate and leaves
+/// `+0x70` clear, so the strip's hold text (`0x006A9E9C..0x006A9ECC`) never shows for it.
+/// The sibling of the blocked-exit Done case: the derived view state must reproduce the
+/// exact observed label set {Building, Paused, Done, Queued}.
 #[test]
 fn derived_view_state_stays_building_on_underfunded_stall() {
     let (mut sim, rules, _heights) = scenario();

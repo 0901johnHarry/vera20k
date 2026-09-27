@@ -452,15 +452,6 @@ impl TryFrom<&[u8]> for CommandRecord {
     }
 }
 
-/// Queueing behavior for build/production commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum QueueMode {
-    /// Replace existing queued path/intent.
-    Replace,
-    /// Append to existing queue/waypoint chain.
-    Append,
-}
-
 /// One gameplay command payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {

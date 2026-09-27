@@ -96,17 +96,30 @@ pub(super) fn build_option_for_owner(
 /// `PermanentlyBlocked` (abandon); a build-limit "busy" is NOT a mid-build abandon ->
 /// `Buildable` (keep charging).
 ///
-/// gamemd makes this check in `HouseClass::Update_Factory_Queue @ 0x00509140`, which drops
-/// each queued build that fails it (`0x005091B0..0x005091EF`) and abandons a failing active
-/// one (`0x0050921C`). That pass runs when a building goes offline, online, into or out of
-/// limbo, or is read from a map; VERA revalidates every tick instead.
+/// gamemd makes this check in three places. `HouseClass::Update_Factory_Queue @ 0x00509140`
+/// drops each queued build that fails it (`0x005091B0..0x005091EF`) and abandons a failing
+/// active one (`0x0050921C`); a factory building runs it for its own `Factory=` kind only
+/// (`0x00445DFA..0x00445E14`) when it goes offline or online, into or out of limbo, is read
+/// from a map, or at `0x00449267`/`0x00449284`. The local player's strip abandons a cameo
+/// whose type `CanBuild(type, 0, 1)` refuses, through ABANDON / ABANDON_ALL events
+/// (`StripClass::Recalculate @ 0x006AA600`, `0x006AA781`). A dying factory building abandons
+/// its own factory (`BuildingClass::Detach_All`, see `FactoryRegistry::plan_revalidation`).
+///
+/// Residual: VERA revalidates every house's builds every tick. Trigger: a build loses a
+/// prerequisite. Effect: a human player's abandon lands earlier than gamemd's events do; a
+/// computer house that loses it through a building other than a factory (a Battle Lab)
+/// keeps building in gamemd until a factory building of that kind changes state, and VERA
+/// abandons and refunds at once (instruction reading; the computer paths are untraced).
+/// Frequency: occasional.
 ///
 /// Residual: the pass also holds an active build that only offline factories could build
 /// (`FindFactory(1,1,1)` fails: `Suspend(0)` at `0x0050924D`, lifted at `0x00509283`).
 /// VERA has no such hold. Its only offline factory is one in a temporal warp
-/// (`GameEntity::building_online`), and a warp's start runs no update (`0x004521C0`), so the
-/// trigger is a later building event while every factory of the kind is warped. Effect: VERA
-/// keeps building. Frequency: rare.
+/// (`GameEntity::building_online`), whose start runs no update (`0x004521C0`). GoOffline's
+/// callers are not ported: the power toggle event (`0x004C6D9A`), a trigger action
+/// (`0x006DDFB9`) and a map's powered-down building (`0x0044FD23`). Trigger: a building
+/// event while every factory of the kind is offline. Effect: VERA keeps building.
+/// Frequency: rare.
 pub(in crate::sim) fn revalidate_eligibility(
     sim: &Simulation,
     rules: &RuleSet,
