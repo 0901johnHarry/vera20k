@@ -2,7 +2,7 @@
 //! production ProneDamage reader. Native rows:
 //! tools/rules_oracle/read_double_percent.{py,json,meta.json}, group B.
 
-use super::infantry_prone_area_raw_damage;
+use super::infantry_prone_raw_damage;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
@@ -64,19 +64,19 @@ fn prone_head_matches_original_on_the_production_reader() {
         assert_eq!(results.len(), damages.len());
         for (&damage, result) in damages.iter().zip(results) {
             assert_eq!(
-                infantry_prone_area_raw_damage(&target, &warhead, damage, false),
+                infantry_prone_raw_damage(&target, &warhead, damage, false),
                 int(result),
                 "ProneDamage={raw}, damage {damage}"
             );
         }
     }
     let extremes = prone["extremes"].as_array().unwrap();
-    assert_eq!(extremes.len(), 8);
+    assert_eq!(extremes.len(), 9);
     for row in extremes {
         let raw = row["raw"].as_str().unwrap();
         let damage = int(&row["damage"]);
         assert_eq!(
-            infantry_prone_area_raw_damage(&target, &warhead(raw), damage, false),
+            infantry_prone_raw_damage(&target, &warhead(raw), damage, false),
             int(&row["result"]),
             "ProneDamage={raw}, damage {damage}"
         );
@@ -85,7 +85,7 @@ fn prone_head_matches_original_on_the_production_reader() {
     for row in prone["gates"].as_array().unwrap() {
         let target = infantry(row["prone"].as_bool().unwrap());
         assert_eq!(
-            infantry_prone_area_raw_damage(
+            infantry_prone_raw_damage(
                 &target,
                 &seventy,
                 int(&row["damage"]),
@@ -99,9 +99,9 @@ fn prone_head_matches_original_on_the_production_reader() {
 }
 
 /// Retail `rulesmd.ini` (the local `ini/`; skipped without it): every
-/// warhead's ProneDamage is the native reader's double, so `70%` and `80%`
-/// warheads cut a prone infantryman's hit one lower than a nearest-rounded
-/// 0.7 or 0.8 would.
+/// warhead's ProneDamage is the native reader's chopped product, one ulp
+/// below the nearest-rounded one for `70%` (0.7's own double) and `80%` (one
+/// ulp below 0.8), so those warheads cut some prone hits one lower.
 #[test]
 fn retail_prone_damage_reads_the_original_multipliers() {
     let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
@@ -133,7 +133,8 @@ fn retail_prone_damage_reads_the_original_multipliers() {
             warhead.id
         );
     }
-    // 60 sections set ProneDamage; nothing allocates SANoBuilding or Fire2.
+    // 60 sections set ProneDamage. Nothing allocates SANoBuilding, and RPG's
+    // only weapon, [RPGTower], is referenced by nothing.
     assert_eq!(authored, 58);
 
     // Deployed GI Para (SSA 80%, 25), elite Conscript M1CarbineE (SA 70%, 20),
@@ -141,7 +142,7 @@ fn retail_prone_damage_reads_the_original_multipliers() {
     // 250), whose section is also an Animation.
     let target = infantry(true);
     let hit = |warhead: &str, damage| {
-        infantry_prone_area_raw_damage(&target, rules.warhead(warhead).unwrap(), damage, false)
+        infantry_prone_raw_damage(&target, rules.warhead(warhead).unwrap(), damage, false)
     };
     assert_eq!(hit("SSA", 25), 19);
     assert_eq!(hit("SA", 20), 13);

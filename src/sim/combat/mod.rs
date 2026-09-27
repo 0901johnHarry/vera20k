@@ -571,14 +571,16 @@ fn warhead_damages_wall(
 /// prone infantryman's positive raw damage, unless defenses are ignored,
 /// becomes `ftol(fild damage * fmul qword [warhead+0xF8])`, at least 1.
 /// Math__ftol (`0x007C5F00`) stores a qword and the head keeps EAX, so a
-/// product beyond 32 bits wraps before the clamp. Native rows:
-/// tools/rules_oracle/read_double_percent (group B).
-fn infantry_prone_area_raw_damage(
+/// product beyond 32 bits wraps before the clamp, and an infinite product
+/// (`1e39%`) converts to the indefinite qword, whose low dword 0 the clamp
+/// makes 1. Native rows: tools/rules_oracle/read_double_percent (group B).
+fn infantry_prone_raw_damage(
     target: &GameEntity,
     warhead: &WarheadType,
     damage: i32,
     ignore_defenses: bool,
 ) -> i32 {
+    use crate::util::native_x87::MaskedX87Chop53 as X87;
     if target.category != EntityCategory::Infantry
         || !infantry::is_prone_for_damage(target)
         || damage <= 0
@@ -586,16 +588,8 @@ fn infantry_prone_area_raw_damage(
     {
         return damage;
     }
-
-    let Ok(multiplier) =
-        X87Chop53::load_f64(NativeF64Bits::from_bits(warhead.prone_damage_f64.to_bits()))
-    else {
-        // An infinite or NaN product converts to the indefinite qword, whose
-        // low dword 0 the minimum-one clamp replaces with 1.
-        return 1;
-    };
-    let product = X87Chop53::mul(X87Chop53::load_i32(damage), multiplier);
-    X87Chop53::ftol_i32_low_masked(product).max(1)
+    let multiplier = X87::load_f64(NativeF64Bits::from_bits(warhead.prone_damage_f64.to_bits()));
+    X87::ftol_i32_low_masked(X87::mul(X87::load_i32(damage), multiplier)).max(1)
 }
 
 /// What an `AttackTarget` is pointing at — an entity or a ground cell.
@@ -2241,7 +2235,7 @@ fn resolve_receive_damage(
     // InfantryClass mutates the positive raw i32 before forwarding to the
     // shared Techno receiver. Its sign is therefore Techno's original-sign
     // snapshot used by the IC/FS gate below.
-    let receiver_input = infantry_prone_area_raw_damage(
+    let receiver_input = infantry_prone_raw_damage(
         target,
         warhead,
         event.damage,

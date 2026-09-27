@@ -67,7 +67,7 @@ anything (instruction reading).
 - the nine retail values (30, 50, 70, 80, 100, 150, 300, 350 and 600%) and
   six modded ones (1%, 0%, 35%, 90%, plain 0.7 and -50%), each over damage
   1..200 plus 250, 500, 1000, 11000, 65535 and 1,000,000;
-- eight out-of-range products;
+- nine out-of-range products, one of them infinite (`1e39%`);
 - five gate controls.
 
 A failed scan leaves stale stack bits in native, which this oracle does not
@@ -85,7 +85,8 @@ cover. `IniSection::read_double` documents VERA's choice for that case.
   `sim/combat/prone_damage_tests.rs` replays every prone row through
   `WarheadType::from_ini_section`. With the retail `rulesmd.ini`, it also
   checks that each of the 58 allocated warheads that set ProneDamage reads
-  its native double (`SANoBuilding` and `Fire2` are never allocated). That
+  its native double (nothing allocates `SANoBuilding`, and `RPG`'s only
+  weapon, `[RPGTower]`, is referenced by nothing). That
   check found `[KTSTLEXP]`, the elite Kirov bomb's warhead, read as all
   defaults: the name is also an Animation, and the Rules projection let the
   AnimType's empty body replace the warhead's.

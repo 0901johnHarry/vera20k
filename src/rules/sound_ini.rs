@@ -576,10 +576,10 @@ fn read_double(section: &IniSection, key: &str, default: f32) -> f64 {
 ///
 /// **The product never leaves the x87 stack.** Between `0x00750507 FMUL float
 /// [0x007EAAE0]` and the `ftol` call at `0x0075053F` there is no `FSTP float`
-/// of any kind — only `FCOM`/`FLD` of the clamp constants — and no game code
-/// narrows the x87 precision control (every `FLDCW` site in the image is CRT
-/// or math code saving and restoring its own word), so the chain carries the
-/// MSVC default 53-bit mantissa all the way into the truncation. Reproducing
+/// of any kind — only `FCOM`/`FLD` of the clamp constants — and the game's
+/// control word keeps a 53-bit mantissa (0x0E7F, installed by Math__ftol
+/// `0x007C5F00` and never restored; it also chops), so the chain carries 53
+/// bits all the way into the truncation. Reproducing
 /// that in `f64` is load-bearing: with an `f32` intermediate, `Volume=`
 /// 25/50/75/100 (and the `Volume=5000%` form) each round *up* across a linear
 /// step and land one higher than gamemd — 4096/8192/12288/16384 instead of
@@ -613,6 +613,10 @@ fn volume_linear(volume: f64) -> i32 {
 /// the **un-narrowed** product against the double 1.0, and the `<= 0.0f` test
 /// at `0x007505C7` reloads the **narrowed** float. Both clamps then write the
 /// literal bit patterns `0x3F800000` / `0x00000000`.
+///
+/// RESIDUAL: this product, its float narrowing and [`volume_linear`]'s
+/// product round to nearest where the game's control word chops: at most one
+/// ulp (e.g. `MinVolume=70`), audio only.
 fn min_volume_fraction(min_volume: f64) -> f32 {
     let product = min_volume * ONE_PERCENT_F32_AS_F64;
     let narrowed = product as f32;

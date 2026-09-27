@@ -408,7 +408,8 @@ pub(crate) fn parse_read_double(raw: &str) -> f64 {
     // `fld qword; fmul qword [0x007E3808]; fstp qword` (`0x0052857A..0x00528584`)
     // under the game's control word 0x0E7F, which Math__ftol (`0x007C5F00`)
     // installs and never restores: the product is chopped at 53 bits, one ulp
-    // below the nearest double for values such as `70%` or `90%`.
+    // below the nearest-rounded product for values such as `70%` (0.7's own
+    // double) or `90%` (the double below 0.9).
     let scaled = X87::mul(
         X87::load_f64(NativeF64Bits::from_bits(widened.to_bits())),
         X87::load_f64(PERCENT_SCALE),

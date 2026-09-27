@@ -164,8 +164,9 @@ pub struct WarheadType {
     /// `FSTP qword` at `0x0075D9A4`; the constructor stores 1.0 at
     /// `0x0075CEE4..0x0075CEEB`): the double InfantryClass::ReceiveDamage
     /// scales a prone infantryman's raw damage by before the shared
-    /// Foot/Techno/Object receiver. `50%` is 0.5; `70%` is the chopped double
-    /// one ulp below 0.7.
+    /// Foot/Techno/Object receiver. `50%` is 0.5; `70%` chops to 0.7's own
+    /// double and `80%` to the one below 0.8, each one ulp under the
+    /// nearest-rounded product.
     pub prone_damage_f64: f64,
     /// Instantly destroys any wall. `WarheadTypeClass+0x145`, written by
     /// `WarheadTypeClass::ReadINI` @ `0x0075d522` from the key string at
