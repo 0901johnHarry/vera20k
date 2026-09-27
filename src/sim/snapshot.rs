@@ -633,7 +633,12 @@ use crate::sim::world::Simulation;
 // cell-query order; low/high flight reads live physical height. Layout is
 // unchanged, but an old save can acquire different targets and evolve its
 // shared Dummy differently on the next scan, so reject mixed continuations.
-const SNAPSHOT_VERSION: u32 = 219;
+// 219 -> 220: buildings run their Guard and Attack missions
+// (`techno_ai::building_missions`): a placed building queues Guard with
+// `+0x6DD` set, and combat serves a building's Mission_Attack request instead
+// of deciding its shot. Layout is unchanged, but a 219 save's buildings hold
+// no mission and would idle on Mission_Default, so reject it.
+const SNAPSHOT_VERSION: u32 = 220;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3590,7 +3595,8 @@ mod tests {
         // 216 -> 217: native constructor IDs and signed guided control state.
         // 217 -> 218: a passenger's `+0x82`; no open-transport weapon override.
         // 218 -> 219: bridge-layer acquisition and live cell/height-query behavior.
-        assert_eq!(super::SNAPSHOT_VERSION, 219);
+        // 219 -> 220: buildings' Guard and Attack missions.
+        assert_eq!(super::SNAPSHOT_VERSION, 220);
     }
 
     #[test]

@@ -1538,9 +1538,6 @@ pub struct TiberiumReductionRequest {
     pub amount: i32,
 }
 
-/// Ordinary fire prelude plus one consuming deferred-consequence packet.
-/// The frame admits bullets and applies facing before committing the packet at
-/// its existing post-SpawnManager boundary.
 /// The shots an object's own mission asked the combat phase for this frame,
 /// where VERA's FireAt lives. Filled by the live object pass, drained by
 /// combat in the same frame; never a permission carried to a later frame.
@@ -1554,6 +1551,9 @@ pub(crate) struct FireRequests {
     pub buildings: std::collections::BTreeSet<u64>,
 }
 
+/// Ordinary fire prelude plus one consuming deferred-consequence packet.
+/// The frame admits bullets and applies facing before committing the packet at
+/// its existing post-SpawnManager boundary.
 pub struct CombatTickResult {
     /// Test adapter observations of actual inline AnimStore construction.
     #[cfg(test)]

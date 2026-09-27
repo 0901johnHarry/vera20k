@@ -62,6 +62,12 @@
 //!   Set_Desired natively; VERA has no body facing for a building, so the
 //!   FLH of its later shots leaves along the authored facing (a few
 //!   pixels).
+//! - `+0x6DD` has two more homes, `BuildingUp::done` and `BuildingDown::done`
+//!   (`sim::components`), each written and read only by its own build-up or
+//!   sale; a finished build-up queues and commences Guard itself
+//!   (`Simulation::tick_building_up`) where the ready check after the Techno
+//!   AI would. No player-visible effect while each byte has one reader.
+//!   Later owner: Mission_Construction's frames moving into this dispatch.
 //!
 //! ## Dependency rules
 //! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
@@ -427,10 +433,8 @@ fn aim_turret(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind
 /// The end of `BuildingClass::Update` (`0x00440378..0x004403C6`), whatever the
 /// mission: a target out of range of the weapon SelectWeapon picks for it
 /// (`vt+0x3AC`, `0x006F7780`) is dropped; an aircraft only while it is low
-/// (`AircraftClass 0x0041B980`: `ObjectClass::IsLowFlying 0x005F6B60`).
-/// RESIDUAL: for the V3 and Dreadnought rockets (`[General] V3RocketType=`,
-/// `DMislType=`) native asks their locomotor instead (vt+0x80); VERA reads
-/// their height.
+/// (`AircraftClass 0x0041B980`, the V3 and Dreadnought rockets asking their
+/// locomotor: [`crate::sim::movement::air_movement::is_low_flying`]).
 pub(super) fn range_drop(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: ObjectAiCtx<'_>) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -449,7 +453,11 @@ pub(super) fn range_drop(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: Ob
     if let TargetKind::Entity(target_id) = target
         && sim.substrate.entities.get(target_id).is_some_and(|target| {
             target.category == EntityCategory::Aircraft
-                && !crate::sim::combat::in_range::is_low_flying(target)
+                && !crate::sim::movement::air_movement::is_low_flying(
+                    target,
+                    sim.resolved_terrain.as_ref(),
+                    Some((rules, &sim.interner)),
+                )
         })
     {
         return;
