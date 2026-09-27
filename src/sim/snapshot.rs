@@ -663,7 +663,11 @@ use crate::sim::world::Simulation;
 // shorts, outside Simulation and its deterministic state hash.
 // House MatchStatistics now persists and hashes its existing live totals;
 // an active-sinking save must retain its first RecordKill before the terminal one.
-const SNAPSHOT_VERSION: u32 = 227;
+// 227 -> 228: every building keeps its `+0x388` FacingClass (BuildingClass::
+// Init's Set_ROT at 0x00442CA5), which a 227 save holds only for turreted ones.
+// The layout is unchanged, but a 227 save's turretless buildings would neither
+// aim their body nor turn it when hit, so reject it.
+const SNAPSHOT_VERSION: u32 = 228;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3647,7 +3651,8 @@ mod tests {
         // 225 -> 226: the factory step timer is the CDTimer a build start arms;
         // no stored build-time estimates.
         // 226 -> 227: retained surface-ship sinking and its sound edge.
-        assert_eq!(super::SNAPSHOT_VERSION, 227);
+        // 227 -> 228: every building's `+0x388` facing.
+        assert_eq!(super::SNAPSHOT_VERSION, 228);
     }
 
     #[test]

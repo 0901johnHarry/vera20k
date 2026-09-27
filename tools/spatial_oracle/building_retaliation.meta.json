@@ -15,7 +15,7 @@
   ],
   "substitutions": [
     "HouseClass::NotifyUnderAttack 0x4F93E0 skipped and recorded",
-    "IsOperational 0x4555D0, IsCloseEnough 0x6F7780, IsHumanPlayer 0x50B730, the EMP test 0x70EFD0 and TechnoClass::SetTarget 0x6FCDB0 answered from the row (building_guard_attack)"
+    "IsOperational 0x4555D0 (except on native_operational rows), IsCloseEnough 0x6F7780, IsHumanPlayer 0x50B730, the EMP test 0x70EFD0 and TechnoClass::SetTarget 0x6FCDB0 answered from the row (building_guard_attack)"
   ],
   "entry_points": {
     "block": "0x00442942",
@@ -24,5 +24,5 @@
     "is_rotating": "0x004C9480",
     "next": "0x0065C780"
   },
-  "payload_sha256": "ba9b531f39167b2cc97fa4c929d8d8cf20f3d216fcb5b226d514082e8bc103d1"
+  "payload_sha256": "ee4d5b3207cd3bf65776d9d2ea60e1f3b7a80154646e8fe62f9ef9e6da7cd318"
 }

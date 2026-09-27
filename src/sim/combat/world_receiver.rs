@@ -876,57 +876,26 @@ pub(crate) fn commit_entities(
                     rules.general.condition_yellow,
                 );
             }
-            // Neither native ping survives the killing blow.
             // `UnitClass::ReceiveDamage @ 0x00737C90`: `0x00737D69 CMP EAX,4`
             // sends result 4 to the death branch (`+0x3B8`
             // `Death_Announcement`, `Death_Explosion`); the `Harvester=` ping
-            // (`0x007384B9..0x00738530`) sits only in the `result != 4` arm.
-            // `BuildingClass::ReceiveDamage @ 0x00442230`: case 4 calls
-            // `DestructionEffects` (slot `+0x4EC` = `0x004415F0`, which never
-            // writes `+0x90`) and then, for the stock timer (`+0x530` = 8),
-            // `ObjectClass::UnInit` (`0x005F65F0`, clears `IsAlive +0x90` at
-            // `0x005F6625`), so the `0x00442905` re-test returns 4 before
-            // `NotifyUnderAttack`. RESIDUAL: `DestructionEffects` arms a zero
-            // timer for `Explodes=` types (TechnoType `+0xD15`, ReadINI
-            // `0x007122BE..0x007122D2`: stock GAYARD, NAYARD, YAYARD, NANRCT,
-            // AMMOCRAT, CAOILD, CAMISC01/02, YAPPPT) and for a building whose
-            // current mission is Selling (0x13), leaving `IsAlive` set and the
-            // ping live on their killing blow; VERA UnInits them at once (see
-            // `crew_survival` for the second SpawnSurvivors this skips).
+            // (`0x007384B9..0x00738530`) sits only in the `result != 4` arm,
+            // on any non-zero result, with or without a source. A building's
+            // ping is its retaliation block's, below.
             if damage > 0
                 && !became_fatal
-                && let Some(obj) = rules.object(world.interner.resolve(target.type_ref()))
+                && target.category != EntityCategory::Structure
+                && rules
+                    .object(world.interner.resolve(target.type_ref()))
+                    .is_some_and(|obj| obj.harvester)
             {
-                // `BuildingClass::ReceiveDamage @ 0x00442230`: with a non-null
-                // source, a non-zero damage result and `Insignificant=` clear,
-                // `HouseClass::NotifyUnderAttack` runs — there is no
-                // attacker-house test on that path, so a force-fired own
-                // building announces. (Both native sites first test the
-                // victim's `vtbl+0x80` predicate; its identity is not pinned
-                // here and is not modelled — VERA-internal, gamemd equivalent
-                // UNCHECKED.) `NotifyUnderAttack
-                // 0x004F9491..0x004F94A3` routes a building whose type has
-                // `UndeploysInto=` and `ResourceGatherer=yes` (the deployed
-                // slave miner) to the ore-miner line.
-                //
-                // `UnitClass::ReceiveDamage 0x007384B9..0x00738530`: a
-                // `Harvester=` unit pings on any non-zero non-fatal result,
-                // with or without a source.
-                let ping = if target.category == EntityCategory::Structure {
-                    (attacker_owner.is_some() && !obj.insignificant)
-                        .then_some((obj.undeploys_into.is_some() && obj.resource_gatherer, true))
-                } else {
-                    obj.harvester.then_some((true, false))
-                };
-                if let Some((miner, structure)) = ping {
-                    under_attack_events.push(UnderAttackEvent {
-                        rx: target.position.rx,
-                        ry: target.position.ry,
-                        owner: target.owner(),
-                        miner,
-                        structure,
-                    });
-                }
+                under_attack_events.push(UnderAttackEvent {
+                    rx: target.position.rx,
+                    ry: target.position.ry,
+                    owner: target.owner(),
+                    miner: true,
+                    structure: false,
+                });
             }
         }
 
@@ -1016,6 +985,40 @@ pub(crate) fn commit_entities(
                 }
             }
             death.append(nested);
+        }
+        // `BuildingClass::ReceiveDamage`'s retaliation block
+        // (`0x00442942..0x00442A90`, [`Simulation::building_hit_response`])
+        // runs after the IsAlive re-test (`0x00442905`; `+0x90` is
+        // `object_alive`); result 5 returned at `0x0044247D`. Case 4 calls
+        // `DestructionEffects` (slot `+0x4EC` = `0x004415F0`, which never
+        // writes `+0x90`) and then, for the stock timer (`+0x530` = 8),
+        // `ObjectClass::UnInit` (`0x005F65F0`, clears `+0x90` at `0x005F6625`),
+        // so a killing blow skips the block. RESIDUAL: `DestructionEffects`
+        // arms a zero timer for `Explodes=` types (TechnoType `+0xD15`,
+        // ReadINI `0x007122BE..0x007122D2`: stock GAYARD, NAYARD, YAYARD,
+        // NANRCT, AMMOCRAT, CAOILD, CAMISC01/02, YAPPPT) and for a building
+        // whose current mission is Selling (0x13), leaving `+0x90` set and the
+        // block live on their killing blow; VERA UnInits them at once (see
+        // `crew_survival` for the second SpawnSurvivors this skips). Every
+        // retail `Explodes=` type is unarmed and Selling stops the block after
+        // its ping, so the missing ping is the whole effect.
+        if receive_state != damage::DamageState::AlreadyDead
+            && world
+                .substrate
+                .entities
+                .get(target_id)
+                .is_some_and(|target| {
+                    target.category == EntityCategory::Structure && target.lifecycle.object_alive
+                })
+            && let Some(ping) = world.building_hit_response(
+                target_id,
+                (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
+                receive_state,
+                rules,
+                overlay_registry,
+            )
+        {
+            under_attack_events.push(ping);
         }
         finish_building_art_receiver(world, target_id, receive_state, building_entry_frame, rules);
     }

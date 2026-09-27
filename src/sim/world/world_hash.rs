@@ -2358,7 +2358,11 @@ impl Simulation {
                 0u8.hash(hasher);
             }
             // Barrel facing — Hash-derived, all primitive fields contribute.
-            if let Some(ref barrel) = entity.barrel_facing {
+            // A building's (`+0x388`) enters with schema 228.
+            if let Some(barrel) = entity.barrel_facing.as_ref().filter(|_| {
+                schema.includes(HashFeature::BuildingFacing)
+                    || entity.category != crate::map::entities::EntityCategory::Structure
+            }) {
                 1u8.hash(hasher);
                 barrel.hash(hasher);
             } else {

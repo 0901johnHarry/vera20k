@@ -128,6 +128,18 @@ impl From<&AttackerSnapshot> for FireSource {
 /// - Effect: the shot and its flash start a few pixels off.
 /// - Frequency: stock turreted defences (voxel turret buildings).
 /// - Downstream risk: the projectile origin is hashed.
+///
+/// RESIDUAL: a building's base GetFLH is TechnoClass::GetFLH's arm without a
+/// locomotor (`0x006F3C1A`): no body matrix, so `TurretOffset=` is not turned,
+/// and the FLH turns by vt+0x2A8 alone (`0x00445E50`). That answers `+0x388`
+/// for a building with a turret (vt+0x3FC, `0x004527D0`) or without a TarCom,
+/// and for any other the direction to its TarCom at the call. VERA turns the
+/// FLH by `+0x388` about the authored facing.
+/// - Trigger: a turretless defence whose `+0x388` is still turning (GAPILL,
+///   `ROT=10`), or a building with a nonzero `TurretOffset=`.
+/// - Effect: the shot and its flash start a few leptons off.
+/// - Frequency: a Pillbox's first shots at a new target.
+/// - Downstream risk: the projectile origin is hashed.
 pub(crate) fn fire_coordinate(
     world: &Simulation,
     rules: &RuleSet,

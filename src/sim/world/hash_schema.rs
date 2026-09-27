@@ -188,6 +188,12 @@ pub(super) enum HashFeature {
     /// House statistics needed to preserve its two loss records through load.
     /// Default-zero states append nothing; earlier schemas omit both additions.
     ShipSinking = 227,
+    /// Every building's `+0x388` FacingClass (BuildingClass::Init's Set_ROT,
+    /// `0x00442CA5`), which only a turreted building carried before. Earlier
+    /// schemas fold no building's facing: the pinned fixtures hold no
+    /// turreted building, so this reproduces their old hashes, not an
+    /// arbitrary pre-228 stream.
+    BuildingFacing = 228,
 }
 
 impl HashSchema {
@@ -232,6 +238,7 @@ impl HashSchema {
                     | HashFeature::FootScoldLatch
                     | HashFeature::PrismSupport
                     | HashFeature::ShipSinking
+                    | HashFeature::BuildingFacing
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

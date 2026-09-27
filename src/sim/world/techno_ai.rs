@@ -15,6 +15,7 @@
 //! (invariant #2).
 
 mod building_missions;
+mod building_retaliation;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;

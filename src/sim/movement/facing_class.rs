@@ -81,6 +81,18 @@ impl FacingClass {
         self.start_frame
     }
 
+    /// The native start word (`+0x04`).
+    #[cfg(test)]
+    pub(crate) fn start_word(&self) -> u16 {
+        self.prev
+    }
+
+    /// The native timer's time left (`+0x10`).
+    #[cfg(test)]
+    pub(crate) fn timer_duration(&self) -> u16 {
+        self.duration_frames
+    }
+
     /// Animated facing at the given binary frame. Pure function of state.
     ///
     /// Returns `current` when:

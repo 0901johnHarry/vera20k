@@ -106,8 +106,17 @@ impl Simulation {
 
         stamp_scoring_flags(ge, obj, rules);
         ge.sight_is_zero = obj.is_some_and(|object| object.sight == 0);
-        if let Some(obj) = obj.filter(|obj| obj.has_turret || category == EntityCategory::Aircraft)
-        {
+        // BuildingClass::Init gives every building its `+0x388` rate from
+        // `ROT=` (`Set_ROT` at `0x00442CA5`) without testing `Turret=`: a
+        // turretless building's `+0x388` is its body, which Mission_Attack
+        // aims and ReceiveDamage's retaliation turns.
+        if let Some(obj) = obj.filter(|obj| {
+            obj.has_turret
+                || matches!(
+                    category,
+                    EntityCategory::Aircraft | EntityCategory::Structure
+                )
+        }) {
             let initial = crate::sim::movement::turret::body_facing_to_turret(facing);
             ge.barrel_facing = Some(crate::sim::movement::FacingClass::new(
                 initial,

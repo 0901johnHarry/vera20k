@@ -1081,7 +1081,9 @@ pub struct GeneralRules {
     /// `PlayerReturnFire=` from `[CombatDamage]` (`Rules+0x17EC`, read at
     /// `0x0066CEBD`). When set, a human's objects retaliate on every mission;
     /// unset (the constructor's value and stock `rulesmd.ini:899`), they do so
-    /// only on Guard, Area Guard or Patrol (`ShouldRetaliate 0x007089F7`).
+    /// only on Guard, Area Guard or Patrol (`ShouldRetaliate 0x007089F7`),
+    /// and a human's building hit by a non-Aircraft source turns its `+0x388`
+    /// at random instead of taking the source (`0x00442A1B`).
     pub player_return_fire: bool,
     /// `Scatter=` from `[IQ]` — the house IQ level at or above which an
     /// occupant answers an *unforced* cell scatter. Stock `rulesmd.ini:3164`

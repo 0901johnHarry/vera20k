@@ -24,10 +24,10 @@ BuildingClass::ReceiveDamage (0x442230) leaves them at 0x442942:
 
 Native: the block, vt+0x80, IsAlliedWith, BuildingClass::GetWeapon, WhatAmI,
 BuildingClass::SetTarget with Queue_Mission and Commence, FacingClass's
-Is_Rotating and Set_Desired, and Random::Next. Answered by the fixture from
-the row: IsOperational, IsCloseEnough (vt+0x3AC's target 0x6F7780),
-IsHumanPlayer, the EMP test, and TechnoClass::SetTarget (0x6FCDB0, which
-writes +0x2B4). The +0x388 FacingClass is built by its constructor (0x4C91C0)
+Is_Rotating and Set_Desired, and Random::Next; IsOperational (0x4555D0) on the
+`native_operational` rows. Answered by the fixture from the row: IsOperational
+on the others, IsCloseEnough (vt+0x3AC's target 0x6F7780), IsHumanPlayer, the
+EMP test, and TechnoClass::SetTarget (0x6FCDB0, which writes +0x2B4). The +0x388 FacingClass is built by its constructor (0x4C91C0)
 and Set_ROT (0x4C9680) with the row's ROT=.
 
 The source is the fixture's unit (the Techno at refinery_dock.ACTOR, also the
@@ -59,6 +59,8 @@ NOTIFY, NEXT, NEXT_RETURN = 0x4F93E0, 0x65C780, 0x442A78
 SET_DESIRED, IS_ROTATING = 0x4C9220, 0x4C9480
 FACING_CTOR, SET_ROT = 0x4C91C0, 0x4C9680
 QUEUE, COMMENCE = 0x5B35E0, 0x5B3570
+# Is_Operational_For_Output's two returns (0x4555D0), reached only when it runs.
+OPERATIONAL_TRUE, OPERATIONAL_FALSE = 0x4556BA, 0x4556C0
 AIRCRAFT_VTABLE = 0x7E22A4
 AIRCRAFT = sm.REGION + 0xE000
 SCRATCH = sm.REGION + 0xE800
@@ -107,6 +109,8 @@ def run(case):
                         read32(sp + 8)])
         elif address == COMMENCE:
             log.append(['commence'])
+        elif address in (OPERATIONAL_TRUE, OPERATIONAL_FALSE):
+            log.append(['operational', address == OPERATIONAL_TRUE])
 
     u.hook_add(UC_HOOK_CODE, hook)
     u.mem_write(HOUSE + 0x30, dwords(0))
@@ -142,7 +146,17 @@ def run(case):
     u.reg_write(UC_X86_REG_ESP, SP)
     u.reg_write(UC_X86_REG_ESI, building)
     u.reg_write(UC_X86_REG_EBP, source)
-    end = run_checked(u, BLOCK, (TAIL, NO_RESULT), count=200_000)
+    stubbed = bga.IS_OPERATIONAL
+    if case.get('native_operational'):
+        # Is_Operational_For_Output runs natively: online (+0x660), so its
+        # answer is the building's health, its type's power terms and
+        # vt+0x184's mission (current, or queued while current is -1).
+        u.mem_write(building + 0x660, bytes([1]))
+        bga.IS_OPERATIONAL = 0xDEAD0002
+    try:
+        end = run_checked(u, BLOCK, (TAIL, NO_RESULT), count=200_000)
+    finally:
+        bga.IS_OPERATIONAL = stubbed
     set_desired_calls = [entry for entry in log if entry[0] == 'set_desired']
     return dict(
         input=case,
@@ -156,6 +170,7 @@ def run(case):
         set_target=[event[1] for event in events if event[0] == 'set_target'],
         missions=[entry for entry in log if entry[0] in ('queue_mission', 'commence')],
         rotating_tested=any(entry[0] == 'is_rotating' for entry in log),
+        operational=[entry[1] for entry in log if entry[0] == 'operational'],
         draws=[entry[1] for entry in log if entry[0] == 'next'],
         drawn=[entry[1] for entry in log if entry[0] == 'drawn'],
         random_ranged=sum(1 for event in events if event[0] == 'random_ranged'),
@@ -204,7 +219,13 @@ def cases():
         dict(name='human_stack_junk', stack_junk=0x5A5A0000, **human),
         # The tail's exits.
         dict(name='selling', mission='selling', **human),
-        dict(name='queued_selling', mission='none', queued='selling', **human),
+        # A queued sale passes the raw mission test; Is_Operational, run
+        # natively, reads the queued mission and refuses both arms.
+        dict(name='queued_selling', mission='none', queued='selling', native_operational=True,
+             **human),
+        dict(name='ai_queued_selling', mission='none', queued='selling', native_operational=True,
+             human=False),
+        dict(name='native_operational', native_operational=True, **human),
         dict(name='allied', allied=True, **human),
         dict(name='unarmed', armed=False, **human),
         dict(name='anti_air', anti_air=True, **human),
@@ -244,9 +265,9 @@ def main(argv=None):
                          'ReceiveDamage\'s result and the direction temporary\'s high word are placed '
                          'at [esp+0x30] and [esp+0x2E] as 0x442230 leaves them'],
             substitutions=['HouseClass::NotifyUnderAttack 0x4F93E0 skipped and recorded',
-                           'IsOperational 0x4555D0, IsCloseEnough 0x6F7780, IsHumanPlayer 0x50B730, the '
-                           'EMP test 0x70EFD0 and TechnoClass::SetTarget 0x6FCDB0 answered from the row '
-                           '(building_guard_attack)']),
+                           'IsOperational 0x4555D0 (except on native_operational rows), IsCloseEnough '
+                           '0x6F7780, IsHumanPlayer 0x50B730, the EMP test 0x70EFD0 and '
+                           'TechnoClass::SetTarget 0x6FCDB0 answered from the row (building_guard_attack)']),
         argv=argv)
 
 
