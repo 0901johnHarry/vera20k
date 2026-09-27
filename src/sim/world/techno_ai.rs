@@ -1087,6 +1087,7 @@ fn illegal_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 ///   crushable techno;
 /// - a `BalloonHover=` type (`+0xD6A`);
 /// - an `OmniCrusher=` type (`+0xD29`).
+///
 /// VERA runs the Foot arm for every rider.
 /// - Trigger: a modded unit rider with one of those flags. Retail's only
 ///   unit riders are the Terror and Chaos Drones (`Size=2`), which have none.
