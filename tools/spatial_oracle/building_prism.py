@@ -149,9 +149,9 @@ fixture after the CRT float-scanner initializer 0x7C8F5E. FPCW 0x0E7F, the
 fixture's: the game's own ftol 0x7C5F00 loads [0x822D80] = 0x0E7F whenever the
 control word differs and never restores it, and tube_startup_capture records
 0x0E7F from the CRT initializers to WinMain, so ReadDouble's percent fmul
-(0x52857E) and the x100 fmul (0x67116E) round toward zero at 53 bits. No row's
-value is rounding-sensitive (a modded `35%` reads 34 here, 35 under a
-nearest-rounding control word). Each pass supplies a
+(0x52857E) and the x100 fmul (0x67116E) round toward zero at 53 bits: `35%`,
+`14%` and `57%` read 34, 13 and 56 (35, 14 and 57 under a nearest-rounding
+control word). Each pass supplies a
 CCINIClass: a section index at +0x28 (native CRC 0x4A1DE0 keys, sorted)
 holding [General] when the pass has one, and the section's entry index at
 +0x2C holding the pass's keys; the reader's section cache (+0x4/+0x8) starts
@@ -987,7 +987,9 @@ def reader_cases():
         dict(name='retail', passes=[RETAIL_GENERAL]),
         *[dict(name=f'modifier_{label}', passes=modifier(raw))
           for label, raw in (('150pct', '150%'), ('1.5', '1.5'), ('150', '150'), ('33.3pct', '33.3%'),
-                             ('minus50pct', '-50%'), ('junk', 'junk'))],
+                             ('minus50pct', '-50%'), ('junk', 'junk'),
+                             # Rounding-sensitive: chopped products read one lower.
+                             ('35pct', '35%'), ('14pct', '14%'), ('57pct', '57%'))],
         # [General] present without the key: ftol(current * 100).
         dict(name='general_without_keys_current_100', passes=[{}]),
         dict(name='general_without_keys_current_150', passes=[{}], initial=dict(modifier=150)),

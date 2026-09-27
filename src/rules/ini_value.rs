@@ -2,14 +2,16 @@
 //!
 //! Sits on top of the raw `IniSection` store (the "INIClass" analog). Reproduces
 //! the gamemd parse CONTRACT bit-for-bit on the resolved value: $xx/xxh hex,
-//! C-atoi leniency, first-char bool, '%'-anywhere ×0.01 double, strtrim ≤0x20.
+//! C-atoi leniency, first-char bool, '%'-anywhere ×0.01 double (chopped at 53
+//! bits, as the game's x87 control word leaves it), strtrim ≤0x20.
 //!
 //! INVARIANT: the raw loader omits empty keys and empty values. A stored
 //! nonempty key returns its parsed value (malformed numeric text may still
 //! parse as zero); `default` is returned when a key is absent or omitted.
 //!
 //! ## Dependency rules
-//! - rules/ only: depends on `crate::rules::ini_parser`. No sim/render/ui/audio/net.
+//! - rules/ only: depends on `crate::rules::ini_parser` and `crate::util::native_x87`.
+//!   No sim/render/ui/audio/net.
 //! - Returns un-truncated f64 from `read_double`; the single f64->SimFixed
 //!   conversion stays in `util::fixed_math`. No float enters sim/.
 
@@ -50,8 +52,9 @@ impl IniSection {
         self.fold_rules_values(key, default, parse_read_bool)
     }
 
-    /// ReadDouble (P7): sscanf "%f" (leading float, single-precision) widened to
-    /// f64, then ×0.01 iff the value string contains '%' ANYWHERE. Returns the
+    /// ReadDouble (P7, `0x005283D0`): sscanf "%f" (leading float,
+    /// single-precision) widened to f64, then ×0.01 chopped at 53 bits iff the
+    /// value string contains '%' ANYWHERE ([`parse_read_double`]). Returns the
     /// gamemd double UN-truncated; the consumer truncates toward zero at ITS
     /// boundary (never `.round()` / never truncate here). Default ONLY on absent.
     /// Present junk is absent from stock retail data; native exposes stale
@@ -409,14 +412,30 @@ fn parse_read_bool(default: bool, raw: &str) -> bool {
     }
 }
 
+/// The binary64 0.01 at `0x007E3808`: the percent scale of ReadDouble
+/// (`0x0052857E`), ReadPowerups (`0x00673FAF`) and the Verses reader.
+pub(crate) const PERCENT_SCALE: NativeF64Bits = NativeF64Bits::from_bits(0x3f84_7ae1_47ae_147b);
+
 pub(crate) fn parse_read_double(raw: &str) -> f64 {
     let value = strtrim_ascii(raw);
     let widened = f64::from(parse_leading_f32(value));
-    if value.as_bytes().contains(&b'%') {
-        widened * 0.01_f64
-    } else {
-        widened
+    if !value.as_bytes().contains(&b'%') {
+        return widened;
     }
+    // `fld qword; fmul qword [0x007E3808]; fstp qword` (`0x0052857A..0x00528584`).
+    scale_percent(widened)
+}
+
+/// A double times [`PERCENT_SCALE`] under the game's control word 0x0E7F,
+/// which Math__ftol (`0x007C5F00`) installs and never restores: the product is
+/// chopped at 53 bits, one ulp below the nearest-rounded product for values
+/// such as `70%` (0.7's own double) or `90%` (the double below 0.9).
+pub(crate) fn scale_percent(value: f64) -> f64 {
+    let scaled = MaskedX87Chop53::mul(
+        MaskedX87Chop53::load_f64(NativeF64Bits::from_bits(value.to_bits())),
+        MaskedX87Chop53::load_f64(PERCENT_SCALE),
+    );
+    f64::from_bits(MaskedX87Chop53::store_f64_masked_chop(scaled).bits())
 }
 
 /// Byte-wise `strncpy` truncation. A cut that would land inside a multi-byte
@@ -561,11 +580,14 @@ pub(crate) fn parse_leading_f32(s: &str) -> f32 {
         .unwrap_or(0.0)
 }
 
-/// Decimal/exponent prefix used by Verses75DE39's CRT `atof7C9D66` route.
-/// Unlike ReadDouble's `%f` route, this retains binary64. Executed finite,
-/// malformed and exponent forms are pinned in bridge_landing_inputs.json;
-/// arbitrary extreme CRT rounding/range behavior is not certified here.
+/// CRT `atof` (`0x007C9D66`), the Verses (`0x0075DE39`) and ReadPowerups
+/// (`0x00673FAA`, `0x00673FC2`) route: leading `isspace` bytes skipped, then
+/// the decimal/exponent prefix. Unlike ReadDouble's `%f` route, this retains
+/// binary64. Executed finite, malformed and exponent forms are pinned in
+/// bridge_landing_inputs.json; arbitrary extreme CRT rounding/range behavior
+/// is not certified here.
 pub(crate) fn parse_leading_f64(s: &str) -> f64 {
+    let s = s.trim_start_matches(['\t', '\n', '\x0b', '\x0c', '\r', ' ']);
     leading_float_token(s)
         .and_then(|token| token.parse::<f64>().ok())
         .unwrap_or(0.0)

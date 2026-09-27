@@ -11,7 +11,7 @@ use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
 use crate::rules::ruleset::PrismSupportRules;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 /// One native `RulesClass::Process` source in its runtime position.
@@ -1872,10 +1872,20 @@ impl RulesPassProcessor {
         ini.replace_first_section(colors);
 
         // Replace every allocated type's ordinary text body with the keys that
-        // its live object actually read after allocation.
+        // its live object actually read after allocation. ReadTypeData hands
+        // the Anim registry the ART INI (`push 0x00887180` at `0x00679A6D`),
+        // so an AnimType's Rules body stays empty and must not replace the
+        // body of an earlier type of the same name: retail `[KTSTLEXP]` is an
+        // Animation and the elite Kirov bomb's warhead.
+        let mut rules_bodies = HashSet::new();
         for &(_, family) in PROJECTED_RULE_TYPE_FAMILIES {
             if let Some(members) = self.families.get(&family) {
                 for member in members {
+                    if family != RulesTypeFamily::Animation {
+                        rules_bodies.insert(member.native_stored_id.as_str());
+                    } else if rules_bodies.contains(member.native_stored_id.as_str()) {
+                        continue;
+                    }
                     ini.replace_first_section(member.body.clone());
                 }
             }
