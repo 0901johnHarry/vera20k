@@ -6,11 +6,11 @@ import sys
 import unittest
 
 
-MODULES = ('fireat_launch', 'directed_launch', 'building_pitch', 'voxel_launch', 'arc_second_probe', 'fireat_runtime')
+MODULES = ('fireat_launch', 'directed_launch', 'building_pitch', 'voxel_launch', 'arc_second_probe', 'fireat_runtime', 'load_timers')
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class FireAtGeneratorLifecycleTests(unittest.TestCase):
+class ProjectileGeneratorLifecycleTests(unittest.TestCase):
     def environment(self):
         env = dict(os.environ)
         env['VERA20K_GAMEMD_EXE'] = str(ROOT / 'deliberately-absent-retail.exe')

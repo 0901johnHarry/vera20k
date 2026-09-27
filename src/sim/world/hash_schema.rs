@@ -192,6 +192,12 @@ pub(super) enum HashFeature {
     /// f32 cost-factor fold; a tagged suffix only when the list is non-empty.
     /// Earlier schemas omit it.
     FactoryPlants = 228,
+    /// Every building's `+0x388` FacingClass (BuildingClass::Init's Set_ROT,
+    /// `0x00442CA5`), which only a turreted building carried before. Earlier
+    /// schemas fold no building's facing: the pinned fixtures hold no
+    /// turreted building, so this reproduces their old hashes, not an
+    /// arbitrary pre-230 stream.
+    BuildingFacing = 230,
 }
 
 impl HashSchema {
@@ -237,6 +243,7 @@ impl HashSchema {
                     | HashFeature::PrismSupport
                     | HashFeature::ShipSinking
                     | HashFeature::FactoryPlants
+                    | HashFeature::BuildingFacing
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

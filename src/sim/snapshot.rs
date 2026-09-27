@@ -673,7 +673,11 @@ use crate::sim::world::Simulation;
 // CancelProductionByType gains ABANDON_ALL and CancelLastProduction goes. A
 // factory keeps its construction order when it promotes a queued build, and a
 // user hold now clears its rate and restarts its timer.
-const SNAPSHOT_VERSION: u32 = 229;
+// 229 -> 230: every building keeps its `+0x388` FacingClass (BuildingClass::
+// Init's Set_ROT at 0x00442CA5), which a 229 save holds only for turreted ones.
+// The layout is unchanged, but a 229 save's turretless buildings would neither
+// aim their body nor turn it when hit, so reject it.
+const SNAPSHOT_VERSION: u32 = 230;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3659,7 +3663,8 @@ mod tests {
         // 226 -> 227: retained surface-ship sinking and its sound edge.
         // 227 -> 228: FactoryPlant cost bonuses; no full-cost Balance copy.
         // 228 -> 229: the native production events; a user hold clears the rate.
-        assert_eq!(super::SNAPSHOT_VERSION, 229);
+        // 229 -> 230: every building's `+0x388` facing.
+        assert_eq!(super::SNAPSHOT_VERSION, 230);
     }
 
     #[test]

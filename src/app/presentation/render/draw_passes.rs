@@ -918,7 +918,7 @@ fn overlay_policy_runs(policies: &[RenderZPolicy]) -> Vec<(u32, u32, RenderZPoli
     runs
 }
 
-fn draw_pooled_overlay_bodies<'a>(
+pub(crate) fn draw_pooled_overlay_bodies<'a>(
     pass: &mut wgpu::RenderPass<'a>,
     batch: &'a BatchRenderer,
     pool: &'a InstanceBufferPool,

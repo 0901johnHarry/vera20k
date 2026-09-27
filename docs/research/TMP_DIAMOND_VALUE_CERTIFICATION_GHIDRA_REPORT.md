@@ -57,7 +57,7 @@ stored in the 52-byte cell header (all from the `0x00547CF0` decompile):
 | ZData present | flags@`+0x24` bit 1 | same |
 | Extra present | flags@`+0x24` bit 0 | same |
 
-`certify_tmp_value_layout` (tests/retail_goldens/certify_structural.rs)
+`certify_tmp_value_layout` (src/asset_tools/retail_corpus/certify_structural.rs)
 proves for every non-empty cell of all 5,536 retail TMPs that the stored
 values equal our assumptions exactly (zero mismatches, 2026-07-19 run). So
 the two location strategies read identical bytes on all retail data.

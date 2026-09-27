@@ -15,6 +15,7 @@
 //! (invariant #2).
 
 mod building_missions;
+mod building_retaliation;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
@@ -567,12 +568,27 @@ fn techno_ai_shell(
             return;
         }
     }
+    // Unit736465/736473 and Infantry51BC1C/51BC51 run Ready/Commence
+    // before Foot -> Techno AI. Commence clears+C4; Techno6FA646..655 then
+    // increments it and dispatches. Native Anytown mission_order first visit
+    // ends at counter1. Promoting at the dispatch point erased that increment
+    // and let Techno's preceding readers observe the previous mission.
+    if matches!(category, EntityCategory::Unit | EntityCategory::Infantry)
+        && let Some(rules) = rules
+    {
+        // `UnitClass::AI`'s Hunt queue (`0x007363DE..0x0073645B`) comes right
+        // before its Ready/Commence.
+        if category == EntityCategory::Unit {
+            crate::sim::mcv_deploy::ai_queue_hunt(sim, id, rules);
+        }
+        sim.mission_host_promote(id, sim.session.binary_frame, rules);
+    }
     // `InfantryClass::AI`'s Health reset (`0x0051BC57`) precedes
     // `FootClass::AI`, and with it the Techno body below.
     if category == EntityCategory::Infantry {
         sim.infantry_health_reset(id);
     }
-    // Techno6F9F6E..9F precedes promotion, missions and acquisition for every
+    // Techno6F9F6E..9F precedes veterancy promotion, missions and acquisition for every
     // Techno category. object_ai_visit_one excludes the entry-active Tube leaf
     // before this common owner. Actual health and this retained estimate differ.
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -607,7 +623,7 @@ fn techno_ai_shell(
                 sim.infantry_stage_tick(id, rules);
             }
             clear_passive_target_off_mission(sim, id, rules);
-            mission_common_step(sim, id, rules);
+            mission_counter_step(sim, id);
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {
@@ -915,26 +931,14 @@ fn mission_counter_step(sim: &mut Simulation, id: u64) {
     }
 }
 
-/// The pre-movement Mission step for categories whose leaf AI has a
-/// Ready→Commence checkpoint at this position. Promotion needs parsed rules
-/// for Unit world lookups; a rules-less call ticks the counter and leaves the
-/// queue for a later rules-bearing pass.
-fn mission_common_step(sim: &mut Simulation, id: u64, rules: Option<&RuleSet>) {
-    mission_counter_step(sim, id);
-    if let Some(rules) = rules {
-        let now = sim.session.binary_frame;
-        sim.mission_host_promote(id, now, rules);
-    }
-}
-
 // ===== TechnoClass common-body bracket =====
 //
 // Per live Unit, gamemd's `TechnoClass::AI_Update` body is one contiguous
 // bracket: pre-mission block -> +0xC4/Mission work -> post-mission block, with
 // two IsAlive early-returns (after the pre-block, after dispatch). The mission
-// work at the dispatch point is the flip's counter + owner-local promotion;
-// the handler-body execution remains with legacy per-system phases except for
-// the timer-only Move reschedule below and the absorbed Harvest handler.
+// work at the dispatch point increments the counter and runs absorbed mission
+// handlers. The Unit/Infantry entry Ready/Commence precedes this bracket;
+// post-movement promotion stays with the corresponding leaf owner.
 
 /// `ObjectClass+0x90` IsAlive ([`GameEntity::is_ai_alive`]), which
 /// `TechnoClass::AI_Update` tests after the rocking update when `vt+0x298`
@@ -1489,17 +1493,16 @@ fn techno_common_post(sim: &mut Simulation, id: u64, rules: Option<&RuleSet>) {
 pub(crate) enum BracketReach {
     /// Died after the pre-block (health 0); no mission work ran.
     DiedInPre,
-    /// Live Unit: ran the `+0xC4` counter + owner-local promotion at the
+    /// Live Unit: ran the `+0xC4` counter and admitted mission handlers at the
     /// dispatch point.
     Dispatched,
 }
 
 /// Per-Unit TechnoClass common bracket. Runs the contiguous
-/// `pre -> [IsAlive B] -> +0xC4/promotion -> [IsAlive E] -> post` structure at
+/// `pre -> [IsAlive B] -> +0xC4/dispatch -> [IsAlive E] -> post` structure at
 /// the gamemd-faithful per-object AI point (pre-movement, LogicVector order).
-/// The promotion is UnitClass::AI's Ready→Commence (`0x00736473`, the call
-/// before FootClass::AI; the second in-update Ready→Commence at `0x007366FD`
-/// is a recorded residual).
+/// UnitClass::AI's first Ready→Commence at736473 precedes this bracket in
+/// `techno_ai_shell`; the later checkpoint has its post-movement owner.
 fn unit_techno_bracket(
     sim: &mut Simulation,
     id: u64,
@@ -1508,7 +1511,7 @@ fn unit_techno_bracket(
 ) -> BracketReach {
     techno_common_pre(sim, id, rules, ctx.overlay_registry);
     // Guard B (IsAlive, `0x006FA23C`). A crashing wreck is alive at Health 0,
-    // so it runs on: the counter and promotion, the passive block (on Move,
+    // so it runs on: the counter, the passive block (on Move,
     // Guard or Harvest the gate and the scan with its Scenario draws, which
     // can acquire a target its fire update then shoots), the bomb and the
     // managers, and the post block; only the handlers are skipped.
@@ -1517,12 +1520,7 @@ fn unit_techno_bracket(
     }
     // The off-mission passive-target clear runs BEFORE the +0xC4 counter.
     clear_passive_target_off_mission(sim, id, rules);
-    // `UnitClass::AI`'s Hunt queue (`0x007363DE..0x0073645B`) comes right
-    // before its Ready→Commence, which this bracket runs after the pre-block.
-    if let Some(rules) = rules {
-        crate::sim::mcv_deploy::ai_queue_hunt(sim, id, rules);
-    }
-    mission_common_step(sim, id, rules);
+    mission_counter_step(sim, id);
     // Mission_Dispatch position: the absorbed handler bodies run here,
     // timer-gated, ending with the verified post-handler epilogue write
     // (start = current frame, delay = handler return). Harvest (the miner
@@ -6203,30 +6201,51 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
     }
 
     #[test]
-    fn host_promotes_queued_mission() {
-        // Queue(Move, 0) at command time, then the host's Ready→Commence
-        // promotes it: current=Move, queue cleared, Commence reset applied.
-        let rules = promotion_rules();
-        let mut sim = Simulation::new();
-        insert_interned_unit(&mut sim, 1, 5, 5);
-        sim.mission_queue_exact(
-            1,
-            MissionId::from_known(MissionType::Move),
-            0,
-            0,
-            &crate::sim::mission::authority::EntityReadyInputProvider,
-        )
+    fn host_promotes_before_the_shared_native_mission_counter() {
+        // Original Unit736473 Commence -> Foot/Techno ->6FA64E increments C4.
+        // The executed MTNK first visit is pinned in this native projection;
+        // Infantry51BC51 has the same instruction-established call ordering.
+        let native: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tools/spatial_oracle/anytown_damage/mission_test_vectors.json"
+        )))
         .unwrap();
-        let e = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(e.mission.current(), MissionId::NONE);
-        assert_eq!(e.mission.queued().known(), Some(MissionType::Move));
+        for category in [EntityCategory::Unit, EntityCategory::Infantry] {
+            let rules = promotion_rules();
+            let mut sim = Simulation::new();
+            if category == EntityCategory::Unit {
+                insert_interned_unit(&mut sim, 1, 5, 5);
+            } else {
+                insert_interned_walker(&mut sim, 1, 5, 5);
+            }
+            sim.mission_queue_exact(
+                1,
+                MissionId::from_known(MissionType::Move),
+                0,
+                0,
+                &crate::sim::mission::authority::EntityReadyInputProvider,
+            )
+            .unwrap();
+            let e = sim.substrate.entities.get(1).unwrap();
+            assert_eq!(e.mission.current(), MissionId::NONE);
+            assert_eq!(e.mission.queued().known(), Some(MissionType::Move));
 
-        sim.mission_host_promote(1, 7, &rules);
+            sim.session.binary_frame = 7;
+            sim.object_ai_visit_one(1, Some(&rules), ObjectAiCtx::default());
 
-        let e = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(e.mission.current().known(), Some(MissionType::Move));
-        assert_eq!(e.mission.queued(), MissionId::NONE);
-        assert_eq!(e.mission.mission_start_frame(), 7);
+            let e = sim.substrate.entities.get(1).unwrap();
+            assert_eq!(e.mission.current().known(), Some(MissionType::Move));
+            // The Move handler may queue Guard after the prefix when no
+            // destination exists; promotion and the counter are already final.
+            assert_eq!(e.mission.mission_start_frame(), 7);
+            assert_eq!(
+                i64::from(e.mission.ai_counter()),
+                native["seed0"]["first_tick"]["mission_visit_count"]
+                    .as_i64()
+                    .unwrap(),
+                "{category:?} Commence must precede the Techno counter"
+            );
+        }
     }
 
     /// An infantry that is still walking when the pre-movement checkpoint runs,
@@ -6986,5 +7005,4 @@ mod bridge_engineer_entry_tests;
 mod bridge_low_repair_tests;
 
 #[cfg(test)]
-#[path = "techno_ai/bridge_test_evidence.rs"]
-mod bridge_test_evidence;
+use super::bridge_test_evidence;

@@ -1595,13 +1595,14 @@ pub struct CombatTickResult {
 /// this tick.
 ///
 /// Native has two producers and neither tests the attacker's house:
-/// `BuildingClass::ReceiveDamage @ 0x00442230` calls
-/// `HouseClass::NotifyUnderAttack` when the source is non-null, the damage
-/// result is non-zero and `BuildingType+0x232 Insignificant` is clear (after
-/// a victim `vtbl+0x80` pre-check whose identity is not pinned and is not
-/// modelled); own-fire on an own building announces. `UnitClass::ReceiveDamage 0x007384B9..0x00738530` pings a
-/// `Harvester=` unit on any non-zero, non-fatal result with or without a
-/// source.
+/// `BuildingClass::ReceiveDamage @ 0x00442230`'s retaliation block calls
+/// `HouseClass::NotifyUnderAttack` for a living building hit by a source
+/// object with a non-zero result, unless its type is `Insignificant=`
+/// (`+0x232`) or 1x1 with `UndeploysInto=` (vt+0x80, `0x00465D40`)
+/// ([`crate::sim::world::Simulation::building_hit_response`]); own-fire on an
+/// own building announces. `UnitClass::ReceiveDamage 0x007384B9..0x00738530`
+/// pings a `Harvester=` unit on any non-zero, non-fatal result with or
+/// without a source.
 #[derive(Debug, Clone, Copy)]
 pub struct UnderAttackEvent {
     pub rx: u16,

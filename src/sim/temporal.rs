@@ -541,9 +541,20 @@ impl Simulation {
             }
             _ => return,
         };
+        // The radar cell is the victim's GetCoords (vt+0x48): a building's
+        // foundation centre (`0x00447AC0`; NotifyUnderAttack `0x004F94AE`,
+        // `0x004F950E`, `0x004F956A`).
+        let Some((rx, ry, _, _)) = crate::sim::combat::resolve_target_coords(
+            &crate::sim::combat::TargetKind::Entity(target),
+            &self.substrate.entities,
+            Some(rules),
+            &self.interner,
+        ) else {
+            return;
+        };
         let event = crate::sim::combat::UnderAttackEvent {
-            rx: entity.position.rx,
-            ry: entity.position.ry,
+            rx,
+            ry,
             owner: entity.owner(),
             miner: !structure,
             structure,

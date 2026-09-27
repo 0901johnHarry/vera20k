@@ -352,8 +352,11 @@ mod tests {
                 sim.cost_of(soviets, tank, &rules),
             )
         };
+        // Schema 228's fold alone: later features (a building's `+0x388`
+        // from 230) differ too.
         let plant_fold = |sim: &Simulation| {
-            sim.state_hash() != sim.state_hash_with_schema(HashSchema::Before(228))
+            sim.state_hash_with_schema(HashSchema::Before(229))
+                != sim.state_hash_with_schema(HashSchema::Before(228))
         };
         assert_eq!(costs(&sim), (900, 450));
         assert!(!plant_fold(&sim));

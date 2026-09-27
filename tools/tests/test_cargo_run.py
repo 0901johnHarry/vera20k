@@ -1,5 +1,6 @@
 """Failure and ownership contracts for the build runner (no game/retail required)."""
 import hashlib
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
@@ -139,6 +140,74 @@ class CargoRunTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Source changed'):
             self.invoke(mutate=True)
         self.assertFalse((self.root / '.git/owned-builds/artifacts/build-a').exists())
+
+    def recorded_binary(self, profile):
+        store, namespace = cargo_run.build_store(self.root)
+        target = self.root / 'target/owned-worktrees' / namespace
+        binary = target / profile / ('asset.exe' if os.name == 'nt' else 'asset')
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_bytes(profile.encode())
+        cargo_run.publish_binaries(store, namespace, target, {binary})
+        return binary
+
+    def resolve_cli(self, *args):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(Path, 'cwd', return_value=self.root), \
+             patch.object(cargo_run, 'run') as build, \
+             redirect_stdout(stdout), redirect_stderr(stderr):
+            code = cargo_run.main(list(args))
+        build.assert_not_called()
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_resolve_cli_selects_explicit_profile_and_prints_only_recorded_path(self):
+        release = self.recorded_binary('release')
+        debug = self.recorded_binary('debug')
+        os.environ['CARGO_TARGET_DIR'] = str(self.root / 'different-shell-target')
+        for profile, binary in [('release', release), ('debug', debug)]:
+            self.assertEqual(self.resolve_cli('--resolve', 'asset', '--profile', profile),
+                             (0, str(binary) + '\n', ''))
+        # Existing MCP consumers retain their documented preference.
+        self.assertEqual(cargo_run.resolve_binary(self.root, 'asset'), (release, 'release'))
+
+    def test_explicit_resolve_never_falls_back_after_missing_or_changed_binary(self):
+        debug = self.recorded_binary('debug')
+        for state in ('missing_record', 'changed_bytes', 'missing_file'):
+            if state == 'changed_bytes':
+                release = self.recorded_binary('release')
+                release.write_bytes(b'changed since successful build')
+            elif state == 'missing_file':
+                release.unlink()
+            code, stdout, stderr = self.resolve_cli('--resolve', 'asset', '--profile', 'release')
+            self.assertEqual(code, 2, state)
+            self.assertEqual(stdout, '', state)
+            self.assertIn('No verified release host executable', stderr)
+            self.assertEqual(cargo_run.resolve_binary(self.root, 'asset'), (debug, 'debug'))
+        code, stdout, _ = self.resolve_cli('--resolve', 'unknown', '--profile', 'debug')
+        self.assertEqual((code, stdout), (2, ''))
+        with self.assertRaises(ValueError):
+            cargo_run.resolve_binary(self.root, 'asset', 'custom')
+
+    def test_resolve_rejects_ambiguous_or_build_options_before_dispatch(self):
+        for args in [
+            ['--resolve', 'asset'],
+            ['--resolve', 'asset', '--profile', 'release', '--', 'build'],
+            ['--resolve', 'asset', '--profile', 'release', '--label', 'no'],
+            ['--resolve', 'asset', '--profile', 'release', '--wait-seconds', '1'],
+            ['--profile', 'debug', '--', 'build'],
+        ]:
+            with self.subTest(args=args), patch.object(cargo_run, 'run') as build, \
+                 redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                cargo_run.main(args)
+            self.assertEqual(error.exception.code, 2)
+            build.assert_not_called()
+
+    def test_build_cli_preserves_wait_label_and_cargo_forwarding(self):
+        for flags, label, timeout in [([], None, 3600),
+                                     (['--wait-seconds', '0', '--label', 'candidate'], 'candidate', 0)]:
+            with patch.object(Path, 'cwd', return_value=self.root), \
+                 patch.object(cargo_run, 'run', return_value=7) as build:
+                self.assertEqual(cargo_run.main([*flags, '--', 'build', '--release', '--bin', 'asset']), 7)
+            build.assert_called_once_with(self.root, ['build', '--release', '--bin', 'asset'], label, timeout)
 
     def test_success_without_artifact_is_not_a_preserved_build(self):
         with self.assertRaisesRegex(ValueError, 'no executable'):

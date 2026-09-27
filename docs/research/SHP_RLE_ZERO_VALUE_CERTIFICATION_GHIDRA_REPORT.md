@@ -4,7 +4,7 @@
 **Status:** VERIFIED (live Ghidra session, gamemd.exe) + corpus-proven
 **Goal:** upgrade SHP decoded pixel VALUES (formats 2/3) from
 ratchet-only to a citable certification, closing the largest
-"UNVERIFIED-pending-instrument" row in `tests/retail_goldens`.
+"UNVERIFIED-pending-instrument" row in `src/asset_tools/retail_corpus`.
 
 ## Verdict
 
@@ -13,7 +13,7 @@ ratchet-only to a citable certification, closing the largest
 original engine's consumption for every format-2/3 frame in the retail
 corpus.** Certified by (a) the decode grammar verified from the binary's
 blitters, plus (b) a corpus-wide no-under-run proof
-(`certify_shp_rle_row_exactness` in `tests/retail_goldens`) covering the one
+(`certify_shp_rle_row_exactness` in `src/asset_tools/retail_corpus`) covering the one
 input class where the two implementations could diverge. No emulation rig was
 needed — grammar equivalence + input-domain proof is stronger than sampled
 vectors.
@@ -66,7 +66,7 @@ format-2/3 row under-runs.**
 
 ## 3. Corpus proof
 
-`certify_shp_rle_row_exactness` (tests/retail_goldens/certify_structural.rs)
+`certify_shp_rle_row_exactness` (src/asset_tools/retail_corpus/certify_structural.rs)
 replays the native width-driven walk over the raw bytes of every format-2/3
 row of every frame of all 2,450 retail SHPs (measured 2026-07-19):
 

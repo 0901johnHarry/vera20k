@@ -22,6 +22,32 @@ const RNG_INDEX_B_SEED: i32 = 0x67;
 const INIT_TABLE_1: [u32; 4] = [0xBAA9_6887, 0x1E17_D32C, 0x03BC_DC3C, 0x0F33_D1B2];
 const INIT_TABLE_2: [u32; 4] = [0x4B0F_3B58, 0xE874_F0C3, 0x6955_C5A6, 0x55A7_CA46];
 
+#[cfg(test)]
+thread_local! {
+    static DRAW_TRACE: std::cell::RefCell<Option<Vec<serde_json::Value>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Test-only observation of real production calls. It neither supplies words
+/// nor changes stream cursors; callers keep traces outside serialized state.
+#[cfg(test)]
+pub(crate) fn trace_draws<T>(run: impl FnOnce() -> T) -> (T, Vec<serde_json::Value>) {
+    DRAW_TRACE.with_borrow_mut(|trace| {
+        assert!(trace.is_none(), "nested RNG traces");
+        *trace = Some(Vec::new());
+    });
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            DRAW_TRACE.with_borrow_mut(|trace| *trace = None);
+        }
+    }
+    let reset = Reset;
+    let result = run();
+    let trace = DRAW_TRACE.with_borrow_mut(|trace| trace.take().unwrap());
+    drop(reset);
+    (result, trace)
+}
+
 /// Deterministic simulation RNG.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimRng {
@@ -202,6 +228,16 @@ impl SimRng {
         if self.index_b >= RNG_TABLE_LEN as i32 {
             self.index_b = 0;
         }
+
+        #[cfg(test)]
+        DRAW_TRACE.with_borrow_mut(|trace| {
+            if let Some(trace) = trace {
+                trace.push(serde_json::json!({
+                    "before_indices": [a, b], "value": value,
+                    "callers": std::backtrace::Backtrace::force_capture().to_string(),
+                }));
+            }
+        });
 
         value
     }

@@ -27,10 +27,13 @@ mod pavement_publication;
 #[path = "bridge_zone_publication.rs"]
 mod zone_publication;
 
-#[path = "bridge_repair_publication.rs"]
-mod repair_publication;
+#[path = "bridge_occupants.rs"]
+mod occupants;
 
-pub(crate) use repair_publication::repair_from_engineer;
+#[path = "bridge_ordinary_publication.rs"]
+mod ordinary_publication;
+
+pub(crate) use ordinary_publication::{damage_concrete, repair_from_engineer};
 
 #[cfg(test)]
 #[path = "bridge_pavement_publication_tests.rs"]

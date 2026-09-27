@@ -801,7 +801,15 @@ const GLOBAL_HARNESS_FINAL_HASH_PRE_DISPLAY_LAYERS_V182: u64 = 0x8095_0273_D0FA_
 // just those two fields of the two buildings at tick 599 reproduces every
 // old pin, Schema220's current pin and before_power included. Old values:
 // the commit that moved them.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xCDE2_E89E_8B4D_1FDE;
+// 2026-09-27 combat chain 15 (snapshot 230, composition only): schema 230
+// folds every building's `+0x388` FacingClass (BuildingClass::Init's Set_ROT,
+// `0x00442CA5`); the war factory and refinery here are turretless, so they
+// carried none before. Before(230) reproduces the chain-11 pin, and the three
+// RNG stream pins, per-tick replay and every older projection are unchanged:
+// neither building is armed, so ReceiveDamage's retaliation block draws and
+// targets nothing here. Old values: the commit that moved them.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xB393_7EFF_5E4A_3115;
+const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_FACING_V230: u64 = 0xCDE2_E89E_8B4D_1FDE;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220: u64 = 0x5399_2DBF_0F41_2252;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_NATIVE_IDENTITY_V217: u64 = 0xB1CF_4893_C849_0668;
 const GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_REPAIR_V216: u64 = 0xA0DB_A253_A90D_DD51;
@@ -1359,6 +1367,11 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(220)),
         GLOBAL_HARNESS_FINAL_HASH_PRE_RETIRED_RALLY_V220,
         "schema220 only drops the two empty rally copies from this fixture's hash"
+    );
+    assert_eq!(
+        rep.state_hash_with_schema(super::hash_schema::HashSchema::Before(230)),
+        GLOBAL_HARNESS_FINAL_HASH_PRE_BUILDING_FACING_V230,
+        "schema230 only adds the two buildings' +0x388 facings to this fixture's hash"
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,

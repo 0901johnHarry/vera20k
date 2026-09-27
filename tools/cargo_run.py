@@ -127,22 +127,26 @@ def build_store(root: Path) -> tuple[Path, str]:
     return common / 'owned-builds', hashlib.sha256(os.fsencode(root.resolve())).hexdigest()[:16]
 
 
-def resolve_binary(root: Path, name: str) -> tuple[Path | None, str | None]:
+def resolve_binary(root: Path, name: str, profile: str | None = None) -> tuple[Path | None, str | None]:
     """Discover only unchanged host executables reported by successful owned builds.
 
     Read per call so a long-running MCP server notices new builds, even when its
     environment differs from the build shell. Never guess a conventional target.
+    An explicit profile never falls back. Omitted profile preserves the MCP's
+    release-first policy. Byte identity does not establish source freshness.
     """
+    if profile not in (None, 'release', 'debug'):
+        raise ValueError('Expected release or debug host profile')
     store, namespace = build_store(root)
     record = store / 'latest' / f'{namespace}.json'
     if not record.exists():
         return None, None
     records = json.loads(record.read_text())
-    for profile in ('release', 'debug'):
-        if entry := records.get(profile, {}).get(name):
+    for candidate in (profile,) if profile else ('release', 'debug'):
+        if entry := records.get(candidate, {}).get(name):
             path = Path(entry['path'])
             if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == entry['sha256']:
-                return path, profile
+                return path, candidate
     return None, None
 
 
@@ -236,19 +240,35 @@ def run(root: Path, args: list[str], label: str | None, timeout: float) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--label', help='Preserve executables and source manifest under a unique label')
-    parser.add_argument('--wait-seconds', type=float, default=3600,
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--label', help='Preserve executables and source manifest under a unique label')
+    mode.add_argument('--resolve', metavar='BIN', help='Print a verified recorded host executable path; never builds')
+    parser.add_argument('--profile', choices=('release', 'debug'), help='Required with --resolve; no fallback')
+    parser.add_argument('--wait-seconds', type=float,
                         help='Maximum build-owner wait (default: 3600)')
     parser.add_argument('cargo', nargs=argparse.REMAINDER)
-    options = parser.parse_args()
-    if not 0 <= options.wait_seconds < float('inf'):
+    options = parser.parse_args(argv)
+    if options.resolve is not None:
+        if not options.profile or options.cargo or options.wait_seconds is not None:
+            parser.error('--resolve requires --profile and accepts no Cargo arguments or --wait-seconds')
+    elif options.profile:
+        parser.error('--profile is only valid with --resolve')
+    wait_seconds = 3600 if options.wait_seconds is None else options.wait_seconds
+    if not 0 <= wait_seconds < float('inf'):
         parser.error('--wait-seconds must be finite and nonnegative')
     args = options.cargo[1:] if options.cargo[:1] == ['--'] else options.cargo
     try:
         root = Path(git(Path.cwd(), 'rev-parse', '--show-toplevel')).resolve()
-        return run(root, args, options.label, options.wait_seconds)
+        if options.resolve is not None:
+            path, _ = resolve_binary(root, options.resolve, options.profile)
+            if path is None:
+                raise ValueError(f'No verified {options.profile} host executable {options.resolve!r} '
+                                 'recorded for this checkout; build it through tools.cargo_run first')
+            print(path)
+            return 0
+        return run(root, args, options.label, wait_seconds)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f'cargo_run: {error}', file=sys.stderr)
         return 2

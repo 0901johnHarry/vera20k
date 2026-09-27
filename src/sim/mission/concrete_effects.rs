@@ -146,11 +146,14 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
         requested: Option<TargetKind>,
     ) {
         // A building's setter is BuildingClass::SetTarget (vt+0x3C8,
-        // `0x00443B90`), which admits a target before this base setter runs.
-        let commits = assign_target_commits(&sim.substrate.entities, requested)
-            && self.rules.is_none_or(|rules| {
-                sim.building_admits_target(prepared.receiver, requested, rules)
-            });
+        // `0x00443B90`), which hands a target it refuses to this base setter
+        // as NULL (`0x00443BA9`, `0x00443BFE`): the same-target test then
+        // compares NULL, so a refused current target is cleared.
+        let requested = requested.filter(|_| {
+            self.rules
+                .is_none_or(|rules| sim.building_admits_target(prepared.receiver, requested, rules))
+        });
+        let commits = assign_target_commits(&sim.substrate.entities, requested);
         let entity = sim
             .substrate
             .entities

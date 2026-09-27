@@ -123,24 +123,26 @@ Nothing here is MCP-only; the binary does the same work directly.
 
 ```powershell
 python -m tools.cargo_run -- build --release -p vera20k --bin asset
+$assetExe = python -m tools.cargo_run --resolve asset --profile release
+if ($LASTEXITCODE -ne 0) { throw "No verified release asset binary" }
 
-./target/release/asset --help
+& $assetExe --help
 
-./target/release/asset find POWERP.SHP
-./target/release/asset archives
-./target/release/asset ls ra2md.mix --format shp --limit 20
-./target/release/asset info POWERP.SHP --ascii --frame 0
-./target/release/asset render POWERP.SHP --house 0 --limit 4
-./target/release/asset palette-for POWERP.SHP
-./target/release/asset extract POWERP.SHP --out target/asset
-./target/release/asset csf-get Name:GAPOWR
-./target/release/asset csf-grep "Power Plant" --limit 10
-./target/release/asset bag-ls --prefix ir
-./target/release/asset sound irbuild --wav
-./target/release/asset art-for GAPOWR --theater sno
-./target/release/asset compare POWERP.SHP
-./target/release/asset scan --format vxl --limit 40
-./target/release/asset parse-check --format shp
+& $assetExe find POWERP.SHP
+& $assetExe archives
+& $assetExe ls ra2md.mix --format shp --limit 20
+& $assetExe info POWERP.SHP --ascii --frame 0
+& $assetExe render POWERP.SHP --house 0 --limit 4
+& $assetExe palette-for POWERP.SHP
+& $assetExe extract POWERP.SHP --out target/asset
+& $assetExe csf-get Name:GAPOWR
+& $assetExe csf-grep "Power Plant" --limit 10
+& $assetExe bag-ls --prefix ir
+& $assetExe sound irbuild --wav
+& $assetExe art-for GAPOWR --theater sno
+& $assetExe compare POWERP.SHP
+& $assetExe scan --format vxl --limit 40
+& $assetExe parse-check --format shp
 ```
 
 Global flags follow the verb, not precede it: `asset find X --ra2-dir <PATH>`,

@@ -66,10 +66,18 @@ def image_bytes() -> bytes:
 
 
 def _sections(data: bytes):
+    if len(data) < 0x40:
+        raise OracleError("Truncated PE DOS header")
     pe = struct.unpack_from("<I", data, 0x3C)[0]
+    if pe < 0x40 or pe + 24 > len(data):
+        raise OracleError("PE header offset is outside the file")
     machine, count = struct.unpack_from("<HH", data, pe + 4)
     optional_size = struct.unpack_from("<H", data, pe + 20)[0]
     optional = pe + 24
+    if optional_size < 32 or optional + optional_size > len(data):
+        raise OracleError("Truncated PE32 optional header")
+    if optional + optional_size + count * 40 > len(data):
+        raise OracleError("Truncated PE section table")
     if (data[:2] != b"MZ" or data[pe:pe + 4] != b"PE\0\0" or machine != 0x14C
             or struct.unpack_from("<H", data, optional)[0] != 0x10B
             or struct.unpack_from("<I", data, optional + 28)[0] != IMAGE_BASE):
@@ -81,6 +89,36 @@ def _sections(data: bytes):
         if rva + max(virtual_size, raw_size) > IMAGE_SIZE or raw_ptr + raw_size > len(data):
             raise OracleError("PE section exceeds the verified fixture mapping")
         yield rva, raw_ptr, raw_size, virtual_size, flags
+
+
+def file_span(data: bytes, va: int, size: int) -> tuple[int, bytes]:
+    """Resolve one original file-backed section span, never synthesized memory.
+
+    The input bytes must be identity-checked by the caller for native claims.
+    Unlike load_image's zero-filled mapping, headers, gaps, BSS and requests
+    crossing a section boundary have no supported file span. Section raw padding
+    remains readable exactly as load_image maps it, even beyond VirtualSize.
+    """
+    if size <= 0:
+        raise OracleError("PE file span size must be positive")
+    start = va - IMAGE_BASE
+    end = start + size
+    if start < 0 or end > IMAGE_SIZE:
+        raise OracleError("PE file span is outside the fixture image")
+    # Validate every section before returning data, including malformed sections
+    # after the requested one. _sections remains the single PE parsing owner.
+    sections = list(_sections(data))
+    intersecting = [section for section in sections
+                    if start < section[0] + max(section[2], section[3])
+                    and end > section[0]]
+    if len(intersecting) == 1:
+        rva, raw_ptr, raw_size, _, _ = intersecting[0]
+        if rva <= start and end <= rva + raw_size:
+            offset = raw_ptr + start - rva
+            return offset, bytes(data[offset:offset + size])
+    raise OracleError(
+        f"PE file span 0x{va:08X}+{size} must lie within one file-backed section "
+        "(not headers, gaps, BSS or a section crossing)")
 
 
 def load_image(uc: Uc) -> None:
