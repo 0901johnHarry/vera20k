@@ -305,7 +305,7 @@ fn load_first_map(ra2_dir: &Path, names: &[&str]) -> vera20k::map::map_file::Map
     for &name in names {
         let path = ra2_dir.join(name);
         if path.exists() {
-            match map_file::load_mmx(&path) {
+            match map_file::load_from_path(&path) {
                 Ok(mf) => {
                     println!("Loaded map: {}", name);
                     return mf;

@@ -415,7 +415,7 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
         return;
     }
     crate::sim::miner::clear_unload_latch(sim, unit);
-    scatter(sim, unit, rules);
+    sim.scatter_null_source(unit, rules);
     let now = sim.session.binary_frame;
     let _ = sim.mission_queue_exact(
         unit,
@@ -425,33 +425,6 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
         &EntityReadyInputProvider,
     );
     sim.mission_host_promote(unit, now, rules);
-}
-
-/// `TechnoClass::Scatter` (vt+0x174) with a null source and the force byte,
-/// through the shared blocked-cell adapter (its displacement and RNG
-/// residuals apply).
-fn scatter(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    let Some(layer) = sim
-        .substrate
-        .entities
-        .get(id)
-        .and_then(|entity| entity.occupancy_list_layer())
-    else {
-        return;
-    };
-    let grid = sim.path_grid_snapshot();
-    crate::sim::movement::bump_crush::scatter_blocker(
-        &mut sim.substrate.entities,
-        id,
-        grid.as_deref(),
-        sim.resolved_terrain.as_ref(),
-        &sim.substrate.occupancy,
-        layer,
-        &mut sim.scenario_rng,
-        Some(rules),
-        &sim.interner,
-        crate::sim::movement::DestinationTiming::from_rules(sim.session.binary_frame, rules.into()),
-    );
 }
 
 /// `AircraftClass::Receive_Radio @ 0x004190B0`: its own arms for 8, 0xE,
@@ -622,7 +595,7 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         .get(foot)
         .is_some_and(|entity| !entity.turret_rotation_latch && entity.navigation.nav_com.is_none())
     {
-        scatter(sim, foot, rules);
+        sim.scatter_null_source(foot, rules);
     }
 }
 

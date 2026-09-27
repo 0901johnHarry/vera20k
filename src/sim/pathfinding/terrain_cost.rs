@@ -492,7 +492,6 @@ mod tests {
                 land_type: LandType::Rock.as_index(),
                 canonical_ramp: Some(RampDirection::North),
                 ground_walk_blocked: false,
-                build_blocked: true,
                 ..make_resolved_cell(0, 0)
             }],
         );
@@ -744,7 +743,6 @@ mod tests {
             base_yr_cell_land_type: 0,
             base_terrain_class: Default::default(),
             base_speed_costs: Default::default(),
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,

@@ -312,7 +312,10 @@ pub struct MapFile {
 impl MapFile {
     /// Parse a map from raw INI bytes.
     pub fn from_bytes(data: &[u8]) -> Result<Self, MapError> {
-        let ini: IniFile = IniFile::from_bytes(data)?;
+        Self::from_ini(IniFile::from_bytes(data)?)
+    }
+
+    fn from_ini(ini: IniFile) -> Result<Self, MapError> {
         let header: MapHeader = parse_header(&ini)?;
         let basic: BasicSection = basic::parse_basic_section(&ini);
         let special_flags: SpecialFlagsSection = basic::parse_special_flags_section(&ini);
@@ -412,20 +415,26 @@ pub(crate) struct OverlayPacksAlreadyConsumed;
 /// text. We dispatch on the first two header bytes — `00 00` is the
 /// new-format MIX marker; anything else is treated as INI text.
 pub fn load_from_path(path: &Path) -> Result<MapFile, MapError> {
-    let bytes: Vec<u8> = std::fs::read(path)?;
-    if is_mix_header(&bytes) {
-        let archive: MixArchive = MixArchive::load(path)?;
-        let id: i32 = pick_map_entry_id(&archive)?;
-        let data: &[u8] = archive.get_by_id(id).ok_or(MapError::MissingIsoMapPack)?;
-        MapFile::from_bytes(data)
-    } else {
-        MapFile::from_bytes(&bytes)
-    }
+    load_from_bytes(std::fs::read(path)?)
 }
 
-/// Backwards-compatible alias for callers still naming the MIX path explicitly.
-pub fn load_mmx(path: &Path) -> Result<MapFile, MapError> {
-    load_from_path(path)
+/// Parse one consumed file buffer, auto-detecting MIX-wrapped vs raw INI.
+///
+/// Callers recording source identity can hash this same buffer before passing
+/// ownership here. Wrapped maps retain the existing inner-entry selection.
+pub fn load_from_bytes(bytes: Vec<u8>) -> Result<MapFile, MapError> {
+    MapFile::from_ini(ini_from_file_bytes(bytes)?)
+}
+
+/// Select and parse the map INI without decoding terrain or preview packs.
+/// Menu metadata and full loading share this raw/wrapped-file decision.
+pub(crate) fn ini_from_file_bytes(bytes: Vec<u8>) -> Result<IniFile, MapError> {
+    if is_mix_header(&bytes) {
+        let archive: MixArchive = MixArchive::from_bytes(bytes)?;
+        pick_map_ini(&archive)
+    } else {
+        Ok(IniFile::from_bytes(&bytes)?)
+    }
 }
 
 /// New-format MIX marker: first two bytes are `0x00 0x00`.
@@ -439,7 +448,7 @@ fn is_mix_header(bytes: &[u8]) -> bool {
 /// ~120-byte `[MultiMaps]` description stub. We try entries in descending
 /// size order and return the first one whose bytes parse as INI containing
 /// a `[Map]` section.
-fn pick_map_entry_id(archive: &MixArchive) -> Result<i32, MapError> {
+fn pick_map_ini(archive: &MixArchive) -> Result<IniFile, MapError> {
     let mut entries: Vec<_> = archive.entries().to_vec();
     if entries.is_empty() {
         return Err(MapError::MissingIsoMapPack);
@@ -451,7 +460,7 @@ fn pick_map_entry_id(archive: &MixArchive) -> Result<i32, MapError> {
         };
         if let Ok(ini) = IniFile::from_bytes(data) {
             if ini.section("Map").is_some() {
-                return Ok(entry.id);
+                return Ok(ini);
             }
         }
     }
@@ -643,12 +652,10 @@ fn parse_iso_map_pack_records(decompressed: &[u8]) -> Result<ParsedIsoMapPack, M
         // Y is unsigned, and every non-sentinel header performs this fixed
         // 512-wide lookup before either applying or discarding its payload.
         let linear: i32 = i32::from(y) * ISO_MAP_ROW_WIDTH + i32::from(x);
-        let canonical = (0..ISO_MAP_CELL_COUNT)
-            .contains(&linear)
-            .then_some((
-                (linear % ISO_MAP_ROW_WIDTH) as u16,
-                (linear / ISO_MAP_ROW_WIDTH) as u16,
-            ));
+        let canonical = (0..ISO_MAP_CELL_COUNT).contains(&linear).then_some((
+            (linear % ISO_MAP_ROW_WIDTH) as u16,
+            (linear / ISO_MAP_ROW_WIDTH) as u16,
+        ));
         lookups.push(IsoMapPackLookup {
             raw_x: x,
             raw_y: y,
@@ -824,8 +831,7 @@ LocalSize=2,4,96,92
 
     #[test]
     fn authored_overlay_pack_receipt_can_be_taken_only_once() {
-        let mut map = MapFile::from_bytes(&full_map_with_preview(""))
-            .expect("minimal parsed map");
+        let mut map = MapFile::from_bytes(&full_map_with_preview("")).expect("minimal parsed map");
         let first = map
             .take_authored_overlay_packs()
             .expect("first authored receipt");

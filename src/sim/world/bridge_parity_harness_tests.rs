@@ -451,7 +451,6 @@ fn bridge_resolved_terrain(
                 base_yr_cell_land_type: 0,
                 base_terrain_class: TerrainClass::Clear,
                 base_speed_costs: clear_costs,
-                build_blocked: !path.ground_walkable,
                 has_bridge_deck: path.bridge_walkable,
                 bridge_walkable: path.bridge_walkable,
                 bridge_transition: path.transition,

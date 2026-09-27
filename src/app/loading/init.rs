@@ -455,7 +455,6 @@ mod map_wall_owner_candidate_tests {
             base_yr_cell_land_type: land,
             base_terrain_class: TerrainClass::Clear,
             base_speed_costs: speed_costs,
-            build_blocked: false,
             has_bridge_deck: false,
             bridge_walkable: false,
             bridge_transition: false,
@@ -2375,6 +2374,7 @@ pub(crate) fn load_map_initial_with_assets(
                 source: LoadedMapSource::Loose {
                     path: PathBuf::from("testmap1.map"),
                     payload_len: bytes.len(),
+                    source_sha256: crate::util::sha256::sha256_hex(&bytes),
                 },
             }
         } else {

@@ -5,17 +5,14 @@
 
 use std::collections::BTreeMap;
 
-use crate::map::bridge_facts::BRIDGE_FLAG_DESTROYED_OR_RAMP;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
 use crate::map::overlay_types::OverlayTypeRegistry;
-use crate::rules::locomotor_type::MovementZone;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::BuildingUp;
-use crate::sim::entity_store::EntityStore;
+use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding;
 use crate::sim::world::Simulation;
 
 use super::production_tech::{
@@ -36,15 +33,10 @@ pub fn placement_preview_for_owner_without_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
 ) -> Option<BuildingPlacementPreview> {
-    placement_preview_for_owner_with_overlays(
-        sim, rules, owner, type_id, rx, ry, path_grid, height_map, None,
-    )
+    placement_preview_for_owner_with_overlays(sim, rules, owner, type_id, rx, ry, None)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn placement_preview_for_owner_with_overlays(
     sim: &Simulation,
     rules: &RuleSet,
@@ -52,61 +44,45 @@ pub fn placement_preview_for_owner_with_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Option<BuildingPlacementPreview> {
     let obj = rules.object(type_id)?;
     let (width, height) = foundation_dimensions(&obj.foundation);
-    let reason = evaluate_building_placement(
-        sim,
-        rules,
-        owner,
-        type_id,
-        rx,
-        ry,
-        path_grid,
-        height_map,
-        overlay_registry,
-    )
-    .err();
-    let in_build_area = reason.as_ref().map_or(true, |r| {
-        !matches!(r, BuildingPlacementError::OutOfBuildArea)
-    });
+    let reason =
+        evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry).err();
+    let in_build_area = reason
+        .as_ref()
+        .is_none_or(|r| !matches!(r, BuildingPlacementError::OutOfBuildArea));
     let owner_id = sim.interner.get(owner);
     let wall_overlay_id = overlay_registry.and_then(|registry| {
         obj.wall
             .then(|| wall_placement::linked_overlay_id(obj, registry))
             .flatten()
     });
+    // The cursor paints each cell with `CellClass::Is_Clear_To_Build`
+    // (`BuildingPlacement_per_cell_draw`, `0x0047EE93`) for the placing house.
     let mut cell_valid: Vec<bool> = Vec::with_capacity((width as usize) * (height as usize));
     for dy in 0..height {
         for dx in 0..width {
             let cx: u16 = rx.saturating_add(dx);
             let cy: u16 = ry.saturating_add(dy);
-            let ok = if obj.wall {
-                match (owner_id, wall_overlay_id, overlay_registry) {
-                    (Some(owner_id), Some(overlay_id), Some(registry)) => wall_cell_placeable(
-                        sim, rules, obj, path_grid, cx, cy, owner_id, overlay_id, registry,
-                    ),
-                    _ => false,
-                }
-            } else {
-                can_this_exist_here(sim, &sim.substrate.entities, rules, obj, path_grid, cx, cy)
-            };
+            let ok = (!obj.wall || wall_overlay_id.is_some())
+                && placement_cell_clear(sim, rules, overlay_registry, obj, owner_id, cx, cy);
             cell_valid.push(in_build_area && ok);
         }
     }
     let wall_autofill_cells = match (owner_id, wall_overlay_id, overlay_registry) {
-        (Some(owner_id), Some(overlay_id), Some(_)) if obj.wall => wall_placement::autofill_cells(
-            sim,
-            rules,
-            obj,
-            path_grid,
-            (rx, ry),
-            owner_id,
-            overlay_id,
-        ),
+        (Some(owner_id), Some(overlay_id), Some(registry)) if obj.wall => {
+            wall_placement::autofill_cells(
+                sim,
+                rules,
+                registry,
+                obj,
+                (rx, ry),
+                owner_id,
+                overlay_id,
+            )
+        }
         _ => Vec::new(),
     };
     let type_interned = sim.interner.get(type_id).unwrap_or_default();
@@ -212,12 +188,9 @@ pub fn place_ready_building_without_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     height_map: &BTreeMap<(u16, u16), u8>,
 ) -> bool {
-    place_ready_building_with_overlays(
-        sim, rules, owner, type_id, rx, ry, path_grid, height_map, None,
-    )
+    place_ready_building_with_overlays(sim, rules, owner, type_id, rx, ry, height_map, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -228,7 +201,6 @@ pub fn place_ready_building_with_overlays(
     type_id: &str,
     rx: u16,
     ry: u16,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
     height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
@@ -247,19 +219,7 @@ pub fn place_ready_building_with_overlays(
     if !ready_queue.iter().any(|&queued| queued == type_interned) {
         return false;
     }
-    if evaluate_building_placement(
-        sim,
-        rules,
-        owner,
-        type_id,
-        rx,
-        ry,
-        path_grid,
-        height_map,
-        overlay_registry,
-    )
-    .is_err()
-    {
+    if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry).is_err() {
         return false;
     }
     if obj.wall {
@@ -282,8 +242,8 @@ pub fn place_ready_building_with_overlays(
             let gap = wall_placement::scan_autofill_direction(
                 sim,
                 rules,
+                registry,
                 obj,
-                path_grid,
                 (rx, ry),
                 owner_id,
                 overlay_id,
@@ -390,8 +350,6 @@ fn evaluate_building_placement(
     type_id: &str,
     rx: u16,
     ry: u16,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    _height_map: &BTreeMap<(u16, u16), u8>,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> Result<(), BuildingPlacementError> {
     let Some(obj) = rules.object(type_id) else {
@@ -413,50 +371,44 @@ fn evaluate_building_placement(
     if !has_type {
         return Err(BuildingPlacementError::NotReady);
     }
-    let wall_overlay_id = if obj.wall {
-        let Some(registry) = overlay_registry else {
-            return Err(BuildingPlacementError::BlockedTerrain);
-        };
-        let Some(overlay_id) = wall_placement::linked_overlay_id(obj, registry) else {
-            return Err(BuildingPlacementError::BlockedTerrain);
-        };
-        Some(overlay_id)
-    } else {
-        None
-    };
-    for dy in 0..height {
-        for dx in 0..width {
-            let cell_x = rx.saturating_add(dx);
-            let cell_y = ry.saturating_add(dy);
-            let placeable = match (wall_overlay_id, overlay_registry, owner_id) {
-                (Some(overlay_id), Some(registry), Some(owner_id)) => wall_cell_placeable(
-                    sim, rules, obj, path_grid, cell_x, cell_y, owner_id, overlay_id, registry,
-                ),
-                (Some(_), _, _) => false,
-                (None, _, _) => can_this_exist_here(
-                    sim,
-                    &sim.substrate.entities,
-                    rules,
-                    obj,
-                    path_grid,
-                    cell_x,
-                    cell_y,
-                ),
-            };
-            if !placeable {
-                // Distinguish overlap from terrain for the error variant.
-                if structure_occupies_cell(
-                    &sim.substrate.entities,
-                    rules,
-                    cell_x,
-                    cell_y,
-                    &sim.interner,
-                ) {
-                    return Err(BuildingPlacementError::OverlapsStructure);
-                }
-                return Err(BuildingPlacementError::BlockedTerrain);
-            }
-        }
+    if obj.wall
+        && overlay_registry
+            .and_then(|registry| wall_placement::linked_overlay_id(obj, registry))
+            .is_none()
+    {
+        return Err(BuildingPlacementError::BlockedTerrain);
+    }
+    // The PLACE event's Unlimbo admits the building through its own
+    // Can_Enter_Cell (`0x00449440`): BuildingTypeClass::CanPlaceAt at the
+    // clicked cell for the owning house.
+    if !crate::sim::build_site::can_place_building_at(
+        sim,
+        rules,
+        overlay_registry,
+        obj,
+        (rx as i16, ry as i16),
+        owner_id,
+    ) {
+        // The error variant only labels the refusal for presentation.
+        let overlaps_structure = crate::rules::foundation::foundation_cell_offsets(&obj.foundation)
+            .into_iter()
+            .any(|(dx, dy)| {
+                sim.cell_objects(
+                    (rx.wrapping_add(dx as u16), ry.wrapping_add(dy as u16)),
+                    MovementLayer::Ground,
+                )
+                .any(|member| {
+                    matches!(member, crate::sim::occupancy::CellObjectMember::Entity(id)
+                    if sim.substrate.entities.get(id).is_some_and(|e| {
+                        e.category == EntityCategory::Structure
+                    }))
+                })
+            });
+        return Err(if overlaps_structure {
+            BuildingPlacementError::OverlapsStructure
+        } else {
+            BuildingPlacementError::BlockedTerrain
+        });
     }
     if is_within_build_area(sim, rules, owner, obj, rx, ry, width, height) {
         Ok(())
@@ -492,193 +444,29 @@ fn evaluate_building_placement(
     }
 }
 
-/// Per-cell placement check shared by preview and validation.
-///
-/// When `water_bound` is true (naval yards), the cell MUST be ship-passable
-/// water terrain, not merely `is_water=true`. Shore/beach cells can look watery
-/// but are not valid for `MovementZone::Water` ships, which would trap produced
-/// destroyers/cruisers while still allowing amphibious craft to move.
-///
-/// Normal walkability/build_blocked checks are skipped for WaterBound buildings
-/// because water cells are intentionally blocked in those generic land-building
-/// paths. Instead, we validate against the ship passability matrix plus static
-/// overlay/terrain blockers.
-#[allow(clippy::too_many_arguments)]
-fn wall_cell_placeable(
+/// One cell of the placement cursor: `CellClass::Is_Clear_To_Build` with the
+/// type's own SpeedType and the placing house (`sim::build_site`).
+fn placement_cell_clear(
     sim: &Simulation,
     rules: &RuleSet,
-    object_type: &ObjectType,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
+    registry: Option<&OverlayTypeRegistry>,
+    obj: &ObjectType,
+    owner: Option<InternedId>,
     cx: u16,
     cy: u16,
-    owner: crate::sim::intern::InternedId,
-    overlay_id: u8,
-    registry: &OverlayTypeRegistry,
 ) -> bool {
-    if !registry.flags(overlay_id).is_some_and(|flags| flags.wall) {
-        return false;
-    }
-    let Some(grid) = sim.overlay_grid.as_ref() else {
+    let Some(terrain) = sim.resolved_terrain.as_ref() else {
         return false;
     };
-    if cx >= grid.width() || cy >= grid.height() {
-        return false;
-    }
-    let existing = *grid.cell(cx, cy);
-    if existing.overlay_id.is_none() {
-        return can_this_exist_here(
-            sim,
-            &sim.substrate.entities,
-            rules,
-            object_type,
-            path_grid,
-            cx,
-            cy,
-        );
-    }
-    if existing.overlay_id != Some(overlay_id)
-        || existing.wall_owner != Some(owner)
-        || existing.overlay_data <= 0x0F
-    {
-        return false;
-    }
-
-    if structure_occupies_cell(&sim.substrate.entities, rules, cx, cy, &sim.interner)
-        || ground_non_structure_occupies_cell(sim, cx, cy)
-    {
-        return false;
-    }
-    if let Some(terrain) = sim.resolved_terrain.as_ref() {
-        return terrain.cell(cx, cy).is_some_and(|cell| {
-            !cell.base_build_blocked
-                && !cell.terrain_object_blocks
-                && !cell.has_bridge_deck
-                && !cell.bridge_walkable
-                && !cell.bridge_facts.has_flag(BRIDGE_FLAG_DESTROYED_OR_RAMP)
-                && cell.slope_type == 0
-        });
-    }
-    path_grid.map_or(true, |grid| cx < grid.width() && cy < grid.height())
-}
-
-/// Live per-cell `CellClass::CanThisExistHere` projection used by both preview
-/// and committed production placement.
-// Native: CellClass::CanThisExistHere @ YR 0x0047C1D0. The available runtime
-// inputs cover normal-list blockers, overlay absence, terrain/buildability,
-// bridge/ramp/slope rejection, and the type SpeedType/WaterBound projection.
-// The executable's editor/global bypass and unparsed +0xE58 exception remain
-// explicit residuals; neither has a represented live input in this runtime.
-pub(super) fn can_this_exist_here(
-    sim: &Simulation,
-    entities: &EntityStore,
-    rules: &RuleSet,
-    object_type: &ObjectType,
-    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    cx: u16,
-    cy: u16,
-) -> bool {
-    let no_overlap = !structure_occupies_cell(entities, rules, cx, cy, &sim.interner)
-        && !ground_non_structure_occupies_cell(sim, cx, cy);
-    let no_overlay = sim
-        .overlay_grid
-        .as_ref()
-        .map_or(true, |grid| grid.cell(cx, cy).overlay_id.is_none());
-
-    if object_type.water_bound {
-        let cell_ok = if let Some(terrain) = sim.resolved_terrain.as_ref() {
-            terrain.cell(cx, cy).is_some_and(|cell| {
-                let ship_passable = pathfinding::passability::is_passable_for_zone(
-                    cell.zone_type,
-                    MovementZone::Water,
-                );
-                ship_passable
-                    && !cell.overlay_blocks
-                    && !cell.terrain_object_blocks
-                    && !cell.has_bridge_deck
-                    && !cell.bridge_walkable
-                    && !cell.bridge_facts.has_flag(BRIDGE_FLAG_DESTROYED_OR_RAMP)
-            })
-        } else {
-            path_grid.is_some_and(|grid| {
-                pathfinding::is_cell_passable_for_mover(
-                    grid,
-                    cx,
-                    cy,
-                    Some(MovementZone::Water),
-                    None,
-                )
-            })
-        };
-        cell_ok && no_overlap && no_overlay
-    } else {
-        let cell_ok = if let Some(terrain) = sim.resolved_terrain.as_ref() {
-            terrain.cell(cx, cy).is_some_and(|cell| {
-                !cell.build_blocked
-                    && !cell.overlay_blocks
-                    && !cell.terrain_object_blocks
-                    && !cell.has_bridge_deck
-                    && !cell.bridge_walkable
-                    && !cell.bridge_facts.has_flag(BRIDGE_FLAG_DESTROYED_OR_RAMP)
-                    && cell.slope_type == 0
-            })
-        } else {
-            let walkable = path_grid.map_or(true, |g| g.is_walkable(cx, cy));
-            let not_blocked = !sim.effective_build_blocked(cx, cy).unwrap_or(false);
-            walkable && not_blocked
-        };
-        cell_ok && no_overlap && no_overlay
-    }
-}
-
-fn ground_non_structure_occupies_cell(sim: &Simulation, rx: u16, ry: u16) -> bool {
-    sim.substrate.occupancy.get(rx, ry).is_some_and(|cell| {
-        cell.iter_layer(MovementLayer::Ground).any(|occupant| {
-            match sim.substrate.entities.get(occupant.entity_id) {
-                Some(entity) => entity.category != EntityCategory::Structure,
-                None => {
-                    debug_assert!(
-                        false,
-                        "occupancy cell ({rx},{ry}) references missing entity {}",
-                        occupant.entity_id
-                    );
-                    true
-                }
-            }
-        })
-    })
-}
-
-pub(super) fn structure_occupies_cell(
-    entities: &EntityStore,
-    rules: &RuleSet,
-    rx: u16,
-    ry: u16,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    entities.values().any(|e| {
-        // A dying structure is unmarked from cell lists synchronously in uninit;
-        // it must not block placement during its deferred-delete window.
-        if e.dying || e.lifecycle.in_limbo {
-            return false;
-        }
-        if e.category != EntityCategory::Structure {
-            return false;
-        }
-        let Some(existing) = rules.object(interner.resolve(e.type_ref())) else {
-            return false;
-        };
-        // Wall entities render and behave as overlays — they don't block building
-        // placement of other structures. A wall cell is only blocked to another wall
-        // of the same type, which is handled by the overlay list, not the entity store.
-        if existing.wall {
-            return false;
-        }
-        let (width, height) = foundation_dimensions(&existing.foundation);
-        rx >= e.position.rx
-            && rx < e.position.rx.saturating_add(width)
-            && ry >= e.position.ry
-            && ry < e.position.ry.saturating_add(height)
-    })
+    crate::sim::build_site::is_clear_to_build(
+        sim,
+        rules,
+        registry,
+        terrain.native_cell_identity((cx as i16, cy as i16)),
+        crate::sim::build_site::building_speed_type(obj),
+        Some(obj),
+        owner,
+    )
 }
 
 fn is_within_build_area(

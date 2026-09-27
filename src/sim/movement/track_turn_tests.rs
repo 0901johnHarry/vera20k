@@ -13,6 +13,7 @@ use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId};
 use crate::sim::movement::facing_class::FacingClass;
 use crate::sim::movement::locomotor::LocomotorState;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::snapshot::GameSnapshot;
 use serde_json::{Value, json};
 

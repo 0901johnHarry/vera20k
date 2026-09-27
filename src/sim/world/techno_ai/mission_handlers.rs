@@ -116,14 +116,6 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
             // that one field.
             has_destination: entity.navigation.nav_com.is_some(),
             effective_mission: entity.mission.effective().known(),
-            unit_deploy_begin_active: entity
-                .mission_leaf
-                .as_unit()
-                .is_some_and(|leaf| leaf.deploy_begin_active() != 0),
-            unit_deploy_reverse_active: entity
-                .mission_leaf
-                .as_unit()
-                .is_some_and(|leaf| leaf.deploy_reverse_active() != 0),
             // `InfantryClass::Mission_Attack @ 0x0051F3E0` branches at
             // `0x0051F4D3` on `[this+0x6C4] ∈ {0x1B, 0x1C, 0x1D, 0x1E}` —
             // Deploy, Deployed, DeployedFire, DeployedIdle in the sequence-name
@@ -311,8 +303,8 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         //   ordinary right-click resolver issues the enter action directly.
         // - An AI-owned `Infiltrate=`(`+0xEBE`) / `Occupier=`(`+0xEB4`) /
         //   `Assaulter=`(`+0xEB5`) infantryman converts to
-        //   `Assign_Mission(Capture)` and returns 1. Frequency: zero today,
-        //   because this project has no AI opponent.
+        //   `Assign_Mission(Capture)` and returns 1. Frequency: every such
+        //   dispatch of a computer house's infantryman.
         //
         // RESIDUAL (GSI-07.06) — two further Foot-body steps are absent:
         // - Step 1, the `HoverAttack` re-anchor. When `TechnoType+0x390`
@@ -494,7 +486,10 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 .is_some_and(|e| crate::sim::mcv_deploy::is_mcv(sim, e, rules)) =>
         {
             MissionHandlerEvaluation::cadence(crate::sim::mcv_deploy::mission_unload(
-                sim, id, rules,
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
             ))
         }
         // The harvester branch of `UnitClass::Mission_Unload @ 0x0073D630`
@@ -505,25 +500,10 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         // Guard and Sticky share the UnitClass slot (`MissionClass::AI`'s
         // table `0x005B34E8` sends both to `+0x21C` = `0x00740810`).
         (EntityCategory::Unit, Some(mission @ (MissionType::Guard | MissionType::Sticky))) => {
-            // **VERA-internal, gamemd equivalent UNCHECKED — this mapping is
-            // wrong and the arm is dead.** The "three byte latches, then
-            // `Assign_Mission(5, 0)`, then `return 1`" shape lives at
-            // `0x00740A90`, which is vtable `+0x22C` — the **Move** slot, not
-            // Guard — reads `[this+0x6E0]`/`+0x6E1`/`+0x6E2`, and queues
-            // **Guard**, not Harvest or Unload. `UnitClass`'s real Guard
-            // override `0x00740810` gates its `Queue_Mission(10)`/`return 1` on
-            // `UnitTypeClass+0xE0E`/`+0xE0F` plus house and refinery checks, and
-            // its `Queue_Mission(0x10)` path returns `ftol(Rate) + Rand(0, 2)`
-            // rather than 1.
-            //
-            // Trigger: none today — both latch bytes have only `#[cfg(test)]`
-            // writers (`sim::mission::leaf`), so production never reaches
-            // either arm. Player effect: none. Frequency: zero. Downstream
-            // risk: the wrong native mapping would be carried straight into any
-            // future deploy work; the shape belongs on the Move arm.
-            //
-            // The override opens with the Slave Miner's kick
-            // (`0x00740815..0x0074084F`, `sim::slave_manager`).
+            // `UnitClass::Mission_Guard @ 0x00740810` opens with the Slave
+            // Miner's kick (`0x00740815..0x0074084F`, `sim::slave_manager`),
+            // then the harvester arms and the Construction Yard maker's Unload
+            // arm, in that order.
             if let Some(delay) =
                 sim.slave_master_mission_kick(id, mission, rules, ctx.overlay_registry)
             {
@@ -532,10 +512,13 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
                 // `Queue_Mission(10, 0); return 1` at `0x0074092C` /
                 // `0x00740960` — no RNG draw, the Foot body is not reached.
                 MissionHandlerEvaluation::queue(1, MissionType::Harvest)
-            } else if input.unit_deploy_begin_active {
-                MissionHandlerEvaluation::queue(1, MissionType::Harvest)
-            } else if input.unit_deploy_reverse_active {
-                MissionHandlerEvaluation::queue(1, MissionType::Unload)
+            } else if crate::sim::mcv_deploy::guard_queues_unload(sim, id, rules) {
+                // `Queue_Mission(0x10, 0)` at `0x00740A19`, then the Guard
+                // epilogue `0x00740A1F`.
+                MissionHandlerEvaluation::queue(
+                    jittered_mission_cadence(sim, rules, mission),
+                    MissionType::Unload,
+                )
             } else {
                 evaluate_foot_guard_cadence(sim, rules, id, mission, input.bunker_delegate)
             }
@@ -591,6 +574,18 @@ pub(super) fn dispatch_supported_foot_mission_cadence(
         }
         (EntityCategory::Infantry, Some(MissionType::AreaGuard)) => {
             evaluate_foot_area_guard(sim, id, rules, ctx)
+        }
+        // `UnitClass::Mission_Hunt @ 0x0073EFC0`'s deploy arm; every other
+        // Unit tail-calls the Foot body (`0x0073F08C`).
+        (EntityCategory::Unit, Some(MissionType::Hunt))
+            if crate::sim::mcv_deploy::hunt_deploys(sim, id, rules) =>
+        {
+            MissionHandlerEvaluation::cadence(crate::sim::mcv_deploy::mission_hunt_deploy(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+            ))
         }
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Hunt)) => {
             evaluate_foot_hunt(sim, id, rules, ctx)
@@ -677,8 +672,6 @@ pub(super) struct MissionHandlerInput {
     /// Current when present, otherwise queued — the selector the idle-mode
     /// early returns and the control-entry lookups read.
     pub(super) effective_mission: Option<MissionType>,
-    pub(super) unit_deploy_begin_active: bool,
-    pub(super) unit_deploy_reverse_active: bool,
     /// This is an infantryman whose DoType sits in native's deployed set, so
     /// its Attack slot takes `InfantryClass::Mission_Attack`'s own override
     /// instead of the Foot body.
@@ -1207,31 +1200,24 @@ fn foot_enter_idle_mode_selection(
 /// is mid-move.
 ///
 /// RESIDUAL — **the AI return-to-base arm** (`0x004D54EE`-`0x004D5576`) is
-/// dead: it is gated on `!HouseClass::IsControlledByHuman(this->Owner)` and
-/// `g_GameMode (0x00A8B238) == 0`, and every house in VERA is human. The human
-/// arm's `UpdateIdleAction` is already covered — `sim::infantry::tick_idle_actions`
+/// gated on `!HouseClass::IsControlledByHuman(this->Owner)` and
+/// `g_GameMode (0x00A8B238) == 0`, a campaign computer house; skirmish runs
+/// with a nonzero game mode, so it is dormant there. The human arm's
+/// `UpdateIdleAction` is already covered — `sim::infantry::tick_idle_actions`
 /// admits Hunt and gates on "no target", the same condition — from a different
 /// position in the tick, which is that function's own recorded residual.
 ///
-/// RESIDUAL — **the two leaf overrides above this body**, neither of which
-/// changes anything today:
-/// - `InfantryClass::Mission_Hunt @ 0x0051F540` (slot `+0x228`, single DATA
-///   xref `0x007EB280`; `0x007EB280 - 0x007EB058 = 0x228`). Both of its arms
-///   open with `HouseClass::IsControlledByHuman(...) == 0`, so both are dead
-///   without an AI opponent. They matter when one lands: an AI-owned
-///   `Infiltrate`/`Occupier`/`Assaulter` infantryman holding a building
-///   `Assign_Mission(Capture)`s and returns 1, and an AI-owned deployed man
-///   with no target plays `Do_Action(0x1F)` and returns 1 — **both consume no
-///   RNG at all**, so the stream forks the day an AI house ships.
-/// - `UnitClass::Mission_Hunt @ 0x0073EFC0` (verified plate comment on the
-///   function). A type with `DeploysInto` set (`UnitTypeClass+0x404`) deploys
-///   in place instead of hunting and returns `ftol(Rate*900) + RandomRanged(0, 2)`
-///   with **no scan**; a type without it tail-calls this body. Trigger: a
-///   berserked or Hunt-ordered MCV or deployable vehicle. Player effect: retail
-///   unpacks it, VERA sends it hunting. Frequency: low — it needs a Chaos Drone
-///   on an MCV. Downstream risk: the arm also consults a `RulesClass` list at
-///   `+0x8B0`/`+0x8BC` whose identity is UNCHECKED, so it cannot be closed by
-///   guessing.
+/// RESIDUAL — **`InfantryClass::Mission_Hunt @ 0x0051F540`** (slot `+0x228`,
+/// single DATA xref `0x007EB280`; `0x007EB280 - 0x007EB058 = 0x228`), the
+/// override above this body for infantry. Both of its arms open with
+/// `HouseClass::IsControlledByHuman(...) == 0`: a computer house's
+/// `Infiltrate`/`Occupier`/`Assaulter` infantryman holding a building
+/// `Assign_Mission(Capture)`s and returns 1, and its deployed man with no
+/// target plays `Do_Action(0x1F)` and returns 1 — **both consume no RNG at
+/// all**. Trigger: a computer house's infantry on Hunt. Player effect: such an
+/// infantryman scans and fights where retail captures or undeploys.
+/// Frequency: every Hunt dispatch of those infantry. Downstream risk: one RNG
+/// draw per dispatch that retail does not make.
 /// RESIDUAL — **a miner never reaches this body at all**, because the miner
 /// exclusion at the head of [`dispatch_supported_foot_mission_cadence`] admits
 /// only Guard. Retail's four `StupidHunt=yes` miners (`CMIN`, `SMIN`, `YHVR`,
@@ -1414,7 +1400,8 @@ fn evaluate_foot_area_guard(
 /// gated on `HouseClass::IsControlledByHuman(...) == 0` plus `Deployer=`
 /// (`InfantryTypeClass+0xEC8`), `DeployFire=`, a negative `UndeployDelay` and a
 /// `Rules[+0xE30]`-indexed frame gate, and makes an AI-owned deployer sit down
-/// on its own. Frequency: **zero today** — this project has no AI opponent.
+/// on its own. Frequency: every Guard dispatch of such a computer-owned
+/// deployer.
 /// Everything else in that branch returns `-1`, which is the Foot body below.
 ///
 /// The Sticky half of the shared-slot claim is confirmed:
@@ -1467,9 +1454,8 @@ fn evaluate_foot_area_guard(
 ///   mission is not already Sabotage, and whose target is a `BuildingClass`,
 ///   `Queue_Mission(0x11, 0)`. Trigger: an AI demolition infantryman standing
 ///   guard that picks up an enemy building. Player effect: retail's walks in and
-///   plants; VERA's shoots it instead. Frequency: **zero today** — the arm is
-///   gated on a non-human house and VERA has no AI opponent — and continuous
-///   once one lands, which is why it is recorded rather than left unwritten.
+///   plants; VERA's shoots it instead. Frequency: every Guard dispatch of such
+///   a computer-owned infantryman with a building target.
 ///   `+0xEC2` is UNCHECKED.
 /// - **the two further containment latches.** The head takes three byte
 ///   latches in order — `+0x68F` → `[vtable+0x340]` (0x004DFB70), `+0x690` →

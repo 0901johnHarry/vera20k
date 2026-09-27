@@ -48,10 +48,6 @@ impl EntryReadContext<'_> {
         self.terrain().native_cell_flags(cell)
     }
 
-    fn tile(&self, cell: Cell) -> i32 {
-        self.terrain().native_cell_tile_index(cell)
-    }
-
     fn level(&self, cell: Cell) -> i8 {
         self.terrain().native_cell_ground_fields(cell).0 as i8
     }
@@ -1754,131 +1750,60 @@ fn terrain_impassable(
         .rules
         .terrain_object_type_case_insensitive(live.sim.interner.resolve(terrain.type_ref))
         .ok_or("repair missing TerrainType")?;
+    // TerrainClass::Can_Enter_Cell @ 0x0071C4D0: the first foundation cell
+    // that is not clear for a typeless, houseless build refuses (7).
     let p = live.coord(cell);
+    let speed = if ty.water_bound {
+        SpeedType::Float
+    } else {
+        SpeedType::Track
+    };
     for offset in crate::rules::foundation::foundation_cell_offsets(&ty.foundation) {
         let selected = live
             .terrain()
             .native_cell_identity((p.0.wrapping_add(offset.0), p.1.wrapping_add(offset.1)));
-        if !placement_cell(
-            live,
+        if !crate::sim::build_site::is_clear_to_build(
+            live.sim,
+            live.rules,
+            live.registry,
             selected,
-            if ty.water_bound {
-                SpeedType::Float
-            } else {
-                SpeedType::Track
-            },
+            Some(speed),
             None,
-        )? {
+            None,
+        ) {
             return Ok(true);
         }
     }
     Ok(false)
 }
-fn placement_cell(
-    live: &EntryReadContext<'_>,
-    cell: Cell,
-    speed: SpeedType,
-    with_type: Option<&ObjectType>,
-) -> Result<bool, String> {
-    let p = live.coord(cell);
-    if let Some(ty) = with_type {
-        let to_tile = ty
-            .to_tile
-            .as_deref()
-            .map(|name| live.terrain().resolve_registered_tile_name(name))
-            .transpose()?
-            .flatten();
-        if to_tile.is_some() {
-            if !live
-                .terrain()
-                .tile_allows_morph_placement(live.tile(cell))?
-                || live
-                    .sim
-                    .substrate
-                    .occupancy
-                    .first_building_on_layer(p.0 as u16, p.1 as u16, MovementLayer::Ground)
-                    .is_some()
-            {
-                return Ok(false);
-            }
-        } else if live
-            .sim
-            .substrate
-            .occupancy
-            .get(p.0 as u16, p.1 as u16)
-            .is_some_and(|c| c.iter_layer(MovementLayer::Ground).next().is_some())
-            || live
-                .sim
-                .production
-                .terrain_object_cells
-                .contains_key(&(p.0 as u16, p.1 as u16))
-            || raw(live, cell, MovementLayer::Ground).0 & 0x3f != 0
-        {
-            return Ok(false);
-        }
-    }
-    if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
-        (i32::from(p.0), i32::from(p.1)),
-        live.sim.playfield_bounds,
-        Some(live.terrain()),
-    ) {
-        return Ok(false);
-    }
-    let overlay = match cell {
-        Cell::Real(index) => live.terrain().cells()[index]
-            .bridge_facts
-            .overlay_id
-            .is_some(),
-        Cell::Dummy => {
-            live.terrain()
-                .shared_cell_dummy()
-                .overlay_identity_state()
-                .0
-                != -1
-        }
-    };
-    if overlay {
-        return Ok(false);
-    }
-    row_nonzero(live, cell, speed)
-}
+/// BuildingClass::Can_Enter_Cell @ 0x00449440: a marked building that can
+/// undeploy tests the one cell, otherwise its type's CanPlaceAt from the
+/// cell; either for the building's own house.
 fn building_impassable(
     live: &EntryReadContext<'_>,
     e: &GameEntity,
     obj: &ObjectType,
     cell: Cell,
 ) -> Result<bool, String> {
-    if obj.undeploys_into.is_some() && e.lifecycle.cell_marked {
-        return placement_cell(live, cell, obj.speed_type, Some(obj)).map(|p| !p);
-    }
-    if obj.place_anywhere {
-        return Ok(false);
-    }
-    let to_tile = obj
-        .to_tile
-        .as_deref()
-        .map(|name| live.terrain().resolve_registered_tile_name(name))
-        .transpose()?
-        .flatten();
-    let p = live.coord(cell);
-    //71615F compares Cell::Empty; active710A80 startup initializes B0EB58
-    //to the two zero words. The foundation terminator7fff is separate.
-    if p == (0, 0) {
-        return Ok(true);
-    }
-    let mut rejected = false;
-    let mut accepted = false;
-    for offset in crate::rules::foundation::foundation_cell_offsets(&obj.foundation) {
-        let selected = live
-            .terrain()
-            .native_cell_identity((p.0.wrapping_add(offset.0), p.1.wrapping_add(offset.1)));
-        let admitted = placement_cell(live, selected, obj.speed_type, Some(obj))?;
-        rejected |= !admitted;
-        accepted |= admitted;
-    }
-    Ok(if to_tile.is_some() {
-        !accepted
+    let admitted = if obj.undeploys_into.is_some() && e.lifecycle.cell_marked {
+        crate::sim::build_site::is_clear_to_build(
+            live.sim,
+            live.rules,
+            live.registry,
+            cell,
+            crate::sim::build_site::building_speed_type(obj),
+            Some(obj),
+            Some(e.owner()),
+        )
     } else {
-        rejected
-    })
+        crate::sim::build_site::can_place_building_at(
+            live.sim,
+            live.rules,
+            live.registry,
+            obj,
+            live.coord(cell),
+            Some(e.owner()),
+        )
+    };
+    Ok(!admitted)
 }

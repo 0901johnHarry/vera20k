@@ -74,12 +74,7 @@ fn diagnose_placement_constraints() {
         for name in &map_names {
             let path = ra2_dir.join(name);
             if path.exists() {
-                match if name.ends_with(".mmx") {
-                    map_file::load_mmx(&path)
-                } else {
-                    let bytes = std::fs::read(&path).unwrap();
-                    map_file::MapFile::from_bytes(&bytes)
-                } {
+                match map_file::load_from_path(&path) {
                     Ok(mf) => {
                         println!("\nLoaded map: {} (theater={})", name, mf.header.theater);
                         result = Some(mf);

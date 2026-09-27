@@ -682,7 +682,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
          [SMIN]\nStrength=2000\nSpeed=3\nEnslaves=SLAV\nSlavesNumber=5\nDeploysInto=YAREFN\n\
          ResourceGatherer=yes\nResourceDestination=yes\n\
          [YAREFN]\nStrength=2000\nEnslaves=SLAV\nSlavesNumber=5\nUndeploysInto=SMIN\n\
-         Foundation=3x3\nDeployFacing=0\n",
+         Foundation=3x3\nDeployFacing=0\n[Clear]\nBuildable=yes\n",
     ))
     .expect("slave miner rules");
     // A Buildup SHP, without which the refinery cannot undeploy
@@ -691,6 +691,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     rules.set_buildup_control_for_test("YAREFN", [0, 17, 3]);
     let seed = 0x51A7_E001;
     let mut sim = Simulation::with_seed(seed);
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     let mut expected = SimRng::new(seed);
     let constructed = |sim: &Simulation, expected: &mut SimRng| {
         for _ in 0..6 {
@@ -724,10 +725,7 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     let slaves = pool(&sim, smin);
     assert_eq!(slaves, vec![2, 3, 4, 5, 6]);
 
-    assert!(
-        sim.deploy_mcv(smin, &rules, &Default::default()),
-        "deploy to YAREFN"
-    );
+    assert!(sim.deploy_mcv(smin, &rules, None), "deploy to YAREFN");
     let yarefn = sim
         .substrate
         .entities
