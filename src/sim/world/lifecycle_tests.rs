@@ -333,11 +333,7 @@ fn receiver_borrowed_map_uninit_clears_aircraft_bridge_occupation() {
     // fatal Aircraft damage starts a crash and does not immediately UnInit.
     let terrain = sim.resolved_terrain.take();
     let bridge_state = sim.bridge_state.take();
-    sim.uninit_with_context(
-        1,
-        super::UninitContext::with_terrain(terrain.as_ref())
-            .with_bridge_state(bridge_state.as_ref()),
-    );
+    sim.uninit_with_context(1, super::UninitContext::with_terrain(terrain.as_ref()));
     sim.resolved_terrain = terrain;
     sim.bridge_state = bridge_state;
 
@@ -1060,7 +1056,7 @@ fn gsi_04_12_common_raw_occupation_ground_unit_links_marks_then_unlinks_clears()
 }
 
 #[test]
-fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_production_collapse() {
+fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_live_collapse_flags() {
     let mut sim = Simulation::new();
     install_common_raw_terrain(&mut sim, 8, 8, 2, Some((3, 4)));
     insert_entity(&mut sim, 1, EntityCategory::Unit);
@@ -1099,6 +1095,15 @@ fn gsi_04_12_common_raw_occupation_structural_deck_unit_tracks_production_collap
             "collapse leaves the structural deck record present"
         );
         assert!(!bridge_state.is_bridge_walkable(3, 4));
+        // The legacy controller above returns its flag transaction; its
+        // isolated entry does not publish it. Supply native47E040's cleared
+        // bit100 at this occupation-reader boundary, as the live publisher
+        // does before the next receiver. A render-only collapse is not enough.
+        let cell = terrain.native_cell_identity((3, 4));
+        terrain.write_native_cell_flags(
+            cell,
+            terrain.native_cell_flags(cell) & !BRIDGE_FLAG_STRUCTURAL,
+        );
     }
 
     insert_entity(&mut sim, 2, EntityCategory::Unit);
@@ -1503,6 +1508,13 @@ fn gsi_04_12_object_raw_occupation_deck_clear_rechecks_live_structural_state() {
             StateOutcome::Collapsed { .. }
         ));
         assert!(!bridge_state.is_bridge_walkable(3, 4));
+        // Supply the live47E040 structural clear, not just the legacy
+        // controller's overlay/damage projection, before Object5F6120.
+        let cell = terrain.native_cell_identity((3, 4));
+        terrain.write_native_cell_flags(
+            cell,
+            terrain.native_cell_flags(cell) & !BRIDGE_FLAG_STRUCTURAL,
+        );
     }
 
     let _ = sim.object_conceal(2);

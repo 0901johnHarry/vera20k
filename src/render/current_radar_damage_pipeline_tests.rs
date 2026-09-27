@@ -164,7 +164,12 @@ fn simulation_fixture() -> (Simulation, crate::map::terrain::TerrainGrid) {
         );
     }
     let grid = build_terrain_grid_from_resolved(&terrain, None, None);
-    let mut bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 1500);
+    let mut bridge_state = BridgeRuntimeState::from_resolved_terrain_with_map_size(
+        &terrain,
+        true,
+        1500,
+        (bounds().base, 40),
+    );
     bridge_state.test_seed_cell(
         CENTER.0,
         CENTER.1,
@@ -286,8 +291,8 @@ fn present_runtime_projection(
     )
 }
 
-fn production_rules() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(
+fn production_ini() -> IniFile {
+    let mut ini = IniFile::from_str(
         "[InfantryTypes]\n0=ENGI\n\n\
          [VehicleTypes]\n0=MTNK\n\n\
          [AircraftTypes]\n\n\
@@ -299,8 +304,19 @@ fn production_rules() -> RuleSet {
          [105mm]\nDamage=1501\nROF=50\nRange=6\nWarhead=AP\n\n\
          [AP]\nWall=yes\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\n\
          [AudioVisual]\nRepairBridgeSound=BridgeRepaired\n",
-    ))
-    .expect("production bridge damage/repair rules")
+    );
+    let mut terrain_and_overlays = String::from(
+        "[Clear]\nFoot=100%\nTrack=100%\nWheel=100%\n\
+         [Road]\nFoot=100%\nTrack=100%\nWheel=100%\n[OverlayTypes]\n",
+    );
+    for id in 0..=238 {
+        terrain_and_overlays.push_str(&format!("{id}=O{id}\n"));
+    }
+    for id in 0..=238 {
+        terrain_and_overlays.push_str(&format!("[O{id}]\nNoUseTileLandType=no\n"));
+    }
+    ini.merge(&IniFile::from_str(&terrain_and_overlays));
+    ini
 }
 
 fn spawn(
@@ -342,7 +358,9 @@ fn spawn(
 #[test]
 fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repair() {
     let (mut sim, grid) = simulation_fixture();
-    let rules = production_rules();
+    let ini = production_ini();
+    let rules = RuleSet::from_ini(&ini).expect("production bridge damage/repair rules");
+    sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     let attacker = spawn(
         &mut sim,
@@ -379,6 +397,8 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
     assert_eq!(raw_pair(&radar, FLOOD[0]), [PRISTINE; 2]);
 
     let mut runtime = SimRuntime::from_simulation(sim);
+    runtime.resources.overlay_registry =
+        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     runtime.resources.rules = rules;
     let mut fire_count = 0;
     for _ in 0..32 {
@@ -437,6 +457,34 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
     }
     assert!(runtime.simulation.radar_terrain_dirty_cells.is_empty());
 
+    // Supply the ordinary strip's actual Cell overlay identities and native
+    // map inputs before the independent repair command. The old fixture had
+    // only legacy runtime overlay bytes and no playfield/Foot terrain rows;
+    // that cannot enter a hut through Foot+2CC / +1AC or select57F200 repair.
+    runtime.simulation.playfield_bounds = Some(bounds());
+    runtime.simulation.playfield_size_height = Some(40);
+    let terrain_rules = crate::rules::terrain_rules::TerrainRules::from_ini(&ini);
+    let clear_costs = terrain_rules
+        .semantics_for_land_type(0)
+        .unwrap()
+        .speed_costs;
+    let terrain = runtime.simulation.resolved_terrain.as_mut().unwrap();
+    for cell in &mut terrain.cells {
+        cell.speed_costs = clear_costs;
+        cell.base_speed_costs = clear_costs;
+    }
+    terrain.test_set_high_bridge_set_starts(Some(40), Some(200));
+    crate::map::resolved_terrain::install_ordinary_repair_test_catalog(terrain);
+    let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(SIDE, SIDE);
+    for point in [FLOOD[0], REPAIR_START] {
+        terrain
+            .cell_mut(point.0, point.1)
+            .unwrap()
+            .bridge_facts
+            .overlay_id = Some(0xD1);
+        overlays.write_bridge_overlay_identity(point.0, point.1, 0xD1);
+    }
+    runtime.simulation.overlay_grid = Some(overlays);
     let cabhut = spawn(
         &mut runtime.simulation,
         "Soviets",
@@ -515,6 +563,19 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             .get(engineer)
             .is_none(),
         "the engineer enters the hut and is consumed by the repair"
+    );
+    let repaired = runtime
+        .simulation
+        .resolved_terrain
+        .as_ref()
+        .unwrap()
+        .cell(REPAIR_START.0, REPAIR_START.1)
+        .unwrap()
+        .bridge_facts
+        .overlay_id;
+    assert!(
+        matches!(repaired, Some(205..=208)),
+        "ordinary strip changed: {repaired:?}"
     );
     // Original ordinary strip repair has no56E990 clear/radar callback.
     // Its overlay change must not publish pristine pavement or a fake batch.

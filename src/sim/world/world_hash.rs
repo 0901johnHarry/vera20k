@@ -1850,7 +1850,18 @@ impl Simulation {
             }
 
             if schema.includes(HashFeature::FootPathRuntime) {
-                entity.navigation.path_runtime.hash(hasher);
+                // Preserve schema160's original four-field order. Deriving
+                // the fold from the expanded struct would alter every prior
+                // projection, including constructor-default Foot states.
+                let path = &entity.navigation.path_runtime;
+                path.movement_timer.hash(hasher);
+                path.blocked_timer.hash(hasher);
+                path.path_blocked.hash(hasher);
+                path.retries_left.hash(hasher);
+                if schema.includes(HashFeature::FootScoldLatch) && path.scold_latch_raw() != 0 {
+                    0x68a_u32.hash(hasher);
+                    path.scold_latch_raw().hash(hasher);
+                }
             }
             if schema.includes(HashFeature::FootNeighborHistory) {
                 entity.navigation.neighbor_state.hash(hasher);
@@ -4586,12 +4597,11 @@ mod infantry_hash_tests {
         sim.substrate.entities.insert(actor);
         let before = sim.state_hash();
         let previous = sim.state_hash_with_schema(super::HashSchema::Before(160));
-        let retained = FootPathRuntime {
-            movement_timer: CdTimer::from_raw(-1, -7),
-            blocked_timer: CdTimer::from_raw(i32::MAX - 2, 31),
-            path_blocked: true,
-            retries_left: u32::MAX,
-        };
+        let mut retained = FootPathRuntime::at_frame(0);
+        retained.movement_timer = CdTimer::from_raw(-1, -7);
+        retained.blocked_timer = CdTimer::from_raw(i32::MAX - 2, 31);
+        retained.path_blocked = true;
+        retained.retries_left = u32::MAX;
         sim.substrate
             .entities
             .get_mut(1)
@@ -4610,6 +4620,70 @@ mod infantry_hash_tests {
         let actor = loaded.entities().get(1).unwrap();
         assert!(actor.movement_target.is_none());
         assert_eq!(actor.navigation.path_runtime, retained);
+    }
+
+    #[test]
+    fn foot_scold_byte_survives_snapshot_and_preserves_prior_hash_projections() {
+        // Original raw Load and no-init Foot construction preserve 0, 1 and
+        // 255 separately; the guard only distinguishes zero from nonzero.
+        // Native comparison: tools/spatial_oracle/foot_scold_latch.json.
+        let mut sim = Simulation::new();
+        // Scenario deserialization deliberately reseeds to0. Start this
+        // retained-byte fixture at that same state so its full-hash assertion
+        // isolates persistence, not the intentionally changed RNG future.
+        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
+        let actor = infantry_entity(&mut sim);
+        assert_eq!(actor.navigation.path_runtime.scold_latch_raw(), 0);
+        sim.substrate.entities.insert(actor);
+        let clear_hash = sim.state_hash();
+        let old_hash = sim.state_hash_with_schema(super::HashSchema::Before(224));
+        assert_eq!(clear_hash, old_hash, "a zero byte adds no fold");
+        let mut retained_hashes = Vec::new();
+        let native: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/foot_scold_latch.json"
+        ))
+        .unwrap();
+        for row in native["imported_latch"].as_array().unwrap() {
+            let raw = row["supplied_saved_byte"].as_u64().unwrap() as u8;
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .navigation
+                .path_runtime
+                .set_scold_latch_for_test(raw);
+            let current_hash = sim.state_hash();
+            assert_eq!(
+                sim.state_hash_with_schema(super::HashSchema::Before(224)),
+                old_hash,
+                "schema223 never folded Foot+68A"
+            );
+            assert!(!retained_hashes.contains(&current_hash));
+            retained_hashes.push(current_hash);
+
+            let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "scold", 0);
+            let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+                .unwrap()
+                .sim;
+            let actor = restored.substrate.entities.get(1).unwrap();
+            assert!(actor.movement_target.is_none());
+            assert_eq!(
+                u64::from(actor.navigation.path_runtime.scold_latch_raw()),
+                row["after_original_noinit_constructor"].as_u64().unwrap()
+            );
+            assert_eq!(restored.state_hash(), current_hash);
+            let path = &mut restored
+                .substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .navigation
+                .path_runtime;
+            assert_eq!(path.clear_scold_latch(), raw != 0);
+            assert_eq!(path.scold_latch_raw(), 0);
+            assert!(!path.clear_scold_latch(), "a consumed latch stays clear");
+            assert_eq!(restored.state_hash(), clear_hash);
+        }
     }
 
     #[test]

@@ -66,7 +66,6 @@ pub(crate) enum PointerExpiryControl {
 pub(crate) struct UninitContext<'a> {
     terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
     rules: Option<&'a RuleSet>,
-    bridge_state: Option<&'a crate::sim::bridge_state::BridgeRuntimeState>,
 }
 
 impl<'a> UninitContext<'a> {
@@ -77,7 +76,6 @@ impl<'a> UninitContext<'a> {
         Self {
             terrain,
             rules: None,
-            bridge_state: None,
         }
     }
 
@@ -85,7 +83,6 @@ impl<'a> UninitContext<'a> {
         Self {
             terrain: None,
             rules: Some(rules),
-            bridge_state: None,
         }
     }
 
@@ -93,15 +90,6 @@ impl<'a> UninitContext<'a> {
         self,
     ) -> Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid> {
         self.terrain
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn with_bridge_state(
-        mut self,
-        bridge_state: Option<&'a crate::sim::bridge_state::BridgeRuntimeState>,
-    ) -> Self {
-        self.bridge_state = bridge_state;
-        self
     }
 
     pub(crate) const fn rules(self) -> Option<&'a RuleSet> {
@@ -547,11 +535,10 @@ impl Simulation {
         .unwrap_or_else(|_| {
             i32::from(terrain_cell.level as i8).wrapping_mul(LEPTONS_PER_LEVEL as i32)
         });
-        let live_structural_bridge = terrain_cell.bridge_facts.has_structural_bridge()
-            && context
-                .bridge_state
-                .or(self.bridge_state.as_ref())
-                .is_some_and(|state| state.is_bridge_walkable(position.rx, position.ry));
+        // Object5F60A0/5F6120 read live Cell+140 bit100, independently of
+        // sprite availability. Constructor5FC380 leaves stamped side cells
+        // without an overlay; bridge_constructor.json cases8..11 pin this.
+        let live_structural_bridge = terrain_cell.bridge_facts.has_structural_bridge();
         (ground_level, ground_z, live_structural_bridge)
     }
 

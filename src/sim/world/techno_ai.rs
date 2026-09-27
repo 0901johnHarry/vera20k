@@ -7091,3 +7091,7 @@ mod signed_health_tests;
 #[cfg(test)]
 #[path = "techno_ai/bridge_target_layer_tests.rs"]
 mod bridge_target_layer_tests;
+
+#[cfg(test)]
+#[path = "techno_ai/bridge_engineer_entry_tests.rs"]
+mod bridge_engineer_entry_tests;

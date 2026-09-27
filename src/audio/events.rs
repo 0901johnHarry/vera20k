@@ -198,8 +198,9 @@ pub enum GameSoundEvent {
         source: Option<SoundSource>,
     },
 
-    /// One-shot positional `VocClass::PlayAt` of a rules-named sound (the
-    /// mind-control capture, release and overload sounds).
+    /// One-shot rules-named sound: positional `VocClass::PlayAt`, or centred
+    /// full-volume `VocClass::PlayAtPos` when `source` is absent. Both resolve
+    /// only registered Voc entries, never raw audio-bag filenames.
     VocAt {
         sound_id: String,
         source: Option<SoundSource>,

@@ -110,28 +110,16 @@ impl CloakRuntime {
         self.start_uncloaking(now, speed, false)
     }
 
-    // RESIDUAL (UNIMPLEMENTED) — the mover-bump reveal has NO entry point here,
-    // deliberately. Native: `CellClass::Mark_Objects_Redraw @ 0x00483480` is
-    // misnamed; the body walks the cell's `FirstObject(+0xE4)` chain calling
-    // `+0xFC` on every resident, and every caller is a locomotor sitting on the
-    // branch where `Can_Enter_Cell` returned 1 (passable) for a cloaked
-    // occupant (`DriveLocomotionClass::Process_Movement @ 0x004B395E`,
-    // `0x004B445B`; `ShipLocomotionClass::Process_Movement @ 0x006A2FAD`,
-    // `0x006A3A87`; `WalkLocomotionClass::ProcessMovement @ 0x0075BBAE`; the
-    // two `Process_Drive_Track` sites `0x004B1E63` / `0x006A14A6`).
-    //
-    // The prerequisite is missing: VERA's cell-entry classifier
-    // (`sim/movement/movement_occupancy.rs`) has no cloak term, so a fully
-    // cloaked enemy occupant is an ordinary blocker and a mover never enters
-    // its cell. A `start_uncloaking_from_mover_bump` helper alone would be
-    // unreachable, so it is not defined; the passability rule and the reveal
-    // are one coupled change and must land together, in the movement system.
-    // *Trigger:* a mover pathing across a fully cloaked unit's cell.
-    // *Player effect:* in gamemd the cloaked unit surfaces and the mover passes
-    // through; in VERA the mover paths around it and it stays cloaked.
-    // *Frequency:* whenever a ship crosses a submerged submarine — common in
-    // naval play. *Downstream risk:* landing the passability rule alone changes
-    // pathing; landing the reveal alone is inert.
+    /// Cell483480 calls the ground-list receiver+FC (Techno703850), then
+    /// loads its next link. Walk75BBAE and Drive/Ship code1 share this owner;
+    /// the transition, cadence and sound argument are the ordinary7036C0 body.
+    pub(crate) fn start_uncloaking_from_mover_contact(
+        &mut self,
+        now: i32,
+        speed: i32,
+    ) -> StartUncloakingResult {
+        self.start_uncloaking(now, speed, false)
+    }
 
     /// `UnitClass::Fire_At_Target @ 0x00736DF0` case 9 invokes virtual
     /// `StartUncloaking +0x45C @ 0x007036C0` after rechecking CanFireAt.

@@ -300,6 +300,23 @@ impl Simulation {
                     );
                 }
             }
+            if let Some(request) = pending_movement.take_walk_admission_request() {
+                let retry = sim
+                    .run_walk_admission_request(
+                        request,
+                        Some(pending_movement.held_block_sets()),
+                        rules,
+                        path_grid,
+                        overlay_registry,
+                    )
+                    .map_err(|cause| frame_error(sim, cause))?;
+                if let Some(request) = retry {
+                    //75B716/75BABB/75BC04: one recursive Process(0),
+                    //with the already prepared mover visit retained.
+                    pending_movement.request_foot_path(request);
+                    continue;
+                }
+            }
             // Drive4B0A79 / Ship6A0142 and the track-end continuation
             // 4B0647 / 69FCEE: Process_Movement(&out, 1, 0); Process_Track
             // follows unless the out byte is set or the Foot died

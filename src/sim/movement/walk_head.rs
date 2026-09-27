@@ -129,6 +129,9 @@ pub(super) fn finish_fresh_head(
         entity.facing = (facing >> 8) as u8;
         entity.facing_target = None;
         entity.foot_speed.applied_fraction = crate::util::fixed_math::SIM_ONE;
+        //75BC36's dead-owner exit bypasses75BCB2 and retains the exact byte.
+        // Native controls: foot_scold_latch.json dead_fresh_head rows.
+        entity.navigation.path_runtime.clear_scold_latch();
     }
     true
 }
@@ -169,6 +172,54 @@ impl crate::sim::world::Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dead_fresh_head_preserves_native_scold_byte() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tools/spatial_oracle/foot_scold_latch.json"
+        ))
+        .unwrap();
+        let mut checked = 0;
+        for row in corpus["paid_tails"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["case"] == "dead_fresh_head")
+        {
+            let mut actor =
+                crate::sim::game_entity::GameEntity::test_default(1, "E1", "Owner", 9, 10);
+            actor.lifecycle.object_alive = false;
+            actor.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
+                crate::rules::locomotor_type::LocomotorKind::Walk,
+            ));
+            actor
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .set_step_head(Some(DriveCoord::cell(10, 10, 0)));
+            actor.foot_speed.applied_fraction = SimFixed::from_num(0.75);
+            actor
+                .navigation
+                .path_runtime
+                .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+            assert!(finish_fresh_head(&mut actor, 100));
+            assert_eq!(
+                u64::from(actor.navigation.path_runtime.scold_latch_raw()),
+                row["final_byte"].as_u64().unwrap()
+            );
+            assert_eq!(
+                actor.locomotor.as_ref().unwrap().walk_animation_moving(),
+                Some(row["motion"] == 1)
+            );
+            assert_eq!(
+                actor.foot_speed.applied_fraction,
+                SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
+            );
+            assert!(actor.body_facing.is_none());
+            checked += 1;
+        }
+        assert_eq!(checked, 3);
+    }
 
     #[test]
     fn slave_priority_reserves_head_through_live_master_occupation_without_rng() {
@@ -659,8 +710,6 @@ pub(super) fn prepare_step_head(
     interner: &crate::sim::intern::StringInterner,
     rng: &mut crate::sim::rng::SimRng,
 ) -> bool {
-    use super::locomotor::MovementLayer;
-    use crate::map::entities::EntityCategory;
     use crate::rules::locomotor_type::LocomotorKind;
     let Some(entity) = entities.get(id) else {
         return false;
@@ -682,13 +731,51 @@ pub(super) fn prepare_step_head(
         return true;
     };
     let is_walk = loco.kind == LocomotorKind::Walk;
-    let owner = entity.owner();
     let current = super::ground_pose::position_world_coord(&entity.position);
     let input = DriveCoord {
         x: i32::from(next.0) * 256 + if is_walk { current.x % 256 } else { 128 },
         y: i32::from(next.1) * 256 + if is_walk { current.y % 256 } else { 128 },
         z: current.z,
     };
+    prepare_step_head_at(
+        entities, id, occupancy, raw, terrain, grid, rules, interner, rng, input,
+    )
+}
+
+/// Walk75BC1A consumes the prospective coordinate already selected from the
+/// retained Foot path word. Its caller owns admission; this is the same
+/// priority/subcell/raw-occupation owner used by the adapter above.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_step_head_at(
+    entities: &mut crate::sim::entity_store::EntityStore,
+    id: u64,
+    occupancy: &crate::sim::occupancy::OccupancyGrid,
+    raw: &mut RawCellOccupationGrid,
+    terrain: Option<&ResolvedTerrainGrid>,
+    grid: Option<&PathGrid>,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    interner: &crate::sim::intern::StringInterner,
+    rng: &mut crate::sim::rng::SimRng,
+    input: DriveCoord,
+) -> bool {
+    use super::locomotor::MovementLayer;
+    use crate::map::entities::EntityCategory;
+    use crate::rules::locomotor_type::LocomotorKind;
+    let Some(entity) = entities.get(id) else {
+        return false;
+    };
+    let Some(loco) = entity.locomotor.as_ref() else {
+        return true;
+    };
+    if !matches!(loco.kind, LocomotorKind::Walk | LocomotorKind::Hover)
+        || loco.step_head().is_some()
+    {
+        return true;
+    }
+    let is_walk = loco.kind == LocomotorKind::Walk;
+    let owner = entity.owner();
+    let current = super::ground_pose::position_world_coord(&entity.position);
+    let next = ((input.x / 256) as u16, (input.y / 256) as u16);
     let (head, sub) = if is_walk {
         //75C2A0 first; even a failed chooser must restore current raw at75C62A.
         raw_at(raw, owner, current, false, terrain, grid);

@@ -202,6 +202,9 @@ pub struct SpeedCostProfile {
 impl SpeedCostProfile {
     pub fn cost_for_speed_type(&self, speed_type: SpeedType) -> Option<u8> {
         match speed_type {
+            // Keep the native parser's invalid index unavailable to live entry
+            // queries. Reading memory before the native table is not modeled.
+            SpeedType::Invalid => None,
             SpeedType::Foot => self.foot,
             SpeedType::Track => self.track,
             SpeedType::Wheel => self.wheel,
@@ -507,8 +510,7 @@ mod tests {
 
     /// The sixteen dwords read out of `g_nTmpTerrainToLandTypeTable` at
     /// `0x008288E4`, in order, as raw `LandType` indices.
-    const NATIVE_TMP_TERRAIN_TABLE: [u8; 16] =
-        [0, 8, 8, 8, 8, 10, 9, 3, 3, 2, 6, 1, 1, 0, 7, 3];
+    const NATIVE_TMP_TERRAIN_TABLE: [u8; 16] = [0, 8, 8, 8, 8, 10, 9, 3, 3, 2, 6, 1, 1, 0, 7, 3];
 
     #[test]
     fn tmp_terrain_table_matches_the_native_dwords() {

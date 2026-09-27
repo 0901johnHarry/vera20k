@@ -2,7 +2,24 @@
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::pathfinding::PathGrid;
-use crate::util::fixed_math::{SIM_ONE, SimFixed};
+use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
+
+/// Walk75BCE3..75BD16/75C1EA: with no head or destination, a Process visit
+/// stops a positive Foot speed and clears +68A. Refusal and Stop owners do not
+/// share this tail. Native controls: foot_scold_latch.json paid_tails.
+pub(super) fn finish_idle(entity: &mut GameEntity) {
+    if !entity.locomotor.as_ref().is_some_and(|loco| {
+        loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+            && loco.step_head().is_none()
+            && loco.walk_destination().is_none()
+    }) {
+        return;
+    }
+    if entity.foot_speed.applied_fraction > SIM_ZERO {
+        entity.foot_speed.applied_fraction = SIM_ZERO;
+    }
+    entity.navigation.path_runtime.clear_scold_latch();
+}
 
 /// Publish Foot speed/facing and the provisional numeric step. The caller owns
 /// the ordinary completion and boundary transactions; same-cell height is paid
@@ -64,6 +81,9 @@ pub(super) fn advance(
             terrain,
             grid,
         );
+        //75C22F follows the same-cell SetCoords/SetHeight callbacks. A
+        //boundary step retains the byte until its world placement completes.
+        entity.navigation.path_runtime.clear_scold_latch();
     }
 }
 

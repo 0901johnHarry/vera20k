@@ -1056,8 +1056,11 @@ impl Simulation {
         //4B1C44..4B1C4D: the jump table 0x4B2608 over codes 0..6.
         match code {
             0 | 2 => {}
-            //4B1E52..4B1E68: redraw (presentation), no chain.
-            1 => return Ok(false),
+            //4B1E52..4B1E68: ground-list+FC contact callbacks, no chain.
+            1 => {
+                self.uncloak_contacts_at_cell(target, rules)?;
+                return Ok(false);
+            }
             //4B1E6D..4B1EBB: the gate question, answer discarded.
             3 => {
                 let owner = self

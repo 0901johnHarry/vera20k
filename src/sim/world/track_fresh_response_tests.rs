@@ -470,3 +470,82 @@ fn fresh_arm_rows_match_the_original_responses() {
     }
     assert_eq!(checked, 104);
 }
+
+#[test]
+fn first_code7_scold_request_retains_the_native_byte() {
+    let native: Value = serde_json::from_str(include_str!(
+        "../../../tools/spatial_oracle/foot_scold_latch.json"
+    ))
+    .unwrap();
+    for row in native["track_guards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["branch"] == "first_rejection")
+    {
+        let (mut sim, mut rules, registry, id) = unit(row);
+        let sound = native["sound"]["resolved_name"].as_str().unwrap();
+        rules.general.scold_sound = Some(sound.into());
+        order(&mut sim, &rules, id, (13, 10));
+        let e = sim.substrate.entities.get_mut(id).unwrap();
+        e.navigation.path_replay.directions = vec![2, 2, 2];
+        e.navigation.path_replay.cursor = 0;
+        e.navigation.path_replay.reference_cell = Some((9, 8));
+        let rot = e.locomotor.as_ref().unwrap().rot;
+        e.body_facing = Some(FacingClass::new(2 << 13, rot));
+        e.facing = 64;
+        e.navigation.path_runtime.start_movement(100, 0);
+        e.navigation
+            .path_runtime
+            .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
+        sim.session.binary_frame = 101;
+        fresh_oracle_seam::install(vec![7], vec![]);
+        let grid = sim.path_grid.clone();
+        // The native sound fragment stops at the code7 retry ladder. This
+        // production call takes its nonrecursive Stop path; the byte remains
+        // live there too. Clearing on sound delivery would fail this check.
+        let result = sim.run_track_process_movement(
+            id,
+            if row["family"] == "drive" {
+                TrackFamily::Drive
+            } else {
+                TrackFamily::Ship
+            },
+            ProcessMovementArgs {
+                allow_retry: false,
+                force_single: false,
+            },
+            None,
+            &rules,
+            grid.as_deref(),
+            Some(&registry),
+        );
+        let (_, unused) = fresh_oracle_seam::finish();
+        result.unwrap();
+        assert_eq!(unused, 0);
+        assert_eq!(
+            json!(
+                sim.substrate
+                    .entities
+                    .get(id)
+                    .unwrap()
+                    .navigation
+                    .path_runtime
+                    .scold_latch_raw()
+            ),
+            row["final_byte"]
+        );
+        let sounds: Vec<&str> = sim
+            .sound_events
+            .iter()
+            .filter_map(|event| match event {
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sounds,
+            vec![sound; row["sound_entry_calls"].as_array().unwrap().len()]
+        );
+    }
+}

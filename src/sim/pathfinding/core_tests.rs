@@ -1267,223 +1267,7 @@ fn test_pathcell_bridge_walkable_preserved_for_bridgeheads_across_rebuild() {
     }
 }
 
-// --- Bridge height helper tests ---
-
-#[test]
-fn test_is_at_bridge_level_no_bridge() {
-    let cell = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Non-bridge cell is never "at bridge level"
-    assert!(!is_at_bridge_level(0, &cell));
-    assert!(!is_at_bridge_level(4, &cell));
-}
-
-#[test]
-fn test_is_at_bridge_level_ground_near() {
-    let cell = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // path_height=0, ground=0 -> diff=0 < 2 -> ground list
-    assert!(!is_at_bridge_level(0, &cell));
-    // path_height=1, ground=0 -> diff=1 < 2 -> ground list
-    assert!(!is_at_bridge_level(1, &cell));
-}
-
-#[test]
-fn test_is_at_bridge_level_bridge_far() {
-    let cell = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // path_height=4, ground=0 -> diff=4 >= 2 -> bridge list
-    assert!(is_at_bridge_level(4, &cell));
-    // path_height=2, ground=0 -> diff=2 >= 2 -> bridge list
-    assert!(is_at_bridge_level(2, &cell));
-}
-
-#[test]
-fn test_compute_neighbor_height_no_bridge() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 2,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 3,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 1: neighbor not bridge -> ground_level
-    assert_eq!(compute_neighbor_height(2, &parent, &neighbor), 3);
-}
-
-#[test]
-fn test_compute_neighbor_height_parent_on_bridge_deck() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 2a: parent on bridge at deck level -> stay on bridge
-    assert_eq!(compute_neighbor_height(4, &parent, &neighbor), 4);
-}
-
-#[test]
-fn test_compute_neighbor_height_parent_under_bridge() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 2b: parent on bridge cell but at ground level -> stay under
-    assert_eq!(compute_neighbor_height(0, &parent, &neighbor), 0);
-}
-
-#[test]
-fn test_compute_neighbor_height_ramp_up() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 4,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: true,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 3: parent not bridge, neighbor is bridge,
-    // diff = 4 - 0 = 4, in [2,4] -> ramp up to bridge deck
-    assert_eq!(compute_neighbor_height(4, &parent, &neighbor), 4);
-
-    // `AStar_create_node` @ 0x0042A460 accepts a drop of 2 or 3 as well —
-    // `abs((neighbor.Level - parent_height) + 3) <= 1` — and reads no
-    // bridgehead flag. Both cases used to carry the ground level instead.
-    assert_eq!(
-        compute_neighbor_height(2, &parent, &neighbor),
-        4,
-        "drop of 2"
-    );
-    assert_eq!(
-        compute_neighbor_height(3, &parent, &neighbor),
-        4,
-        "drop of 3"
-    );
-
-    let unflagged = PathCell {
-        transition: false,
-        ..neighbor
-    };
-    assert_eq!(
-        compute_neighbor_height(4, &parent, &unflagged),
-        4,
-        "a deck cell with no bridgehead flag still promotes",
-    );
-
-    // Drops outside 2..=4 stay on the ground plane.
-    assert_eq!(
-        compute_neighbor_height(1, &parent, &neighbor),
-        0,
-        "drop of 1"
-    );
-    assert_eq!(
-        compute_neighbor_height(5, &parent, &neighbor),
-        0,
-        "drop of 5"
-    );
-}
+// Native height and list-selection goldens live in astar_entry_tests.rs.
 
 #[test]
 fn bridge_traversal_allows_a_null_parent() {
@@ -1506,67 +1290,6 @@ fn bridge_traversal_allows_a_null_parent() {
 
     assert!(result.allowed);
     assert!(!result.force_bridge_list);
-}
-
-#[test]
-fn test_compute_neighbor_height_pass_under() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 3: parent not bridge, neighbor is bridge,
-    // diff = 0 - 0 = 0, NOT in [2,4] -> pass under
-    assert_eq!(compute_neighbor_height(0, &parent, &neighbor), 0);
-}
-
-#[test]
-fn test_compute_neighbor_height_extreme_diff_no_ramp() {
-    let parent = PathCell {
-        ground_walkable: true,
-        bridge_walkable: false,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: false,
-        ground_level: 8,
-        bridge_deck_level: 0,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    let neighbor = PathCell {
-        ground_walkable: true,
-        bridge_walkable: true,
-        bridge_structural: false,
-        bridge_marker_0x80: false,
-        transition: true,
-        ground_level: 0,
-        bridge_deck_level: 4,
-        slope_type: 0,
-        tube_index: None,
-        low_bridge_tube_cell: false,
-    };
-    // Case 3: diff = 8 - 0 = 8, NOT in [2,4] -> stays at ground (no ramp)
-    assert_eq!(compute_neighbor_height(8, &parent, &neighbor), 0);
 }
 
 #[test]
@@ -1962,7 +1685,7 @@ fn infantry_under_span_astar_keeps_ground_hierarchy_gate() {
             assert_eq!((path.last().unwrap().rx, path.last().unwrap().ry), (7, 0));
         } else {
             assert!(
-                path.is_none(),
+                path.is_err(),
                 "a span must not bypass the ground hierarchy filter"
             );
         }
@@ -2828,7 +2551,7 @@ fn astar_hierarchy_rejects_unmarked_one_ring_zone_without_blocker_exception() {
     );
 
     assert!(
-        path.is_none(),
+        path.is_err(),
         "unmarked zone 2 should be rejected when it has no blocker-neighbor exception"
     );
 }
@@ -2892,6 +2615,7 @@ fn astar_hierarchy_marker_follows_the_marked_straight_path() {
             mover_is_crusher: false,
             is_infantry: false,
             wall_cost: None,
+            foot_entry: None,
         },
     )
     .expect("marked straight path should succeed");
@@ -3092,7 +2816,7 @@ fn runtime_and_search_share_known_water_cell_admission() {
             ..Default::default()
         },
     );
-    assert!(path.is_none(), "A* must reject the same water boundary");
+    assert!(path.is_err(), "A* must reject the same water boundary");
 }
 
 #[test]
@@ -3531,7 +3255,7 @@ fn astar_blocks_height_diff_2() {
         (3, 1),
         &AStarOptions::default(),
     );
-    if let Some(path) = result {
+    if let Ok(path) = result {
         assert!(
             !path.iter().any(|s| (s.rx, s.ry) == (2, 1)),
             "A* must not route through diff-2 ground step"
@@ -3550,7 +3274,7 @@ fn astar_blocks_height_diff_3() {
         (3, 1),
         &AStarOptions::default(),
     );
-    if let Some(path) = result {
+    if let Ok(path) = result {
         assert!(
             !path.iter().any(|s| (s.rx, s.ry) == (2, 1)),
             "A* must not route through diff-3 ground step"
@@ -3573,7 +3297,7 @@ fn astar_allows_height_diff_4_with_bridgehead() {
         (3, 1),
         &AStarOptions::default(),
     );
-    assert!(result.is_some(), "A* must find a path through bridgehead");
+    assert!(result.is_ok(), "A* must find a path through bridgehead");
     let path = result.unwrap();
     let step_2_1 = path.iter().find(|s| (s.rx, s.ry) == (2, 1));
     assert!(step_2_1.is_some(), "Path must include (2,1)");
@@ -3599,7 +3323,7 @@ fn astar_blocks_height_diff_4_without_bridgehead() {
         (3, 1),
         &AStarOptions::default(),
     );
-    if let Some(path) = result {
+    if let Ok(path) = result {
         let through_body = path
             .iter()
             .find(|s| (s.rx, s.ry) == (2, 1) && s.layer == MovementLayer::Bridge);
@@ -3668,7 +3392,7 @@ fn astar_direction6_rejects_forward2_bridge_deck_destination() {
         &AStarOptions::default(),
     );
 
-    if let Some(path) = result {
+    if let Ok(path) = result {
         assert!(
             !path
                 .iter()
@@ -3693,7 +3417,7 @@ fn astar_blocks_structural_body_to_body_bad_height_jump() {
     );
 
     assert!(
-        result.is_none(),
+        result.is_err(),
         "A* must not bypass height legality for structural bridge cells"
     );
 }
@@ -3703,7 +3427,7 @@ fn astar_blocks_structural_body_to_body_bad_height_jump() {
 // Pins: diff-1 transitions require the LOWER cell's slope_type != 0;
 // diff ∈ {±2, ±3, ±5+} always block; diff-4 reaching the gate is non-bridge
 // cliff and blocks too (legitimate bridge entries carry through as diff-0 via
-// compute_neighbor_height Case 3).
+// compute_node_height Case 3).
 // ============================================================================
 
 #[test]
@@ -3953,14 +3677,14 @@ fn diff_1_slope_zero_lower_blocks_going_down() {
 fn l6_canary_unit_at_deck_height_stepping_to_non_bridge_produces_nonzero_diff() {
     // Design ledger L6: the divergent diff-0 case (unit Z mismatched with
     // src ground level on a non-bridge transition) cannot arise in our model
-    // because compute_neighbor_height keeps unit Z synced with cell state.
+    // because compute_node_height keeps unit Z synced with cell state.
     //
     // This canary fixes the invariant in a unit test. A unit on a bridge deck
     // (height=4) stepping into a non-bridge cell takes Case 1, which returns
     // neighbor.ground_level (0), giving diff=-4. The legality gate then
     // blocks via `_ => false`.
     //
-    // If this test ever fails, compute_neighbor_height has been refactored
+    // If this test ever fails, compute_node_height has been refactored
     // in a way that lets the divergent diff-0 state arise — at which point
     // the legality gate needs an explicit diff-0 guard.
     let parent = PathCell {
@@ -3987,9 +3711,9 @@ fn l6_canary_unit_at_deck_height_stepping_to_non_bridge_produces_nonzero_diff() 
         tube_index: None,
         low_bridge_tube_cell: false,
     };
-    let h = compute_neighbor_height(4, &parent, &neighbor);
+    let h = compute_node_height(4, Some(&parent), &neighbor);
     assert_eq!(h, 0, "Case 1: non-bridge neighbor returns its ground_level");
-    let diff = h as i16 - 4i16;
+    let diff = h - 4i16;
     assert_eq!(
         diff.abs(),
         4,

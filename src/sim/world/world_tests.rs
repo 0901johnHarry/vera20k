@@ -1735,10 +1735,9 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
         passenger.owner = enemy;
         passenger.type_ref = sim.interner.intern("PASSENGER");
         passenger.category = EntityCategory::Infantry;
-        passenger.mission_leaf =
-            crate::sim::mission::leaf::MissionLeafState::for_entity_category(
-                EntityCategory::Infantry,
-            );
+        passenger.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
+            EntityCategory::Infantry,
+        );
         passenger.is_voxel = false;
         passenger.passenger_role = crate::sim::passenger::PassengerRole::Inside {
             transport_id: 10,
@@ -2992,6 +2991,76 @@ fn ew_high_bridge_strip_for_dispatch(
         );
     }
     (resolved, state)
+}
+
+/// Structural deck fixture for the576BA0 ->47E040 damage path, matching
+/// bridge_body_publication's native anchor25/state15 collapse input.
+///
+/// The legacy helper above supplies overlay0xDC, which selects57D530. That
+/// direct overlay walker writes0xE8 but does not invoke the structural flag
+/// setter. Combining its input with raw100 cannot stand for structural deck
+/// collapse: it previously passed only because PathGrid let runtime damage
+/// override the native flag. Use the actual stamped anchor and side cells.
+fn structural_bridge_for_damage_dispatch() -> (ResolvedTerrainGrid, BridgeRuntimeState) {
+    use crate::map::bridge_facts::{BridgeFlagStamp, BridgeStampFamily};
+    let mut terrain = ResolvedTerrainGrid::from_cells(
+        10,
+        10,
+        (0..10)
+            .flat_map(|y| (0..10).map(move |x| common_raw_test_terrain_cell(x, y, 0, false)))
+            .collect(),
+    );
+    terrain.apply_runtime_bridge_mark_stamp(
+        BridgeFlagStamp::new((5, 5), 6, true),
+        BridgeStampFamily::Nesw,
+    );
+    let anchor = terrain.native_cell_identity((5, 5));
+    terrain.write_native_cell_state(anchor, 15);
+    terrain.cell_mut(5, 5).unwrap().bridge_facts.overlay_id = Some(25);
+    let state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 15);
+    for x in 3..=6 {
+        assert!(
+            terrain
+                .cell(x, 5)
+                .unwrap()
+                .bridge_facts
+                .has_structural_bridge()
+        );
+    }
+    (terrain, state)
+}
+
+fn assert_structural_bridge_collapsed(sim: &Simulation) {
+    for x in 3..=6 {
+        let cell = sim.resolved_terrain.as_ref().unwrap().cell(x, 5).unwrap();
+        assert_eq!(cell.bridge_facts.raw_flags, 0x400, "collapsed cell({x},5)");
+        assert_eq!(cell.bridge_facts.state_byte, 0);
+        assert!(!cell.has_bridge_deck);
+        assert!(!cell.bridge_walkable);
+        assert!(!cell.bridge_transition);
+        assert!(
+            !sim.bridge_state
+                .as_ref()
+                .unwrap()
+                .cell(x, 5)
+                .unwrap()
+                .deck_present
+        );
+        let published = sim.path_grid().unwrap().cell(x, 5).unwrap();
+        assert!(!published.bridge_walkable);
+        assert!(!published.transition);
+    }
+    assert_eq!(
+        sim.resolved_terrain
+            .as_ref()
+            .unwrap()
+            .cell(5, 5)
+            .unwrap()
+            .bridge_facts
+            .overlay_id,
+        None,
+        "the structural body clears its anchor overlay"
+    );
 }
 
 fn alliance_map(pairs: &[(&str, &[&str])]) -> HouseAllianceMap {
@@ -4340,20 +4409,18 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
 
 #[test]
 fn test_bridge_damage_rebuilds_path_grid() {
-    // 3-cell EW strip at (1..=3, 0), all overlay 0xDC. HighDirect dispatcher
-    // path fires the EW walker → all 3 cells transition to 0xE8 + Destroyed
-    // → `is_bridge_walkable` returns false → rebuilt path grid says no bridge
-    // layer at any of the 3 cells.
+    // The damaged structural anchor selects576BA0, whose47E040 setter clears
+    // raw100 on all four deck slots, including overlayless side cells.
     let mut sim = Simulation::new();
-    let (resolved, bridge_state) = ew_high_bridge_strip_for_dispatch(2, 0, 2, false, 0);
+    let (resolved, bridge_state) = structural_bridge_for_damage_dispatch();
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(bridge_state);
 
-    // Build PathGrid before damage — all 3 cells walkable on bridge layer.
+    // Build PathGrid before damage — all four stamped deck cells are walkable.
     let grid_before =
         PathGrid::from_resolved_terrain_with_bridges(&resolved, sim.bridge_state.as_ref());
-    for x in 1..=3 {
-        assert!(grid_before.is_walkable_on_layer(x, 0, MovementLayer::Bridge));
+    for x in 3..=6 {
+        assert!(grid_before.is_walkable_on_layer(x, 5, MovementLayer::Bridge));
     }
 
     let mut rules = combat_test_rules();
@@ -4362,38 +4429,37 @@ fn test_bridge_damage_rebuilds_path_grid() {
         &mut sim,
         &rules,
         &[BridgeDamageEvent {
-            rx: 2,
-            ry: 0,
+            rx: 5,
+            ry: 5,
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
             impact_z_leptons: 416,
         }],
     );
+    assert_structural_bridge_collapsed(&sim);
 
-    // Rebuild PathGrid after damage — none of the 3 cells walkable on bridge.
+    // The independent rebuild agrees with the synchronously published grid.
     let grid_after = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
         sim.bridge_state.as_ref(),
     );
-    for x in 1..=3 {
+    for x in 3..=6 {
         assert!(
-            !grid_after.is_walkable_on_layer(x, 0, MovementLayer::Bridge),
-            "cell ({x}, 0) should not be walkable on bridge layer after collapse"
+            !grid_after.is_walkable_on_layer(x, 5, MovementLayer::Bridge),
+            "cell ({x}, 5) should not be walkable on bridge layer after collapse"
         );
     }
 }
 
-/// End-to-end: a bridge collapse driven through the orchestrator must
-/// signal `state_changed = true`, AND the PathGrid that the app would
-/// rebuild post-tick (via PathGrid::from_resolved_terrain_with_bridges)
-/// must show the collapsed cells as non-walkable on the bridge layer.
+/// Structural collapse signals `state_changed = true` and synchronously
+/// publishes the absent deck. A separate rebuild must agree with that grid.
 ///
 /// Ledger #1 (one-tick delay), #4 (ground revert), #9 (layer separation).
 #[test]
 fn test_bridge_collapse_signals_pathgrid_refresh() {
     let mut sim = Simulation::new();
-    let (resolved, bridge_state) = ew_high_bridge_strip_for_dispatch(2, 0, 2, false, 0);
+    let (resolved, bridge_state) = structural_bridge_for_damage_dispatch();
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(bridge_state);
 
@@ -4404,29 +4470,29 @@ fn test_bridge_collapse_signals_pathgrid_refresh() {
         &mut sim,
         &rules,
         &[BridgeDamageEvent {
-            rx: 2,
-            ry: 0,
+            rx: 5,
+            ry: 5,
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
             impact_z_leptons: 416,
         }],
     );
+    assert_structural_bridge_collapsed(&sim);
     assert!(
         state_changed,
         "orchestrator must signal state_changed=true on collapse"
     );
 
-    // The PathGrid the app would build after this tick (via rebuild_
-    // dynamic_path_grid → PathGrid::from_resolved_terrain_with_bridges):
+    // An independent projection from the post-callback authorities:
     let post_tick_grid = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
         sim.bridge_state.as_ref(),
     );
-    for x in 1..=3 {
+    for x in 3..=6 {
         assert!(
-            !post_tick_grid.is_walkable_on_layer(x, 0, MovementLayer::Bridge),
-            "cell ({x}, 0) must not be walkable on bridge layer after collapse"
+            !post_tick_grid.is_walkable_on_layer(x, 5, MovementLayer::Bridge),
+            "cell ({x}, 5) must not be walkable on bridge layer after collapse"
         );
     }
 }
@@ -4452,17 +4518,16 @@ fn test_no_collapse_does_not_signal_refresh() {
 /// cell that previously had `transition: true` must lose it. Otherwise A*
 /// would still permit Ground→Bridge entry into the destroyed span.
 ///
-/// The fixture seeds Body-role cells with `bridge_transition = true`
-/// (mimicking bridgeheads from the PathCell projection's perspective).
-/// Post-collapse, `from_resolved_terrain_with_bridges` gates `transition`
-/// on `is_bridge_walkable`, so all 3 cells must drop the flag.
+/// Native direction6 stamping sets raw200 on Anchor/Forward1/Opposite and
+/// leaves Forward2 clear. Collapse clears those entry flags through47E040;
+/// both immediate and rebuilt PathGrid projections must agree.
 ///
 /// Guards against future per-cell-delta optimizations that might only
 /// update the directly-destroyed cell and miss adjacent transition cells.
 #[test]
 fn test_bridge_collapse_clears_transition_flag() {
     let mut sim = Simulation::new();
-    let (resolved, bridge_state) = ew_high_bridge_strip_for_dispatch(2, 0, 2, false, 0);
+    let (resolved, bridge_state) = structural_bridge_for_damage_dispatch();
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(bridge_state);
 
@@ -4481,21 +4546,22 @@ fn test_bridge_collapse_clears_transition_flag() {
         "test fixture must have at least one transition cell"
     );
 
-    // Damage event collapses the entire EW strip.
+    // Damage event collapses all four structural stamp slots.
     let mut rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     let _ = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
         &mut sim,
         &rules,
         &[BridgeDamageEvent {
-            rx: 2,
-            ry: 0,
+            rx: 5,
+            ry: 5,
             damage: 20,
             warhead_ref: crate::sim::intern::InternedId::default(),
             is_ion_cannon: true,
             impact_z_leptons: 416,
         }],
     );
+    assert_structural_bridge_collapsed(&sim);
 
     let grid_after = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().unwrap(),
@@ -4769,7 +4835,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
 #[test]
 fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
     let mut sim = Simulation::new();
-    let (mut resolved, bridge_state) = ew_high_bridge_strip_for_dispatch(5, 5, 3, false, 0);
+    let (mut resolved, bridge_state) = structural_bridge_for_damage_dispatch();
     let idx = resolved.index(5, 5).expect("bridge index");
     resolved.cells[idx].is_cliff_like = true;
     install_rectangular_test_playfield(&mut sim, resolved.width(), resolved.height());
@@ -4814,6 +4880,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
             impact_z_leptons: 416,
         }],
     );
+    assert_structural_bridge_collapsed(&sim);
 
     let rebuilt_grid = PathGrid::from_resolved_terrain_with_bridges(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
@@ -5143,11 +5210,7 @@ fn test_bridge_orchestrator_state_machine_path_collapses_anchor_and_deactivates_
         .unwrap()
         .sim;
     restored.restore_after_snapshot_load().unwrap();
-    restored.rebuild_caches_after_load(
-        terrain_cache,
-        Default::default(),
-        &rules,
-    );
+    restored.rebuild_caches_after_load(terrain_cache, Default::default(), &rules);
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert_eq!(restored.path_grid(), Some(expected_path.as_ref()));
 }

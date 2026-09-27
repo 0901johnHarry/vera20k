@@ -4,7 +4,9 @@
 //! `Find_Path` (0x4D3920) answer from supplied queues; Cell `Scatter_Objects`
 //! (0x481670) and `Foot::Override_Mission` (0x4D8F40) are recorded and, like
 //! the oracle's substitutions, their bodies do not run. Nothing is supplied,
-//! recorded or skipped unless a test installs the queues.
+//! recorded or skipped unless a test installs the queues. Walk's response
+//! corpus opts into live effects: the same boundaries are recorded while the
+//! real Scatter and Override bodies run.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -16,6 +18,8 @@ use crate::sim::combat::TargetKind;
 pub(crate) enum SuppliedPath {
     /// AL = 1 after writing these words to Foot+5E0.
     Found(Vec<u8>),
+    /// AL = 1 with no writes, as the Walk decoder's direct code-2 controls.
+    FoundUnchanged,
     /// AL = 0 with no writes.
     Failed,
     /// The original wrapper runs; only its AStar core (0x4CBBA0) is NULL.
@@ -43,6 +47,9 @@ pub(crate) enum FreshCallRecord {
     Override {
         target: TargetKind,
     },
+    UncloakContacts {
+        cell: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -51,6 +58,7 @@ struct Seam {
     paths: VecDeque<SuppliedPath>,
     records: Vec<FreshCallRecord>,
     core_null: bool,
+    live_effects: bool,
 }
 
 thread_local! {
@@ -65,8 +73,16 @@ pub(crate) fn install(codes: Vec<u8>, paths: Vec<SuppliedPath>) {
             paths: paths.into(),
             records: Vec::new(),
             core_null: false,
+            live_effects: false,
         })
     });
+}
+
+/// Walk's response corpus executes the real Scatter and Override bodies.
+/// Keep recording their boundaries without substituting those effects.
+pub(crate) fn install_with_live_effects(codes: Vec<u8>, paths: Vec<SuppliedPath>) {
+    install(codes, paths);
+    SEAM.with(|seam| seam.borrow_mut().as_mut().unwrap().live_effects = true);
 }
 
 /// Remove the seam, returning the records and any unused answers.
@@ -125,13 +141,24 @@ pub(crate) fn supplied_path(cell: (i32, i32), urgency: u8) -> Option<SuppliedPat
     })
 }
 
+/// Additional read/callback ordering in the live-effects Walk corpus.
+pub(crate) fn observe_live(call: FreshCallRecord) {
+    SEAM.with(|seam| {
+        if let Some(seam) = seam.borrow_mut().as_mut()
+            && seam.live_effects
+        {
+            seam.records.push(call);
+        }
+    });
+}
+
 /// Record a substituted call; true when a seam is installed, so the caller
 /// skips the callee body.
 pub(crate) fn substitute(call: FreshCallRecord) -> bool {
     SEAM.with(|seam| {
-        seam.borrow_mut()
-            .as_mut()
-            .map(|seam| seam.records.push(call))
-            .is_some()
+        seam.borrow_mut().as_mut().is_some_and(|seam| {
+            seam.records.push(call);
+            !seam.live_effects
+        })
     })
 }

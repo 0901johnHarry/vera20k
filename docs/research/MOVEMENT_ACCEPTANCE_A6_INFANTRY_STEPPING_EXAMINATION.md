@@ -247,16 +247,23 @@ remain (U2, U3).
 
 * **Native:** `0x0075C1DB`–`0x0075C1E2`, immediately after Mark(PUT) at a walk
   boundary: `Get_CellClass_At_Coord(current)` then `FUN_00486920`. That function
-  fires when the cell's overlay index (+0x44) is `0x7E`, density (+0x11E) > 0x2F,
-  +0x11C is clear and cell flag `0x20000` is clear: it walks the ground occupier
-  list and, for each object with RTTI < 6 whose type lacks +0xC91 and has no
-  weapon ability 8, spawns `Rules+0xE8`'s anim and latches cell flag 0x20000.
-* **VERA:** `walk_mark_put` calls only `recalculate_track_cell`; no equivalent.
-* **Trigger:** infantry crossing into a cell with overlay type 0x7E at density
-  > 0x2F.
-* **Frequency:** map-dependent; zero on maps without that overlay.
-* **Effect:** a missing one-shot per-cell animation/effect on those cells.
-* Overlay type 0x7E's identity is **UNCHECKED** — do not assume "veins".
+  requires overlay index (+0x44) `0x7E`, unsigned density (+0x11E) >= 48,
+  zero slope (+0x11C) and clear cell flag `0x20000`. It walks the ground list,
+  requiring signed floor-relative height <= 5 from virtual +0x1C8 (**not RTTI**),
+  category +0x14 mask `0x01`, zero type +0xC91 (`ImmuneToVeins`) and no ability8.
+  Each eligible resident attempts to construct `Rules+0xE8`'s anim; flag
+  `0x20000` is set even on allocation failure. The entry-only flag test permits
+  several animations during one traversal.
+* **VERA:** `run_walk_boundary` has no corresponding Cell effect owner.
+* **Bounded retail finding:** native enumeration makes index126 **DUMMYOLD**;
+  bridge indices24/25/122..125 and overlay -1 return before occupants. Native
+  ENGINEER loading sets `ImmuneToVeins=1`, while the selected RULESMD,
+  MPBattleMD and Hills layers leave `VeinAttack` null. This excludes the tested
+  ordinary Engineer bridge route, not every hypothetical occupant/map state.
+* **Residual:** the conditional vein effect and its Anim lifecycle remain
+  separate required work when their trigger is selected; no direct RNG draw,
+  timer write or detach call occurs in the Cell body. See the current
+  [bounded native evidence and reproduction](../../tools/spatial_oracle/walk_cell_486920_audit.md).
 
 ---
 
