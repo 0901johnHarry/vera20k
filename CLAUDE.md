@@ -134,6 +134,14 @@ or fix that owner instead of introducing competing state or duplicated decision
 logic. Keep authoritative state private to its owning module and expose mutations
 through the owner.
 
+Before porting a native function, search the code for its address (e.g. `703850`) and
+native name. Each native function has one Rust port; new callers call it instead of
+adding a wrapper or re-inlining its body. Never fork an owner: when an existing one is
+wrong for your chain, correct it for every caller (a change toward native is in scope,
+with evidence for each affected path) or use it as it is and record the residual. A
+change that adds a copy, a caller-specific wrapper or a competing owner is a defect to
+remove before merge; the critic checks for them.
+
 Derived caches and indexes are allowed when their source of truth, update or
 invalidation rules, and consistency validation are explicit.
 
