@@ -439,13 +439,9 @@ pub(super) fn time_to_build_inputs(
     category: ProductionCategory,
     obj: &ObjectType,
 ) -> TimeToBuildInputs {
-    let country_multiplier = sim
-        .houses
-        .get(&owner)
-        .and_then(|house| house.country)
-        .map_or(NativeF32Bits::ONE, |country| {
-            rules.country_build_time_mult_for_type(sim.interner.resolve(country), obj)
-        });
+    let country_multiplier = sim.houses.get(&owner).map_or(NativeF32Bits::ONE, |house| {
+        rules.country_build_time_mult_for_type(sim.interner.resolve(house.house_type_id()), obj)
+    });
     let (power_output, power_drain) = sim
         .power_states
         .get(&owner)
@@ -506,12 +502,21 @@ pub struct AbandonedObject {
     pub entity_id: Option<u64>,
 }
 
-/// StartProduction stores Cost_Of as the Balance unclamped
-/// (`0x004C9DEA`). RESIDUAL: VERA seeds a negative Cost_Of as 0, since its
-/// step charge and wallet assume a non-negative Balance. Trigger: a type
-/// whose Cost_Of is negative; no retail type has one. Effect: such a build
-/// is free instead of paying the house, and its cancel refund (Cost_Of less
-/// that Balance) takes the Cost_Of instead of nothing.
+/// StartProduction stores the Cost_Of as the Balance unclamped
+/// (`0x004C9DEA`) and on the object (`+0x300`, `0x004C9DED`).
+///
+/// RESIDUAL: VERA seeds a negative Cost_Of as 0, since its step charge and
+/// wallet assume a non-negative Balance. Trigger: a type whose Cost_Of is
+/// negative; no retail type has one. Effect: such a build is free instead of
+/// paying the house, and its cancel refund (Cost_Of less that Balance) takes
+/// the Cost_Of instead of nothing.
+///
+/// RESIDUAL: VERA keeps no object `+0x300`. Its gameplay reader, the
+/// building's construction completion (`0x00446AE3..0x00446B10`), gives a
+/// human's building no FreeUnit when that stored price is non-zero and at most
+/// the type's GetCost, which in retail needs the FreeUnit's Cost_Of at 0 or
+/// less: 26 Industrial Plants for a refinery's Miner. Effect: VERA still
+/// delivers the free unit.
 fn seeded_balance(cost: i32) -> i32 {
     cost.max(0)
 }

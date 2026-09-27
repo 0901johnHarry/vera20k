@@ -654,6 +654,42 @@ fn native_open_topped_boundary_is_distance_3d() {
     assert_eq!(checked, 16);
 }
 
+/// The erase's two experience awards price their costs by different Houses:
+/// the Update's `Add` takes each type's Cost_Of for its own object's House
+/// (`0x0071A952`, `0x0071A968`), Record_The_Kill's takes both for the
+/// victim's House (`0x00702D61`), which also prices the kill's score.
+#[test]
+fn erase_awards_price_each_cost_by_its_house() {
+    let rules = rules_from(&format!(
+        "{RULES}[Countries]\n0=Americans\n1=Russians\n\
+         [Americans]\nCostUnitsMult=.5\n[Russians]\nCostInfantryMult=.5\n"
+    ));
+    let mut sim = sim(9);
+    let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 12, 10);
+    let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
+    chain(&mut sim, tank, &[cleg], 1);
+    let mut expected = entity(&sim, cleg).clone();
+    // (legionnaire cost, tank cost): Russian and American Houses, then both
+    // American.
+    for (owner_cost, target_cost) in [(750, 450), (1500, 450)] {
+        crate::sim::combat::veterancy::award_kill(
+            &mut expected,
+            owner_cost,
+            target_cost,
+            true,
+            rules.general.veteran_ratio,
+            rules.general.veteran_cap,
+        );
+    }
+    sim.temporal_update_head(cleg, &rules);
+    assert!(erased(&sim, tank));
+    assert_eq!(
+        veterancy(&sim, cleg),
+        f32::from_bits(expected.veterancy_raw.bits())
+    );
+    assert_eq!(house_stats(&sim, "Russians").score_points, 450);
+}
+
 /// A warp's start makes a victim that was itself warping let go
 /// (`0x0071B162`), and retargeting drops the previous victim with its
 /// progress: nothing heals and the next warp restarts at Strength * 10.

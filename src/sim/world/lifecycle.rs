@@ -2804,26 +2804,15 @@ impl Simulation {
         let Some(killer) = killed_by else {
             return;
         };
-        // Destroying an ally's object (or one's own) still counts as a kill but
-        // is worth no score. `Record_The_Kill @ 0x00702D40` computes the award
-        // once — behind `HouseClass::IsAlly @ 0x004F9A90`, asked BY THE KILLER —
-        // and feeds the same value to the score add at 0x0070300F and to the
-        // veterancy accumulator, so this test must be the one-way one and must
-        // match `combat::award_kill_experience`.
-        let friendly = crate::map::houses::is_allied_with(
-            &self.house_alliances,
-            self.interner.resolve(killer),
-            self.interner.resolve(owner),
-        );
+        // Destroying an ally's object (or one's own) still counts as a kill;
+        // `combat::record_the_kill` already made its award zero.
         if let Some(house) = self.houses.get_mut(&killer) {
             if structure {
                 house.stats.buildings_killed = house.stats.buildings_killed.saturating_add(1);
             } else {
                 house.stats.units_killed = house.stats.units_killed.saturating_add(1);
             }
-            if !friendly {
-                house.stats.score_points = house.stats.score_points.saturating_add(award);
-            }
+            house.stats.score_points = house.stats.score_points.saturating_add(award);
         }
     }
 
@@ -2832,21 +2821,21 @@ impl Simulation {
     /// and virtual Destroy/reference notification before TechnoClass arms the
     /// timer and restores Alive/Health=1. This deliberately does not call
     /// UnInit, Limbo, record the destruction, or enqueue physical deletion.
+    /// The kill callback ([`crate::sim::combat::record_the_kill`]) has already
+    /// left its award on the target.
     pub(crate) fn postmortem_exact_zero_callbacks(
         &mut self,
         stable_id: u64,
         killer_owner: Option<InternedId>,
-        rules: &crate::rules::ruleset::RuleSet,
         context: UninitContext<'_>,
     ) {
-        let Some((owner, category, dont_score, type_ref, veterancy)) =
+        let Some((owner, category, dont_score, award)) =
             self.substrate.entities.get(stable_id).map(|target| {
                 (
                     target.owner(),
                     target.category,
                     target.dont_score,
-                    target.type_ref(),
-                    target.veterancy,
+                    target.kill_award_points,
                 )
             })
         else {
@@ -2862,10 +2851,6 @@ impl Simulation {
             "PostMortem Object callbacks run at exact zero"
         );
         if !dont_score {
-            let victim_cost = self
-                .object_type(type_ref, rules)
-                .map_or(0, |object| self.cost_of(owner, object, rules));
-            let award = crate::sim::combat::score_award_for_victim(victim_cost, veterancy);
             self.record_match_kill_and_loss(owner, category, killer_owner, award);
         }
         #[cfg(test)]
@@ -2890,7 +2875,10 @@ impl Simulation {
     /// once no factory of its category remains. Trigger: a house with two
     /// factories of a category loses the one its production is attached to.
     /// Effect: natively the object is refunded and deleted at the kill; VERA
-    /// keeps it at the surviving factory. The Foot
+    /// keeps it at the surviving factory. When VERA does abandon it, the
+    /// refund's Cost_Of is priced at that later phase, so a FactoryPlant lost
+    /// in the same frame changes it (a quarter of a vehicle's price for an
+    /// Industrial Plant). The Foot
     /// prelude removes the object from its Team (`TeamClass::Remove @
     /// 0x006EA870`, at `0x004D9744`); `TeamScriptVm` keeps its members and
     /// nothing removes a dying one, here or at UnInit. Trigger: a team member

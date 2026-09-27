@@ -188,6 +188,10 @@ pub(super) enum HashFeature {
     /// House statistics needed to preserve its two loss records through load.
     /// Default-zero states append nothing; earlier schemas omit both additions.
     ShipSinking = 227,
+    /// Each House's FactoryPlant list (House+0x140), whose order fixes the
+    /// f32 cost-factor fold; a tagged suffix only when the list is non-empty.
+    /// Earlier schemas omit it.
+    FactoryPlants = 228,
 }
 
 impl HashSchema {
@@ -232,6 +236,7 @@ impl HashSchema {
                     | HashFeature::FootScoldLatch
                     | HashFeature::PrismSupport
                     | HashFeature::ShipSinking
+                    | HashFeature::FactoryPlants
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

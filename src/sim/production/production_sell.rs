@@ -72,7 +72,6 @@ use crate::sim::world::{
 };
 use crate::util::lepton;
 
-use super::production_queue::credits_entry_for_owner;
 use super::production_tech::foundation_dimensions;
 
 /// `TechnoTypeClass::GetRefund @ 0x00711F60` (type vtable `+0xB8`) for a live
@@ -524,9 +523,8 @@ pub(crate) fn sell_complete(
     });
     sim.set_building_light_active(id, false);
     if let Some(refund) = refund {
-        let owner_name = sim.interner.resolve(owner).to_string();
-        let credits = credits_entry_for_owner(sim, &owner_name);
-        *credits = credits.wrapping_add(refund);
+        // Add_Credits (`0x0044A222`).
+        crate::sim::credit_income::add_credits(sim, owner, refund);
     }
     sim.uninit_with_context(id, UninitContext::with_rules(rules));
     if sim.session.game_options.super_weapons {

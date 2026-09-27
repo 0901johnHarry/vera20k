@@ -1700,12 +1700,7 @@ impl Simulation {
                 self.maintain_damage_smoke_after_receive(stable_id, state, rules);
             }
             crate::sim::combat::FatalLifecycleStage::PostMortemExactZero { killer_owner } => {
-                self.postmortem_exact_zero_callbacks(
-                    stable_id,
-                    killer_owner,
-                    rules,
-                    uninit_context,
-                );
+                self.postmortem_exact_zero_callbacks(stable_id, killer_owner, uninit_context);
             }
             crate::sim::combat::FatalLifecycleStage::BeforeDeathEffects => {
                 // A building's occupants. A unit's passengers stay for its own

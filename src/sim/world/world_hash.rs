@@ -1199,6 +1199,12 @@ impl Simulation {
                 b"house-buildings-v1".hash(hasher);
                 house.base_projection.buildings().hash(hasher);
             }
+            if schema.includes(HashFeature::FactoryPlants)
+                && !house.base_projection.factory_plants().is_empty()
+            {
+                b"house-factory-plants-v1".hash(hasher);
+                house.base_projection.factory_plants().hash(hasher);
+            }
             if schema.includes(HashFeature::BasePlan) {
                 house.base_plan.percent_built.hash(hasher);
                 house.base_plan.nodes.len().hash(hasher);

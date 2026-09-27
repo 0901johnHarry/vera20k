@@ -30,9 +30,9 @@ pub enum VeterancyRank {
 
 /// `Veterancy(u16)` value for a rookie.
 pub const RANK_ROOKIE_U16: u16 = 0;
-/// `Veterancy(u16)` value for a veteran — matches `VETERAN_VETERANCY`.
+/// `Veterancy(u16)` value for a veteran.
 pub const RANK_VETERAN_U16: u16 = 100;
-/// `Veterancy(u16)` value for an elite — matches `ELITE_VETERANCY`.
+/// `Veterancy(u16)` value for an elite.
 pub const RANK_ELITE_U16: u16 = 200;
 
 /// `VeterancyClass::IsVeteran @ 0x0074FF90` compares against 1.0f.

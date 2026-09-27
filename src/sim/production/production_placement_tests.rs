@@ -49,6 +49,7 @@ fn stock_refinery_completion_rules() -> RuleSet {
          1=NACNST\n\
          2=GAREFN\n\
          3=NAREFN\n\
+         4=NAINDP\n\
          [GACNST]\n\
          Factory=BuildingType\n\
          [NACNST]\n\
@@ -73,7 +74,11 @@ fn stock_refinery_completion_rules() -> RuleSet {
          Storage=20\n\
          [BLOCKER]\n\
          Cost=1\n\
-         Speed=0\n",
+         Speed=0\n\
+         [NAINDP]\n\
+         Strength=1000\n\
+         FactoryPlant=yes\n\
+         UnitsCostBonus=.75\n",
     ))
     .expect("stock refinery completion rules should parse");
     let art = ArtRegistry::from_ini(&IniFile::from_str(
@@ -1335,6 +1340,8 @@ fn live_occupant_on_a_candidate_cell_drops_that_cell_from_the_fallback_pool() {
     }
 }
 
+/// The refund is the FreeUnit's GetRefund with `full` set, its Cost_Of, which
+/// the house's Industrial Plant discounts: 1400 * .75.
 #[test]
 fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     let mut sim = Simulation::new();
@@ -1360,6 +1367,8 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
         }
     }
     *super::credits_entry_for_owner(&mut sim, "Americans") = 100;
+    sim.spawn_object("NAINDP", "Americans", 40, 40, 0, &rules, &height_map)
+        .expect("the Industrial Plant unlimbos");
     let americans = sim.interner.get("Americans").expect("owner should exist");
     let owned_units_before = sim.owned_object_counts(americans).1;
     install_refinery_test_terrain(&mut sim);
@@ -1389,7 +1398,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
             .eq_ignore_ascii_case("CMIN")),
         "same-tick pending-delete drain must leave no living or limbo CMIN"
     );
-    assert_eq!(credits_for_owner(&sim, "Americans"), 1500);
+    assert_eq!(credits_for_owner(&sim, "Americans"), 1150);
     assert_eq!(
         sim.owned_object_counts(americans).1,
         owned_units_before,
@@ -1400,7 +1409,7 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
     assert!(!later.spawned_entities);
     assert_eq!(
         credits_for_owner(&sim, "Americans"),
-        1500,
+        1150,
         "consumed BuildingUp transition must not refund twice"
     );
 }
