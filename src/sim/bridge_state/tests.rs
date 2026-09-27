@@ -12,11 +12,13 @@ include!("gap_restamp_tests.rs");
 
 #[test]
 fn playfield_retail_high_bridge_walks_make_native_records_monotone() {
-    assert!(HIGH_BRIDGE_WALK_DIRECTION
-        .iter()
-        .copied()
-        .filter(|direction| *direction >= 0)
-        .all(|direction| matches!(direction, 2 | 4)));
+    assert!(
+        HIGH_BRIDGE_WALK_DIRECTION
+            .iter()
+            .copied()
+            .filter(|direction| *direction >= 0)
+            .all(|direction| matches!(direction, 2 | 4))
+    );
 }
 
 /// 5x1 grid: ground at (0,0), bridge at (1,0)-(3,0), ground at (4,0).
@@ -307,118 +309,6 @@ fn repaired_overlay_is_walkable_even_with_stale_destroyed_state() {
 }
 
 #[test]
-fn ns_walker_triple_writes_bridgehead_neighbors() {
-    // BR-11: the HIGH NS walker triple-writes (this, north=(2,1),
-    // south=(2,3)) UNCONDITIONALLY. Bridge destruction keys purely on the
-    // overlay band with no per-cell role concept, so the bridgehead neighbors
-    // in the triple must receive the destroy overlay and (on a final collapse)
-    // a BlowUpBridge action — they are NOT left standing.
-    let mut state = BridgeRuntimeState::default();
-    state.test_seed_cell(
-        2,
-        2,
-        BridgeRuntimeCell {
-            deck_present: true,
-            destroyable: true,
-            deck_level: 4,
-            bridge_group_id: Some(1),
-            damage_state: DamageState::Healthy { variant: 0 },
-            axis: Some(Axis::NS),
-            role: BridgeCellRole::Body,
-            anchor_span_id: Some(1),
-            // 0xD3 ∈ [0xD3..=0xD5] → final-collapse case: triple writes 0xE7.
-            overlay_byte: 0xD3,
-            bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-        },
-    );
-    for ry in [1u16, 3] {
-        state.test_seed_cell(
-            2,
-            ry,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 4,
-                bridge_group_id: None,
-                damage_state: DamageState::Healthy { variant: 0 },
-                axis: None,
-                role: BridgeCellRole::Bridgehead,
-                anchor_span_id: None,
-                overlay_byte: 0,
-                bridgehead_anchor_class: BridgeheadAnchorClass::Variant0,
-            },
-        );
-    }
-    let terrain = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(3, 4, Vec::new());
-
-    let outcome = state.destroy_bridge_walker_ns_high(2, 2, &terrain);
-
-    // Every triple cell — including the two bridgeheads — gets the 0xE7
-    // destroy overlay and a Destroyed damage_state.
-    for (rx, ry) in [(2u16, 1u16), (2, 2), (2, 3)] {
-        let c = state.cell(rx, ry).expect("triple cell present");
-        assert_eq!(
-            c.overlay_byte, 0xE7,
-            "({rx},{ry}) gets the destroy overlay band"
-        );
-        assert_eq!(
-            c.damage_state,
-            DamageState::Destroyed,
-            "({rx},{ry}) marked Destroyed"
-        );
-    }
-    // The bridgehead cells keep their role tag (role is derived/internal, not
-    // authoritative) but are now part of the collapse + BlowUpBridge cascade.
-    for ry in [1u16, 3] {
-        assert!(matches!(
-            state.cell(2, ry).unwrap().role,
-            BridgeCellRole::Bridgehead
-        ));
-    }
-    match outcome {
-        StateOutcome::Collapsed {
-            binary_success,
-            destroyed_cells,
-            set_bridge_direction,
-            zones_dirty,
-            radar_cells,
-            ..
-        } => {
-            assert!(binary_success);
-            assert!(zones_dirty, "final collapse marks zones dirty");
-            for pos in [(2u16, 1u16), (2, 2), (2, 3)] {
-                assert!(destroyed_cells.contains(&pos), "{pos:?} in destroyed_cells");
-                // BR-16: every triple cell the walker wrote is minimap-dirty.
-                assert!(radar_cells.contains(&pos), "{pos:?} in radar_cells");
-            }
-            assert_eq!(
-                set_bridge_direction.actions.len(),
-                3,
-                "one BlowUpBridge per triple cell, bridgeheads included"
-            );
-            let blown: Vec<(u16, u16)> = set_bridge_direction
-                .actions
-                .iter()
-                .map(|(pos, _, _)| *pos)
-                .collect();
-            for pos in [(2u16, 1u16), (2, 2), (2, 3)] {
-                assert!(blown.contains(&pos), "{pos:?} has a BlowUpBridge action");
-                assert!(
-                    set_bridge_direction
-                        .actions
-                        .iter()
-                        .all(|(_, _, action)| matches!(
-                            action,
-                            crate::sim::bridge_specs::CellAction::BlowUpBridge
-                        ))
-                );
-            }
-        }
-        other => panic!("expected Collapsed, got {other:?}"),
-    }
-}
-
-#[test]
 fn bridge_runtime_initializes_intact_groups() {
     let state = BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), true, 300);
     let cell = state.cell(1, 0).expect("bridge cell");
@@ -615,7 +505,10 @@ fn gsi_04_12_topology_native_diagonal_scan_order_keeps_each_start() {
 fn automatic_shells_do_not_invent_bridge_records() {
     let state = BridgeRuntimeState::from_resolved_terrain(&make_low_bridge_terrain(), true, 300);
     let records = state.endpoint_records();
-    assert!(records.is_empty(), "same-cell Tube exits fail native strict ordinal order");
+    assert!(
+        records.is_empty(),
+        "same-cell Tube exits fail native strict ordinal order"
+    );
 }
 
 #[test]
@@ -2145,7 +2038,10 @@ fn flood_fill_idempotent_when_already_in_target_state() {
     let mut terrain = pavement_test_terrain(&[(5, 5), (5, 6), (5, 7)]);
     terrain.cell_mut(5, 5).unwrap().bridge_facts.raw_flags |= 0x2000;
     let changed = bs.apply_damaged_variant_flood_fill(5, 5, true, &mut terrain);
-    assert!(changed.is_empty(), "no mutation when already in target state");
+    assert!(
+        changed.is_empty(),
+        "no mutation when already in target state"
+    );
 }
 
 #[test]
@@ -2295,185 +2191,18 @@ fn from_resolved_terrain_defaults_to_variant0_when_pre_class_is_none() {
     );
 }
 
-/// `ApplyDamageToCell` 0x00587180 routes to a walker on a narrower band than
-/// the walkers themselves accept. Its tests are `(0x49 < o) && (o < 100)` and
-/// `(0xCC < o) && (o < 0xE7)`, so 0x64, 0x65, 0xE7 and 0xE8 fall through to
-/// the tileset-family branch even though `DestroyBridge_Low` 0x0057BAA0 and
-/// `DestroyBridge_High` 0x0057CCF0 name them as valid axis classes
-/// (0x64/0xE7 NS, 0x65/0xE8 EW) once already running.
-#[test]
-fn apply_damage_dispatch_bands_are_narrower_than_the_walker_bands() {
-    assert!(!is_low_dispatch_overlay(0x49));
-    assert!(is_low_dispatch_overlay(0x4A));
-    assert!(is_low_dispatch_overlay(0x63));
-    assert!(!is_low_dispatch_overlay(0x64));
-    assert!(!is_low_dispatch_overlay(0x65));
-
-    assert!(!is_high_dispatch_overlay(0xCC));
-    assert!(is_high_dispatch_overlay(0xCD));
-    assert!(is_high_dispatch_overlay(0xE6));
-    assert!(!is_high_dispatch_overlay(0xE7));
-    assert!(!is_high_dispatch_overlay(0xE8));
-
-    // The walker-side bands, which legitimately include those four values.
-    assert!(BridgeRuntimeState::is_low_destroy_overlay(0x64));
-    assert!(BridgeRuntimeState::is_low_destroy_overlay(0x65));
-    assert!(BridgeRuntimeState::is_high_destroy_overlay(0xE7));
-    assert!(BridgeRuntimeState::is_high_destroy_overlay(0xE8));
-}
-
-/// RESIDUAL — gamemd addresses 0x00572230 (and its fifteen compiled twins,
-/// enumerated on `crate::sim::bridge_specs::RampOutcome`).
-///
-/// Mechanism: after the state-byte promotion, every ramp updater computes
-/// `cell+0x38 - g_BridgeSet_TileSetBase + 1` on the perpendicular target and
-/// branches on three runtime tile-class constants. VERA now models the
-/// `MapClass::ToggleBridgePavement` 0x0056E990 damaged-TMP selector and exact
-/// flood/dirty order. The alternate calls to `MapClass::FloodFillIsoTileType`
-/// that repaint a connected ramp iso-tile remain unported.
-///
-/// Trigger: any damage or collapse step on a bridge whose anchor has a ramp
-/// or bridgehead neighbour — i.e. essentially every hit that damages a span.
-///
-/// Effect: affected alternate-class ramps keep their prior iso-tile art after
-/// the span changes; damaged-TMP ramps do switch and now redraw correctly.
-///
-/// Frequency: high on any map with a bridge that gets attacked, which is most
-/// matches on most retail maps carrying one. The residual is purely visual —
-/// no pathing, damage or RNG consequence was found in 0x00572230.
-#[test]
-#[ignore = "gamemd's alternate ramp tile classes call FloodFillIsoTileType; only the damaged-TMP ToggleBridgePavement branch is ported"]
-fn ramp_isotile_repaint_branch_is_unported() {
-    panic!("unimplemented: FloodFillIsoTileType branch of the ramp updaters");
-}
-
-/// RESIDUAL - gamemd addresses 0x00576770 `MapClass::UpdateAdjacentBridges_High`,
-/// 0x00571050 `MapClass::UpdateAdjacentBridges`, and the edge writers they
-/// drive, 0x00576200 `UpdateBridgeEdgeTiles_High` and 0x00570AE0
-/// `UpdateBridgeEdgeTiles_Low`.
-///
-/// **Both bodies re-decompiled 2026-08-19. The earlier version of this note
-/// called the gap purely visual and said the writers touch no damage state,
-/// pathing field or RNG. That is wrong**, and it is the reason this is being
-/// corrected rather than implemented: a port written against the old note
-/// would have been scoped as a tile-art fix and would have silently taken on
-/// bridge-flag and overlay writes.
-///
-/// Entry (0x00576770): walk the eight directions from the damaged cell until
-/// a neighbour carries `+0x140 & 0x500`; pick a start coordinate from that
-/// neighbour's 0x100 / 0x400 / 0x80 bits; walk along the axis chosen by the
-/// neighbour's `0x800` bit while cells stay inside the map rect and carry a
-/// non-null entry in `MapClass+0x13C`; classify the landed cell's
-/// `cell+0x38 - g_BridgeSet_TileSetBase + 1` against SIX theater tileset
-/// globals paired with a `+0x11A` sub-tile value of 8, 5, 12 or 7; and call
-/// `UpdateBridgeEdgeTiles_High` with mode 2 or 4, dirtying the screen rect
-/// through `TacticalClass::DirtyScreenRect` only when the returned rect
-/// actually changed.
-///
-/// The globals are theater INI tileset indices written by
-/// `Read_Theater_TileSets_INI`; `DAT_00ABAD30` is `[General] BridgeMiddle1`
-/// (key string 0x008292C4, stored at 0x00545C1E), which `map::theater`
-/// already parses. The remaining five were not resolved to their keys.
-///
-/// **What 0x00576200 actually does, and why this is not a visual slice:** it
-/// walks up to 30 cells along the span looking for the tile class matching
-/// its mode, unions a screen rect through
-/// `TacticalClass::CoordsToClient2`, and at the anchor-flag transition it
-/// calls `NotifyBridgeSpanCollapse`, then
-/// `CellClass::SetBridgeDirection_NESW` with direction 0 (mode 2) or 6
-/// (mode 4), writes `cell+0x11E = 0`, writes `cell+0x44 = -1` clearing the
-/// overlay, calls `RadarClass::MarkTerrainDirty`, and re-enters itself.
-///
-/// `SetBridgeDirection` is the writer of the `0x100` and `0x800` bits in
-/// `cell+0x140`. Those bits are read by the pathfinding zone build, the
-/// destroy and repair walkers, `CheckBridgeTraversal` 0x004D9C60 and the
-/// render predicate `IsOnBridge_ForFiring` 0x00703B10. `cell+0x44` is the
-/// overlay byte the destroy walkers match their bands against. So this
-/// function re-stamps sim-visible bridge topology at collapse time; it is not
-/// rim art.
-///
-/// `compute_adjacent_bridges_dirty` reproduces only the first step's
-/// *result* - which two perpendicular cells to mark dirty. Neither the span
-/// walk, the tile classification, the re-stamp, nor the overlay clear
-/// happens.
-///
-/// Trigger: every bridge collapse. Confirmed from callers - eight call sites,
-/// all in `ProcessBridgeDamageStateMachine_High` 0x00576BB0 and both hut-death
-/// destroy paths `MapClass::DestroyBridge_High_OnHutDeath` 0x005745B4 and
-/// `_Low_OnHutDeath` 0x005751D0.
-///
-/// Effect: the rim tiles at the break keep their intact art, AND the cells at
-/// the break keep bridge flags and an overlay id that gamemd clears. The
-/// second half is the part that matters: VERA's own predicates keep reading a
-/// span the engine has already unstamped.
-///
-/// Frequency: every collapse on any map with a bridge.
-///
-/// Blocker, restated: this is not a slice. It needs the five unresolved
-/// theater tileset keys, a `+0x11A` sub-tile reader, the `MapClass+0x13C`
-/// span array, a `SetBridgeDirection` re-stamp path, and a screen-rect union
-/// - and because it writes flags the pathfinder and the render predicate
-/// read, it needs the same evidence bar as a sim change rather than a render
-/// one.
-#[test]
-#[ignore = "gamemd 0x00576770 -> 0x00576200 re-stamps bridge flags and clears the overlay at a collapse break, not just edge art; VERA does neither"]
-fn bridge_edge_tile_rewrite_after_collapse_is_unported() {
-    panic!("unimplemented: UpdateAdjacentBridges / UpdateBridgeEdgeTiles span walk and re-stamp");
-}
-
-/// RESIDUAL — gamemd addresses 0x00570050 `ProcessBridgeDestruction_Low`,
-/// 0x00573540 `ProcessBridgeDestruction_High`, the span walkers they drive
-/// (0x00569760 `MapClass::BridgePavementSpanWalker` and 0x00568E40 its high
-/// twin), `MapClass::ToggleBridgePavement` 0x0056E990 and
-/// `MapClass::ValidateBridgeZones` 0x0056DB70.
-///
-/// The names mislead: 0x00570050 decompiled 2026-08-19 is the REPAIR entry.
-/// Its 5x5 overlay scan hands the first cell in `[0x4A..=0x65]` to
-/// `MapClass::RepairBridge_Low` 0x0057F200 and returns. Everything after that
-/// is the terrain restoration the repair needs:
-/// - `ToggleBridgePavement(coord, 0, 0)` on the ramp cell, then
-///   `BridgePavementSpanWalker(cell, 2 or 4, &rect)` and a
-///   `TacticalClass::DirtyScreenRect` over the rect it returns;
-/// - on the `+4` tile-class variants, `FloodFillIsoTileType` back to the
-///   pre-collapse iso-tile and `cell+0x11B += 4` on three neighbours — the
-///   deck-level raise being put back;
-/// - `ValidateBridgeZones`, a recursive call two cells back along the span,
-///   and `RebuildZoneConnectivity` when validation reports a change.
-///
-/// `repair_bridge_from_engineer_scan` reproduces the scan and the
-/// `RepairBridge_*` dispatch. None of the restoration tail exists.
-///
-/// Trigger: every successful engineer repair of a collapsed bridge.
-///
-/// Effect: the deck becomes walkable again but the approach keeps its
-/// collapsed appearance, and the `+0x11B += 4` level raise is not re-applied,
-/// so the ramp cells stay at the dropped height. That is not purely visual —
-/// cell level feeds ground height, which feeds the bridge transition predicate
-/// and unit Z.
-///
-/// **Blocker, established 2026-08-19.** This cannot be ported as written.
-/// Every branch in the tail is selected by comparing
-/// `cell+0x38 - g_WoodBridgeSet_TileSetBase + 1` against runtime tile-class
-/// constants - `DAT_00ABAD30`, `DAT_00ABC2B4`, `DAT_00AA1130`, `DAT_00AA1028`,
-/// `DAT_00AA1548`, `DAT_00AA0740` - and the `+0x11B += 4` raise fires only on
-/// the `DAT_00ABAD30 + 4` variant paired with a `+0x11A` sub-tile of 5. Those
-/// constants live in BSS and are written per theater by
-/// `Read_Theater_TileSets_INI`, so they cannot be read out of the binary
-/// statically. `BridgeRampTile::relative_tile_index` is the right field to
-/// hold the comparison, but the values to compare against have to come from a
-/// live observation or from porting the theater tileset reader first.
-/// Guessing them would put a fabricated constant into sim state that feeds
-/// ground height. Recorded rather than approximated.
-///
-/// Frequency: every successful engineer repair of a collapsed bridge. Repairs
-/// are uncommon per match, but the effect persists for the rest of the game
-/// once one happens, and a repaired bridge is something both players then
-/// path over.
-#[test]
-#[ignore = "gamemd restores pavement, iso-tile and the +4 level raise after a repair (0x00570050); VERA only re-dispatches RepairBridge"]
-fn bridge_repair_terrain_restoration_is_unported() {
-    panic!("unimplemented: ProcessBridgeDestruction_* repair restoration tail");
-}
+// Native repair coverage follows the production owners: ordinary_repair_tests
+// checks strip overlays, RNG and callback order; ramp_repair_tests checks the
+// 573540/570050 recovery controllers and their terrain-restoration callbacks.
+// The shared iso_tile_flood tests cover connected tile replacement. Live
+// Engineer integration is in world_orders_bridge_repair_tests.
+//
+// High rim refresh (576770 -> 576200) is covered by rim_tests and published by
+// world::bridge_rim_publication. Those comparisons do not establish low-rim
+// 571050 -> 570AE0 or every high selector; tagged event31 delivery remains an
+// explicit dependency on the live trigger owner. Keep these bounds with the
+// owning mechanisms rather than obsolete ignored tests claiming all repair
+// and rim writes are absent.
 
 // ---- MapClass::FindBridgeConnection_Predicate 0x00587410, overlay branch ----
 

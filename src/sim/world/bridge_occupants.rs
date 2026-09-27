@@ -1,18 +1,22 @@
-//! Live487A10(0) receivers. Both list passes resume against current links.
+//! Live487A10 bridge damage/repair receivers. Both passes resume against current links.
 use super::*;
 use crate::map::entities::EntityCategory;
-use crate::sim::bridge_state::repair_occupants::{self, RepairOccupantHost};
+use crate::sim::bridge_state::occupants::{self, BridgeOccupantHost};
 use crate::sim::combat::{
     EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags, TerrainDamageEvent,
 };
 use crate::sim::movement::{at_coord::AtCoordQuery, locomotor::MovementLayer};
 use crate::sim::occupancy::CellObjectMember;
 
-#[path = "bridge_repair_admission.rs"]
+#[path = "bridge_occupant_admission.rs"]
 mod admission;
 
-pub(super) fn apply(live: &mut LivePublication<'_>, selected: Cell) -> Result<(), String> {
-    repair_occupants::repair_occupants(&mut Occupants { live }, selected)
+pub(super) fn apply(
+    live: &mut LivePublication<'_>,
+    selected: Cell,
+    damage_mode: u8,
+) -> Result<(), String> {
+    occupants::recheck_occupants(&mut Occupants { live }, selected, damage_mode)
 }
 
 #[derive(Clone, Copy)]
@@ -35,7 +39,7 @@ impl Occupants<'_, '_> {
     }
 }
 
-impl RepairOccupantHost for Occupants<'_, '_> {
+impl BridgeOccupantHost for Occupants<'_, '_> {
     type Cell = Cell;
     type Object = Member;
     type Error = String;
@@ -82,6 +86,26 @@ impl RepairOccupantHost for Occupants<'_, '_> {
             CellObjectMember::Terrain(_) => false,
         }
     }
+    fn is_techno(&self, member: Member) -> bool {
+        matches!(member.object, CellObjectMember::Entity(_))
+    }
+    fn type_is_jumpjet(&mut self, member: Member) -> Result<bool, String> {
+        let CellObjectMember::Entity(id) = member.object else {
+            return Err("bridge JumpJet type receiver is not a Techno".into());
+        };
+        let entity = self
+            .live
+            .sim
+            .substrate
+            .entities
+            .get(id)
+            .ok_or("bridge JumpJet type receiver has retired object")?;
+        self.live
+            .sim
+            .object_type(entity.type_ref(), self.live.rules)
+            .map(|kind| kind.jumpjet)
+            .ok_or("bridge JumpJet receiver has no type".into())
+    }
     fn admission(&mut self, member: Member, cell: Cell) -> Result<i32, String> {
         admission::impassable(self.live, member.object, cell).map(|hard| if hard { 7 } else { 0 })
     }
@@ -100,7 +124,7 @@ impl RepairOccupantHost for Occupants<'_, '_> {
                     EntityCategory::Structure => 6,
                     EntityCategory::Infantry => 15,
                 })
-                .ok_or("repair kind receiver has retired object".into()),
+                .ok_or("bridge occupant kind receiver has retired object".into()),
         }
     }
     fn current_health(&self, member: Member) -> i32 {
@@ -180,7 +204,7 @@ impl RepairOccupantHost for Occupants<'_, '_> {
             }
         };
         let z = crate::util::lepton::ground_height_leptons(level, slope, xy[0], xy[1])
-            .map_err(|e| format!("repair ground slope: {e:?}"))?;
+            .map_err(|e| format!("bridge occupant ground slope: {e:?}"))?;
         Ok([xy[0], xy[1], z])
     }
     fn is_at_coord(&mut self, member: Member, probe: [i32; 3]) -> Result<bool, String> {
@@ -193,9 +217,9 @@ impl RepairOccupantHost for Occupants<'_, '_> {
             .substrate
             .entities
             .get(id)
-            .ok_or("repair IsAtCoord retired object")?;
+            .ok_or("bridge occupant IsAtCoord retired object")?;
         if e.locomotor.is_none() {
-            return Err("repair Foot has no active locomotor".into());
+            return Err("bridge occupant Foot has no active locomotor".into());
         }
         Ok(AtCoordQuery::from_entity(e).is_some_and(|q| {
             q.matches(crate::sim::components::DriveCoord {

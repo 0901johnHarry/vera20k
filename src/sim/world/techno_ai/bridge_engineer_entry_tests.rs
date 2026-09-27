@@ -1,5 +1,6 @@
 //! Physical Hills Engineer -> CABHUT entry and retained zone evidence.
-use super::bridge_target_layer_tests::{restored_retail, retail_hills_collapsed_scene};
+use super::bridge_target_layer_tests::retail_hills_collapsed_scene;
+use super::bridge_test_evidence::restored_retail;
 use crate::sim::command::Command;
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::world::Simulation;

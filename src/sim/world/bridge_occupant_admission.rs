@@ -1,4 +1,4 @@
-//!487A10 repair adapter to the shared numeric cell-entry authority.
+//!487A10 damage/repair adapter to the shared numeric cell-entry authority.
 use super::*;
 
 pub(super) fn impassable(

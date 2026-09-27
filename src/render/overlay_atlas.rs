@@ -448,6 +448,48 @@ pub fn build_overlay_atlas(
     art_registry: &ArtRegistry,
     smudge_types: Option<&crate::rules::smudge_type::SmudgeTypeRegistry>,
 ) -> Option<OverlayAtlas> {
+    build_overlay_atlas_on_device(
+        &gpu.device,
+        &gpu.queue,
+        batch,
+        overlays,
+        terrain_objects,
+        asset_manager,
+        theater_palette,
+        unit_palette,
+        tiberium_palette,
+        theater_ext,
+        theater_name,
+        overlay_registry,
+        tiberium_types,
+        crate_rules,
+        rules_ini,
+        art_registry,
+        smudge_types,
+    )
+}
+
+/// Device-only entry to the same retail atlas owner; no surface is needed to
+/// resolve and upload overlay art for a bounded offscreen production witness.
+pub(crate) fn build_overlay_atlas_on_device(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    batch: &BatchRenderer,
+    overlays: &[OverlayEntry],
+    terrain_objects: &[TerrainObject],
+    asset_manager: &AssetManager,
+    theater_palette: &Palette,
+    unit_palette: &Palette,
+    tiberium_palette: &Palette,
+    theater_ext: &str,
+    theater_name: &str,
+    overlay_registry: &OverlayTypeRegistry,
+    tiberium_types: &TiberiumTypeRegistry,
+    crate_rules: &CrateRules,
+    rules_ini: &IniFile,
+    art_registry: &ArtRegistry,
+    smudge_types: Option<&crate::rules::smudge_type::SmudgeTypeRegistry>,
+) -> Option<OverlayAtlas> {
     // Collect unique (name, frame) pairs from overlays.
     let mut needed: HashSet<OverlaySpriteKey> = HashSet::new();
 
@@ -724,7 +766,8 @@ pub fn build_overlay_atlas(
     }
 
     Some(pack_overlay_sprites(
-        gpu,
+        device,
+        queue,
         batch,
         &rendered,
         terrain_anim_frames,
@@ -1548,7 +1591,8 @@ mod tests {
 
 /// Shelf-pack rendered overlay sprites into a GPU texture atlas.
 fn pack_overlay_sprites(
-    gpu: &GpuContext,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
     batch: &BatchRenderer,
     sprites: &[RenderedOverlay],
     terrain_anim_frames: HashMap<String, u8>,
@@ -1560,7 +1604,7 @@ fn pack_overlay_sprites(
         entries,
         width: atlas_width,
         height: atlas_height,
-    } = pack_overlay_pixels(sprites, gpu.device.limits().max_texture_dimension_2d);
+    } = pack_overlay_pixels(sprites, device.limits().max_texture_dimension_2d);
     log::info!(
         "Overlay atlas: {}x{} px ({:.1} MB), {} sprites",
         atlas_width,
@@ -1569,8 +1613,9 @@ fn pack_overlay_sprites(
         entries.len()
     );
 
-    let texture: BatchTexture = batch.create_texture_with_indices(
-        gpu,
+    let texture: BatchTexture = batch.create_texture_on_device(
+        device,
+        queue,
         &rgba,
         atlas_width,
         atlas_height,

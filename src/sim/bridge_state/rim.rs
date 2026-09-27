@@ -64,6 +64,20 @@ pub(crate) fn step(coord: RimCoord, direction: u8) -> RimCoord {
 /// center, +1 perpendicular, -1 perpendicular, -2 perpendicular. The host must
 /// perform every lookup even without a CellTag: it may move the shared dummy.
 pub(crate) fn notify_span_cells(host: &mut impl HighBridgeRimHost, first: RimCoord, end: RimCoord) {
+    visit_span_cells(first, end, |coord| {
+        let cell = host.cell(coord);
+        host.notify_cell(cell);
+        host.read(cell).coord
+    });
+}
+
+/// Shared575EE0 traversal. Each visit returns the retained receiver's live
+/// coordinate after its callback, including shared-dummy lookup mutations.
+pub(crate) fn visit_span_cells(
+    first: RimCoord,
+    end: RimCoord,
+    mut visit: impl FnMut(RimCoord) -> RimCoord,
+) {
     let horizontal = first.1 == end.1;
     let reversed = if horizontal {
         end.0 < first.0
@@ -75,15 +89,12 @@ pub(crate) fn notify_span_cells(host: &mut impl HighBridgeRimHost, first: RimCoo
         let positive = if horizontal { 4 } else { 2 };
         let negative = (positive + 4) & 7;
         for coord in [cursor, step(cursor, positive)] {
-            let cell = host.cell(coord);
-            host.notify_cell(cell);
+            visit(coord);
         }
-        let third = host.cell(step(cursor, negative));
-        host.notify_cell(third);
+        let third = visit(step(cursor, negative));
         // 576073/5761A3 use the third retained CellClass +24 AFTER its Tag
         // callback. A real fixed-stride alias or a moved dummy matters here.
-        let fourth = host.cell(step(host.read(third).coord, negative));
-        host.notify_cell(fourth);
+        visit(step(third, negative));
         cursor = step(cursor, if horizontal { 2 } else { 4 });
     }
 }

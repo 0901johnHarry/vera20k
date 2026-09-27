@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "frozen_utc": "2026-09-27T19:15:24.769157+00:00",
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "runtime": {
+    "python": "3.13.2",
+    "unicorn": "2.1.4",
+    "capstone": "5.0.7"
+  },
+  "commands": [
+    {
+      "command": "python -m tools.spatial_oracle.anytown_damage.navigation --write",
+      "exit_code": 0,
+      "log": "promoted-write.log",
+      "log_sha256": "ced028e57a683717bc341fb5ba69014560941edf2727ef04886a3ffb6ca7411b"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.anytown_damage.navigation --check",
+      "exit_code": 0,
+      "log": "promoted-check.log",
+      "log_sha256": "4fdc57cd7a9cbfc12a00d6175d3d2b8e5f469da91d99e38d0978c18b20559e8c"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.anytown_damage.navigation_compare PREFIX --output tools/spatial_oracle/anytown_damage/navigation_comparison.json",
+      "exit_code": 0,
+      "prefix": "concrete-v5"
+    },
+    {
+      "command": "python -m tools.spatial_oracle.anytown_damage.navigation_compare PREFIX --repaired REPAIRED --output tools/spatial_oracle/anytown_damage/navigation_comparison.json",
+      "exit_code": 0,
+      "prefix": "concrete-v8",
+      "repaired": "concrete-v8.repaired.json",
+      "scope": "Read-only comparison of existing original-native records and four production exports; no native body or native reference changed."
+    }
+  ],
+  "original_reference_gzip_byte_identical": true,
+  "original_payload_sha256": "584e7fbd46e04bfff30b58d3c0c463df80fbcca8263aa15a3868de327842d14e",
+  "metadata_difference": "packaging description only",
+  "owned": {
+    "navigation.json.gz": "a2197179f0818a7b2c231c8956601b2269df164db04e05d856b99db380a15d35",
+    "navigation.md": "7dbedf55a3141ba06e182d77ae68d62c406410c1258f804ff3545d4514c1f303",
+    "navigation.meta.json": "3c68495e6af0b8dfbd8284ea397c70fd7f232e8d3721a8ab8ab4e481f837e992",
+    "navigation.py": "5836b1d4efa8ba1838185e60cb4962ded4bdb02a6fed672717474f2cdceb9192",
+    "navigation_compare.py": "249f7583a84b0e529b25b48b0ebf80bbf21d1e1adfd83d3d42ffdac6216c22a3",
+    "navigation_comparison.json": "35df6a325ec9b85b5d461554bb93e45248666290e24c4bf759326b82d6f6be5f",
+    "navigation_inputs.py": "bbfce3965c62fd3802ae60704b2b9465465cd618e8fd5d1f82188a73da8b5713",
+    "navigation_promotion.json": "5fe250b70786cb80f517ad799101fc47274052c928fd441b0d0dc3718f5d5098",
+    "navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211"
+  },
+  "imported_sources": {
+    "tools/native_oracle.py": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+    "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
+    "tools/rules_oracle/bridge_anim_inputs.py": "f7f2941e11bbede50ffab19554a789e4e3e42f4969b04ad4e9697973e659d316",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/rules_oracle/bridge_child_sound.py": "ea32c11dbb9f1ee1aeb3cdc1069605658ca100d864e90dacb3cd5bfe8f01c350",
+    "tools/rules_oracle/bridge_landing_inputs.py": "489e7999c957edfc1141d6ca8b5d72e36e570cb4065b2f208564875ed81174e5",
+    "tools/rules_oracle/theater_general_reader.py": "a466f2d5d94e5f4d8908bed0a97c69cf2aeb2d9356694d0af107491349e7afbd",
+    "tools/sidebar_oracle/stock.py": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+    "tools/spatial_oracle/__init__.py": "d2b8761741eec0f99f145b6b84c9efbe5e91a8d08b59b83ef67bef54c75f0415",
+    "tools/spatial_oracle/anytown_damage/__init__.py": "5cca8aa87d9e3c1c8ff349b7a2c105a2bdfbce58bb13acae9fbda5645ef8c66a",
+    "tools/spatial_oracle/anytown_damage/anytown_geometry.py": "012d148f0299bfa6aee589070fb87bfb8ad14ebd09cdc30c3b22bf11df562e69",
+    "tools/spatial_oracle/anytown_damage/inputs.py": "c3e1732837e85deb628f04862aaab8cf72dc3e8ba2804ce55db5dc46f2a68f25",
+    "tools/spatial_oracle/anytown_damage/navigation.py": "5836b1d4efa8ba1838185e60cb4962ded4bdb02a6fed672717474f2cdceb9192",
+    "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "bbfce3965c62fd3802ae60704b2b9465465cd618e8fd5d1f82188a73da8b5713",
+    "tools/spatial_oracle/anytown_damage/navigation_publication.py": "4d6d09e465e67bf3ed3415495f1efee7f51f069f8c762f53dbc7cb437be91211",
+    "tools/spatial_oracle/anytown_damage/next_family_native.py": "b5545ca21bc1b678335dfe74f0eda02b3af4f013d37a965529243c0d170b8881",
+    "tools/spatial_oracle/anytown_damage/publication.py": "9331a5cc2c46ff487774b898918f267df740347dcb1745b23364703f9e24d650",
+    "tools/spatial_oracle/bridge_rim.py": "4227c24dcd27ea44a2de55a866057b1accffee8106c5029dedf0171b776fa32b",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/spatial_oracle/mapgen_range.py": "df39b5ab3a2450c98dfa749a67826d5cb87f9d73086dc2511ff3261906724eef",
+    "tools/spatial_oracle/shrapnel_repair/__init__.py": "181c307c7f2f1767bee7fc8812eb72698df94241d26c669526254bf13084e003",
+    "tools/spatial_oracle/shrapnel_repair/hierarchy_composition.py": "a545496a5203c56d02dfed6d37da792c0f261b26db6b128db4ea57b9acc19ac0",
+    "tools/spatial_oracle/shrapnel_repair/map_facts.py": "8fec739ee85c0110096180ae7c7712ad96e5191752ec9362dc3d9eb21e5d6768",
+    "tools/spatial_oracle/shrapnel_repair/packet_io.py": "80d7a5dd328c47c9fe453d0048c5ae116feef741220537f1d1dc4e587387b865",
+    "tools/spatial_oracle/shrapnel_repair/production_inputs.py": "0e29a8c5bac7eb2f6f8819e6d54b2959045f3205e4930c162e96e479bef76289",
+    "tools/spatial_oracle/shrapnel_repair/retail_inputs.py": "5386be531deb221b2abf0a06cf46371937a3134fd4fdde142a7d20fc97691400",
+    "tools/spatial_oracle/shrapnel_repair/shrapnel_repair.py": "5f510f31b235acd1749aee6da2f512fbf3381892355b45fd7c5b9bccd472d347",
+    "tools/spatial_oracle/shrapnel_repair/zone_composition.py": "0eb3b38561c804dd4bfbbfdb3e858babd2e9a1c2214f296eedfe6447901db73e"
+  },
+  "inputs": {
+    "existing_manifest": "retail_manifest.json; sparse VERA20K_SHRAPNEL_INPUTS root, and XMP03T4.MAP from VERA20K_ANYTOWN_INPUTS",
+    "RA2_DIR_archives": {
+      "ra2.mix": {
+        "bytes": 281888480,
+        "sha256": "896a8b64f9f1bb8ad5e0bc64fc0b8ea8c84112494761ea1a43478d10c5ef9914"
+      },
+      "ra2md.mix": {
+        "bytes": 204527696,
+        "sha256": "69d886defad9114dd440a013b364c8c004e369b5221d1889957b49d00058559d"
+      },
+      "expandmd01.mix": {
+        "bytes": 4813968,
+        "sha256": "0c0a64e741bdecdc3843a0beb6bb1f58aa2df5b86eb3bc4a953821ec98f3d6ec"
+      },
+      "langmd.mix": {
+        "bytes": 84883510,
+        "sha256": "ea608dca312cd59373f121d164b3bf4cec0472f460f6bf1d1238500959637c88"
+      },
+      "language.mix": {
+        "bytes": 53116040,
+        "sha256": "30345ccc41ab98d225cb87c8ea8629eb8cb1467ce0d7f15de87fb307424801e6"
+      }
+    },
+    "member_identity": "navigation.json.gz assets: exact selected archive and primary TMP member hashes"
+  },
+  "validation": {
+    "native_states": 4,
+    "direct_mtnk_admissions": 28,
+    "production_states": 4,
+    "physical_cell_count": 13515,
+    "physical_stride": 166,
+    "exported_plane_entries": 27225,
+    "graph_padding_entries": 331,
+    "production_representative_cells_per_state": 77,
+    "all_native_replay_and_production_comparisons_pass": true,
+    "production_repair_export": true
+  },
+  "boundaries": "See navigation.md and navigation.meta.json. Original navigation builders/updates and selected direct admissions; four production graph/plane/representative-cell comparisons. No full native scenario loader, ordinary Move/head caller, runtime occupancy or cross-boundary RNG comparison.",
+  "integration": "Common package validator checks this receipt. Native runner/reference/metadata and all imports remain unchanged; only comparator/docs/production receipt add explicit repaired-v8 coverage.",
+  "comparison_refresh": {
+    "prior_receipt_sha256": "95f7077a796e5c92ef7bd83bd7dd10d44e87827478213f54d44ce006abcb80d5",
+    "source_changes": [
+      {
+        "path": "navigation.md",
+        "old_sha256": "eb23719217fdd401f194a3fa3c159351fcd786e3c20f5083486bc9a01069cf4a",
+        "new_sha256": "7dbedf55a3141ba06e182d77ae68d62c406410c1258f804ff3545d4514c1f303"
+      },
+      {
+        "path": "navigation_compare.py",
+        "old_sha256": "a8217660bf7b3923c84764b0957a7ebba69b5a2504ec7e94263e5caad315ebd0",
+        "new_sha256": "249f7583a84b0e529b25b48b0ebf80bbf21d1e1adfd83d3d42ffdac6216c22a3"
+      },
+      {
+        "path": "navigation_comparison.json",
+        "old_sha256": "336cba38dd81430af8a54d7afe4ff9266f6909cd4dd286822db89ce7cc9b4b0e",
+        "new_sha256": "35df6a325ec9b85b5d461554bb93e45248666290e24c4bf759326b82d6f6be5f"
+      }
+    ],
+    "recorded_at_utc": "2026-09-27T19:57:15.741972+00:00",
+    "native_payload_and_imports_unchanged": true
+  }
+}

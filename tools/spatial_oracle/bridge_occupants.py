@@ -1,4 +1,4 @@
-"""Original487A10(0) repair occupant traversal with declared virtual seams.
+"""Original487A10 bridge occupant traversal with declared virtual seams.
 
 The full controller,5657A0 cell lookup,41C230 coordinate construction and47B3A0
 signed/slope ground-height calculation execute. Object admission, abstract kind,
@@ -19,8 +19,9 @@ from tools.spatial_oracle.map_queries import dwords, packed
 
 MAP, TABLE, DUMMY = 0x87F7E8, 0xC00000, 0xABDC50
 MEM, OBJECTS, VTABLE, LOCO_VTABLE = 0x44000000, 0x44100000, 0x44200000, 0x44201000
-ADMIT, KIND, DAMAGE, AT_COORD = (0x44210000 + i * 16 for i in range(4))
+ADMIT, KIND, DAMAGE, AT_COORD, GET_TYPE = (0x44210000 + i * 16 for i in range(5))
 RULES, WARHEAD = 0x44220000, 0x44222000
+TYPES = 0x44180000
 
 
 class OriginalOccupants:
@@ -54,10 +55,10 @@ class OriginalOccupants:
         u.mem_write(0x89E7C0, dwords(104))
         u.mem_write(0x8871E0, dwords(RULES))
         u.mem_write(RULES + 0xFA8, dwords(WARHEAD))
-        for slot, entry in [(0x1AC, ADMIT), (0x2C, KIND), (0x16C, DAMAGE)]:
+        for slot, entry in [(0x1AC, ADMIT), (0x2C, KIND), (0x16C, DAMAGE), (0x84, GET_TYPE)]:
             u.mem_write(VTABLE + slot, dwords(entry))
         u.mem_write(LOCO_VTABLE + 0xA0, dwords(AT_COORD))
-        for row in case['objects']:
+        for i, row in enumerate(case['objects']):
             p = self.objects[row['id']]
             u.mem_write(p, dwords(VTABLE))
             u.mem_write(p + 0x14, dwords(row.get('flags', 4)))
@@ -65,6 +66,7 @@ class OriginalOccupants:
             u.mem_write(p + 0x6C, dwords(row.get('health', 100)))
             u.mem_write(p + 0x674, dwords(p + 0x800))
             u.mem_write(p + 0x800, dwords(LOCO_VTABLE))
+            u.mem_write(TYPES + i * 0x1000 + 0xD94, bytes((int(row.get('jumpjet', False)),)))
         self.selected = self.cells.get(tuple(case['start']), DUMMY)
         u.hook_add(UC_HOOK_CODE, self.observe)
 
@@ -126,7 +128,7 @@ class OriginalOccupants:
             point = list(struct.unpack('<ii', u.mem_read(sp + 0x20, 8)))
             z = struct.unpack('<i', dwords(u.reg_read(UC_X86_REG_EAX)))[0]
             self.event('probe', point=[*point, z])
-        elif address in (ADMIT, KIND, DAMAGE, AT_COORD):
+        elif address in (ADMIT, KIND, DAMAGE, AT_COORD, GET_TYPE):
             args = struct.unpack('<7I', u.mem_read(sp + 4, 28))
             p = args[0] - 0x800 if address == AT_COORD else u.reg_read(UC_X86_REG_ECX)
             identity = self.object_names[p]
@@ -140,6 +142,9 @@ class OriginalOccupants:
                 result = inputs.get('kind', 6)
                 self.event('abstract_kind', object=identity, result=result)
                 self.ret(0, result)
+            elif address == GET_TYPE:
+                self.event('jumpjet_type', object=identity, result=inputs.get('jumpjet', False))
+                self.ret(0, TYPES + list(self.objects).index(identity) * 0x1000)
             elif address == DAMAGE:
                 assert args[1:7] == (0, WARHEAD, 0, 1, 1, 0)
                 damage = struct.unpack('<i', u.mem_read(args[0], 4))[0]
@@ -156,7 +161,7 @@ class OriginalOccupants:
 
     def run(self):
         sp = STACK_BASE + STACK_SIZE - 0x1000
-        self.uc.mem_write(sp, dwords(RET_MAGIC, 0))
+        self.uc.mem_write(sp, dwords(RET_MAGIC, self.case.get('mode', 0)))
         self.uc.reg_write(UC_X86_REG_ESP, sp)
         self.uc.reg_write(UC_X86_REG_ECX, self.selected)
         run_checked(self.uc, 0x487A10, RET_MAGIC, count=100000,
@@ -241,21 +246,34 @@ def inputs():
     yield case
 
 
+def damage_inputs():
+    for mode in (0, 1, 256, 257):
+        yield fixture(f'jumpjet_low_byte_{mode}', [dict(id=1, flags=5, kind=15, jumpjet=True)],
+                      head=1, mode=mode)
+    for flags, kind, jumpjet in ((4, 15, True), (5, 1, True), (1, 6, True), (5, 1, False), (5, 2, False)):
+        yield fixture(f'positive_type_gate_{flags}_{kind}_{jumpjet}',
+                      [dict(id=1, flags=flags, kind=kind, jumpjet=jumpjet)], head=1, mode=1)
+    yield fixture('positive_mode_does_not_change_neighbor_gate',
+                  [dict(id=1, flags=5, kind=15, jumpjet=True)], neighbors=[([8, 9], 1)], mode=1)
+
+
 def generate():
-    return dict(cases=[dict(input=case, output=OriginalOccupants(case).run()) for case in inputs()])
+    return dict(cases=[dict(input=case, output=OriginalOccupants(case).run()) for case in inputs()],
+                damage_cases=[dict(input=case, output=OriginalOccupants(case).run()) for case in damage_inputs()])
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Complete original487A10(0) two-pass repair occupant controller',
+        scope='Original487A10 two-pass bridge occupant controller, including nonzero low-byte mode',
         assumptions=[
             'Bounded supplied Cell/Object lists, initialized ground height104 and C4Warhead pointer',
             'Original5657A0 fixed cell-pointer lookup and47B3A0 signed/slope ground evaluation execute',
-            'Positive argument branch is excluded: all four ordinary repair walkers supply zero',
+            'Mode0/1/256/257 distinguishes the consumed low byte; positive-mode JumpJet gate uses Techno flag and type+D94, not AbstractKind',
             'Every supplied Foot has a nonnull locomotor; native COM error on null is not executed',
             'Synthetic mutable callback states expose ordering, not stock-map reachability of every state',
         ], substitutions=[
             'Object1AC admission and2C abstract kind return supplied values',
+            'Object84 returns supplied type storage; original JumpJet byte read and Techno-flag gate execute',
             'LocomotorA0 Is_At_Coord returns supplied value after recording original coordinate arguments',
             'Object16C direct damage records actual packet/flags and mutates its local packet; no death lifecycle',
             'Declared callback writes change live links, health, cell coordinates or supplied virtual results',

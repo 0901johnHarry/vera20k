@@ -149,7 +149,7 @@ impl Host {
     }
 }
 
-impl RepairOccupantHost for Host {
+impl BridgeOccupantHost for Host {
     type Cell = Cell;
     type Object = u32;
     type Error = String;
@@ -180,6 +180,14 @@ impl RepairOccupantHost for Host {
     }
     fn is_foot(&self, object: u32) -> bool {
         self.objects[&object]["flags"].as_u64().unwrap_or(4) & 4 != 0
+    }
+    fn is_techno(&self, object: u32) -> bool {
+        self.objects[&object]["flags"].as_u64().unwrap_or(4) & 1 != 0
+    }
+    fn type_is_jumpjet(&mut self, object: u32) -> Result<bool, String> {
+        let result = self.objects[&object]["jumpjet"].as_bool().unwrap_or(false);
+        self.event(json!({"kind":"jumpjet_type", "object":object, "result":result}))?;
+        Ok(result)
     }
     fn admission(&mut self, object: u32, cell: Cell) -> Result<i32, String> {
         assert_eq!(cell, self.selected);
@@ -230,7 +238,7 @@ fn repair_occupant_controller_matches_original_live_order_and_height() {
     for case in cases {
         let mut host = Host::new(&case["input"]);
         let selected = host.selected;
-        repair_occupants(&mut host, selected).unwrap();
+        recheck_occupants(&mut host, selected, 0).unwrap();
         let health: Vec<_> = host
             .objects
             .keys()
@@ -239,6 +247,27 @@ fn repair_occupant_controller_matches_original_live_order_and_height() {
         let actual = json!({"trace":host.trace, "dummy_coord":host.dummy.coord,
             "selected_coord":host.coord(selected), "health":health});
         assert_eq!(actual, case["output"], "{}", case["input"]["name"]);
+    }
+}
+
+#[test]
+fn damage_occupant_mode_matches_original_type_gate() {
+    let corpus = corpus();
+    for case in corpus["damage_cases"].as_array().unwrap() {
+        let mut host = Host::new(&case["input"]);
+        let selected = host.selected;
+        recheck_occupants(
+            &mut host,
+            selected,
+            case["input"]["mode"].as_u64().unwrap() as u8,
+        )
+        .unwrap();
+        assert_eq!(
+            json!(host.trace),
+            case["output"]["trace"],
+            "{}",
+            case["input"]["name"]
+        );
     }
 }
 
@@ -261,7 +290,7 @@ fn repair_occupant_callback_errors_keep_completed_prefix() {
         host.failure = Some(failure);
         let selected = host.selected;
         assert_eq!(
-            repair_occupants(&mut host, selected),
+            recheck_occupants(&mut host, selected, 0),
             Err(format!("failed {failure}"))
         );
         let native = case["output"]["trace"].as_array().unwrap();

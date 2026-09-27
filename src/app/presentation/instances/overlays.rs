@@ -499,81 +499,47 @@ fn anim_world_render_coords(
     (screen_x, screen_y, rx, ry, z, lift_px)
 }
 
-/// Build SpriteInstances for visible overlay objects and terrain objects.
-///
-/// Bridge body, body shadow, and railing instances are emitted separately by
-/// `instances::bridges` (Phase D). Low bridges (LOBRDG*) ride in the
-/// generic `instances` bucket and use the regular overlay atlas.
-pub(crate) fn build_overlay_instances(
-    state: &AppState,
-    sw: f32,
-    sh: f32,
+/// Borrowed inputs for the ordinary CellClass overlay pass. Live identity and
+/// frame stay owned by OverlayGrid; the source entries only retain draw order.
+struct CellOverlayInputs<'a> {
+    entries: &'a [crate::map::overlay::OverlayEntry],
+    atlas: &'a crate::render::overlay_atlas::OverlayAtlas,
+    names: &'a std::collections::BTreeMap<u8, String>,
+    live_grid: Option<&'a crate::sim::overlay_grid::OverlayGrid>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
+    tiberium_types: Option<&'a crate::rules::tiberium_type::TiberiumTypeRegistry>,
+    terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
+    heights: &'a std::collections::BTreeMap<(u16, u16), u8>,
+    lighting: &'a crate::map::lighting::CellLightGrid,
+    visibility: Option<(
+        crate::sim::intern::InternedId,
+        &'a crate::sim::vision::FogState,
+    )>,
+    camera: [f32; 2],
+    viewport: [f32; 2],
+    origin_y: f32,
+    world_height: f32,
+}
+
+/// Cell_ContentRendering @ 0x006D6D10 -> DrawOverlay_Body @ 0x0047F6A0. Both the app and
+/// offscreen retail witness use this one identity/frame/visibility owner.
+fn build_cell_overlay_instances(
+    input: &CellOverlayInputs<'_>,
     instances: &mut Vec<SpriteInstance>,
     render_z: &mut Vec<RenderZPolicy>,
-    ground_objects: &mut Vec<
-        crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance,
-    >,
-    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder,
 ) {
-    let atlas = match &state.match_state.match_presentation.overlay_atlas {
-        Some(a) => a,
-        None => return,
-    };
-    let (cam_x, cam_y) = (
-        state.match_state.input.camera_x,
-        state.match_state.input.camera_y,
-    );
-    let (origin_y, world_height) = state
-        .match_state
-        .match_presentation
-        .terrain_grid
-        .as_ref()
-        .map(|g| (g.origin_y, g.world_height))
-        .unwrap_or((0.0, 1.0));
-
-    // Cell visibility for the local owner — used to cull overlays and terrain
-    // objects in unrevealed cells. The shroud multiply pass darkens per-pixel,
-    // but tall sprites (bridges, trees) extend their canopy into screen-space
-    // owned by neighboring cells; if those neighbors are revealed, the canopy
-    // shows above the shroud edge. gamemd gates these renders on the cell's
-    // explored bit. Computed once and shared by both loops below.
-    let cell_visibility_fog: Option<(
-        crate::sim::intern::InternedId,
-        &crate::sim::vision::FogState,
-    )> = if state.match_state.sandbox_full_visibility {
-        None
-    } else {
-        let local_owner_name = crate::app::input::commands::preferred_local_owner_name(state);
-        match (
-            state
-                .match_state
-                .sim_runtime
-                .as_ref()
-                .map(|rt| &rt.simulation),
-            &local_owner_name,
-        ) {
-            (Some(sim), Some(owner)) => sim.interner.get(owner).map(|id| (id, &sim.fog)),
-            _ => None,
-        }
-    };
-
     // Overlay entries from [OverlayPack]. `YR TacticalClass::Draw` keeps walls
     // in the fixed cell overlay family, not the `LayerClass` object sort.
     let mut planned_cells = Vec::new();
     let mut next_draw_id = 0u64;
-    for entry in state.match_state.match_presentation.overlays.iter() {
-        if let Some((owner_id, fog)) = cell_visibility_fog {
+    for entry in input.entries {
+        if let Some((owner_id, fog)) = input.visibility {
             if !fog.is_cell_revealed(owner_id, entry.rx, entry.ry) {
                 continue;
             }
         }
 
-        let Some(static_name) = state
-            .match_state
-            .match_presentation
-            .overlay_names
-            .get(&entry.overlay_id)
-        else {
+        let Some(static_name) = input.names.get(&entry.overlay_id) else {
             continue;
         };
 
@@ -586,22 +552,16 @@ pub(crate) fn build_overlay_instances(
 
         // Low bridges remain in the ordinary overlay pass, but CellClass's
         // live identity—not the map-pack seed—selects damaged/collapsed art.
-        let live_overlay_cell = state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .map(|rt| &rt.simulation)
-            .and_then(|sim| sim.overlay_grid.as_ref())
-            .map(|grid| grid.cell(entry.rx, entry.ry));
+        let live_overlay_cell = input.live_grid.map(|grid| grid.cell(entry.rx, entry.ry));
         let Some((live_overlay_id, live_overlay_data)) =
             overlay_render_identity(entry.overlay_id, entry.frame, live_overlay_cell)
         else {
             continue;
         };
-        let overlay_registry = state.overlay_registry();
+        let overlay_registry = input.registry;
         let overlay_flags = overlay_registry.and_then(|reg| reg.flags(live_overlay_id));
-        let slope_type = state
-            .terrain_template()
+        let slope_type = input
+            .terrain
             .and_then(|terrain| terrain.cell(entry.rx, entry.ry))
             .map(|cell| cell.slope_type);
         let (display_overlay_id, live_overlay_data) = overlay_display_identity(
@@ -611,15 +571,10 @@ pub(crate) fn build_overlay_instances(
             entry.ry,
             slope_type,
             overlay_registry,
-            state.rules().map(|rules| &rules.tiberium_types),
+            input.tiberium_types,
         );
         let name = if display_overlay_id == live_overlay_id {
-            state
-                .match_state
-                .match_presentation
-                .overlay_names
-                .get(&live_overlay_id)
-                .cloned()
+            input.names.get(&live_overlay_id).cloned()
         } else {
             overlay_registry
                 .and_then(|registry| registry.name(display_overlay_id).map(str::to_owned))
@@ -644,8 +599,8 @@ pub(crate) fn build_overlay_instances(
             0.0
         };
 
-        let z: u8 = state
-            .height_map()
+        let z: u8 = input
+            .heights
             .get(&(entry.rx, entry.ry))
             .copied()
             .unwrap_or(0);
@@ -655,7 +610,15 @@ pub(crate) fn build_overlay_instances(
         // No LocalSize gate: gamemd draws overlays on border filler cells like
         // any other; fog visibility and the camera clamp are the only hiders.
         if !in_view(
-            screen_x, screen_y, 120.0, 120.0, cam_x, cam_y, sw, sh, 120.0,
+            screen_x,
+            screen_y,
+            120.0,
+            120.0,
+            input.camera[0],
+            input.camera[1],
+            input.viewport[0],
+            input.viewport[1],
+            120.0,
         ) {
             continue;
         }
@@ -671,21 +634,19 @@ pub(crate) fn build_overlay_instances(
             name: name.clone(),
             frame: render_frame,
         };
-        let Some(spr) = atlas.get(&key) else { continue };
+        let Some(spr) = input.atlas.get(&key) else {
+            continue;
+        };
         let depth_z: u8 = z;
-        let depth: f32 = compute_sprite_depth_params(origin_y, world_height, screen_y, depth_z);
+        let depth: f32 =
+            compute_sprite_depth_params(input.origin_y, input.world_height, screen_y, depth_z);
         let (policy, z_adjust, z_gradient) =
             ordinary_overlay_z(overlay_flags, slope_type.unwrap_or(0), depth_z);
-        let tint: [f32; 3] = state
-            .match_state
-            .match_presentation
-            .lighting
-            .grid()
-            .overlay_tint_at((entry.rx, entry.ry));
+        let tint: [f32; 3] = input.lighting.overlay_tint_at((entry.rx, entry.ry));
         // 0047F6A0: ordinary cell Convert/common; resource and veins use
         // global ordinary Convert, with resource brightness fixed at 1000.
         // Wall owner palette remapping is still absent from this atlas.
-        let light_grid = state.match_state.match_presentation.lighting.grid();
+        let light_grid = input.lighting;
         let palette_light = if is_wall {
             Default::default()
         } else if overlay_flags.is_some_and(|f| f.tiberium) {
@@ -744,6 +705,90 @@ pub(crate) fn build_overlay_instances(
     if std::env::var("RA2_DEBUG_BRIDGE_RENDER_BUCKETS").is_ok() {
         log::debug!("Cell overlay instances: {}", instances.len());
     }
+}
+
+/// Build SpriteInstances for visible overlay objects and terrain objects.
+///
+/// Bridge body, body shadow, and railing instances are emitted separately by
+/// `instances::bridges` (Phase D). Low bridges (LOBRDG*) ride in the
+/// generic `instances` bucket and use the regular overlay atlas.
+pub(crate) fn build_overlay_instances(
+    state: &AppState,
+    sw: f32,
+    sh: f32,
+    instances: &mut Vec<SpriteInstance>,
+    render_z: &mut Vec<RenderZPolicy>,
+    ground_objects: &mut Vec<
+        crate::app::presentation::render::draw_plan_lowering::PlannedObjectInstance,
+    >,
+    ground_order: &crate::app::presentation::render::draw_plan_lowering::NativeDisplayOrder,
+) {
+    let atlas = match &state.match_state.match_presentation.overlay_atlas {
+        Some(a) => a,
+        None => return,
+    };
+    let (cam_x, cam_y) = (
+        state.match_state.input.camera_x,
+        state.match_state.input.camera_y,
+    );
+    let (origin_y, world_height) = state
+        .match_state
+        .match_presentation
+        .terrain_grid
+        .as_ref()
+        .map(|g| (g.origin_y, g.world_height))
+        .unwrap_or((0.0, 1.0));
+
+    // Cell visibility for the local owner — used to cull overlays and terrain
+    // objects in unrevealed cells. The shroud multiply pass darkens per-pixel,
+    // but tall sprites (bridges, trees) extend their canopy into screen-space
+    // owned by neighboring cells; if those neighbors are revealed, the canopy
+    // shows above the shroud edge. gamemd gates these renders on the cell's
+    // explored bit. Computed once and shared by both loops below.
+    let cell_visibility_fog: Option<(
+        crate::sim::intern::InternedId,
+        &crate::sim::vision::FogState,
+    )> = if state.match_state.sandbox_full_visibility {
+        None
+    } else {
+        let local_owner_name = crate::app::input::commands::preferred_local_owner_name(state);
+        match (
+            state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .map(|rt| &rt.simulation),
+            &local_owner_name,
+        ) {
+            (Some(sim), Some(owner)) => sim.interner.get(owner).map(|id| (id, &sim.fog)),
+            _ => None,
+        }
+    };
+
+    build_cell_overlay_instances(
+        &CellOverlayInputs {
+            entries: state.match_state.match_presentation.overlays.as_slice(),
+            atlas,
+            names: &state.match_state.match_presentation.overlay_names,
+            live_grid: state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .and_then(|runtime| runtime.simulation.overlay_grid.as_ref()),
+            registry: state.overlay_registry(),
+            tiberium_types: state.rules().map(|rules| &rules.tiberium_types),
+            terrain: state.terrain_template(),
+            heights: state.height_map(),
+            lighting: state.match_state.match_presentation.lighting.grid(),
+            visibility: cell_visibility_fog,
+            camera: [cam_x, cam_y],
+            viewport: [sw, sh],
+            origin_y,
+            world_height,
+        },
+        instances,
+        render_z,
+    );
 
     // Terrain objects from [Terrain] section.
     // Residual raw/animated terrain paths retain the old editor adjustment.
@@ -1131,6 +1176,10 @@ pub(crate) fn build_parachute_instances(
         );
     }
 }
+
+#[cfg(test)]
+#[path = "concrete_bridge_gpu_tests.rs"]
+mod concrete_bridge_gpu_tests;
 
 #[cfg(test)]
 #[path = "terrain_render_tests.rs"]
