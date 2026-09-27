@@ -8,8 +8,7 @@
 //! call settlement only after their successful world effects have committed.
 
 use super::CancelOutcome;
-use super::factory::{EnqueueOutcome, time_to_build, time_to_build_inputs};
-use super::production_queue::credits_entry_for_owner;
+use super::factory::{AbandonedObject, EnqueueOutcome, time_to_build, time_to_build_inputs};
 use super::production_tech::{
     build_option_for_owner, production_category_for_object, supports_live_production,
 };
@@ -83,12 +82,13 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
         return false;
     }
     let enqueue_order = sim.production.next_enqueue_order;
+    let cost = sim.cost_of(owner_id, obj, rules);
     let outcome = sim.production.factory_shadow.enqueue(
         owner_id,
         category,
         type_interned,
         enqueue_order,
-        obj.cost.max(0),
+        cost,
         rules.general.maximum_queued_objects,
     );
     if outcome == EnqueueOutcome::QueueFull {
@@ -160,11 +160,49 @@ fn start_active_production(
         .start_rate(owner_id, category, time_to_build, frame);
     Some(stable_id)
 }
+/// Finish `FactoryClass::AbandonProduction @ 0x004C9FF0` for an object the registry
+/// let go: refund it ([`refund_abandoned`]), then destroy the held limbo object
+/// without rewinding RNG (`0x004CA0E0`).
+fn settle_abandoned(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner_id: InternedId,
+    abandoned: AbandonedObject,
+) {
+    refund_abandoned(sim, rules, owner_id, abandoned.type_id, abandoned.balance);
+    if let Some(entity_id) = abandoned.entity_id {
+        let discarded = sim.discard_constructed_limbo(entity_id);
+        debug_assert!(
+            discarded,
+            "AbandonProduction destroys the held limbo object"
+        );
+    }
+}
+
+/// The AbandonProduction refund: the object's Cost_Of for its owner now, less the
+/// Balance it still owed (`0x004CA029..0x004CA043`), through `HouseClass::Add_Credits
+/// @ 0x004F9950` (`0x004CA046`). A FactoryPlant gained or lost during the build
+/// changes that Cost_Of, so the refund can differ from what was paid, negative
+/// included.
+fn refund_abandoned(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner_id: InternedId,
+    type_id: InternedId,
+    balance: i32,
+) {
+    let Some(object) = sim.object_type(type_id, rules) else {
+        return;
+    };
+    let refund = sim.cost_of(owner_id, object, rules).wrapping_sub(balance);
+    crate::sim::credit_income::add_credits(sim, owner_id, refund);
+}
+
 /// The ABANDON / ABANDON_ALL events for `type_id` (a right click, with Shift
 /// for all): `HouseClass::Abandon_Production @ 0x004FAA10` through the
-/// registry's `cancel_one`, paying the refund into the house's wallet. An
-/// abandoned active object is destroyed, a finished building stops waiting
-/// for placement, and the next queued build starts (`0x004FAC96`).
+/// registry's `cancel_one`. An abandoned active object is refunded and
+/// destroyed ([`settle_abandoned`]), a finished building stops waiting for
+/// placement, and the next queued build starts (`0x004FAC96`).
 pub fn cancel_by_type_for_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -178,35 +216,15 @@ pub fn cancel_by_type_for_owner(
     let category = production_category_for_object(obj);
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
-    let registry = &mut sim.production.factory_shadow;
-    let outcome = match sim.houses.get_mut(&owner_id) {
-        Some(house) => {
-            registry.cancel_one(owner_id, category, type_interned, all, &mut house.economy)
-        }
-        // No house to refund into; the abandon still resolves deterministically.
-        None => registry.cancel_one(
-            owner_id,
-            category,
-            type_interned,
-            all,
-            &mut crate::sim::economy::Economy::default(),
-        ),
-    };
+    let outcome = sim
+        .production
+        .factory_shadow
+        .cancel_one(owner_id, category, type_interned, all);
     match outcome {
         CancelOutcome::NoMatch => return false,
         CancelOutcome::QueuedRemoved => {}
-        CancelOutcome::AbandonedActive {
-            entity_id,
-            finished,
-            ..
-        } => {
-            if let Some(entity_id) = entity_id {
-                let discarded = sim.discard_constructed_limbo(entity_id);
-                debug_assert!(
-                    discarded,
-                    "AbandonProduction destroys the held limbo object"
-                );
-            }
+        CancelOutcome::AbandonedActive { object, finished } => {
+            settle_abandoned(sim, rules, owner_id, object);
             if finished {
                 remove_ready_entry(sim, owner_id, type_interned);
             }
@@ -255,8 +273,8 @@ fn advance_after_delivery(
         .production
         .factory_shadow
         .peek_next_queued(owner_id, category)
-        .map(|t| sim.object_type(t, rules).map_or(0, |o| o.cost.max(0)))
-        .unwrap_or(0);
+        .and_then(|t| sim.object_type(t, rules))
+        .map_or(0, |object| sim.cost_of(owner_id, object, rules));
     let promoted = sim
         .production
         .factory_shadow
@@ -354,8 +372,9 @@ pub(super) fn release_delivered_mobile(
     advance_after_delivery(sim, rules, owner, category);
 }
 
-/// Terminal mobile failure refunds the authored full cost, destroys the held
-/// graph and starts the successor. This is distinct from a retryable refusal.
+/// Terminal mobile failure abandons the finished object with the AbandonProduction
+/// refund (its whole Cost_Of, as it owes no Balance), destroys the held graph and
+/// starts the successor. This is distinct from a retryable refusal.
 pub(super) fn refund_failed_delivery(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -367,9 +386,8 @@ pub(super) fn refund_failed_delivery(
         .factory_shadow
         .view(owner, category)
         .and_then(|view| view.object.map(|object| object.type_id));
-    if let Some(object) = type_id.and_then(|type_id| rules.object(sim.interner.resolve(type_id))) {
-        let owner_name = sim.interner.resolve(owner).to_string();
-        *credits_entry_for_owner(sim, &owner_name) += object.cost.max(0);
+    if let Some(type_id) = type_id {
+        refund_abandoned(sim, rules, owner, type_id, 0);
     }
     discard_active_factory_entity(sim, owner, category);
     advance_after_delivery(sim, rules, owner, category);
@@ -444,17 +462,13 @@ pub(in crate::sim) fn construct_active_factory_fixture(
 pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules: &RuleSet) {
     let mut registry = std::mem::take(&mut sim.production.factory_shadow);
     // P6: prereq/factory-loss revalidation BEFORE the charge sweep. Builds whose
-    // prerequisites or producing factory were lost are abandoned (partial refund)
+    // prerequisites or producing factory were lost are abandoned and refunded
     // + now-unbuildable queued items dropped, so a freshly-abandoned factory is not
     // charged this tick; a promoted build is started at this frame.
     let reval_plan = registry.plan_revalidation(sim, rules);
-    let lifecycle = registry.apply_revalidation(&reval_plan, &mut sim.houses);
-    for entity_id in lifecycle.discarded_entity_ids {
-        let discarded = sim.discard_constructed_limbo(entity_id);
-        debug_assert!(
-            discarded,
-            "prerequisite AbandonProduction destroys its held limbo object"
-        );
+    let lifecycle = registry.apply_revalidation(&reval_plan);
+    for (owner, abandoned) in lifecycle.abandoned {
+        settle_abandoned(sim, rules, owner, abandoned);
     }
     // An abandoned finished building no longer waits for placement.
     for (owner, type_id) in lifecycle.abandoned_finished {

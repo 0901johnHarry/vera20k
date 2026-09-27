@@ -249,10 +249,10 @@ fn has_active_building_queue(sim: &Simulation, owner: &str, rules: &RuleSet) -> 
     })
 }
 
-/// The build options this AI starts now. The AI is VERA's heuristic, not a
-/// port of gamemd's: it starts only what it can pay for in full, as when the
-/// build option itself refused a short wallet. gamemd's PRODUCE path checks no
-/// money (`production::enqueue_by_type`).
+/// The build options this AI chooses from. The native AI choosers admit a
+/// candidate only while its Cost_Of is within the house's Available_Money
+/// (`AI_Choose_Unit` `0x004FEDD3`, `AI_Check_Build_Need` `0x004FDACD`); a
+/// human's production has no such check.
 fn affordable_build_options(
     sim: &Simulation,
     rules: &RuleSet,
@@ -260,7 +260,7 @@ fn affordable_build_options(
 ) -> Vec<production::BuildOption> {
     let credits = production::credits_for_owner(sim, owner);
     let mut options = production::build_options_for_owner(sim, rules, owner);
-    options.retain(|option| option.enabled && option.cost > 0 && credits >= option.cost);
+    options.retain(|option| option.cost <= credits);
     options
 }
 

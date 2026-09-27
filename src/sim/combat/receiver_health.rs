@@ -157,7 +157,8 @@ pub(super) fn commit_receiver_health(
                 source_owner,
                 final_packet,
                 strength,
-                receiver_type_value(target, target_type, rules),
+                // Receiver anger reads the type's GetCost (vtable `+0xAC`).
+                rules.type_cost(target_type),
             ));
         }
         latch_hostile_hit = survivor_tail && hostile_source;

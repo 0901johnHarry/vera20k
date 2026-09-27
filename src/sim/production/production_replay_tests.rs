@@ -409,8 +409,9 @@ fn economy_conservation_over_replay() {
 }
 
 /// (B') CONSERVATION THROUGH THE PARTIAL-REFUND BRANCH (C8/C15) — the cancel of a
-/// mid-build active object refunds exactly the already-charged portion
-/// (`original_balance − balance`) back to the one wallet and nowhere else. The
+/// mid-build active object refunds its Cost_Of less the Balance still owed, which with
+/// no FactoryPlant change is exactly the already-charged portion, back to the one
+/// wallet and nowhere else. The
 /// global pool is conserved once refunds are accounted for:
 /// `Σ(credits + spent_credits) − cumulative_refunded == initial` at every tick.
 ///
@@ -565,9 +566,9 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
 }
 
 /// A build whose producing factory is DESTROYED mid-progress is abandoned with the C8 PARTIAL
-/// refund (exactly the already-charged portion `original_balance - balance`) into house.economy.credits,
-/// and the factory is pruned. Revalidation runs before the charge sweep, so no extra charge
-/// lands the abandon tick.
+/// refund (Cost_Of - Balance: exactly the already-charged portion) into
+/// house.economy.credits, and the factory is pruned. Revalidation runs before the charge
+/// sweep, so no extra charge lands the abandon tick.
 #[test]
 fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     let (mut sim, rules, heights) = scenario();
@@ -590,7 +591,7 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
             f.object.is_some() && f.progress > 0 && f.progress < 54,
             "MTNK must be mid-build (active, in-progress) before factory loss"
         );
-        f.original_balance - f.balance
+        900 - f.balance
     };
     assert!(
         spent > 0 && spent < 900,

@@ -3402,6 +3402,7 @@ pub(crate) fn begin_movement_with_grids_scoped(
 pub(crate) fn finish_movement_pass(
     pending: PendingMovementPass,
     entities: &mut EntityStore,
+    houses: &BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
     alliances: &HouseAllianceMap,
     cell_occupation: &mut CellOccupationGrid,
     sim_tick: u64,
@@ -3459,20 +3460,19 @@ pub(crate) fn finish_movement_pass(
             let crusher_owner = entities.get(kill.crusher_id).map(|crusher| crusher.owner());
             if let Some(victim) = entities.get_mut(victim_id) {
                 victim.health.current = 0;
-                if let Some(rules) = rules {
-                    crate::sim::combat::capture_kill_credit(victim, crusher_owner, rules, interner);
-                }
             }
             // A crush runs the same `Record_The_Kill @ 0x00702D40` the damage
             // path does, so the crusher earns the victim's experience too.
             if let Some(rules) = rules {
-                crate::sim::combat::award_kill_experience(
+                crate::sim::combat::record_the_kill(
                     entities,
-                    rules,
+                    houses,
                     interner,
                     alliances,
-                    kill.crusher_id,
                     victim_id,
+                    Some(kill.crusher_id),
+                    crusher_owner,
+                    rules,
                 );
             }
             lifecycle_requests.push(LifecycleRequest::Uninit {

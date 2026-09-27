@@ -151,6 +151,7 @@ impl ProductionCategory {
 pub struct BuildOption {
     pub type_id: InternedId,
     pub display_name: String,
+    /// The type's Cost_Of for the owner (TechnoType virtual `+0x84`).
     pub cost: i32,
     pub object_category: ObjectCategory,
     pub queue_category: ProductionCategory,
@@ -162,9 +163,10 @@ impl BuildOption {
     /// Whether the sidebar should show a cameo for this option.
     ///
     /// Tech-tree, faction, and factory failures hide the item entirely — the
-    /// player never sees a cameo they cannot act on. A reached build limit
-    /// keeps the cameo visible: the item is still part of the player's tech
-    /// tree, it just can't start right now.
+    /// player never sees a cameo they cannot act on. A reached build limit keeps
+    /// the cameo visible (greyed): the item is still part of the player's tech
+    /// tree, it just can't start right now. Money never greys a cameo: a build
+    /// the house cannot pay for starts and waits on hold.
     pub fn visible_in_sidebar(&self) -> bool {
         self.enabled || self.reason == Some(BuildDisabledReason::AtBuildLimit)
     }

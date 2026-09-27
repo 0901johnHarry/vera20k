@@ -78,10 +78,14 @@ pub(super) fn build_option_for_owner(
         reason = Some(BuildDisabledReason::AtBuildLimit);
     }
     let type_interned = sim.interner.get(type_id).unwrap_or_default();
+    let cost = match sim.interner.get(owner) {
+        Some(owner_id) => sim.cost_of(owner_id, obj, rules),
+        None => rules.cost_of(obj, None),
+    };
     Some(BuildOption {
         type_id: type_interned,
         display_name: obj.name.clone().unwrap_or_else(|| obj.id.clone()),
-        cost: obj.cost,
+        cost,
         object_category: obj.category,
         queue_category,
         enabled: reason.is_none(),

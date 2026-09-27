@@ -3840,17 +3840,19 @@ fn score_stats_ignore_a_removal_that_was_not_a_destruction() {
 #[test]
 fn score_stats_count_a_self_inflicted_kill_but_award_no_points() {
     // Self-inflicted destruction (own death weapon, own splash) is both a loss
-    // and a kill for the house â€” native increments the kill table regardless of
-    // relation and suppresses only the points.
+    // and a kill for the house: native increments the kill table regardless of
+    // relation, and Record_The_Kill's award is zero for an allied victim.
+    let rules = crate::rules::ruleset::RuleSet::from_ini(
+        &crate::rules::ini_parser::IniFile::from_str("[BuildingTypes]\n0=TEST\n[TEST]\nCost=800\n"),
+    )
+    .unwrap();
     let mut sim = Simulation::new();
     let owner = sim.interner.intern("Americans");
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
     insert_entity(&mut sim, 1, EntityCategory::Structure);
-    let victim = sim.substrate.entities.get_mut(1).unwrap();
-    victim.health.current = 0;
-    victim.killed_by = Some(owner);
-    victim.kill_award_points = 800;
+    sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
+    sim.record_the_kill(1, None, Some(owner), &rules);
 
     sim.uninit(1);
 
@@ -3904,7 +3906,7 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
     // Rhino (Cost=900) plus one veteran GI (Cost=200, doubled).
     use crate::rules::ini_parser::IniFile;
     use crate::rules::object_type::{ObjectCategory, ObjectType};
-    use crate::sim::combat::score_award_for_victim;
+    use crate::sim::combat::veterancy::{VeterancyRank, kill_award_points};
     use crate::sim::house_state::MatchStatistics;
 
     let of = |body: &str, category| {
@@ -3925,8 +3927,8 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
         ObjectCategory::Infantry,
     );
 
-    let kill_half =
-        score_award_for_victim(Some(&rhino), 0) + score_award_for_victim(Some(&gi), 100);
+    let kill_half = kill_award_points(rhino.cost, VeterancyRank::Rookie, false)
+        + kill_award_points(gi.cost, VeterancyRank::Veteran, false);
     assert_eq!(kill_half, 1_300);
 
     let stats = MatchStatistics {

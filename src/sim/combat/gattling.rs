@@ -1,5 +1,5 @@
-//! Gattling weapon stages: how the Gattling Tank (`[YTNK]`) spins up while it
-//! fights and winds down when it stops.
+//! Gattling weapon stages: how the Gattling Tank (`[YTNK]`) and the Gattling
+//! Cannon (`[YAGGUN]`) spin up while they fight and wind down when they stop.
 //!
 //! Native state, on every TechnoClass: `+0x140` CurrentGattlingStage, `+0x144`
 //! GattlingValue and `+0x4B8`, the report latch. The constructor zeroes all
@@ -40,23 +40,17 @@
 //! - the unit's per-frame firing update (`0x00736DF0`, called from
 //!   `UnitClass::AI @ 0x007365E1` every frame its AI reaches that point):
 //!   [`unit_fire_tail`];
+//! - the building's missions (`world::techno_ai::building_missions`):
+//!   Mission_Attack's charges (`0x0044B1C6`, `0x0044B21D`, `0x0044B6EF`) and
+//!   decays (`0x0044B12C`, `0x0044B26C`, `0x0044B2AC`), and Mission_Guard's
+//!   decay (`0x004496DA`), each by the mission's `+0xC4` tick count;
+//! - BuildingClass::Update's idle decay ([`GattlingState::idle_decay`],
+//!   `0x0043FEE9..0x0043FF67`);
 //! - TemporalClass::InitiateWarp's decay of its victim (`0x0071B10B`, one
 //!   tick, gattling types only);
 //! - Unit and Infantry PerCellProcess's entry reset (`0x0073A6FC..0x0073A70F`,
 //!   `0x0051A40E..0x0051A41C`): `+0xC4 = 0`, `SetValue(0)`, `SetStage(0)`;
 //! - TechnoClass::Limbo's latch clear and release (`0x006F6C6B`, `0x006F6C76`).
-//!
-//! RESIDUAL: the Gattling Cannon (`[YAGGUN]`) does not spin. Its charge and
-//! decay run inside `BuildingClass::Mission_Attack @ 0x0044ACF0` (by the
-//! mission's `+0xC4` tick count), the head of `BuildingClass::Mission_Guard
-//! @ 0x004496DA` and `BuildingClass::Update`'s idle decay
-//! (`0x0043FEE9..0x0043FF67`); VERA has none of those building mission
-//! handlers (see `world::techno_ai`'s note on the building Guard->Attack flip).
-//! Trigger: every Gattling Cannon. Effect: it keeps its stage-0 pair
-//! (AGGattling/AAGattCann) and, in place of the stage loop, a per-shot report
-//! (the no-report gate is held back for buildings in `emit_admitted_fire`, or
-//! the cannon would fire silently). Frequency: every Yuri base. The building
-//! attack mission is the next mechanism.
 //!
 //! RESIDUAL: the unit update's vt+0x4E4 return (`0x00736D50`: codes 0 and 2
 //! queue Unload and return before the tail) is not ported. It answers true
@@ -68,6 +62,8 @@
 //! the unit's firing update `0x00736DF0` with its leaf calls stubbed (not
 //! `UnitClass::AI`). `gattling_tests` replays both (54 of the 64 update rows;
 //! the rest are unrepresentable codes and the vt+0x4E4 return).
+//! `building_gattling.py` runs the building callers natively
+//! (`world::techno_ai::building_gattling_tests`).
 
 use crate::rules::gattling_type::GattlingStages;
 use crate::sim::combat::fire_error::FireError;
@@ -137,12 +133,23 @@ impl GattlingState {
 
     /// `DecreaseValue @ 0x0070DE40`: subtract, then zero when the result's
     /// sign bit is set or the amount was zero (`JS`, then `TEST EAX, EAX`).
-    /// Its one caller, BuildingClass::Update's idle decay (`0x0043FF19`),
-    /// arrives with the building attack mission.
-    #[cfg(test)]
+    /// Its one caller is [`Self::idle_decay`] (`0x0043FF19`).
     pub(crate) fn decrease_value(&mut self, amount: i32) {
         let value = self.value.wrapping_sub(amount);
         self.value = if value < 0 || amount == 0 { 0 } else { value };
+    }
+
+    /// BuildingClass::Update's idle decay (`0x0043FF19..0x0043FF67`):
+    /// `DecreaseValue(RateDown)` once, whatever the frames since the last
+    /// call, then one stage down when the value fell under the current
+    /// stage's threshold. Unlike UpdateGattlingStage it leaves the loop and
+    /// the latch alone and draws nothing.
+    pub(crate) fn idle_decay(&mut self, table: &GattlingStages, elite: bool) {
+        self.decrease_value(table.rate_down());
+        let stage = self.stage;
+        if stage > 0 && self.value < table.threshold(stage, elite) {
+            self.set_stage(stage - 1);
+        }
     }
 
     /// `IncreaseGattlingStage(ticks) @ 0x0070DE70`.
@@ -278,6 +285,12 @@ pub(crate) fn unit_turret_anim_advances(
     }
 }
 
+/// `TechnoClass::IsElite @ 0x00750010`, which picks the elite thresholds.
+pub(crate) fn is_elite(entity: &crate::sim::game_entity::GameEntity) -> bool {
+    crate::sim::combat::veterancy::rank_from_u16(entity.veterancy)
+        == crate::sim::combat::veterancy::VeterancyRank::Elite
+}
+
 /// The loop-handle owner of a techno's gattling report (`TechnoClass+0x4A4`):
 /// a tag bit keeps it apart from the object's own sound handles and every
 /// other owner key.
@@ -348,6 +361,7 @@ impl crate::sim::world::Simulation {
             return;
         };
         let veterancy = entity.veterancy;
+        let elite = is_elite(entity);
         let world = Self::movement_sound_world(entity);
         let mut state = entity.gattling;
         let weapon = |index: i32| {
@@ -357,8 +371,7 @@ impl crate::sim::world::Simulation {
         let main_rng = &mut self.main_rng;
         let effects = state.increase(
             &obj.gattling_stages,
-            crate::sim::combat::veterancy::rank_from_u16(veterancy)
-                == crate::sim::combat::veterancy::VeterancyRank::Elite,
+            elite,
             ticks,
             |index| weapon(index).map(|weapon| weapon.map_or(0, |weapon| weapon.report_count())),
             || main_rng.next_u32(),
@@ -399,8 +412,7 @@ impl crate::sim::world::Simulation {
         let Some(obj) = self.object_type(entity.type_ref(), rules) else {
             return;
         };
-        let elite = crate::sim::combat::veterancy::rank_from_u16(entity.veterancy)
-            == crate::sim::combat::veterancy::VeterancyRank::Elite;
+        let elite = is_elite(entity);
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };

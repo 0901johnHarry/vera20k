@@ -19,10 +19,10 @@ use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::rng::SimRng;
 
 /// The oracle fixture's frame.
-const FRAME: u32 = 200;
+pub(super) const FRAME: u32 = 200;
 
 /// GetFireError's codes by number, as the oracle's rows name them.
-const CODES: [FireError; 12] = [
+pub(super) const CODES: [FireError; 12] = [
     FireError::Ok,
     FireError::Ammo,
     FireError::Facing,
@@ -93,7 +93,11 @@ fn with_delayed_fire(mut rules: RuleSet, delay: i64) -> RuleSet {
 
 /// A building of `kind` at (5, 5) and an enemy `SHED` at `target_cell`, on a
 /// flat map, at the oracle's frame.
-fn fixture(rules: &RuleSet, kind: &str, target_cell: (u16, u16)) -> (Simulation, u64, u64) {
+pub(super) fn fixture(
+    rules: &RuleSet,
+    kind: &str,
+    target_cell: (u16, u16),
+) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
     let heights = BTreeMap::new();
@@ -115,13 +119,16 @@ fn fixture(rules: &RuleSet, kind: &str, target_cell: (u16, u16)) -> (Simulation,
     (sim, building, target)
 }
 
-fn mission_of(name: &str) -> MissionId {
+pub(super) fn mission_of(name: &str) -> MissionId {
     match name {
         "none" => MissionId::NONE,
         "attack" => MissionId::from_known(MissionType::Attack),
         "guard" => MissionId::from_known(MissionType::Guard),
         "sticky" => MissionId::from_known(MissionType::Sticky),
         "selling" => MissionId::from_known(MissionType::Selling),
+        "area_guard" => MissionId::from_known(MissionType::AreaGuard),
+        "construction" => MissionId::from_known(MissionType::Construction),
+        "wait" => MissionId::from_known(MissionType::Deliberate),
         other => panic!("unexpected mission {other}"),
     }
 }
@@ -143,7 +150,7 @@ fn set_mission(sim: &mut Simulation, id: u64, mission: MissionId, status: u32) {
     entity.mission_leaf.set_building_ready_latch(0);
 }
 
-fn aim_at(sim: &mut Simulation, id: u64, target: u64) {
+pub(super) fn aim_at(sim: &mut Simulation, id: u64, target: u64) {
     sim.substrate.entities.get_mut(id).unwrap().attack_target = Some(AttackTarget::new(target));
 }
 
@@ -295,8 +302,8 @@ fn mission_guard_matches_the_original() {
 /// GetFireError code (answered from the row, as the oracle answers it), the
 /// null-target tail and the delayed-fire OK arm: FireAt becomes the combat
 /// phase's request, Set_Desired the turret's desired facing, StartUncloaking
-/// the cloak's state 3, and the delayed arm's `+0x704/+0x708/+0x714` the
-/// pending shot. RESIDUAL (module doc): `+0x148`, the rows' `turret_count`.
+/// the cloak's state 3, the delayed arm's `+0x704/+0x708/+0x714` the
+/// pending shot, and OK (either arm) and REARM advance `+0x148`.
 #[test]
 fn mission_attack_matches_the_original() {
     for (number, code) in CODES.iter().enumerate() {
@@ -386,6 +393,11 @@ fn mission_attack_matches_the_original() {
             "{name} delayed fire"
         );
         assert_eq!(delayed[1], 0, "{name}");
+        assert_eq!(
+            i64::from(entity.turret_anim_frame),
+            row["turret_count"].as_i64().unwrap(),
+            "{name} +0x148"
+        );
     }
 }
 
@@ -774,7 +786,7 @@ fn retail_building_mission_inputs() {
 /// placed first, so the spot is one a vehicle's Unlimbo admits. Americans and
 /// Russians are both human (no AI orders) and allied with the map's own
 /// `Player` house, as in `combat::open_topped_fire_tests`.
-fn retail_dustbowl_defence(
+pub(super) fn retail_dustbowl_defence(
     kind: &str,
     owner: &str,
     enemy: &str,
@@ -858,7 +870,7 @@ fn retail_dustbowl_defence(
     (scenario, defence, truck, (x, y))
 }
 
-fn retail_frame(
+pub(super) fn retail_frame(
     scenario: &mut crate::headless_scenario::HeadlessScenario,
     orders: Vec<CommandEnvelope>,
 ) -> crate::sim::world::SimFrameOutput {
@@ -898,7 +910,11 @@ fn retail_spawn(
 }
 
 /// The 3-D lepton distance between two objects' coordinates.
-fn retail_distance(scenario: &crate::headless_scenario::HeadlessScenario, a: u64, b: u64) -> i32 {
+pub(super) fn retail_distance(
+    scenario: &crate::headless_scenario::HeadlessScenario,
+    a: u64,
+    b: u64,
+) -> i32 {
     let entities = &scenario.sim().substrate.entities;
     let [a, b] = [a, b].map(|id| {
         let coord = crate::sim::movement::ground_pose::position_world_coord(

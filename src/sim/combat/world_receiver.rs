@@ -661,24 +661,18 @@ pub(crate) fn commit_entities(
         if reached_exact_zero && postmortem_candidate.is_none() {
             world.begin_receiver_kill_record(target_id);
         }
-        if reached_exact_zero && let Some(target) = world.substrate.entities.get_mut(target_id) {
-            // ObjectClass routes its kill callback while Health is exactly zero,
-            // before Destroy's reference notification and before TechnoClass's
-            // victim-house anger callback.
-            capture_kill_credit(target, attacker_owner, rules, &mut world.interner);
-        }
-        // `Record_The_Kill` awards the killer's experience in the same call, so
-        // it is a same-tick write the victim's own death effects can already
-        // observe. Deferring it to the lifecycle release point would change that
-        // visibility.
+        // ObjectClass routes its kill callback while Health is exactly zero,
+        // before Destroy's reference notification and before TechnoClass's
+        // victim-house anger callback. `Record_The_Kill` awards the killer's
+        // experience in the same call, so it is a same-tick write the victim's
+        // own death effects can already observe. Deferring it to the lifecycle
+        // release point would change that visibility.
         if reached_exact_zero {
-            award_kill_experience(
-                &mut world.substrate.entities,
-                rules,
-                &mut world.interner,
-                &world.house_alliances,
-                attacker_id,
+            world.record_the_kill(
                 target_id,
+                (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
+                attacker_owner,
+                rules,
             );
         }
         if reached_exact_zero && postmortem_candidate.is_none() {
@@ -2387,6 +2381,25 @@ pub(super) fn resolve_attacker_fire(
     fire_error
 }
 
+/// `TechnoClass::Fire`'s per-shot report (`0x006FF349..0x006FF38F`, every
+/// class, buildings included): none for an empty `Report=` (a signed count
+/// test) or an `IsGattling=` type, whose report is its stage loop
+/// (`combat::gattling`); otherwise `Report[(u16)+0x3C8 % Count]`, the low
+/// word of the constructor's Scenario draw picking the item (an unsigned
+/// `div`). Native rows: `tools/spatial_oracle/building_gattling.json`
+/// (`report_gate`).
+pub(crate) fn per_shot_report(
+    weapon: &crate::rules::weapon_type::WeaponType,
+    is_gattling: bool,
+    sequence: u16,
+) -> Option<&str> {
+    let count = weapon.report_count();
+    if count <= 0 || is_gattling {
+        return None;
+    }
+    weapon.report_item(usize::from(sequence) % count as usize)
+}
+
 fn admit_attacker_fire<'r>(
     world: &mut Simulation,
     rules: &'r RuleSet,
@@ -2401,7 +2414,11 @@ fn admit_attacker_fire<'r>(
 ) -> Option<AdmittedFire<'r>> {
     let sound_enabled = sound_enabled(world);
     let delayed_building_slot = match snap.building_shot {
-        Some(super::BuildingShot::Delayed(slot)) => Some(slot),
+        Some(super::BuildingShot::Delayed { slot, .. }) => Some(slot),
+        _ => None,
+    };
+    let mission_building_weapon = match snap.building_shot {
+        Some(super::BuildingShot::Mission { weapon, .. }) => Some(weapon),
         _ => None,
     };
     let obj = match rules.object(world.interner.resolve(snap.type_id)) {
@@ -2550,9 +2567,11 @@ fn admit_attacker_fire<'r>(
         }
     };
 
-    // Weapon selection: garrison uses occupant's OccupyWeapon, everything
-    // else runs the native selection ladder (`What_Weapon_Should_I_Use`
-    // `0x006F3330`, which asks no legality; GetFireError below does).
+    // Weapon selection: garrison uses occupant's OccupyWeapon, a building's
+    // Mission_Attack shot the weapon its visit selected
+    // ([`super::BuildingShot::Mission`]), everything else runs the native
+    // selection ladder (`What_Weapon_Should_I_Use` `0x006F3330`, which asks no
+    // legality; GetFireError below does).
     //
     // RESIDUAL: two arms still filter before GetFireError, as the selection
     // owner does until it loses its legality subset.
@@ -2598,6 +2617,18 @@ fn admit_attacker_fire<'r>(
                 return None;
             }
         }
+    } else if let Some(weapon) = mission_building_weapon {
+        (
+            weapon,
+            combat_weapon::resolve_weapon_index(
+                rules,
+                obj,
+                snap.veterancy,
+                weapon,
+                Some(&target_facts),
+            ),
+            false,
+        )
     } else {
         let attacker_facts = world
             .substrate
@@ -3647,7 +3678,8 @@ pub(super) fn emit_admitted_fire(
     // fails has still spent one.
     let bullet_id = world.allocate_stable_id();
     let native_unique_id = world.next_native_runtime_id();
-    fireat_estimate_debit(world, rules, snap.stable_id, obj, weapon);
+    let tarcom = fireat_tarcom(world, snap);
+    fireat_estimate_debit(world, rules, snap.stable_id, tarcom, obj, weapon);
     let launched = {
         let impact_world_z_leptons = attack_world_z_leptons(
             snap.target,
@@ -3726,14 +3758,9 @@ pub(super) fn emit_admitted_fire(
             i32::from(snap.pos_ry) * 256 + snap.sub_y.to_num::<i32>(),
             origin_world_z_leptons,
         );
-        // 70D590 reads the source's live current target, independently of the
-        // FireAt parameter and the scattered launch delta.
-        let current_target = world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .and_then(|source| source.attack_target.as_ref())
-            .map(|attack| attack.target);
+        // 70D590 reads the source's current target (TarCom), independently of
+        // the FireAt parameter and the scattered launch delta.
+        let current_target = tarcom;
         let target_location = |target: TargetKind| -> Option<ProjectileCoord> {
             match target {
                 TargetKind::Entity(id) => object_get_coords(world, rules, id),
@@ -3882,7 +3909,7 @@ pub(super) fn emit_admitted_fire(
             // reads neither the bullet's multiplier nor the count, save the
             // laser width (`0x006FF52B`), which VERA does not draw.
             let damage_multiplier = match snap.building_shot {
-                Some(super::BuildingShot::Delayed(_)) => {
+                Some(super::BuildingShot::Delayed { .. }) => {
                     world.take_support_bonus(snap.stable_id, rules)
                 }
                 _ => ProjectilePayload::UNSCALED,
@@ -3965,21 +3992,13 @@ pub(super) fn emit_admitted_fire(
         return;
     }
 
-    // `TechnoClass::Fire` plays the per-shot `Report=` only for a type that is
-    // not `IsGattling=` (`0x006FF349..0x006FF38F`, every class); a gattling's
-    // report is its stage loop (`combat::gattling`).
-    // RESIDUAL: a building keeps its per-shot report. The Gattling Cannon's
-    // loop starts in BuildingClass::Mission_Attack's charge and decay calls
-    // (`0x70DE70`, `0x70E000`), which VERA's Mission_Attack does not make yet
-    // (residual D11 in `world::techno_ai::building_missions`); without the
-    // gate it would fire silently. Trigger: every `[YAGGUN]` shot. Effect:
-    // the loop's first sample on each shot in place of the stage loop. Goes
-    // with D11.
-    let report_sound_id = weapon
-        .report
-        .as_ref()
-        .filter(|_| !obj.is_gattling || snap.category == EntityCategory::Structure)
-        .map(|report_id| world.interner.intern(report_id));
+    let sequence = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .map_or(0, |firer| firer.techno_ctor_random_word);
+    let report_sound_id = per_shot_report(weapon, obj.is_gattling, sequence)
+        .map(|report| world.interner.intern(report));
     let in_open_transport = world
         .substrate
         .entities
@@ -4058,8 +4077,9 @@ pub(super) fn emit_admitted_fire(
     // then the rearm (`+0x2EC`) with GetROF's value, which a berserk firer
     // (`+0x298`) halves, signed and toward zero (`0x006FF28F..0x006FF29C`).
     // `0x006FF743` stores the frame in `+0x120`, the since-my-last-shot mark
-    // `UnitClass::Facing_Update`'s idle dwell reads (the constructor at
-    // `0x006F2B9C` is its only other writer).
+    // `UnitClass::Facing_Update`'s idle dwell and a Gattling building's idle
+    // decay (`0x0043FEF5`) read (the constructor at `0x006F2B9C` is its only
+    // other writer).
     // The remainder (`0x006FF2C5`) divides by the Burst of the weapon fired,
     // where GetROF's mid-burst test read the (next) weapon GetWeapon answers.
     // A DiskLaser weapon's own path stores GetROF's value unhalved
@@ -4126,6 +4146,37 @@ fn fireat_tail(
     }
 }
 
+/// What a firer shoots this frame, and its infantry fire latch: a building's
+/// request carries the target its visit fired at ([`super::BuildingShot`]);
+/// any other firer fires at its live target.
+fn shot_target(
+    entity: &crate::sim::game_entity::GameEntity,
+    building_shot: Option<super::BuildingShot>,
+) -> Option<(TargetKind, Option<super::PendingInfantryFire>)> {
+    match building_shot {
+        Some(shot) => Some((shot.target(), None)),
+        None => entity
+            .attack_target
+            .as_ref()
+            .map(|attack| (attack.target, attack.pending_infantry_fire)),
+    }
+}
+
+/// The firer's TarCom (`+0x2B4`) as FireAt reads it: a building's FireAt runs
+/// inside the visit whose TarCom its request carries; any other firer's is
+/// its live target.
+fn fireat_tarcom(world: &Simulation, snap: &AttackerSnapshot) -> Option<TargetKind> {
+    match snap.building_shot {
+        Some(shot) => Some(shot.target()),
+        None => world
+            .substrate
+            .entities
+            .get(snap.stable_id)
+            .and_then(|firer| firer.attack_target.as_ref())
+            .map(|attack| attack.target),
+    }
+}
+
 /// `TechnoClass::FireAt 0x006FE582..0x006FE622`, right after the bullet is
 /// built and before the launch math, so a launch that then fails has debited
 /// too. A Foot firer whose locomotor `Is_Moving` (vt `+0x10`) and whose type
@@ -4144,6 +4195,7 @@ fn fireat_estimate_debit(
     world: &mut Simulation,
     rules: &RuleSet,
     firer_id: u64,
+    tarcom: Option<TargetKind>,
     obj: &ObjectType,
     weapon: &WeaponType,
 ) {
@@ -4162,7 +4214,7 @@ fn fireat_estimate_debit(
         .as_deref()
         .and_then(|id| rules.projectile(id))
         .is_some_and(|projectile| projectile.inaccurate);
-    let Some(TargetKind::Entity(target_id)) = firer.attack_target.as_ref().map(|a| a.target) else {
+    let Some(TargetKind::Entity(target_id)) = tarcom else {
         return;
     };
     if marked || inaccurate {
@@ -4676,22 +4728,19 @@ pub(crate) fn tick_combat(
                     .aircraft_mission
                     .as_ref()
                     .is_some_and(|mission| mission.is_attacking()));
-        // A missing target does not acquire or drop another target.
-        let Some((attack_target, pending_infantry_fire)) = entity
-            .attack_target
-            .as_ref()
-            .map(|attack| (attack.target, attack.pending_infantry_fire))
-        else {
-            continue;
-        };
-        if blocked {
-            continue;
-        }
         // A building shoots only the FireAt its own visit asked for this
         // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
         // (`techno_ai::building_missions`).
         let building_shot = fire_requests.buildings.get(&id).copied();
         if entity.category == EntityCategory::Structure && building_shot.is_none() {
+            continue;
+        }
+        // A missing target does not acquire or drop another target.
+        let Some((attack_target, pending_infantry_fire)) = shot_target(entity, building_shot)
+        else {
+            continue;
+        };
+        if blocked {
             continue;
         }
 
@@ -4816,12 +4865,7 @@ pub(crate) fn tick_combat(
             .entities
             .get(snap.stable_id)
             .filter(|entity| attacker_reaches_fire(entity))
-            .and_then(|entity| {
-                entity
-                    .attack_target
-                    .as_ref()
-                    .map(|attack| (attack.target, attack.pending_infantry_fire))
-            })
+            .and_then(|entity| shot_target(entity, snap.building_shot))
         else {
             // A unit whose target went away earlier this frame reaches its
             // firing update with none.

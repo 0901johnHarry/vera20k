@@ -134,6 +134,14 @@ or fix that owner instead of introducing competing state or duplicated decision
 logic. Keep authoritative state private to its owning module and expose mutations
 through the owner.
 
+Before porting a native function, search the code for its address (e.g. `703850`) and
+native name. Each native function has one Rust port; new callers call it instead of
+adding a wrapper or re-inlining its body. Never fork an owner: when an existing one is
+wrong for your chain, correct it for every caller (a change toward native is in scope,
+with evidence for each affected path) or use it as it is and record the residual. A
+change that adds a copy, a caller-specific wrapper or a competing owner is a defect to
+remove before merge; the critic checks for them.
+
 Derived caches and indexes are allowed when their source of truth, update or
 invalidation rules, and consistency validation are explicit.
 
@@ -214,8 +222,11 @@ Before fixing a bug whose expected behavior is established, first make a focused
 - Docs/skills: validate content, links/examples and tooling; no Cargo suite.
 - Every `cargo test` uses `--lib`.
 
-Before Cargo, check for running `cargo` and `rustc` processes. Wait for other
-owners; never compete or kill a compile. Confirm fresh-worktree config/assets.
+Run Cargo through `python -m tools.cargo_run -- <cargo arguments>` from the checkout.
+It waits for other builds and serializes cooperating worktrees; do not compete with or
+kill a compile. Use `--label <unique-name>` before `--` to preserve a build or
+`test --lib --no-run` executable with source and binary hashes. See the
+[tool index](tools/README.md) for cache locations and limits. Confirm fresh-worktree config/assets.
 Format edited leaf files only (`rustfmt --edition 2024 <file>`), never crate-wide
 or recursive `mod.rs`. Coordinate snapshot versions/rebaselines; exclude others' WIP.
 

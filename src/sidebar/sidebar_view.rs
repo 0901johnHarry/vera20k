@@ -823,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_gate_hides_blocked_items_and_greys_credit_shortfalls() {
+    fn strict_gate_hides_blocked_items_and_greys_build_limits() {
         let mut interner = StringInterner::new();
         let build_options = vec![
             option(&mut interner, "GACNST", true, None),
@@ -845,7 +845,6 @@ mod tests {
                 false,
                 Some(BuildDisabledReason::WrongOwner),
             ),
-            option(&mut interner, "GAREFN", true, None),
             option(
                 &mut interner,
                 "GADEPT",
@@ -875,11 +874,10 @@ mod tests {
 
         // Missing prereq / no factory / wrong faction are hidden entirely.
         let shown: Vec<&str> = view.items.iter().map(|i| i.type_id.as_str()).collect();
-        assert_eq!(shown, ["GACNST", "GAREFN", "GADEPT"]);
-        // Buildable items are enabled; a reached build limit keeps its cameo.
+        assert_eq!(shown, ["GACNST", "GADEPT"]);
+        // Buildable item is enabled; a reached build limit is greyed.
         assert!(view.items[0].enabled);
-        assert!(view.items[1].enabled);
-        assert!(!view.items[2].enabled);
+        assert!(!view.items[1].enabled);
     }
 
     #[test]

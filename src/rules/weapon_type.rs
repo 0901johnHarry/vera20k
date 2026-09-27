@@ -216,8 +216,9 @@ impl WeaponType {
     /// resolves and reads at most 127 bytes (`ReadString`, buffer `0x80`);
     /// VERA keeps every token. Trigger: a `Report=` naming a sound
     /// `soundmd.ini` lacks, or longer than 127 bytes. Effect: a longer list,
-    /// so the Gattling report's draw can pick a different item. Frequency:
-    /// never on retail data (every `Report=` names one sound).
+    /// so the Gattling report's draw and the per-shot report's pick can choose
+    /// a different item. Frequency: never on retail data (every `Report=`
+    /// names one sound).
     fn report_items(&self) -> impl Iterator<Item = &str> {
         self.report
             .as_deref()

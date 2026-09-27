@@ -658,6 +658,10 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            // The Gattling block after the Techno AI (`0x0043FE5B..0x0043FF8B`).
+            if let Some(rules) = rules {
+                building_missions::gattling_idle(sim, id, rules);
+            }
             // The ready check after the Techno AI (`0x0043FF91`).
             building_missions::ready_commence(sim, id);
             // ProcessDelayedFire (`0x004400F4`), then
@@ -2916,7 +2920,7 @@ mod tests {
         assert_eq!(timer.start_frame, sim.session.binary_frame);
         assert_eq!(
             timer.duration,
-            rules.general.normal_targeting_delay + expected_jitter,
+            rules.general.normal_targeting_delay as u32 + expected_jitter,
             "re-armed duration must be the INI delay plus this scan's jitter draw"
         );
         assert_eq!(

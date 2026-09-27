@@ -72,9 +72,8 @@ pub(in crate::sim) fn credits_entry_for_owner<'a>(
 
 /// Build a production list across supported sidebar categories for an owner.
 ///
-/// In RA2, only items the player has unlocked via the tech tree are shown.
-/// Items with missing prerequisites, wrong faction, or no factory are hidden
-/// entirely — only items at their build limit are shown while not buildable.
+/// In RA2, only items the player has unlocked via the tech tree are shown
+/// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
     let options: Vec<BuildOption> =
         super::production_tech::all_build_options_for_owner(sim, rules, owner);

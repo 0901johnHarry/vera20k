@@ -584,9 +584,9 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
     fn targeting_delay(&self, area_guard: bool) -> i32 {
         let general = &self.rules.general;
         if area_guard {
-            general.guard_area_targeting_delay as i32
+            general.guard_area_targeting_delay
         } else {
-            general.normal_targeting_delay as i32
+            general.normal_targeting_delay
         }
     }
 
