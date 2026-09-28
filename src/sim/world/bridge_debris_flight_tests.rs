@@ -250,7 +250,14 @@ fn retail_hills_layered_bridge_landing_inputs_match_original_readers() {
         "native selected installation boundary"
     );
     let map = crate::map::map_file::load_from_path(&retail.join("Hills.mmx")).unwrap();
-    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(root, None, art).unwrap();
+    let audio_definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+        root,
+        None,
+        art,
+        std::sync::Arc::clone(audio_definitions.sounds()),
+    )
+    .unwrap();
     let (mut rules, _, art, _) = owner
         .load_noncampaign_scenario(Some(&mode), &map.ini)
         .unwrap()

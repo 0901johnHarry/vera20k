@@ -130,12 +130,14 @@ pub(crate) fn drive_local_player_outcome_voice_wait(state: &mut AppState, wall_m
         );
     }
 
-    let voices_active = match (&mut state.audio.sfx_player, state.process_assets.manager()) {
-        (Some(sfx), Some(assets)) => sfx.pump_and_check_voices(
-            &state.audio.sound_registry,
-            assets,
-            &state.audio.audio_indices,
-        ),
+    let voices_active = match (
+        &mut state.audio.sfx_player,
+        state.process_assets.manager(),
+        state.process_assets.audio_catalog(),
+    ) {
+        (Some(sfx), Some(assets), Some(catalog)) => {
+            sfx.pump_and_check_voices(catalog.sounds(), assets, catalog.index())
+        }
         _ => false,
     };
     let finished = state
@@ -409,12 +411,15 @@ pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
         state.audio.update_theme(assets, now_ms);
     }
     let paused = state.match_state.paused() || state.frontend.fullscreen_movie.is_some();
-    let registry = &state.audio.sound_registry;
-    let audio_indices = &state.audio.audio_indices;
-    let (Some(sfx), Some(assets)) = (&mut state.audio.sfx_player, state.process_assets.manager())
-    else {
+    let (Some(sfx), Some(assets), Some(catalog)) = (
+        &mut state.audio.sfx_player,
+        state.process_assets.manager(),
+        state.process_assets.audio_catalog(),
+    ) else {
         return;
     };
+    let registry = catalog.sounds();
+    let audio_indices = catalog.index();
     sfx.set_paused(paused, now_ms);
     sfx.pump(now_ms, registry, assets, audio_indices);
 }

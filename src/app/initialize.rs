@@ -14,7 +14,6 @@ use super::{
     Instant, ModifiersState, MusicPlayer, PhysicalSize, PlatformState,
     RandomMapGenerationRetention, Result, SelectionState, SfxPlayer, SidebarChromeLayoutSpec,
     SidebarTab, StartupAudioDisposition, Window, WindowAttributes, frontend::startup_splash,
-    should_load_audio_indices,
 };
 use crate::map::scenario_sources;
 
@@ -277,28 +276,19 @@ impl App {
         // presented swapchain frame stays composited while this thread blocks,
         // and the hold armed above is measured from that present, so a slow
         // load is spent inside the five seconds instead of before them.
-        let (startup_rules, startup_rules_projection, startup_native_rules) = startup_asset_manager
+        let mut process_assets = crate::app::process_assets::ProcessAssets::new(
+            startup_options.media_archive_mode,
+            startup_audio.load_audio_indices,
+        );
+        let (startup_rules, startup_rules_projection) = startup_asset_manager
             .as_ref()
-            .and_then(crate::rules::retail_sources::load_startup_rules)
-            .map(crate::rules::retail_sources::StartupRulesLoad::into_parts)
-            .map(|(rules, projection, owner)| (rules, projection, Some(owner)))
-            .unwrap_or((None, None, None));
-        let startup_sound_registry = startup_asset_manager
-            .as_ref()
-            .map(crate::app::loading::transitions::load_sound_registry)
-            .unwrap_or_default();
-        let startup_audio_indices = if should_load_audio_indices(startup_audio.load_audio_indices) {
-            startup_asset_manager
-                .as_ref()
-                .map(crate::app::loading::transitions::load_audio_indices)
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        let startup_eva_registry = startup_asset_manager
-            .as_ref()
-            .map(crate::app::loading::transitions::load_eva_registry)
-            .unwrap_or_default();
+            .and_then(|assets| {
+                process_assets
+                    .initialize_sources_if_needed(assets)
+                    .map_err(|error| log::warn!("Startup sources unavailable: {error}"))
+                    .ok()
+            })
+            .unwrap_or((None, None));
         if let Some(assets) = startup_asset_manager.as_mut() {
             match assets.register_neutral_archives() {
                 Ok(true) => {
@@ -468,17 +458,17 @@ impl App {
             last_theme_poll_ms: None,
             music_player,
             sfx_player,
-            sound_registry: startup_sound_registry,
-            audio_indices: startup_audio_indices,
-            audio_indices_enabled: startup_audio.load_audio_indices,
             launcher_audio_available,
             theme_startup_suppressed: false,
-            eva_registry: startup_eva_registry,
         };
         if let Some(assets) = startup_asset_manager.as_ref() {
             startup_audio_runtime.initialize_theme(assets);
         }
 
+        if let Some(assets) = startup_asset_manager {
+            process_assets.return_from_loading(assets);
+        }
+        process_assets.csf = startup_csf;
         let mut state = AppState {
             platform: PlatformState::new(
                 window,
@@ -688,12 +678,7 @@ impl App {
                 vxl_pose_frame_cache: std::cell::RefCell::new(Default::default()),
                 retail_screenshot_frame_cache: Default::default(),
             },
-            process_assets: crate::app::process_assets::ProcessAssets::from_startup(
-                startup_options.media_archive_mode,
-                startup_asset_manager,
-                startup_csf,
-                startup_native_rules,
-            ),
+            process_assets,
             audio: startup_audio_runtime,
             persistence: crate::app::persistence::PersistenceState::new(options_profile),
             diag: crate::app::diagnostics::state::DiagnosticsState {

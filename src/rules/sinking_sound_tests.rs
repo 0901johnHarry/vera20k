@@ -1,6 +1,8 @@
 //! The process owner binds native sound IDs to fixed SOUNDMD names, retaining
 //! valid values across root/LANG/mode/map readers (712FF1/7130A5/6699C8).
 
+use std::sync::Arc;
+
 use super::NativeRulesProcessOwner;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::sound_ini::SoundRegistry;
@@ -15,12 +17,18 @@ fn sinking_sound_references_keep_valid_prior_ids_and_exact_reader_scope() {
     let lang = ini("[SHIP]\nSinkingSound=unknown\nVoiceSinking=none\n");
     let mode = ini("[SHIP]\nSinkingSound=  hUlL  \n[AudioVisual]\nSinkingSound=unknown\n");
     let map = ini("[SHIP]\nSinkingSound=\nVoiceSinking=not_registered\nvoicesinking=Hull\n");
-    let mut owner =
-        NativeRulesProcessOwner::from_cold_start_sources(root, Some(lang), ini("")).unwrap();
-    owner.select_fixed_sounds(SoundRegistry::from_ini(&ini(
+    let sounds = Arc::new(SoundRegistry::from_ini(&ini(
         "[SoundList]\n0=Hull\n1=Voice\n2=Fallback\n3=WrongSection\n\
          [not_registered]\nSounds=sample\n",
     )));
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+        root,
+        Some(lang),
+        ini(""),
+        Arc::clone(&sounds),
+    )
+    .unwrap();
+    assert!(Arc::ptr_eq(&sounds, owner.fixed_sounds()));
     let (rules, _, _, _) = owner
         .load_noncampaign_scenario(Some(&mode), &map)
         .unwrap()
@@ -34,6 +42,7 @@ fn sinking_sound_references_keep_valid_prior_ids_and_exact_reader_scope() {
         ini("[VehicleTypes]\n0=SHIP\n[SHIP]\nSinkingSound=Hull\n[General]\nSinkingSound=Hull\n"),
         None,
         ini(""),
+        Arc::default(),
     )
     .unwrap();
     let (rules, _, _, _) = empty_catalog

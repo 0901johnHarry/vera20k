@@ -418,18 +418,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state.match_state.match_audio.reset_for_new_match();
     state.match_state.sandbox_full_visibility = result.scenario.sandbox_full_visibility;
 
-    // Load sound.ini / soundmd.ini for SFX sound ID resolution.
-    if let Some(assets) = state.process_assets.manager() {
-        state.audio.sound_registry = load_sound_registry(assets);
-        state.audio.audio_indices =
-            if crate::app::should_load_audio_indices(state.audio.audio_indices_enabled) {
-                load_audio_indices(assets)
-            } else {
-                Vec::new()
-            };
-        state.audio.eva_registry = load_eva_registry(assets);
-    }
-
     // `Start_Scenario @ 0x00683AB0` after `Read_Scenario`: `[Basic] Theme`
     // resolves through `From_Name` (`0x004758F0`); -1 -> `Stop(fade=1)` of the
     // LOADING stream, else `Queue_Song(index)`. `Main_Tick` then issues
@@ -553,119 +541,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     crate::app::presentation::sidebar_render::refresh_sidebar_projection(state);
 }
 
-/// Load sound.ini / soundmd.ini and build a SoundRegistry.
-/// YR-first: soundmd.ini takes precedence, sound.ini fills gaps.
-pub(crate) fn load_sound_registry(
-    assets: &crate::assets::asset_manager::AssetManager,
-) -> crate::rules::sound_ini::SoundRegistry {
-    use crate::rules::ini_parser::IniFile;
-    use crate::rules::sound_ini::SoundRegistry;
-
-    // Try YR sound.ini first (soundmd.ini).
-    let mut registry: Option<SoundRegistry> = None;
-    for name in ["soundmd.ini", "sound.ini"] {
-        if let Some(bytes) = assets.get(name) {
-            if let Ok(text) = String::from_utf8(bytes) {
-                let ini: IniFile = IniFile::from_str(&text);
-                match &mut registry {
-                    None => {
-                        registry = Some(SoundRegistry::from_ini(&ini));
-                        log::info!("Loaded {} for SFX", name);
-                    }
-                    Some(reg) => {
-                        reg.merge_fallback(&ini);
-                        log::info!("Merged fallback {} for SFX", name);
-                    }
-                }
-            }
-        }
-    }
-    registry.unwrap_or_default()
-}
-
-/// Load audio.idx/bag indices for bag-based sound playback (voices, EVA).
-///
-/// Tries YR (audiomd) first, then base RA2 (audio). Both are loaded if present
-/// so YR sounds take priority but base RA2 sounds are still available.
-pub(crate) fn load_audio_indices(
-    assets: &crate::assets::asset_manager::AssetManager,
-) -> Vec<crate::assets::audio_bag::AudioIndex> {
-    use crate::assets::audio_bag::AudioIndex;
-
-    let mut indices = Vec::new();
-
-    // Both AUDIO.MIX and AUDIOMD.MIX contain entries named "audio.idx" and "audio.bag"
-    // internally. We need to load each MIX explicitly and extract from within, because
-    // the generic first-match lookup would conflate the shared internal filenames.
-    // YR (AUDIOMD.MIX) is loaded first so its sounds take priority in the search.
-    for mix_name in ["AUDIOMD.MIX", "AUDIO.MIX"] {
-        let Some(mix) = assets.archive(mix_name) else {
-            continue;
-        };
-        let idx_data = match mix.get_by_name("audio.idx") {
-            Some(d) => d,
-            None => {
-                log::warn!("{} has no audio.idx entry", mix_name);
-                continue;
-            }
-        };
-        let bag_data = match mix.get_by_name("audio.bag") {
-            Some(d) => d.to_vec(),
-            None => {
-                log::warn!("{} has audio.idx but no audio.bag", mix_name);
-                continue;
-            }
-        };
-        match AudioIndex::from_idx_bag(idx_data, bag_data) {
-            Some(index) => {
-                log::info!(
-                    "Loaded audio.idx/bag from {}: {} entries",
-                    mix_name,
-                    index.len()
-                );
-                indices.push(index);
-            }
-            None => {
-                log::warn!("Failed to parse audio.idx from {}", mix_name);
-            }
-        }
-    }
-
-    if indices.is_empty() {
-        log::warn!("No audio.idx/bag found — bag-based sounds (voices, EVA) will be silent");
-    }
-    indices
-}
-
-/// Build the `VoxClass` registry the way `Init_Game @ 0x0052C8A0` does:
-/// `VoxClass::ReadEVAINI @ 0x00753000` on the `EVAMD.INI` CCINI (string
-/// `0x00825DF0`, "Reading EVAMD.INI" `0x00825DFC`) and nothing else. gamemd
-/// never opens `eva.ini`, so an RA2-only section is not a YR line.
-pub(crate) fn load_eva_registry(
-    assets: &crate::assets::asset_manager::AssetManager,
-) -> crate::rules::sound_ini::EvaRegistry {
-    build_eva_registry(|name| assets.get(name))
-}
-
-/// The lookup-agnostic half of [`load_eva_registry`].
-pub(crate) fn build_eva_registry(
-    lookup: impl Fn(&str) -> Option<Vec<u8>>,
-) -> crate::rules::sound_ini::EvaRegistry {
-    use crate::rules::ini_parser::IniFile;
-    use crate::rules::sound_ini::EvaRegistry;
-
-    let Some(bytes) = lookup("evamd.ini") else {
-        log::warn!("Failed to find EVAMD.INI — EVA lines will be silent");
-        return EvaRegistry::default();
-    };
-    // EVA INI files from MIX archives may contain non-UTF8 bytes (Windows-1252).
-    let text = String::from_utf8_lossy(&bytes);
-    let ini: IniFile = IniFile::from_str(&text);
-    let registry = EvaRegistry::from_ini(&ini);
-    log::info!("Loaded evamd.ini for EVA");
-    registry
-}
-
 /// Build overlay classification data for the minimap from map overlay entries.
 ///
 /// Carries parsed native overlay flags/IDs and the current OverlayData frame;
@@ -723,40 +598,6 @@ pub(crate) fn clear_screen(encoder: &mut wgpu::CommandEncoder, view: &wgpu::Text
         timestamp_writes: None,
         occlusion_query_set: None,
     });
-}
-
-#[cfg(test)]
-mod eva_registry_tests {
-    use super::build_eva_registry;
-    use crate::rules::sound_ini::EvaSide;
-
-    /// `Init_Game @ 0x0052C8A0` reads `EVAMD.INI` only (`0x00825DF0`); an
-    /// `eva.ini` sitting next to it is never opened, so its entries do not
-    /// exist and it cannot override or fill a YR row.
-    #[test]
-    fn eva_registry_reads_evamd_only_and_ignores_eva_ini() {
-        let evamd = "[DialogList]\n0=EVA_UnitLost\n[EVA_UnitLost]\nAllied=ceva064\n";
-        let eva = "[DialogList]\n0=EVA_UnitLost\n1=EVA_Ra2Only\n\
-                   [EVA_UnitLost]\nAllied=old064\nRussian=old064r\n\
-                   [EVA_Ra2Only]\nAllied=ra2only\n";
-        let lookup = |name: &str| -> Option<Vec<u8>> {
-            match name {
-                "evamd.ini" => Some(evamd.as_bytes().to_vec()),
-                "eva.ini" => Some(eva.as_bytes().to_vec()),
-                _ => None,
-            }
-        };
-        let reg = build_eva_registry(lookup);
-        assert_eq!(reg.len(), 1);
-        assert_eq!(reg.get("EVA_UnitLost", EvaSide::Allied), Some("ceva064"));
-        assert_eq!(reg.get("EVA_UnitLost", EvaSide::Russian), None);
-        assert!(reg.entry("EVA_Ra2Only").is_none());
-
-        // Only eva.ini present: nothing is read at all.
-        let reg =
-            build_eva_registry(|name: &str| (name == "eva.ini").then(|| eva.as_bytes().to_vec()));
-        assert!(reg.is_empty());
-    }
 }
 
 #[cfg(test)]

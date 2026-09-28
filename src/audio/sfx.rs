@@ -974,10 +974,10 @@ impl SfxPlayer {
         &mut self,
         entry: &SoundEntry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> Option<ResolvedPlayback> {
         resolve_entry_playback(entry, &mut self.rng, |name| {
-            load_sfx(name, assets, audio_indices)
+            load_sfx(name, assets, audio_index)
         })
     }
 
@@ -988,12 +988,12 @@ impl SfxPlayer {
         sound_id: &str,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> Option<ResolvedPlayback> {
         if let Some(entry) = registry.get(sound_id) {
-            return self.resolve_entry(entry, assets, audio_indices);
+            return self.resolve_entry(entry, assets, audio_index);
         }
-        load_sfx(sound_id, assets, audio_indices).map(|decoded| ResolvedPlayback {
+        load_sfx(sound_id, assets, audio_index).map(|decoded| ResolvedPlayback {
             decoded,
             event_linear: VOLUME_SCALE,
             // A raw bag name has no `VocClass`, so there is nothing to draw.
@@ -1020,14 +1020,14 @@ impl SfxPlayer {
         sound_id: &str,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         self.play_sound_spatial(
             sound_id,
             SpatialGain::CENTRED_FULL,
             registry,
             assets,
-            audio_indices,
+            audio_index,
         )
     }
 
@@ -1039,7 +1039,7 @@ impl SfxPlayer {
         volume: f32,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         self.play_sound_spatial(
             sound_id,
@@ -1049,7 +1049,7 @@ impl SfxPlayer {
             },
             registry,
             assets,
-            audio_indices,
+            audio_index,
         )
     }
 
@@ -1060,9 +1060,9 @@ impl SfxPlayer {
         gain: SpatialGain,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
-        let Some(resolved) = self.resolve_any(sound_id, registry, assets, audio_indices) else {
+        let Some(resolved) = self.resolve_any(sound_id, registry, assets, audio_index) else {
             log::trace!("SFX: could not resolve '{}'", sound_id);
             return false;
         };
@@ -1083,12 +1083,12 @@ impl SfxPlayer {
         gain: SpatialGain,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         let Some(entry) = registered_entry(sound_id, registry) else {
             return false;
         };
-        let Some(resolved) = self.resolve_entry(entry, assets, audio_indices) else {
+        let Some(resolved) = self.resolve_entry(entry, assets, audio_index) else {
             return false;
         };
         let facts = EntryFacts::from(entry);
@@ -1118,7 +1118,7 @@ impl SfxPlayer {
         gain: SpatialGain,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         // `VocClass::PlayAt`'s handle-level interrupt: a live event that
         // belongs to a different entry is stopped before the new one starts.
@@ -1133,10 +1133,10 @@ impl SfxPlayer {
             Some(entry) => resolve_entry_playback_pass(
                 entry,
                 &mut self.rng,
-                |name| load_sfx(name, assets, audio_indices),
+                |name| load_sfx(name, assets, audio_index),
                 plays_attack,
             ),
-            None => self.resolve_any(sound_id, registry, assets, audio_indices),
+            None => self.resolve_any(sound_id, registry, assets, audio_index),
         };
         let Some(resolved) = resolved else {
             return false;
@@ -1173,7 +1173,7 @@ impl SfxPlayer {
         gain: Option<SpatialGain>,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         if let Some(event) = self.arbiter.validate_loop_handle(anim_id) {
             let Some(gain) = gain else {
@@ -1205,7 +1205,7 @@ impl SfxPlayer {
         else {
             return false;
         };
-        self.play_animation_sound_spatial(anim_id, &key, gain, registry, assets, audio_indices)
+        self.play_animation_sound_spatial(anim_id, &key, gain, registry, assets, audio_index)
     }
 
     /// `VocClass::PlayAt @ 0x007509E0` with a handle while the owner is out of
@@ -1266,7 +1266,7 @@ impl SfxPlayer {
         &mut self,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
         // `VocHandle::ValidateOrClear @ 0x00406130` for each object, resolved
         // once for the pass: VERA's single voice slot means at most one
@@ -1275,7 +1275,7 @@ impl SfxPlayer {
         let decisions = self.voice_queue.drain(|owner| live_owner == Some(owner));
         for decision in decisions {
             let Some(resolved) =
-                self.resolve_any(&decision.sound_id, registry, assets, audio_indices)
+                self.resolve_any(&decision.sound_id, registry, assets, audio_index)
             else {
                 continue;
             };
@@ -1364,7 +1364,7 @@ impl SfxPlayer {
         side: EvaSide,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
         let Some(entry) = eva_registry.entry(event) else {
             return false;
@@ -1391,7 +1391,7 @@ impl SfxPlayer {
             self.current_voice_id = None;
             self.eva_stream_open = false;
         }
-        self.advance_voice_queue(registry, assets, audio_indices);
+        self.advance_voice_queue(registry, assets, audio_index);
         effect.inserted
     }
 
@@ -1421,7 +1421,7 @@ impl SfxPlayer {
         &mut self,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
         let busy = self.voice_slot_busy();
         if !busy {
@@ -1437,7 +1437,7 @@ impl SfxPlayer {
         let Some(node) = self.vox.take_next(self.now_ms, busy) else {
             return;
         };
-        self.start_eva_node(node, registry, assets, audio_indices);
+        self.start_eva_node(node, registry, assets, audio_index);
     }
 
     fn start_eva_node(
@@ -1445,9 +1445,9 @@ impl SfxPlayer {
         node: VoxNode,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
-        let Some(resolved) = self.resolve_any(&node.sample, registry, assets, audio_indices) else {
+        let Some(resolved) = self.resolve_any(&node.sample, registry, assets, audio_index) else {
             log::debug!("EVA {} has no sample {}", node.event, node.sample);
             return;
         };
@@ -1558,11 +1558,11 @@ impl SfxPlayer {
         now_ms: u64,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
         self.now_ms = now_ms;
-        self.advance_voice_queue(registry, assets, audio_indices);
-        self.top_up_loop_queues(now_ms, registry, assets, audio_indices);
+        self.advance_voice_queue(registry, assets, audio_index);
+        self.top_up_loop_queues(now_ms, registry, assets, audio_index);
         self.report_finished_outputs();
         if !self.arbiter.pump_due(now_ms) {
             return;
@@ -1659,7 +1659,7 @@ impl SfxPlayer {
         now_ms: u64,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
         let _ = now_ms;
         for event in self.loops.keys().copied().collect::<Vec<_>>() {
@@ -1698,7 +1698,7 @@ impl SfxPlayer {
                 let Some(resolved) = resolve_entry_playback_pass(
                     &entry,
                     &mut self.rng,
-                    |name| load_sfx(name, assets, audio_indices),
+                    |name| load_sfx(name, assets, audio_index),
                     plays_attack,
                 ) else {
                     if let Some(queue) = self.loops.get_mut(&event) {
@@ -1858,9 +1858,9 @@ impl SfxPlayer {
         &mut self,
         registry: &SoundRegistry,
         assets: &AssetManager,
-        audio_indices: &[crate::assets::audio_bag::AudioIndex],
+        audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> bool {
-        self.advance_voice_queue(registry, assets, audio_indices);
+        self.advance_voice_queue(registry, assets, audio_index);
         self.voices_active()
     }
 
@@ -2042,7 +2042,7 @@ fn resolve_entry_playback_pass(
 /// Load a sound effect file and decode it to interleaved f32 stereo samples.
 ///
 /// Resolution order:
-/// 1. Try audio.bag indices (most voice/EVA sounds live here)
+/// 1. Try the selected audio.bag index (most voice/EVA sounds live here)
 /// 2. Try MIX asset lookup by exact name
 /// 3. Try MIX asset lookup with .wav extension appended
 ///
@@ -2050,10 +2050,10 @@ fn resolve_entry_playback_pass(
 fn load_sfx(
     filename: &str,
     assets: &AssetManager,
-    audio_indices: &[crate::assets::audio_bag::AudioIndex],
+    audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
 ) -> Option<DecodedAudio> {
-    // Try audio.bag indices first (voices, EVA announcements).
-    for index in audio_indices {
+    // Try the selected audio.bag index first (voices, EVA announcements).
+    if let Some(index) = audio_index {
         if let Some((entry, data)) = index.get(filename) {
             if let Some(bag_audio) = crate::assets::audio_bag::decode_bag_audio(entry, data) {
                 // Convert i16 → f32 stereo.

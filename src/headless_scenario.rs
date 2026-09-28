@@ -128,9 +128,13 @@ pub(crate) fn load_with_launch(
     // Preserve the process-owned cold Rules registry before theater archive
     // priority changes. The same owner then performs the active noncampaign
     // reset/rebuild and transfers its move-only native-ID receipt.
-    let (_, _, mut native_rules_owner) = crate::rules::retail_sources::load_startup_rules(&assets)
-        .ok_or_else(|| "load native startup rules".to_string())?
-        .into_parts();
+    let audio_definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+    let (_, _, mut native_rules_owner) = crate::rules::retail_sources::load_startup_rules(
+        &assets,
+        std::sync::Arc::clone(audio_definitions.sounds()),
+    )
+    .ok_or_else(|| "load native startup rules".to_string())?
+    .into_parts();
     let scenario_prefix_plan =
         crate::sim::scenario_bootstrap::prepare_stock_offline_scenario_prefix_plan(
             &launch,

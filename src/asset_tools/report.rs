@@ -441,6 +441,8 @@ pub struct SoundEntry {
 /// `asset sound` / `asset bag-ls`.
 #[derive(Debug, Serialize)]
 pub struct SoundReport {
+    /// Independent consumed IDX/BAG identities, absent when no pair opened.
+    pub sources: Option<crate::assets::asset_manager::AudioIndexSources>,
     pub bag: String,
     pub entry_count: usize,
     pub matched: usize,

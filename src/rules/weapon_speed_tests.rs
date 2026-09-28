@@ -161,7 +161,13 @@ fn retail_ifv_speed_passes_production_cold_start_and_scenario_rules_owner() {
     let Some((root, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
         return;
     };
-    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(root, None, art).unwrap();
+    let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+        root,
+        None,
+        art,
+        std::sync::Arc::default(),
+    )
+    .unwrap();
     let (rules, _, _, _) = owner
         .load_noncampaign_scenario(None, &IniFile::empty())
         .unwrap()

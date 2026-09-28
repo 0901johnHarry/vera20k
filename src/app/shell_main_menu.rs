@@ -1087,17 +1087,14 @@ impl App {
         let Some(sound_id) = sound_id else {
             return;
         };
-        let (Some(sfx), Some(assets)) =
-            (&mut state.audio.sfx_player, state.process_assets.manager())
-        else {
+        let (Some(sfx), Some(assets), Some(catalog)) = (
+            &mut state.audio.sfx_player,
+            state.process_assets.manager(),
+            state.process_assets.audio_catalog(),
+        ) else {
             return;
         };
-        sfx.play_sound(
-            sound_id,
-            &state.audio.sound_registry,
-            assets,
-            &state.audio.audio_indices,
-        );
+        sfx.play_sound(sound_id, catalog.sounds(), assets, catalog.index());
     }
 
     pub(super) fn handle_single_player_shell_action(

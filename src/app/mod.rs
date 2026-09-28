@@ -106,13 +106,6 @@ impl StartupAudioDisposition {
     }
 }
 
-/// Keep initial and later scenario audio-index loads on the same process-start
-/// decision. This deliberately does not inspect the optional output players:
-/// an enabled DirectSound/output initialization may independently fail.
-pub(crate) const fn should_load_audio_indices(audio_indices_enabled: bool) -> bool {
-    audio_indices_enabled
-}
-
 impl Default for StartupAudioDisposition {
     fn default() -> Self {
         Self::for_audio_enabled(true)
@@ -185,20 +178,6 @@ mod tests {
         assert!(disposition.initialize_music_output);
         assert!(disposition.initialize_sfx_output);
         assert!(disposition.load_audio_indices);
-    }
-
-    #[test]
-    fn gsi_01_01_audio_index_decision_survives_scenario_transitions() {
-        for audio_enabled in [false, true] {
-            let startup = StartupAudioDisposition::for_audio_enabled(audio_enabled);
-            let persisted_in_state = startup.load_audio_indices;
-
-            assert_eq!(
-                should_load_audio_indices(startup.load_audio_indices),
-                audio_enabled
-            );
-            assert_eq!(should_load_audio_indices(persisted_in_state), audio_enabled);
-        }
     }
 
     #[test]

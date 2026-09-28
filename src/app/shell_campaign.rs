@@ -251,18 +251,20 @@ impl App {
     }
 
     fn play_campaign_voice(state: &mut AppState, side: CampaignSide) {
-        let (Some(sfx), Some(assets)) =
-            (&mut state.audio.sfx_player, state.process_assets.manager())
-        else {
+        let (Some(sfx), Some(assets), Some(catalog)) = (
+            &mut state.audio.sfx_player,
+            state.process_assets.manager(),
+            state.process_assets.audio_catalog(),
+        ) else {
             return;
         };
         sfx.play_animation_sound_spatial(
             CAMPAIGN_VOICE_OWNER,
             side.voice(),
             crate::audio::sfx::SpatialGain::CENTRED_FULL,
-            &state.audio.sound_registry,
+            catalog.sounds(),
             assets,
-            &state.audio.audio_indices,
+            catalog.index(),
         );
     }
 

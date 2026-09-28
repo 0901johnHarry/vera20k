@@ -163,13 +163,16 @@ pub(crate) fn drain_sound_events(state: &mut AppState) {
     let ticking_sound = state
         .rules()
         .and_then(|rules| rules.general.bomb_ticking_sound.clone());
-    let (Some(sfx), Some(assets)) = (&mut state.audio.sfx_player, state.process_assets.manager())
-    else {
+    let (Some(sfx), Some(assets), Some(catalog)) = (
+        &mut state.audio.sfx_player,
+        state.process_assets.manager(),
+        state.process_assets.audio_catalog(),
+    ) else {
         return;
     };
-    let registry = &state.audio.sound_registry;
-    let audio_indices = &state.audio.audio_indices;
-    let eva_registry = &state.audio.eva_registry;
+    let registry = catalog.sounds();
+    let audio_indices = catalog.index();
+    let eva_registry = catalog.eva();
     sfx.advance_voice_queue(registry, assets, audio_indices);
 
     // `CellClass+0x12C & 0x18 == 0`: neither explored nor visible. The shroud

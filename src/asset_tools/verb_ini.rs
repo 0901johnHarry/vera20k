@@ -205,6 +205,7 @@ fn run_inner(
         )];
         return assemble(&art.ini, section, key, options, layers);
     }
+    let audio_definitions = crate::rules::audio_sources::AudioDefinitions::select(assets);
     let sources = RetailRulesSources::select(assets)?;
     // The app retains these registrations between cold Rules selection and
     // roster/map lookup. A shell-discovered YRO may supply either later input.
@@ -289,8 +290,10 @@ fn run_inner(
     ];
     // Retain provenance before moving the selected snapshots into their owner.
     let fixed_art_source = json!(sources.artmd.source);
-    let fixed_sound_source = sources.soundmd.as_ref().map(|ini| json!(ini.source));
-    let (_, _, mut owner) = sources.into_startup()?.into_parts();
+    let fixed_sound_source = audio_definitions.sound_source().map(|source| json!(source));
+    let (_, _, mut owner) = sources
+        .into_startup(std::sync::Arc::clone(audio_definitions.sounds()))?
+        .into_parts();
     let (_, processed, _, _) = owner
         .load_noncampaign_scenario(selected_mode.as_ref().map(|ini| &ini.ini), &map.map.ini)
         .map_err(|e| e.to_string())?
@@ -361,6 +364,7 @@ mod tests {
             IniFile::from_str("[General]\nTreeStrength=42\n"),
             None,
             IniFile::empty(),
+            std::sync::Arc::default(),
         )
         .unwrap();
         let (_, processed, _, _) = owner
@@ -385,8 +389,13 @@ mod tests {
             "[VehicleTypes]\n0=UNIT\n[UNIT]\nPrimary=GUN\n[GUN]\nSpeed=40\nRange=5\nProjectile=SHOT\n[SHOT]\nROT=0\n",
         );
         let authored = presence(&root, "GUN", "Speed");
-        let mut owner =
-            NativeRulesProcessOwner::from_cold_start_sources(root, None, IniFile::empty()).unwrap();
+        let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+            root,
+            None,
+            IniFile::empty(),
+            std::sync::Arc::default(),
+        )
+        .unwrap();
         let (rules, processed, _, _) = owner
             .load_noncampaign_scenario(None, &IniFile::empty())
             .unwrap()

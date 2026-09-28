@@ -5,12 +5,14 @@
 //! Registration appends to the search list and the first matching archive
 //! wins. Other known nested archives are catalogued for direct access and
 //! on-demand registration, but do not silently enter the global search path.
+//! Audio selection and lifetime: [process audio owner](../../tools/audio_catalog_owner.md).
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::assets::audio_bag::AudioIndex;
 use crate::assets::error::AssetError;
 use crate::assets::mix_archive::MixArchive;
 use crate::assets::mix_hash::mix_hash;
@@ -72,6 +74,65 @@ pub struct AssetResolutionRef<'a> {
     pub entry_id: i32,
 }
 
+/// Identity of the bytes actually consumed by one side of the audio pair.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct AudioSourceIdentity {
+    pub source_archive: String,
+    pub entry_id: i32,
+    pub payload_len: usize,
+    pub source_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct AudioIndexSources {
+    pub idx: AudioSourceIdentity,
+    pub bag: AudioSourceIdentity,
+}
+
+pub struct LoadedAudioIndex {
+    pub index: AudioIndex,
+    pub sources: AudioIndexSources,
+}
+
+/// Parse a selected pair without making another source-selection decision.
+/// Production and explicit diagnostic overrides share this boundary.
+pub fn load_audio_index_pair(
+    idx: AssetResolutionRef<'_>,
+    bag: AssetResolutionRef<'_>,
+) -> Result<LoadedAudioIndex, AssetError> {
+    let identity = |source: AssetResolutionRef<'_>| AudioSourceIdentity {
+        source_archive: source.source_archive.to_owned(),
+        entry_id: source.entry_id,
+        payload_len: source.bytes.len(),
+        source_sha256: crate::util::sha256::sha256_hex(source.bytes),
+    };
+    let sources = AudioIndexSources {
+        idx: identity(idx),
+        bag: identity(bag),
+    };
+    let index = AudioIndex::from_idx_bag(idx.bytes, bag.bytes.to_vec()).ok_or_else(|| {
+        AssetError::ParseError {
+            format: "audio.idx".to_owned(),
+            detail: format!("unsupported or truncated index from {}", idx.source_archive),
+        }
+    })?;
+    Ok(LoadedAudioIndex { index, sources })
+}
+
+/// A frozen resolver winner, not another archive search list. Archive storage
+/// stays on the manager; loose bytes stay in its existing OnceLock snapshot.
+struct SelectedAudioFile {
+    source_archive: String,
+    entry_id: i32,
+    loose_name: Option<String>,
+}
+
+#[derive(Default)]
+struct SelectedAudioPair {
+    idx: Option<SelectedAudioFile>,
+    bag: Option<SelectedAudioFile>,
+}
+
 /// The media-pack branch selected by active `Init_Mix_Files @ 0x00530460`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MediaArchiveMode {
@@ -131,6 +192,8 @@ pub struct AssetManager {
     /// Payloads are owned snapshots at first lookup (including failed reads).
     /// Mutable profile/seed/preview consumers read the filesystem directly.
     loose_files: HashMap<String, LooseAsset>,
+    /// Selected at AudioSystem::Init, before later bulk/theater mounts.
+    audio_pair: SelectedAudioPair,
     /// Currently registered theater identity and its archive names.
     active_theater: Option<String>,
     active_theater_archives: Vec<String>,
@@ -199,16 +262,19 @@ const KNOWN_NESTED_MIX_NAMES: &[&str] = &[
 impl AssetManager {
     #[cfg(test)]
     pub(crate) fn from_loose_root_for_test(ra2_dir: &Path) -> Self {
-        Self {
+        let mut manager = Self {
             archives: Vec::new(),
             archive_catalog: Vec::new(),
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: Self::open_loose_root(ra2_dir).expect("open loose test root"),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: ra2_dir.to_path_buf(),
-        }
+        };
+        manager.select_audio_pair();
+        manager
     }
 
     /// Load the core runtime archive stack for one native media-selection mode.
@@ -219,6 +285,7 @@ impl AssetManager {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: Self::open_loose_root(ra2_dir)?,
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: ra2_dir.to_path_buf(),
@@ -246,6 +313,8 @@ impl AssetManager {
         if !manager.mount_named_archive("audiomd.mix", false)? {
             manager.mount_named_archive("audio.mix", false)?;
         }
+
+        manager.select_audio_pair();
 
         // Init_Mix_Files constructs only these named core archives. Optional
         // constructors are allowed to fail exactly where retail does not gate
@@ -284,6 +353,69 @@ impl AssetManager {
         }
 
         Ok(manager)
+    }
+
+    /// Freeze the independent CCFile winners at native AudioIndex construction.
+    /// `Init_Game @ 0x0052BBC7 -> AudioInit @ 0x00406B10 -> AudioIndex @ 0x004011C0` precedes bulk
+    /// mounts at 0x0052C59C. `CCFile::Open @ 0x00473D10` chooses loose before registered
+    /// MIXes; missing pair members must not become available from later mounts.
+    fn select_audio_pair(&mut self) {
+        let select = |name: &str| {
+            let source = self.resolve_ref(name)?;
+            Some(SelectedAudioFile {
+                source_archive: source.source_archive.to_owned(),
+                entry_id: source.entry_id,
+                loose_name: self
+                    .loose_asset(name)
+                    .filter(|loose| loose.source_name == source.source_archive)
+                    .map(|_| name.to_owned()),
+            })
+        };
+        self.audio_pair = SelectedAudioPair {
+            idx: select("audio.idx"),
+            bag: select("audio.bag"),
+        };
+    }
+
+    fn selected_audio_ref<'a>(
+        &'a self,
+        selected: &'a SelectedAudioFile,
+    ) -> Option<AssetResolutionRef<'a>> {
+        let bytes = if let Some(name) = selected.loose_name.as_deref() {
+            self.loose_asset(name)?.bytes()?
+        } else {
+            self.archives
+                .iter()
+                .chain(self.archive_catalog.iter())
+                .find(|archive| archive.name == selected.source_archive)?
+                .archive
+                .get_by_id(selected.entry_id)?
+        };
+        Some(AssetResolutionRef {
+            bytes,
+            source_archive: &selected.source_archive,
+            entry_id: selected.entry_id,
+        })
+    }
+
+    /// Load the one startup-selected audio index. Call only when launch policy
+    /// enables the index: selection retains MIX handles without copying BAG
+    /// data, and this method performs parsing and the index's owned BAG copy.
+    /// Loose overrides already use the manager's existing byte snapshot.
+    /// No second archive or per-sample fallback follows an absent/invalid pair.
+    pub fn load_audio_index(&self) -> Result<Option<LoadedAudioIndex>, AssetError> {
+        let (Some(idx), Some(bag)) = (&self.audio_pair.idx, &self.audio_pair.bag) else {
+            return Ok(None);
+        };
+        let missing = |source: &SelectedAudioFile| AssetError::AssetNotFound {
+            name: format!(
+                "retained audio entry {:08X} in {}",
+                source.entry_id, source.source_archive
+            ),
+        };
+        let idx_bytes = self.selected_audio_ref(idx).ok_or_else(|| missing(idx))?;
+        let bag_bytes = self.selected_audio_ref(bag).ok_or_else(|| missing(bag))?;
+        load_audio_index_pair(idx_bytes, bag_bytes).map(Some)
     }
 
     /// Look up a file by name across all loaded archives.
@@ -546,11 +678,16 @@ impl AssetManager {
 
     /// Look up a loaded archive by its display/debug name.
     pub fn archive(&self, name: &str) -> Option<&MixArchive> {
+        self.archive_with_source(name).map(|(_, archive)| archive)
+    }
+
+    /// Explicit archive lookup with its full consumed source identity.
+    pub fn archive_with_source(&self, name: &str) -> Option<(&str, &MixArchive)> {
         self.archives
             .iter()
             .chain(self.archive_catalog.iter())
             .find(|archive| archive_name_matches(&archive.name, name))
-            .map(|archive| &archive.archive)
+            .map(|archive| (archive.name.as_str(), &archive.archive))
     }
 
     /// Read one entry from a specific archive by entry hash.
@@ -1074,6 +1211,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: AssetManager::open_loose_root(ra2_dir).expect("open loose test root"),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: ra2_dir.to_path_buf(),
@@ -1098,6 +1236,164 @@ mod tests {
     fn make_new_format_mix(name: &str, body: &[u8]) -> MixArchive {
         MixArchive::from_bytes(make_new_format_mix_bytes(name, body))
             .expect("new-format test mix should parse")
+    }
+
+    fn audio_test_install(label: &str) -> TestDirectory {
+        let dir = TestDirectory::new(label);
+        for name in [
+            "ra2md.mix",
+            "ra2.mix",
+            "cachemd.mix",
+            "cache.mix",
+            "localmd.mix",
+            "local.mix",
+            "conqmd.mix",
+            "conquer.mix",
+            "cameomd.mix",
+            "cameo.mix",
+            "mapsmd03.mix",
+            "multimd.mix",
+            "movmd03.mix",
+        ] {
+            dir.write_mix(name, "unrelated.bin", b"fixture");
+        }
+        dir
+    }
+
+    fn write_audio_archive(dir: &TestDirectory, name: &str, idx: &[u8], bag: &[u8]) {
+        std::fs::write(
+            dir.path().join(name),
+            crate::map::source::test_support::make_new_format_mix_bytes(&[
+                ("audio.idx", idx),
+                ("audio.bag", bag),
+            ]),
+        )
+        .expect("write audio archive");
+    }
+
+    #[test]
+    fn audio_pair_cannot_appear_from_a_later_bulk_mount() {
+        let dir = audio_test_install("late-audio");
+        let idx = crate::assets::audio_bag::tests::build_idx(&[("late", 0, 2, 22050, 4)]);
+        write_audio_archive(&dir, "conqmd.mix", &idx, &[1, 2]);
+        let manager = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+        assert!(
+            manager.resolve_ref("audio.idx").is_some(),
+            "bulk mount is live"
+        );
+        assert!(
+            manager.load_audio_index().unwrap().is_none(),
+            "startup pair stays absent"
+        );
+    }
+
+    #[test]
+    fn audio_pair_members_select_independently_and_keep_consumed_loose_bytes() {
+        for loose_idx in [false, true] {
+            let dir = audio_test_install("split-audio");
+            let idx = crate::assets::audio_bag::tests::build_idx(&[("sample", 0, 2, 22050, 4)]);
+            let bag = [1, 2];
+            let (loose_name, loose_bytes, mixed_name, mixed_bytes): (&str, &[u8], &str, &[u8]) =
+                if loose_idx {
+                    ("audio.idx", &idx, "audio.bag", &bag)
+                } else {
+                    ("audio.bag", &bag, "audio.idx", &idx)
+                };
+            std::fs::write(dir.path().join(loose_name), loose_bytes).unwrap();
+            dir.write_mix("audiomd.mix", mixed_name, mixed_bytes);
+            let manager = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+            // The retained loose snapshot is the consumed startup source, even
+            // if the physical file changes before the process requests parsing.
+            std::fs::write(dir.path().join(loose_name), b"changed after startup").unwrap();
+            let loaded = manager.load_audio_index().unwrap().unwrap();
+            assert!(loaded.index.get("sample").is_some());
+            assert_eq!(
+                loaded.sources.idx.source_sha256,
+                crate::util::sha256::sha256_hex(&idx)
+            );
+            assert_eq!(
+                loaded.sources.bag.source_sha256,
+                crate::util::sha256::sha256_hex(&bag)
+            );
+            assert_eq!(loaded.sources.idx.payload_len, idx.len());
+            assert_eq!(loaded.sources.bag.payload_len, bag.len());
+            assert_eq!(loaded.sources.idx.entry_id, mix_hash("audio.idx"));
+            assert_eq!(loaded.sources.bag.entry_id, mix_hash("audio.bag"));
+            let (loose, mixed) = if loose_idx {
+                (&loaded.sources.idx, &loaded.sources.bag)
+            } else {
+                (&loaded.sources.bag, &loaded.sources.idx)
+            };
+            assert_eq!(
+                loose.source_archive,
+                format!("loose:{}", dir.path().join(loose_name).display())
+            );
+            assert_eq!(mixed.source_archive, "audiomd.mix");
+        }
+    }
+
+    #[test]
+    fn audio_archive_fallback_is_whole_pair_and_diagnostics_can_override_it() {
+        let dir = audio_test_install("audio-fallback");
+        let md = crate::assets::audio_bag::tests::build_idx(&[("md_only", 0, 2, 22050, 4)]);
+        let base = crate::assets::audio_bag::tests::build_idx(&[("base_only", 0, 2, 22050, 4)]);
+        write_audio_archive(&dir, "audiomd.mix", &md, &[1, 2]);
+        let base_archive = crate::map::source::test_support::make_new_format_mix_bytes(&[
+            ("audio.idx", &base),
+            ("audio.bag", &[3, 4]),
+        ]);
+        dir.write_mix("ra2.mix", "audio.mix", &base_archive);
+        std::fs::write(dir.path().join("custom.idx"), &base).unwrap();
+        std::fs::write(dir.path().join("custom.bag"), [3, 4]).unwrap();
+        let manager = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+        let loaded = manager.load_audio_index().unwrap().unwrap();
+        assert!(loaded.index.get("md_only").is_some());
+        assert!(loaded.index.get("base_only").is_none());
+        let explicit = crate::asset_tools::verb_sound::bag_ls(
+            &manager,
+            &crate::asset_tools::verb_sound::SoundOptions {
+                bag: Some("audio".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(explicit.entry_count, 1);
+        assert!(explicit.entries[0].name.eq_ignore_ascii_case("base_only"));
+        assert_eq!(
+            explicit.sources.unwrap().idx.source_archive,
+            "ra2.mix -> audio.mix"
+        );
+        let custom = crate::asset_tools::verb_sound::bag_ls(
+            &manager,
+            &crate::asset_tools::verb_sound::SoundOptions {
+                bag: Some("custom".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(custom.entry_count, 1);
+        assert_eq!(
+            custom.sources.unwrap().bag.source_sha256,
+            crate::util::sha256::sha256_hex(&[3, 4])
+        );
+        std::fs::remove_file(dir.path().join("audiomd.mix")).unwrap();
+        let fallback = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+        let loaded = fallback.load_audio_index().unwrap().unwrap();
+        assert!(loaded.index.get("base_only").is_some());
+        assert_eq!(loaded.sources.idx.source_archive, "ra2.mix -> audio.mix");
+    }
+
+    #[test]
+    fn malformed_selected_audio_index_does_not_retry_base_archive() {
+        let dir = audio_test_install("invalid-audio");
+        let base = crate::assets::audio_bag::tests::build_idx(&[("base_only", 0, 2, 22050, 4)]);
+        write_audio_archive(&dir, "audiomd.mix", b"truncated", &[1, 2]);
+        write_audio_archive(&dir, "audio.mix", &base, &[3, 4]);
+        let manager = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+        assert!(matches!(
+            manager.load_audio_index(),
+            Err(AssetError::ParseError { .. })
+        ));
     }
 
     #[test]
@@ -1286,6 +1582,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1366,6 +1663,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1436,6 +1734,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1457,6 +1756,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1495,6 +1795,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1531,6 +1832,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1568,6 +1870,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1600,6 +1903,7 @@ mod tests {
                     bytes: OnceLock::from(Some(Box::from(&b"loose"[..]))),
                 },
             )]),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),
@@ -1653,6 +1957,7 @@ mod tests {
             lookup_index: HashMap::new(),
             mix_file_cache: Mutex::new(HashMap::new()),
             loose_files: HashMap::new(),
+            audio_pair: SelectedAudioPair::default(),
             active_theater: None,
             active_theater_archives: Vec::new(),
             ra2_dir: PathBuf::new(),

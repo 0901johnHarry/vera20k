@@ -1,6 +1,6 @@
-//! sound.ini / soundmd.ini parser — the `VocClass` registry.
+//! SOUNDMD.INI and EVAMD.INI readers for process audio definitions.
 //!
-//! RA2's sound.ini has sections like:
+//! SOUNDMD.INI has sections like:
 //! ```ini
 //! [VGCannon1]
 //! Sounds=vgcannon.wav
@@ -318,7 +318,7 @@ pub struct SoundRegistry {
 }
 
 impl SoundRegistry {
-    /// Parse a SoundRegistry from sound.ini / soundmd.ini data.
+    /// Parse the selected SOUNDMD.INI into the process Voc registry.
     ///
     /// gamemd-derived: `VocClass::ReadSoundListINI @ 0x007510D0` reads
     /// `[Defaults]` once, then finds `[SoundList]` (`0x00751298`) and walks it
@@ -336,9 +336,8 @@ impl SoundRegistry {
     /// and no rules/art key references it), and a listed id whose section is
     /// missing still registers — see [`SoundEntry::unread`].
     ///
-    /// One file per pass; see [`SoundRegistry::merge_fallback`] for the
-    /// base-RA2 `sound.ini` layer VERA stacks under it, which gamemd has no
-    /// equivalent of.
+    /// Init_Game52C763/52C796 supplies SOUNDMD.INI alone. Source selection
+    /// and process lifetime belong to `audio_sources::AudioDefinitions`.
     pub fn from_ini(ini: &IniFile) -> Self {
         let mut entries: HashMap<String, SoundEntry> = HashMap::new();
         let defaults = SoundDefaults::read(ini.section("Defaults"));
@@ -376,43 +375,6 @@ impl SoundRegistry {
 
         log::info!("SoundRegistry: loaded {} sound definitions", entries.len());
         Self { entries, defaults }
-    }
-
-    /// Merge another sound.ini (base RA2) into this registry, adding only ids
-    /// this registry does not already carry (YR-first precedence).
-    ///
-    /// **VERA-internal, gamemd has no equivalent.** YR registers sounds from
-    /// `SOUNDMD.INI` and nothing else: `get_xrefs_to 0x007510D0` returns the
-    /// single caller `Init_Game @ 0x0052C796`, and the INI it is handed comes
-    /// from the load at `0x0052C763` guarded by
-    /// `"Failed to load SOUNDMD.INI!"` (`0x00825E10`). The base `sound.ini` is
-    /// never opened, so this layer is a VERA convenience for running against a
-    /// base-RA2 asset set.
-    ///
-    /// Retail reachability: it adds exactly one id, `SUBMOVE` — the only
-    /// `[SoundList]` value in `sound.ini` absent from `soundmd.ini`. Only
-    /// `rules.ini` references it (`VoiceMove=SubMove`); YR loads `rulesmd.ini`
-    /// standalone and asks for `TyphoonSubMove`/`SubMoveStart`, both of which
-    /// `soundmd.ini` defines. Trigger: a lookup of an id present only in
-    /// `sound.ini`. Player effect: none observed on retail data (the one extra
-    /// id is unreachable). Frequency: load time only. Downstream risk: an
-    /// id-count difference against a native-side count.
-    pub fn merge_fallback(&mut self, ini: &IniFile) {
-        let fallback: SoundRegistry = SoundRegistry::from_ini(ini);
-        let mut added: usize = 0;
-        for (key, entry) in fallback.entries {
-            if !self.entries.contains_key(&key) {
-                self.entries.insert(key, entry);
-                added += 1;
-            }
-        }
-        if added > 0 {
-            log::info!(
-                "SoundRegistry: merged {} fallback entries (total {})",
-                added,
-                self.entries.len()
-            );
-        }
     }
 
     /// Look up a sound entry by ID (case-insensitive).
@@ -1114,18 +1076,6 @@ mod tests {
         assert!(reg.get("GuardianGiUnDeploy").is_none());
         assert_eq!(reg.len(), 1);
         assert_eq!(reg.get("Real").unwrap().sounds, vec!["real.wav"]);
-    }
-
-    #[test]
-    fn test_merge_fallback() {
-        let ini1: IniFile = with_sound_list("[SoundA]\nSounds=a.wav\n");
-        let ini2: IniFile = with_sound_list("[SoundA]\nSounds=a_old.wav\n[SoundB]\nSounds=b.wav\n");
-        let mut reg: SoundRegistry = SoundRegistry::from_ini(&ini1);
-        reg.merge_fallback(&ini2);
-        // SoundA should keep ini1 version (YR precedence)
-        assert_eq!(reg.get("SoundA").unwrap().sounds[0], "a.wav");
-        // SoundB added from fallback
-        assert!(reg.get("SoundB").is_some());
     }
 
     /// Without a `[Defaults]` section the static initialisers apply:

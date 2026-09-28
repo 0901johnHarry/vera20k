@@ -1,12 +1,9 @@
 //! `asset sound <NAME>` and `asset bag-ls` — the audio bag, headlessly.
 //!
-//! Most of the game's speech lives in `audio.bag`, indexed by `audio.idx`, and
-//! both files sit *inside* a MIX under those same two names. `AUDIOMD.MIX` and
-//! `AUDIO.MIX` each carry an entry called `audio.idx`, so asking the manager for
-//! "audio.idx" cannot say which of the two answered. Production does not ask:
-//! it opens each archive explicitly and reads the pair out of it, YR's
-//! `AUDIOMD.MIX` first so its sounds win. This verb does exactly that, and
-//! reports which pair produced the answer.
+//! Production uses the one startup-selected `audio.idx`/`audio.bag` pair.
+//! Each file follows the shared resolver, including independent loose overrides.
+//! Explicit `--bag` requests inspect a named archive or loose diagnostic pair.
+//! See [process audio owner](../../tools/audio_catalog_owner.md) for source/lifetime evidence.
 //!
 //! `bag-ls` never decodes — it exists to answer "does this name exist" over
 //! thousands of entries, and decoding them would cost seconds per page for
@@ -23,17 +20,13 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::asset_tools::report::{ErrorReport, SoundEntry, SoundReport};
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{
+    AssetManager, AssetResolutionRef, AudioIndexSources, LoadedAudioIndex, load_audio_index_pair,
+};
 use crate::assets::audio_bag::{AudioBagEntry, AudioIndex, BagAudio, decode_bag_audio};
+use crate::assets::mix_hash::mix_hash;
 
-/// Bag archives in the order production mounts them (`load_audio_indices`):
-/// YR's `AUDIOMD.MIX` first so its entries shadow the base game's, then RA2's
-/// `AUDIO.MIX`. Lookup is first-match across that order.
-const BAG_ARCHIVES: [&str; 2] = ["AUDIOMD.MIX", "AUDIO.MIX"];
-
-/// Entry names *inside* a bag archive. Both archives use these same two names,
-/// which is why the pair is read from an explicitly opened archive and never
-/// through the manager's name lookup.
+/// Names used inside explicit diagnostic bag archives.
 const BAG_IDX_ENTRY: &str = "audio.idx";
 const BAG_DATA_ENTRY: &str = "audio.bag";
 
@@ -92,7 +85,7 @@ const MILLIS_PER_SECOND: u64 = 1000;
 /// Options for `asset sound` and `asset bag-ls`.
 #[derive(Debug, Clone)]
 pub struct SoundOptions {
-    /// Bag pair to open, without extension. None tries the standard names.
+    /// Explicit diagnostic bag pair. None uses the production startup pair.
     pub bag: Option<String>,
     /// `bag-ls` only: case-insensitive name prefix.
     pub prefix: Option<String>,
@@ -124,64 +117,35 @@ struct OpenBag {
     index: AudioIndex,
     /// How this pair was opened, e.g. `AUDIOMD.MIX -> audio.idx/audio.bag`.
     identity: String,
+    sources: AudioIndexSources,
 }
 
 /// `asset sound <NAME>` — one bag entry's header, decoded length, and
 /// optionally a .wav.
 ///
-/// Lookup follows the production order: the first bag holding the name wins,
-/// exactly as the sound player's first-match scan over its loaded indices does.
-/// `SoundReport::bag` therefore names the *winning* pair, not every open one.
+/// Default lookup uses the production index. `--bag` explicitly overrides it.
 pub fn sound(
     asset_manager: &AssetManager,
     name: &str,
     opts: &SoundOptions,
 ) -> Result<SoundReport, ErrorReport> {
-    let (bags, mut warnings) = open_bags(asset_manager, opts);
-    if bags.is_empty() {
+    let (bag, mut warnings) = open_bag(asset_manager, opts);
+    let Some(bag) = bag else {
         return Err(ErrorReport {
             error: format!("no audio bag could be opened, so {name} cannot be looked up"),
             hint: Some(open_failure_hint(&warnings)),
         });
-    }
-
-    // First hit wins; later hits are recorded because a caller comparing YR and
-    // base-RA2 audio needs to know the name exists twice.
-    let mut found: Option<(&AudioBagEntry, &[u8], &str)> = None;
-    let mut shadowed: Vec<&str> = Vec::new();
-    for bag in &bags {
-        let Some((entry, data)) = bag.index.get(name) else {
-            continue;
-        };
-        if found.is_none() {
-            found = Some((entry, data, bag.identity.as_str()));
-        } else {
-            shadowed.push(bag.identity.as_str());
-        }
-    }
-
-    let Some((entry, data, identity)) = found else {
+    };
+    let Some((entry, data)) = bag.index.get(name) else {
         return Err(ErrorReport {
             error: format!("no bag entry named {name}"),
             hint: Some(format!(
-                "`asset bag-ls --prefix {}` lists the neighbouring names; bag names are uppercase \
-                 and carry no extension",
+                "`asset bag-ls --prefix {}` lists neighbouring names; use --bag for an explicit diagnostic override",
                 prefix_hint(name)
             )),
         });
     };
-    if !shadowed.is_empty() {
-        warnings.push(format!(
-            "{name} also exists in {} — the game plays the copy from {identity}",
-            shadowed.join(", ")
-        ));
-    }
-
-    let entry_count = bags
-        .iter()
-        .find(|bag| bag.identity == identity)
-        .map_or(0, |bag| bag.index.len());
-
+    let entry_count = bag.index.len();
     let mut row = metadata_row(entry);
     match decode_bag_audio(entry, data) {
         Some(audio) => {
@@ -217,7 +181,8 @@ pub fn sound(
     }
 
     Ok(SoundReport {
-        bag: identity.to_string(),
+        bag: bag.identity,
+        sources: Some(bag.sources),
         entry_count,
         matched: 1,
         shown: 1,
@@ -228,48 +193,31 @@ pub fn sound(
 
 /// `asset bag-ls` — a paged, prefix-filtered listing of the bag index.
 ///
-/// Header fields only. Rows follow production bag order, and a name held by
-/// more than one open bag appears once, from the bag that would win: the
-/// listing is the set of names the game can actually reach.
+/// Header fields only, from the startup index or explicit diagnostic override.
 pub fn bag_ls(
     asset_manager: &AssetManager,
     opts: &SoundOptions,
 ) -> Result<SoundReport, ErrorReport> {
-    let (bags, mut warnings) = open_bags(asset_manager, opts);
-    if bags.is_empty() {
+    let (bag, mut warnings) = open_bag(asset_manager, opts);
+    let Some(bag) = bag else {
         warnings.push(format!(
             "no audio bag could be opened, so nothing is listed — {NO_BAG_HINT}"
         ));
         return Ok(SoundReport {
             bag: NO_BAG_IDENTITY.to_string(),
+            sources: None,
             entry_count: 0,
             matched: 0,
             shown: 0,
             entries: Vec::new(),
             warnings,
         });
-    }
+    };
 
-    let identity = bags
-        .iter()
-        .map(|bag| bag.identity.as_str())
-        .collect::<Vec<_>>()
-        .join(" + ");
-    if bags.len() > 1 {
-        warnings.push(
-            "this listing spans several bags in the order the game searches them, so an entry's \
-             offset is relative to whichever bag holds it — pass `--bag audiomd` or `--bag audio` \
-             to list exactly one"
-                .to_string(),
-        );
-    }
-
-    let (reachable, hidden) =
-        dedupe_by_name(bags.iter().flat_map(|bag| bag.index.entries().iter()));
+    let (reachable, hidden) = dedupe_by_name(bag.index.entries().iter());
     if hidden > 0 {
         warnings.push(format!(
-            "{hidden} entry name(s) appear in more than one open bag; only the copy the game \
-             would use is listed"
+            "{hidden} duplicate index name(s) omitted from this listing"
         ));
     }
 
@@ -294,7 +242,8 @@ pub fn bag_ls(
 
     let rows = page(&matched, opts.offset, opts.limit);
     Ok(SoundReport {
-        bag: identity,
+        bag: bag.identity,
+        sources: Some(bag.sources),
         entry_count: reachable.len(),
         matched: matched.len(),
         shown: rows.len(),
@@ -303,96 +252,100 @@ pub fn bag_ls(
     })
 }
 
-/// Open every bag the options select, in production order.
-///
-/// Returns the opened pairs plus one warning per candidate that failed, so a
-/// caller sees *why* a bag is missing rather than only that it is.
-fn open_bags(asset_manager: &AssetManager, opts: &SoundOptions) -> (Vec<OpenBag>, Vec<String>) {
-    let mut warnings: Vec<String> = Vec::new();
-    let stems = bag_stems(opts.bag.as_deref());
-    if stems.is_empty() {
-        warnings.push(format!(
-            "--bag \"{}\" has no name part to open",
-            opts.bag.as_deref().unwrap_or_default()
-        ));
-        return (Vec::new(), warnings);
+/// Open the production pair, or one explicitly requested diagnostic override.
+fn open_bag(asset_manager: &AssetManager, opts: &SoundOptions) -> (Option<OpenBag>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let Some(requested) = opts.bag.as_deref() else {
+        return match asset_manager.load_audio_index() {
+            Ok(Some(loaded)) => (Some(opened_pair(loaded)), warnings),
+            Ok(None) => (
+                None,
+                vec!["startup audio.idx/audio.bag pair is unavailable".to_owned()],
+            ),
+            Err(error) => (None, vec![error.to_string()]),
+        };
+    };
+    let stem = stem_of(requested);
+    if stem.is_empty() {
+        return (
+            None,
+            vec![format!("--bag {requested:?} has no name part to open")],
+        );
     }
-
-    let mut bags: Vec<OpenBag> = Vec::new();
-    for stem in &stems {
-        let archive_name = format!("{stem}.MIX");
-        let Some(archive) = asset_manager.archive(&archive_name) else {
-            warnings.push(format!("{archive_name} is not mounted"));
-            continue;
-        };
-        let Some(idx_data) = archive.get_by_name(BAG_IDX_ENTRY) else {
-            warnings.push(format!("{archive_name} has no {BAG_IDX_ENTRY} entry"));
-            continue;
-        };
-        let Some(bag_data) = archive.get_by_name(BAG_DATA_ENTRY) else {
-            warnings.push(format!(
-                "{archive_name} has {BAG_IDX_ENTRY} but no {BAG_DATA_ENTRY}"
-            ));
-            continue;
-        };
-        match AudioIndex::from_idx_bag(idx_data, bag_data.to_vec()) {
-            Some(index) => bags.push(OpenBag {
-                index,
-                identity: format!("{archive_name} -> {BAG_IDX_ENTRY}/{BAG_DATA_ENTRY}"),
-            }),
-            None => warnings.push(format!(
-                "{BAG_IDX_ENTRY} in {archive_name} did not parse — unsupported version or a \
-                 truncated index"
+    let archive_name = format!("{stem}.MIX");
+    if let Some((source_archive, archive)) = asset_manager.archive_with_source(&archive_name) {
+        match (
+            archive.get_by_name(BAG_IDX_ENTRY),
+            archive.get_by_name(BAG_DATA_ENTRY),
+        ) {
+            (Some(idx), Some(bag)) => {
+                let idx = AssetResolutionRef {
+                    bytes: idx,
+                    source_archive,
+                    entry_id: mix_hash(BAG_IDX_ENTRY),
+                };
+                let bag = AssetResolutionRef {
+                    bytes: bag,
+                    source_archive,
+                    entry_id: mix_hash(BAG_DATA_ENTRY),
+                };
+                match load_audio_index_pair(idx, bag) {
+                    Ok(loaded) => return (Some(opened_pair(loaded)), warnings),
+                    Err(error) => warnings.push(error.to_string()),
+                }
+            }
+            _ => warnings.push(format!(
+                "{archive_name} has no complete audio.idx/audio.bag pair"
             )),
         }
+    } else {
+        warnings.push(format!("{archive_name} is not mounted"));
     }
-
-    if bags.is_empty() {
-        open_by_name_lookup(asset_manager, &stems, &mut bags, &mut warnings);
+    // Explicit overrides may inspect loose/custom pairs, including catalog-only
+    // sources. This browsing policy never participates in default game lookup.
+    let idx_name = format!("{}.idx", stem.to_ascii_lowercase());
+    let bag_name = format!("{}.bag", stem.to_ascii_lowercase());
+    let (Some(idx), Some(bag)) = (
+        crate::asset_tools::locate::locate(asset_manager, &idx_name),
+        crate::asset_tools::locate::locate(asset_manager, &bag_name),
+    ) else {
+        return (None, warnings);
+    };
+    warnings.extend(idx.catalog_warning());
+    warnings.extend(bag.catalog_warning());
+    warnings.push(format!(
+        "explicit diagnostic pair {idx_name}/{bag_name}; not the production startup pair"
+    ));
+    let result = load_audio_index_pair(
+        AssetResolutionRef {
+            bytes: idx.bytes,
+            source_archive: &idx.source_archive,
+            entry_id: idx.entry_id,
+        },
+        AssetResolutionRef {
+            bytes: bag.bytes,
+            source_archive: &bag.source_archive,
+            entry_id: bag.entry_id,
+        },
+    );
+    match result {
+        Ok(loaded) => (Some(opened_pair(loaded)), warnings),
+        Err(error) => {
+            warnings.push(error.to_string());
+            (None, warnings)
+        }
     }
-    (bags, warnings)
 }
 
-/// Last resort: a `<stem>.idx` / `<stem>.bag` pair reachable by name.
-///
-/// This is *not* how the engine opens a bag — it is here so a loose or modded
-/// pair named after itself is still browsable. Every pair opened this way says
-/// so, because "the tool found it" is not "the game plays it".
-fn open_by_name_lookup(
-    asset_manager: &AssetManager,
-    stems: &[String],
-    bags: &mut Vec<OpenBag>,
-    warnings: &mut Vec<String>,
-) {
-    for stem in stems {
-        let lower = stem.to_ascii_lowercase();
-        let idx_name = format!("{lower}.idx");
-        let data_name = format!("{lower}.bag");
-        let (Some(idx), Some(data)) = (
-            crate::asset_tools::locate::locate(asset_manager, &idx_name),
-            crate::asset_tools::locate::locate(asset_manager, &data_name),
-        ) else {
-            continue;
-        };
-        warnings.extend(idx.catalog_warning());
-        warnings.extend(data.catalog_warning());
-
-        let Some(index) = AudioIndex::from_idx_bag(idx.bytes, data.bytes.to_vec()) else {
-            warnings.push(format!(
-                "{idx_name} in {} did not parse — unsupported version or a truncated index",
-                idx.source_archive
-            ));
-            continue;
-        };
-        warnings.push(format!(
-            "opened {idx_name}/{data_name} by name lookup; the game reads {BAG_IDX_ENTRY}/\
-             {BAG_DATA_ENTRY} from inside {stem}.MIX, so this pair is not necessarily what it \
-             plays from"
-        ));
-        bags.push(OpenBag {
-            index,
-            identity: format!("{idx_name}/{data_name} in {}", idx.source_archive),
-        });
+fn opened_pair(loaded: LoadedAudioIndex) -> OpenBag {
+    let identity = format!(
+        "IDX from {}; BAG from {}",
+        loaded.sources.idx.source_archive, loaded.sources.bag.source_archive
+    );
+    OpenBag {
+        index: loaded.index,
+        sources: loaded.sources,
+        identity,
     }
 }
 
@@ -402,19 +355,6 @@ fn open_failure_hint(warnings: &[String]) -> String {
         NO_BAG_HINT.to_string()
     } else {
         format!("{} — {NO_BAG_HINT}", warnings.join("; "))
-    }
-}
-
-/// Bag stems to try, uppercase, in search order.
-fn bag_stems(bag: Option<&str>) -> Vec<String> {
-    let Some(word) = bag else {
-        return BAG_ARCHIVES.iter().map(|name| stem_of(name)).collect();
-    };
-    let stem = stem_of(word);
-    if stem.is_empty() {
-        Vec::new()
-    } else {
-        vec![stem]
     }
 }
 
@@ -438,8 +378,7 @@ fn stem_of(word: &str) -> String {
 
 /// Keep the first entry for each name and count the rest.
 ///
-/// A name in both bags resolves to the earlier one at play time, so listing the
-/// later copy would advertise audio the game never reaches.
+/// Duplicate names in one index occupy one listing row.
 fn dedupe_by_name<'a>(
     entries: impl Iterator<Item = &'a AudioBagEntry>,
 ) -> (Vec<&'a AudioBagEntry>, usize) {
@@ -768,20 +707,12 @@ mod tests {
     }
 
     #[test]
-    fn a_name_in_two_bags_is_listed_once_from_the_bag_that_wins() {
-        let yr = vec![entry("CEVA048", 0, 0), entry("IGISEA", 64, 0)];
-        let base = vec![entry("CEVA048", 900, 0), entry("SOVIET", 964, 0)];
-        let (kept, hidden) = dedupe_by_name(yr.iter().chain(base.iter()));
+    fn duplicate_index_names_are_listed_once() {
+        let entries = [entry("CEVA048", 0, 0), entry("CEVA048", 900, 0)];
+        let (kept, hidden) = dedupe_by_name(entries.iter());
         assert_eq!(hidden, 1);
-        assert_eq!(kept.len(), 3);
-        // The surviving CEVA048 is the one from the bag searched first.
-        assert_eq!(kept[0].name, "CEVA048");
+        assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].offset, 0);
-    }
-
-    #[test]
-    fn bag_stems_default_to_the_production_search_order() {
-        assert_eq!(bag_stems(None), vec!["AUDIOMD", "AUDIO"]);
     }
 
     #[test]
@@ -794,11 +725,11 @@ mod tests {
             "AUDIOMD.MIX",
             " audiomd ",
         ] {
-            assert_eq!(bag_stems(Some(word)), vec!["AUDIOMD"], "spelling {word}");
+            assert_eq!(stem_of(word), "AUDIOMD", "spelling {word}");
         }
         // An empty or extension-only value names nothing to open.
-        assert!(bag_stems(Some("")).is_empty());
-        assert!(bag_stems(Some(".mix")).is_empty());
+        assert!(stem_of("").is_empty());
+        assert!(stem_of(".mix").is_empty());
     }
 
     #[test]
