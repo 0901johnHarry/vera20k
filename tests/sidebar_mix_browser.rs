@@ -5,7 +5,7 @@
 //!
 //! Run with: cargo test --test sidebar_mix_browser -- --nocapture
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::mix_archive::MixArchive;
 use vera20k::assets::mix_hash::mix_hash;
 use vera20k::util::config::GameConfig;
@@ -455,13 +455,14 @@ fn browse_sidebar_mix_files() {
             return;
         }
     };
-    let asset_manager = match AssetManager::new(&config.paths.ra2_dir) {
-        Ok(am) => am,
-        Err(e) => {
-            eprintln!("Skipping: AssetManager init failed ({e})");
-            return;
-        }
-    };
+    let asset_manager =
+        match AssetManager::new(&config.paths.ra2_dir, MediaArchiveMode::STOCK_DIGITAL) {
+            Ok(am) => am,
+            Err(e) => {
+                eprintln!("Skipping: AssetManager init failed ({e})");
+                return;
+            }
+        };
 
     let dict = build_hash_dictionary();
     eprintln!("Hash dictionary: {} candidate filenames", dict.len());

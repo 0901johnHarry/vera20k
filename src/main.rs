@@ -69,10 +69,8 @@ fn main() -> Result<()> {
     let mut app: vera20k::app::App = match launch_mode {
         vera20k::app::frontend::launch::AppLaunchMode::Usage => unreachable!("usage returned above"),
         vera20k::app::frontend::launch::AppLaunchMode::Interactive(options) => {
-            // The switch table's results are process-global in native and are
-            // re-read where most are consumed (the display owner for screen
-            // size, AssetManager for `-CD`). Audio init is owned by `App`, so
-            // carry the already-parsed `-NOAUDIO` result into that owner.
+            // Pass the parsed process policy to its consumers: options,
+            // audio and retained asset ownership.
             log::info!("Retail startup switches: {options:?}");
             vera20k::app::App::new(options)
         }

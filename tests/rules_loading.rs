@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::rules::ini_parser::IniFile;
 use vera20k::rules::object_type::ObjectCategory;
 use vera20k::rules::ruleset::RuleSet;
@@ -27,7 +27,8 @@ fn test_load_real_rules_ini() {
     }
 
     // Load asset manager and extract rules.ini.
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("AssetManager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager");
     let rules_data: Vec<u8> = asset_manager
         .get("rules.ini")
         .expect("rules.ini should exist in MIX chain");

@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::bink_decode::BinkDecoder;
 use vera20k::assets::bink_file::BinkFile;
 use vera20k::assets::xcc_database::XccDatabase;
@@ -27,7 +27,7 @@ fn main() {
             return;
         }
     };
-    let mgr = match AssetManager::new(&cfg.paths.ra2_dir) {
+    let mgr = match AssetManager::new(&cfg.paths.ra2_dir, MediaArchiveMode::STOCK_DIGITAL) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("AssetManager::new failed: {}", e);

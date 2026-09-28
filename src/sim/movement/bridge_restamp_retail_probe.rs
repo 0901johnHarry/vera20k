@@ -21,7 +21,11 @@ fn retail_inactive_high_record_restamp_inventory() {
             .expect("live resolved terrain");
         let state = sim.bridge_state.as_ref().expect("live bridge state");
         let records = state.endpoint_records();
-        let mut assets = crate::assets::asset_manager::AssetManager::new(&retail).unwrap();
+        let mut assets = crate::assets::asset_manager::AssetManager::new(
+            &retail,
+            crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        )
+        .unwrap();
         let theater = crate::map::theater::load_theater(&mut assets, &scenario.map.header.theater)
             .expect("same retail theater as production load");
         let bridge_bases: Vec<_> = [theater.bridge_set, theater.wood_bridge_set]

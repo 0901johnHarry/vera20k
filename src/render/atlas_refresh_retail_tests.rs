@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::houses::HouseColorMap;
 use crate::render::batch::BatchRenderer;
 use crate::render::sprite_atlas::{self, ShpPaletteContext, ShpSpriteKey};
@@ -81,7 +81,8 @@ fn retail_atlas_refresh_costs() {
     let root = retail_root();
     let mut scenario =
         crate::headless_scenario::load(&root, "Dustbowl.mmx", 0x0B21_D6E5).expect("Dustbowl loads");
-    let mut assets = AssetManager::new(&root).expect("retail archives");
+    let mut assets =
+        AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).expect("retail archives");
     let theater_name = scenario.map.header.theater.clone();
     let theater =
         crate::map::theater::load_theater(&mut assets, &theater_name).expect("theater loads");

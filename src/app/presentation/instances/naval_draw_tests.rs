@@ -127,7 +127,11 @@ fn retail_aegis_raster_and_parent_waterline_match_original_ship_draw() {
     let map = std::env::var("VERA20K_SHRAPNEL_MAP").unwrap_or_else(|_| "XShrapnel.MAP".into());
     let scene = crate::headless_scenario::load(&retail, &map, 0x0B21_D6E5).unwrap();
     let rules = &scene.runtime.resources.rules;
-    let assets = crate::assets::asset_manager::AssetManager::new(&retail).unwrap();
+    let assets = crate::assets::asset_manager::AssetManager::new(
+        &retail,
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .unwrap();
     let corpus: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../tools/spatial_oracle/naval_draw_bounds.json"
     ))

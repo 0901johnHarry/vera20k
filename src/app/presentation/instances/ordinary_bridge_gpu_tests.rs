@@ -10,7 +10,7 @@
 //! terrain painting, scene timing, shroud composition or an independent RGB oracle.
 use super::{CellOverlayInputs, build_cell_overlay_instances};
 use crate::app::presentation::lighting::MatchLighting;
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::assets::pal_file::Palette;
 use crate::assets::shp_file::ShpFile;
 use crate::headless_scenario::HeadlessScenario;
@@ -152,7 +152,7 @@ struct Probe {
 impl Probe {
     fn new(scene: &HeadlessScenario, fixture: Fixture) -> Self {
         let root = PathBuf::from(std::env::var_os("RA2_DIR").expect("physical retail root"));
-        let mut assets = AssetManager::new(&root).unwrap();
+        let mut assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
         let mode = IniFile::from_bytes(assets.get_ref("MPBattleMD.ini").unwrap()).unwrap();
         let (_, rules_ini, _, _) = crate::app::loading::init_helpers::load_rules_with_merged_ini(
             &assets,

@@ -6219,7 +6219,7 @@ mod tests {
             directory.write(name, &empty_mix);
         }
         directory.write(tmp_filename, tmp_bytes);
-        let manager = AssetManager::new_with_media_mode(
+        let manager = AssetManager::new(
             directory.path(),
             MediaArchiveMode::Numbered { media_index: 2 },
         )
@@ -6295,7 +6295,7 @@ mod tests {
         for &(name, bytes) in files {
             directory.write(name, bytes);
         }
-        let manager = AssetManager::new_with_media_mode(
+        let manager = AssetManager::new(
             directory.path(),
             MediaArchiveMode::Numbered { media_index: 2 },
         )

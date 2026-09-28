@@ -892,7 +892,7 @@ mod tests {
     /// Skips gracefully when retail assets are absent.
     #[test]
     fn fit_right_anchored_pins_real_sdbtnanm_canvas_width() {
-        use crate::assets::asset_manager::AssetManager;
+        use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
         use crate::assets::shp_file::ShpFile;
         use crate::util::config::GameConfig;
 
@@ -910,7 +910,7 @@ mod tests {
             eprintln!("SKIPPED: RA2 assets not found at {}", ra2_dir.display());
             return;
         }
-        let Ok(mut assets) = AssetManager::new(&ra2_dir) else {
+        let Ok(mut assets) = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL) else {
             eprintln!("SKIPPED: could not mount asset archives");
             return;
         };

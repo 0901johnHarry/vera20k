@@ -1,11 +1,11 @@
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::map_file;
 use vera20k::rules::ini_parser::IniFile;
 fn main() {
     let retail_root = std::env::var("RA2_DIR").expect("set RA2_DIR to the retail asset directory");
     let retail = Path::new(&retail_root);
-    let assets = AssetManager::new(retail).unwrap();
+    let assets = AssetManager::new(retail, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let mut rows = Vec::new();
     for name in [
         "RULESMD.INI",

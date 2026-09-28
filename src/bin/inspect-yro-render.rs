@@ -12,7 +12,7 @@
 
 use std::path::PathBuf;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::map_file;
 use vera20k::map::theater;
 
@@ -35,7 +35,7 @@ fn main() {
 
 fn run_asset_probe() {
     let ra2_dir = PathBuf::from(RA2_DIR);
-    let asset_manager = match AssetManager::new(&ra2_dir) {
+    let asset_manager = match AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL) {
         Ok(am) => am,
         Err(e) => {
             eprintln!("AssetManager bootstrap failed: {:#}", e);
@@ -106,7 +106,7 @@ fn run_map_pipeline(args: &[String]) {
     };
 
     let ra2_dir = PathBuf::from(RA2_DIR);
-    let mut asset_manager = match AssetManager::new(&ra2_dir) {
+    let mut asset_manager = match AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL) {
         Ok(am) => am,
         Err(e) => {
             eprintln!("AssetManager bootstrap failed: {:#}", e);

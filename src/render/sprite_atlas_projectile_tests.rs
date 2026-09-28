@@ -1,4 +1,5 @@
 use super::*;
+use crate::assets::asset_manager::MediaArchiveMode;
 use crate::rules::{ini_parser::IniFile, retail_ini_fixture::retail_ini};
 use serde_json::Value;
 
@@ -286,7 +287,7 @@ fn retail_hills_projectile_assets_match_original_reader_and_physical_bytes() {
     let scenario = crate::headless_scenario::load(&root, "Hills.mmx", 0x0B21_D6E5).unwrap();
     let rules = &scenario.runtime.resources.rules;
     let art = &rules.art_registry;
-    let assets = AssetManager::new(&root).unwrap();
+    let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let corpus = native();
     let projectile = rules.projectile("Cannon").unwrap();
     assert_eq!(

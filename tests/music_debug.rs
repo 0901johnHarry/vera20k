@@ -1,7 +1,7 @@
 //! Debug test to diagnose why music doesn't play.
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::rules::ini_parser::IniFile;
 
 fn ra2_dir() -> String {
@@ -11,7 +11,8 @@ fn ra2_dir() -> String {
 #[test]
 #[ignore] // Requires RA2_DIR (retail game files)
 fn debug_music_pipeline() {
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     // 1. Check if theme INI files load.
     for name in ["thememd.ini", "theme.ini"] {

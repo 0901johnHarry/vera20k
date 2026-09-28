@@ -7,7 +7,6 @@ use anyhow::Context;
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
 use crate::app::persistence::options_profile::{RetailOptionsLoad, RetailOptionsProfile};
 
-use crate::map::scenario_sources;
 use super::presentation::render;
 use super::{
     ActiveEventLoop, App, AppState, Arc, AssetManager, BTreeMap, BasicSection, BatchRenderer,
@@ -17,6 +16,7 @@ use super::{
     SidebarTab, StartupAudioDisposition, Window, WindowAttributes, frontend::startup_splash,
     should_load_audio_indices,
 };
+use crate::map::scenario_sources;
 
 fn startup_window_projection(
     profile_screen: ScreenSize,
@@ -195,7 +195,7 @@ impl App {
         let sidebar_layout_spec = SidebarChromeLayoutSpec::stock();
         let mut startup_asset_manager = game_config.as_ref().and_then(|config| {
             startup_asset_or_error(
-                AssetManager::new(&config.paths.ra2_dir)
+                AssetManager::new(&config.paths.ra2_dir, startup_options.media_archive_mode)
                     .context("Could not load the game archives"),
                 &mut main_menu_shell_error,
             )
@@ -689,6 +689,7 @@ impl App {
                 retail_screenshot_frame_cache: Default::default(),
             },
             process_assets: crate::app::process_assets::ProcessAssets::from_startup(
+                startup_options.media_archive_mode,
                 startup_asset_manager,
                 startup_csf,
                 startup_native_rules,

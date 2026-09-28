@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::map::rmg::tech_catalog;
 use vera20k::map::rmg::tiles::TileIds;
@@ -150,7 +150,8 @@ fn tile_id_projection(ids: TileIds) -> [i32; 18] {
 fn hermetic_ini_contracts_match_consumed_retail_values() {
     let root =
         std::env::var("RA2_DIR").expect("set RA2_DIR to the installed retail RA2/YR directory");
-    let mut assets = AssetManager::new(Path::new(&root)).expect("load retail archive stack");
+    let mut assets = AssetManager::new(Path::new(&root), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("load retail archive stack");
     let rules_ini = merged_asset_ini(&assets, "rules.ini", "rulesmd.ini");
     let art_ini = merged_asset_ini(&assets, "art.ini", "artmd.ini");
     let rules = parsed_rules(&rules_ini, &art_ini);

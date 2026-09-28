@@ -90,8 +90,11 @@ mod tests {
         let records = crate::util::config::GameConfig::load()
             .ok()
             .and_then(|config| {
-                let mut assets =
-                    crate::assets::asset_manager::AssetManager::new(&config.paths.ra2_dir).ok()?;
+                let mut assets = crate::assets::asset_manager::AssetManager::new(
+                    &config.paths.ra2_dir,
+                    crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+                )
+                .ok()?;
                 crate::map::scenario_sources::list_skirmish_scenario_records_with_assets(
                     &config.paths.ra2_dir,
                     &mut assets,

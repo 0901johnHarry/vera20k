@@ -692,7 +692,7 @@ mod tests {
         load_rules_with_merged_ini, missing_active_team_ai_registry_sections, scheduler_anim_roots,
         startup_crate_anim_remap_keys,
     };
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::entities::EntityCategory;
     use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::TerrainTileAnimation;
@@ -962,7 +962,8 @@ mod tests {
             "retail RA2/YR directory does not exist: {}",
             path.display()
         );
-        AssetManager::new(&path).expect("load retail RA2/YR assets")
+        AssetManager::new(&path, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail RA2/YR assets")
     }
 
     const RULES_BASE: &str = "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\n\
