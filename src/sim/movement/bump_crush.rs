@@ -2726,8 +2726,7 @@ mod tests {
         victim.crushable = true;
         victim.invulnerability = Some(
             crate::sim::superweapon::invulnerability::InvulnerabilityState {
-                start_frame: 10,
-                duration_frames: 750,
+                timer: crate::sim::timer::CdTimer::started(10, 750),
                 kind: crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain,
             },
         );

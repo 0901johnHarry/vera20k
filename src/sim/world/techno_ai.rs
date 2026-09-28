@@ -1346,7 +1346,7 @@ fn techno_common_pre(
     let reveal_blocking = entity
         .disguise
         .as_ref()
-        .is_some_and(|state| state.raw_reveal_remaining(sim.session.binary_frame) != 0);
+        .is_some_and(|state| state.reveal_blocks(sim.session.binary_frame));
     if blocked_by_contact || reveal_blocking || rules.general.default_mirage_disguises.is_empty() {
         return;
     }

@@ -349,8 +349,8 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         [
             c.state,
             c.depth as i32,
-            c.step_timer.start_frame,
-            c.step_timer.duration_frames,
+            c.step_timer.timer.start_frame(),
+            c.step_timer.timer.duration(),
             c.step_timer.speed,
             c.step_delta,
         ]
@@ -582,7 +582,9 @@ fn exhausted_walk_retry_emits_native_retained_scold_request() {
             .sound_events
             .iter()
             .filter_map(|event| match event {
-                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => Some(sound_id.as_str()),
+                crate::sim::world::SimSoundEvent::VocCentered { sound_id } => {
+                    Some(sound_id.as_str())
+                }
                 _ => None,
             })
             .collect();

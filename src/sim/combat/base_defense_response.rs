@@ -104,21 +104,6 @@ pub(crate) struct BaseDefenseResponseContext<'a> {
     pub(crate) game_mode_nonzero: bool,
 }
 
-/// gamemd-derived: `TechnoClass__RespondToBaseAttack @ 0x00708080` checks the
-/// attacker-owned `TechnoClass+0x650/+0x658` timer with signed wrapping frame
-/// subtraction. Start `-1` is the inactive constructor sentinel.
-pub(crate) fn cooldown_remaining(start_frame: i32, duration_frames: i32, now: i32) -> i32 {
-    if start_frame == -1 {
-        return 0;
-    }
-    let elapsed = now.wrapping_sub(start_frame);
-    if elapsed < duration_frames {
-        duration_frames.wrapping_sub(elapsed)
-    } else {
-        0
-    }
-}
-
 /// Convert the Rules double through the native x87 `ftol` path. Invalid or
 /// out-of-range values retain the x87 signed-indefinite low dword.
 ///
@@ -338,11 +323,10 @@ pub(crate) fn respond_to_base_attack(
             EntityCategory::Unit | EntityCategory::Infantry
         )
         || victim_object.insignificant
-        || cooldown_remaining(
-            attacker.base_defense_response.cooldown_start_frame,
-            attacker.base_defense_response.cooldown_duration_frames,
-            context.current_frame,
-        ) != 0
+        || !attacker
+            .base_defense_response
+            .cooldown
+            .expired(context.current_frame)
     {
         return;
     }
@@ -514,9 +498,10 @@ pub(crate) fn respond_to_base_attack(
         accumulated = next;
         if overshot {
             if let Some(attacker) = context.entities.get_mut(attacker_id) {
-                attacker.base_defense_response.cooldown_start_frame = context.current_frame;
-                attacker.base_defense_response.cooldown_duration_frames =
-                    response_delay_frames(context.rules.general.base_defense_delay_minutes);
+                attacker.base_defense_response.cooldown.start(
+                    context.current_frame,
+                    response_delay_frames(context.rules.general.base_defense_delay_minutes),
+                );
             }
             break;
         }

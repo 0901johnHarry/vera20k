@@ -29,11 +29,12 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{BuildingUp, Health};
 use crate::sim::estimated_health::EstimatedHealth;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::house_state::{HouseDifficulty, HouseFrameTimer, HouseState};
+use crate::sim::house_state::{HouseDifficulty, HouseState};
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::production::{self, RepairControl};
 use crate::sim::rng::SimRng;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use serde_json::{Value, json};
 
@@ -293,10 +294,7 @@ fn update_scene(corpus: &Value, input: &Value) -> (Simulation, RuleSet, Option<u
     let timer = input["timer"].as_array().map_or([0, 0], |timer| {
         [timer[0].as_i64().unwrap(), timer[2].as_i64().unwrap()]
     });
-    house.repair_latch_timer = HouseFrameTimer {
-        start_frame: timer[0],
-        duration: timer[1] as i32,
-    };
+    house.repair_latch_timer = CdTimer::from_raw(timer[0] as i32, timer[1] as i32);
     house.repair_delay = f64::from_bits(
         input["delay"]
             .as_u64()
@@ -427,8 +425,8 @@ fn update_repair_and_power_matches_the_original() {
                 house.economy.spent_credits,
                 u8::from(house.repair_start_latch),
                 [
-                    house.repair_latch_timer.start_frame,
-                    house.repair_latch_timer.duration
+                    house.repair_latch_timer.start_frame(),
+                    house.repair_latch_timer.duration()
                 ],
             ]),
             json!([row["balance"], row["spent"], row["latched"], row["timer"]]),
@@ -524,8 +522,8 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
                     house.economy.credits,
                     u8::from(house.repair_start_latch),
                     [
-                        house.repair_latch_timer.start_frame,
-                        house.repair_latch_timer.duration
+                        house.repair_latch_timer.start_frame(),
+                        house.repair_latch_timer.duration()
                     ],
                 ]),
                 json!([
@@ -568,10 +566,10 @@ fn the_auto_repair_latch_releases_on_the_original_timer() {
         let input = &row["input"];
         let mut house = HouseState::new(Default::default(), 0, None, false, 0, 10);
         house.repair_start_latch = input["latched"] == 1;
-        house.repair_latch_timer = HouseFrameTimer {
-            start_frame: input["timer"][0].as_i64().unwrap(),
-            duration: input["timer"][1].as_i64().unwrap() as i32,
-        };
+        house.repair_latch_timer = CdTimer::from_raw(
+            input["timer"][0].as_i64().unwrap() as i32,
+            input["timer"][1].as_i64().unwrap() as i32,
+        );
         house.release_repair_latch(input["frame"].as_u64().unwrap() as u32);
         assert_eq!(
             u8::from(house.repair_start_latch),

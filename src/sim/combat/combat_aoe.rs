@@ -1831,8 +1831,7 @@ mod tests {
             protected.lifecycle.in_limbo = false;
             protected.lifecycle.cell_marked = true;
             protected.invulnerability = Some(InvulnerabilityState {
-                start_frame: 0,
-                duration_frames: 100,
+                timer: crate::sim::timer::CdTimer::started(0, 100),
                 kind,
             });
             entities.insert(protected);
@@ -4138,14 +4137,11 @@ mod tests {
         let mut terrain_objects = BTreeMap::new();
         let mut terrain_cells = BTreeMap::new();
         for (stable_id, rx) in [(100, 5), (101, 6), (102, 8)] {
-            terrain_objects.insert(
-                stable_id,
-                {
-                    let mut terrain = TerrainObjectState::for_test(stable_id, tree_ref, rx, 5);
-                    terrain.occupation_bits = 4;
-                    terrain
-                },
-            );
+            terrain_objects.insert(stable_id, {
+                let mut terrain = TerrainObjectState::for_test(stable_id, tree_ref, rx, 5);
+                terrain.occupation_bits = 4;
+                terrain
+            });
             terrain_cells.insert((rx, 5), stable_id);
         }
 
@@ -4433,16 +4429,13 @@ mod tests {
 
         let terrain_id = 901;
         let terrain_ref = sim.interner.intern("TIBTREE");
-        sim.production.terrain_objects.insert(
-            terrain_id,
-            {
-                let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
-                terrain.health = 10;
-                terrain.max_health = 10;
-                terrain.occupation_bits = 4;
-                terrain
-            },
-        );
+        sim.production.terrain_objects.insert(terrain_id, {
+            let mut terrain = TerrainObjectState::for_test(terrain_id, terrain_ref, 5, 5);
+            terrain.health = 10;
+            terrain.max_health = 10;
+            terrain.occupation_bits = 4;
+            terrain
+        });
         sim.production
             .terrain_object_cells
             .insert((5, 5), terrain_id);

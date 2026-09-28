@@ -16,73 +16,25 @@
 //! - Part of sim/ — depends on rules/ and sim/ only. NEVER on render/, ui/,
 //!   sidebar/, audio/ or net/.
 
-use serde::{Deserialize, Serialize};
-
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
 #[cfg(test)]
 use crate::sim::mission::MissionType;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 
-/// `BuildingClass+0x6D0` (start frame) / `+0x6D8` (duration): the ProduceCash
-/// `TimerStruct`. `BuildingClass::Constructor @ 0x0043B92B..0x0043B937` seeds
-/// `start = g_CurrentFrameCounter`, `duration = 0` — a timer that has already
-/// expired and never fires; only `BuildingClass::ChangeOwner @ 0x004482DB..
-/// 0x004482F9` (capture from a `MultiplayPassive` house) and the re-arm inside
-/// `BuildingClass::Update @ 0x0043FD5B..0x0043FD86` ever give it a duration.
-/// (`+0x6D4`, the middle dword, is scratch copied from a stack local and is
-/// never read by the fire test.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub struct ProduceCashTimer {
-    /// Raw signed start dword; `-1` is the native "not started" sentinel.
-    pub start_frame: i32,
-    /// Raw signed duration dword.
-    pub duration: i32,
-}
-
-impl ProduceCashTimer {
-    /// Constructor state: started at `frame` with a zero duration.
-    pub const fn constructed(frame: u32) -> Self {
-        Self {
-            start_frame: frame as i32,
-            duration: 0,
-        }
-    }
-
-    /// Arm/re-arm: `start = frame`, `duration = delay`.
-    pub const fn armed(frame: u32, delay: i32) -> Self {
-        Self {
-            start_frame: frame as i32,
-            duration: delay,
-        }
-    }
-
-    /// The inlined fire test of `BuildingClass::Update @ 0x0043FD2C..0x0043FD59`:
-    ///
-    /// ```text
-    /// if (start != -1) { elapsed = frame - start; if (elapsed >= duration) skip;
-    ///                    remaining = duration - elapsed } else remaining = duration
-    /// fire iff remaining == 1
-    /// ```
-    ///
-    /// So an armed timer of duration `D` fires on the frame where
-    /// `frame - start == D - 1`, i.e. every `D - 1` frames after each re-arm,
-    /// and a timer whose expiry frame was skipped (the two warp gates at
-    /// `0x0043FD0C`/`0x0043FD1E` jump past the block) is dead until re-armed.
-    pub fn fires_now(self, frame: u32) -> bool {
-        let remaining = if self.start_frame != -1 {
-            let elapsed = (frame as i32).wrapping_sub(self.start_frame);
-            if elapsed >= self.duration {
-                return false;
-            }
-            self.duration.wrapping_sub(elapsed)
-        } else {
-            self.duration
-        };
-        remaining == 1
-    }
+/// The ProduceCash fire test inlined in `BuildingClass::Update @
+/// 0x0043FD2C..0x0043FD59` on the `+0x6D0`/`+0x6D8` timer
+/// ([`GameEntity::produce_cash_timer`](crate::sim::game_entity::GameEntity::produce_cash_timer)):
+/// it fires when exactly one frame remains. An armed timer of duration `D`
+/// fires on the frame where `frame - start == D - 1`, i.e. every `D - 1`
+/// frames after each re-arm, and a timer whose expiry frame was skipped (the
+/// two warp gates at `0x0043FD0C`/`0x0043FD1E` jump past the block) is dead
+/// until re-armed.
+fn produce_cash_fires(timer: CdTimer, frame: u32) -> bool {
+    timer.remaining(frame as i32) == 1
 }
 
 /// `HouseClass::Add_Credits @ 0x004F9950`: `credits += amount`, unclamped.
@@ -165,12 +117,12 @@ pub(crate) fn produce_cash_on_owner_change(
     let frame = sim.session.binary_frame;
     add_credits(sim, new_owner, startup);
     if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-        entity.produce_cash_timer = ProduceCashTimer::armed(frame, delay);
+        entity.produce_cash_timer = CdTimer::started(frame as i32, delay);
     }
 }
 
 /// `BuildingClass::Update @ 0x0043FD2C..0x0043FDD6`, the ProduceCash block:
-/// fire test on the `+0x6D0` timer (see [`ProduceCashTimer::fires_now`]),
+/// fire test on the `+0x6D0` timer (see [`produce_cash_fires`]),
 /// re-arm with `ProduceCashDelay`, skip when the owner's HouseType is
 /// `MultiplayPassive` (`0x0043FD89..0x0043FD9A`), skip unless operational
 /// (`vtable+0x350`, `0x0043FDA0`), then `amount > 0 → Add_Credits(amount)`
@@ -189,7 +141,7 @@ pub(crate) fn produce_cash_step(sim: &mut Simulation, stable_id: u64, rules: &Ru
         return;
     }
     let frame = sim.session.binary_frame;
-    if !entity.produce_cash_timer.fires_now(frame) {
+    if !produce_cash_fires(entity.produce_cash_timer, frame) {
         return;
     }
     let owner = entity.owner();
@@ -199,7 +151,7 @@ pub(crate) fn produce_cash_step(sim: &mut Simulation, stable_id: u64, rules: &Ru
     let amount = obj.produce_cash_amount;
     let delay = obj.produce_cash_delay;
     if let Some(entity) = sim.substrate.entities.get_mut(stable_id) {
-        entity.produce_cash_timer = ProduceCashTimer::armed(frame, delay);
+        entity.produce_cash_timer = CdTimer::started(frame as i32, delay);
     }
     if sim
         .houses
@@ -534,7 +486,7 @@ mod tests {
             .spawn_object("CAOILD", "Neutral", 10, 10, 0, &rules, &heights)
             .expect("derrick spawns");
         let constructed = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
-        assert_eq!(constructed.duration, 0, "constructor timer is dead");
+        assert_eq!(constructed.duration(), 0, "constructor timer is dead");
 
         // Owned by the passive house nothing is ever paid.
         run_ticks(&mut sim, &rules, 120);
@@ -547,8 +499,8 @@ mod tests {
             "ProduceCashStartup on capture"
         );
         let armed = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
-        assert_eq!(armed.duration, 100);
-        assert_eq!(armed.start_frame, sim.session.binary_frame as i32);
+        assert_eq!(armed.duration(), 100);
+        assert_eq!(armed.start_frame(), sim.session.binary_frame as i32);
 
         // Arming frame semantics: `change_owner` armed the timer at frame
         // `F = start_frame` with duration `Delay = 100`. `advance_tick` runs
@@ -557,7 +509,7 @@ mod tests {
         // frame `F + k - 1`; `remaining = Delay - (frame - F) == 1` holds at
         // frame `F + 99`, i.e. on tick 100 exactly. Each re-arm then repeats
         // the period of `Delay - 1 = 99` frames.
-        let start = armed.start_frame as u32;
+        let start = armed.start_frame() as u32;
         let mut payments: Vec<(u32, u32)> = Vec::new();
         let mut last = credits(&sim, americans);
         for tick in 1..=400 {
@@ -622,7 +574,7 @@ mod tests {
                 .or_default()
                 .power_blackout_remaining = u32::from(outage);
             let entity = sim.substrate.entities.get_mut(id).unwrap();
-            entity.produce_cash_timer = ProduceCashTimer::armed(0, 100);
+            entity.produce_cash_timer = CdTimer::started(0, 100);
             entity.mission.apply_test_fixture(MissionTestFixture {
                 current: MissionId::from_raw(current),
                 queued: MissionId::from_raw(queued),
@@ -642,7 +594,7 @@ mod tests {
                     .get(id)
                     .unwrap()
                     .produce_cash_timer
-                    .start_frame,
+                    .start_frame(),
                 99
             );
         }
@@ -674,9 +626,9 @@ mod tests {
         );
         // The timer still re-armed on every expiry (the re-arm precedes the gate).
         let timer = sim.substrate.entities.get(oil).unwrap().produce_cash_timer;
-        assert_eq!(timer.duration, 100);
+        assert_eq!(timer.duration(), 100);
         assert!(
-            (sim.session.binary_frame as i32).wrapping_sub(timer.start_frame) < 100,
+            (sim.session.binary_frame as i32).wrapping_sub(timer.start_frame()) < 100,
             "timer keeps cycling while offline"
         );
     }
@@ -931,7 +883,7 @@ mod tests {
             .entities
             .get_mut(oil)
             .unwrap()
-            .produce_cash_timer = ProduceCashTimer::armed(sim.session.binary_frame, 100);
+            .produce_cash_timer = CdTimer::started(sim.session.binary_frame as i32, 100);
         assert_ne!(baseline_current, sim.state_hash());
         assert_eq!(baseline_probe, sim.state_hash_without_credit_income_v135());
         sim.substrate.entities.get_mut(oil).unwrap().draining_me = Some(oil);
@@ -940,32 +892,29 @@ mod tests {
 
     #[test]
     fn produce_cash_timer_fires_once_at_delay_minus_one_then_needs_rearm() {
-        let timer = ProduceCashTimer::armed(100, 100);
+        let timer = CdTimer::started(100, 100);
         for frame in 100..199 {
-            assert!(!timer.fires_now(frame), "frame {frame} must not fire");
+            assert!(
+                !produce_cash_fires(timer, frame),
+                "frame {frame} must not fire"
+            );
         }
-        assert!(timer.fires_now(199));
+        assert!(produce_cash_fires(timer, 199));
         // Past its duration the native timer is dead: `elapsed >= duration`
         // jumps over the block until something re-arms it.
-        assert!(!timer.fires_now(200));
-        assert!(!timer.fires_now(5_000));
+        assert!(!produce_cash_fires(timer, 200));
+        assert!(!produce_cash_fires(timer, 5_000));
     }
 
     #[test]
     fn constructed_timer_never_fires() {
         // Frames only move forward from the construction frame natively.
-        let timer = ProduceCashTimer::constructed(7);
+        let timer = CdTimer::started(7, 0);
         for frame in 7..400 {
-            assert!(!timer.fires_now(frame));
+            assert!(!produce_cash_fires(timer, frame));
         }
         // The `-1` sentinel reads the raw duration; only duration 1 fires.
-        assert!(!ProduceCashTimer::default().fires_now(0));
-        assert!(
-            ProduceCashTimer {
-                start_frame: -1,
-                duration: 1
-            }
-            .fires_now(123)
-        );
+        assert!(!produce_cash_fires(CdTimer::from_raw(-1, 0), 0));
+        assert!(produce_cash_fires(CdTimer::from_raw(-1, 1), 123));
     }
 }

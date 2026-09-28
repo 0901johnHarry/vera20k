@@ -1238,7 +1238,7 @@ pub struct GeneralRules {
     pub ambient_change_step: i32,
     // --- IronCurtain ([CombatDamage]) ---
     /// IronCurtain invulnerability duration in frames (IronCurtainDuration= in [CombatDamage]).
-    pub iron_curtain_duration: u32,
+    pub iron_curtain_duration: i32,
     // --- IronCurtain ([General]) ---
     /// Animation played on IC target (IronCurtainInvokeAnim= in [General]). Default IRONBLST.
     pub iron_curtain_invoke_anim: String,
@@ -1250,7 +1250,7 @@ pub struct GeneralRules {
     /// Cell radius of ForceShield AoE (ForceShieldRadius= in [General]).
     pub force_shield_radius: u32,
     /// ForceShield invulnerability duration in frames (ForceShieldDuration= in [General]).
-    pub force_shield_duration: u32,
+    pub force_shield_duration: i32,
     /// Power blackout duration triggered by ForceShield (ForceShieldBlackoutDuration= in [General]).
     pub force_shield_blackout_duration: u32,
     /// Frames before fade sound plays (ForceShieldPlayFadeSoundTime= in [General]).
@@ -2910,14 +2910,14 @@ impl GeneralRules {
             ambient_change_step: (ambient_change_step * 100.0) as i32,
             iron_curtain_duration: combat_damage
                 .and_then(|s| s.get_i32("IronCurtainDuration"))
-                .unwrap_or(750) as u32,
+                .unwrap_or(750),
             iron_curtain_invoke_anim: general
                 .get("IronCurtainInvokeAnim")
                 .unwrap_or("IRONBLST")
                 .to_string(),
             ion_blast_anim: general.get("IonBlast").unwrap_or("").trim().to_string(),
             force_shield_radius: general.get_i32("ForceShieldRadius").unwrap_or(4) as u32,
-            force_shield_duration: general.get_i32("ForceShieldDuration").unwrap_or(500) as u32,
+            force_shield_duration: general.get_i32("ForceShieldDuration").unwrap_or(500),
             force_shield_blackout_duration: general
                 .get_i32("ForceShieldBlackoutDuration")
                 .unwrap_or(1000) as u32,

@@ -22,6 +22,7 @@ use crate::sim::bridge_state::{
 use crate::sim::command::Command;
 use crate::sim::components::{Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::timer::CdTimer;
 use std::collections::BTreeMap;
 
 /// Minimal 20x20 flat terrain so the repair path's `(bs, terrain)` gate
@@ -490,7 +491,7 @@ fn advance_until_c4_claim(
             .get(target_id)
             .and_then(|b| b.pending_c4_detonation)
         {
-            return pending.start_frame as u64;
+            return pending.timer.start_frame() as u64;
         }
     }
     panic!("C4 plant was not claimed after entering the target building cell");
@@ -648,6 +649,18 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
     );
 }
 
+/// `seal`'s C4 charge on `target`, planted this frame.
+fn plant_c4(sim: &mut Simulation, rules: &RuleSet, target: u64, seal: u64) {
+    sim.substrate
+        .entities
+        .get_mut(target)
+        .unwrap()
+        .pending_c4_detonation = Some(PendingC4Detonation {
+        timer: CdTimer::started(sim.session.binary_frame as i32, rules.c4_delay_ticks as i32),
+        source_entity_id: Some(seal),
+    });
+}
+
 #[test]
 fn c4_on_cabhut_without_bridge_clears_pending_marker() {
     let (mut sim, rules, heights) = build_sim();
@@ -655,15 +668,7 @@ fn c4_on_cabhut_without_bridge_clears_pending_marker() {
     let seal = spawn_seal(&mut sim, 10, 10);
     let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
     sim.bridge_state = Some(BridgeRuntimeState::default());
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let mut bridge_state_changed_seen = false;
     for _ in 0..(rules.c4_delay_ticks as u64 + 1) {
@@ -694,22 +699,16 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
     let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
     sim.substrate
         .entities
         .get_mut(cabhut)
         .unwrap()
         .invulnerability = Some(InvulnerabilityState {
-        start_frame: sim.session.tick as u32,
-        duration_frames: rules.c4_delay_ticks + 20,
+        timer: crate::sim::timer::CdTimer::started(
+            sim.session.tick as i32,
+            rules.c4_delay_ticks as i32 + 20,
+        ),
         kind: InvulnKind::IronCurtain,
     });
 
@@ -745,15 +744,7 @@ fn c4_on_cabhut_bridgehead_fallback_collapses_bridge() {
     let seal = spawn_seal(&mut sim, 9, 10);
     let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
     seed_hut_fallback_bridgehead_layout(&mut sim);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -775,15 +766,7 @@ fn c4_on_cabhut_pure_bridgehead_fallback_uses_opposite_anchor_offset() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_hut_pure_bridgehead_fallback_layout(&mut sim);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -812,15 +795,7 @@ fn c4_on_cabhut_fallback_rejects_anchor_or_direction_flags_alone() {
         .unwrap();
     starter.bridge_facts.raw_flags = BRIDGE_FLAG_ANCHOR_SELF | BRIDGE_FLAG_DIRECTION_ZERO;
     starter.bridge_facts.anchor = None;
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -841,15 +816,7 @@ fn stock_high_cabhut_no_overlay_fallback_collapses_bridge() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_high_cabhut_no_overlay_fallback_fixture(&mut sim);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -871,15 +838,7 @@ fn stock_low_cabhut_no_overlay_fallback_collapses_bridge() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_low_cabhut_no_overlay_fallback_fixture(&mut sim);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -901,15 +860,7 @@ fn stock_cabhut_no_overlay_without_starter_is_noop() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 9, 10);
     seed_stock_no_starter_cabhut_no_overlay_fixture(&mut sim);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -939,15 +890,7 @@ fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL beside the hut");
     let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let mut changed = false;
     for _ in 0..=rules.c4_delay_ticks {
@@ -976,15 +919,7 @@ fn c4_on_cabhut_low_terminal_overlay_0x65_uses_overlay_first_scan() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
     seed_terminal_overlay_with_fallback_trap(&mut sim, 0x65);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 
@@ -1009,15 +944,7 @@ fn c4_on_cabhut_high_terminal_overlay_0xe8_uses_overlay_first_scan() {
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
     seed_terminal_overlay_with_fallback_trap(&mut sim, 0xE8);
-    sim.substrate
-        .entities
-        .get_mut(cabhut)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, cabhut, seal);
 
     let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
 

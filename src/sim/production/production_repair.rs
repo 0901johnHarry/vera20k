@@ -312,9 +312,9 @@ fn auto_repair_start(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     };
     let (longest, shortest) = (scaled(1800), scaled(225));
     let time_left = sim.scenario_rng.next_range_i32_inclusive(shortest, longest);
-    let now = i64::from(sim.session.binary_frame as i32);
+    let now = sim.session.binary_frame as i32;
     if let Some(house) = sim.houses.get_mut(&owner) {
-        house.repair_latch_timer.arm(now, time_left);
+        house.repair_latch_timer.start(now, time_left);
     }
 }
 

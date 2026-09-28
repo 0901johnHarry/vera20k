@@ -15,6 +15,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotion::LocomotorRuntimePayload;
 #[cfg(test)]
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::timer::CdTimer;
 
 /// Literal Drive/Ship slope interpolation duration installed by both native
 /// `Process` implementations.
@@ -72,19 +73,12 @@ impl SlopeTransitionState {
         self.transition_total = SLOPE_TRANSITION_FRAMES;
     }
 
+    /// The timer's time left. Native starts it (`+0x24`/`+0x2C`) with the
+    /// same value it writes to the total (`+0x30`), so the total stands for
+    /// both.
     pub(crate) fn remaining(&self, binary_frame: u32) -> i32 {
-        if self.transition_total == 0 {
-            return 0;
-        }
-        if self.start_frame == -1 {
-            return i32::from(self.transition_total);
-        }
-        let elapsed = (binary_frame as i32).wrapping_sub(self.start_frame);
-        if elapsed < i32::from(self.transition_total) {
-            i32::from(self.transition_total).wrapping_sub(elapsed)
-        } else {
-            0
-        }
+        CdTimer::from_raw(self.start_frame, i32::from(self.transition_total))
+            .remaining(binary_frame as i32)
     }
 
     pub(crate) fn render_phase(&self, binary_frame: u32) -> SlopeRenderPhase {

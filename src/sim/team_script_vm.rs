@@ -15,6 +15,7 @@ use crate::rules::ruleset::CountryIdx;
 use crate::rules::team_ai_ini::TeamAiDefinitionSource;
 use crate::sim::command::CommandEnvelope;
 use crate::sim::intern::InternedId;
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::NativeF64Bits;
 
 mod registry_install;
@@ -41,9 +42,7 @@ pub struct TeamScriptDefinition {
 /// resolution. The ID alone is insufficient for custom rules that register
 /// the same name in multiple native type families. TaskForce entries and
 /// AITrigger token 6 both store this shape.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TeamMemberTypeIdentity {
     pub category: ObjectCategory,
     pub id: InternedId,
@@ -249,8 +248,8 @@ pub struct TeamScriptState {
     response_latch_7d: bool,
     response_latch_7e: bool,
     response_latch_83: bool,
-    response_suspend_start_frame: i32,
-    response_suspend_duration_frames: i32,
+    /// `+0x64`/`+0x6C`, the base-defense suspension.
+    response_suspend: CdTimer,
     members: Vec<u64>,
     // Stable identity-aware admission summary. A vector keeps the ordered
     // category-distinct keys JSON-serializable as well as snapshot-safe.
@@ -305,8 +304,8 @@ impl TeamScriptState {
             self.response_latch_7d,
             self.response_latch_7e,
             self.response_latch_83,
-            self.response_suspend_start_frame,
-            self.response_suspend_duration_frames,
+            self.response_suspend.start_frame(),
+            self.response_suspend.duration(),
         )
     }
 
@@ -536,8 +535,7 @@ impl TeamScriptVm {
             team.response_latch_7d = true;
             team.response_latch_7e = true;
             team.response_latch_83 = true;
-            team.response_suspend_start_frame = current_frame;
-            team.response_suspend_duration_frames = duration_frames;
+            team.response_suspend = CdTimer::started(current_frame, duration_frames);
         }
         removed
     }
@@ -591,12 +589,7 @@ impl TeamScriptVm {
             // Equality expires in this pass; only +0x83 clears here, so the
             // represented script body may resume without a one-frame gap.
             if team.response_latch_83 {
-                if response_suspend_remaining(
-                    team.response_suspend_start_frame,
-                    team.response_suspend_duration_frames,
-                    current_frame,
-                ) != 0
-                {
+                if !team.response_suspend.expired(current_frame) {
                     continue;
                 }
                 team.response_latch_83 = false;
@@ -614,16 +607,17 @@ impl TeamScriptVm {
                         continue;
                     }
                 } else {
-                    let required_count =
-                        team.team_type_id
-                            .and_then(|team_type_id| team_types.get(&team_type_id))
-                            .and_then(|team_type| task_forces.get(&team_type.task_force_id))
-                            .map(|task_force| {
-                                task_force.entries.iter().fold(0i32, |total, entry| {
-                                    total.wrapping_add(entry.count)
-                                })
-                            })
-                            .unwrap_or(team.members.len() as i32);
+                    let required_count = team
+                        .team_type_id
+                        .and_then(|team_type_id| team_types.get(&team_type_id))
+                        .and_then(|team_type| task_forces.get(&team_type.task_force_id))
+                        .map(|task_force| {
+                            task_force
+                                .entries
+                                .iter()
+                                .fold(0i32, |total, entry| total.wrapping_add(entry.count))
+                        })
+                        .unwrap_or(team.members.len() as i32);
                     if team.members.len() as i32 == required_count {
                         team.reached_required_strength_78 = true;
                     }
@@ -746,12 +740,7 @@ impl TeamScriptVm {
             // raw body 0x006EC5A0..0x006EC720, feeds one normalized remaining
             // time for +0x64/+0x6C before the +0x78/+0x7D/+0x7E/+0x83
             // bytes. It skips +0x68 and never feeds raw start.
-            response_suspend_remaining(
-                team.response_suspend_start_frame,
-                team.response_suspend_duration_frames,
-                current_frame,
-            )
-            .hash(hasher);
+            team.response_suspend.remaining(current_frame).hash(hasher);
             team.reached_required_strength_78.hash(hasher);
             team.response_latch_7d.hash(hasher);
             team.response_latch_7e.hash(hasher);
@@ -819,8 +808,7 @@ impl TeamScriptVm {
                 response_latch_7d: true,
                 response_latch_7e: false,
                 response_latch_83: false,
-                response_suspend_start_frame: current_frame,
-                response_suspend_duration_frames: 0,
+                response_suspend: CdTimer::started(current_frame, 0),
                 members,
                 member_type_counts: member_type_counts.into_iter().collect(),
                 target,
@@ -830,22 +818,6 @@ impl TeamScriptVm {
             },
         );
         id
-    }
-}
-
-/// Native signed/wrapping remaining time for the Team base-defense suspension.
-///
-/// gamemd-derived: `TeamClass::AI @ 0x006E9140` and the Team CRC callback at
-/// vtable `+0x34` (`0x006EC5A0`) share this exact `+0x64/+0x6C` calculation.
-fn response_suspend_remaining(start_frame: i32, duration_frames: i32, now: i32) -> i32 {
-    if start_frame == -1 {
-        return duration_frames;
-    }
-    let elapsed = now.wrapping_sub(start_frame);
-    if elapsed < duration_frames {
-        duration_frames.wrapping_sub(elapsed)
-    } else {
-        0
     }
 }
 
@@ -1299,18 +1271,6 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_05_response_suspend_remaining_matches_native_signed_boundaries() {
-        assert_eq!(response_suspend_remaining(100, 3, 100), 3);
-        assert_eq!(response_suspend_remaining(100, 3, 102), 1);
-        assert_eq!(response_suspend_remaining(100, 3, 103), 0);
-        assert_eq!(response_suspend_remaining(100, 0, 100), 0);
-        assert_eq!(response_suspend_remaining(100, -7, 100), 0);
-        assert_eq!(response_suspend_remaining(-1, 9, i32::MAX), 9);
-        assert_eq!(response_suspend_remaining(-1, -7, i32::MIN), -7);
-        assert_eq!(response_suspend_remaining(i32::MAX - 1, 5, i32::MIN), 3);
-    }
-
-    #[test]
     fn gsi_04_05_team_constructor_uses_native_response_latch_defaults() {
         let owner = InternedId::from_index(1);
         let script = InternedId::from_index(2);
@@ -1498,24 +1458,18 @@ mod tests {
             state.response_latch_7d = true;
             state.response_latch_7e = true;
             state.response_latch_83 = true;
-            state.response_suspend_start_frame = 90;
-            state.response_suspend_duration_frames = 20;
+            state.response_suspend = CdTimer::started(90, 20);
         }
         {
             let state = second.teams.get_mut(&team).unwrap();
             state.response_latch_7d = true;
             state.response_latch_7e = true;
             state.response_latch_83 = true;
-            state.response_suspend_start_frame = 95;
-            state.response_suspend_duration_frames = 15;
+            state.response_suspend = CdTimer::started(95, 15);
         }
 
         assert_eq!(state_hash_at(&first, 100), state_hash_at(&second, 100));
-        second
-            .teams
-            .get_mut(&team)
-            .unwrap()
-            .response_suspend_duration_frames = 16;
+        second.teams.get_mut(&team).unwrap().response_suspend = CdTimer::started(95, 16);
         assert_ne!(state_hash_at(&first, 100), state_hash_at(&second, 100));
     }
 
@@ -1536,13 +1490,10 @@ mod tests {
              [TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=3\n\
              [AITriggerTypes]\nAT=Trigger,TT1,British,2,4,E1,{comparison},40,10,40,1,0,1,0,TT2,1,0,1\n"
         ));
-        let map = IniFile::from_str(
-            "[TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=9\n",
-        );
+        let map = IniFile::from_str("[TaskForces]\n0=TF1\n[TF1]\n0=-2,E1\nGroup=9\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &map, true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty());
         assert_eq!(vm.registry_counts(), (1, 1, 2, 1));
@@ -1574,20 +1525,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["AT"]
         );
-        assert!(vm.teams.is_empty(), "definition ingress must not create Teams");
+        assert!(
+            vm.teams.is_empty(),
+            "definition ingress must not create Teams"
+        );
 
         let tt1 = interner.get("TT1").unwrap();
         let metadata = vm.team_type_ini(tt1).expect("TeamType metadata");
         assert_eq!(metadata.max_teams, -1);
         assert!(metadata.autocreate);
         assert!(metadata.are_team_members_recruitable);
-        assert_eq!(vm.task_forces[&interner.get("TF1").unwrap()].entries[0].count, -2);
+        assert_eq!(
+            vm.task_forces[&interner.get("TF1").unwrap()].entries[0].count,
+            -2
+        );
         assert_eq!(
             vm.task_forces[&interner.get("TF1").unwrap()].group,
             9,
             "map TaskForce re-read must preserve its signed Group in the resolved registry"
         );
-        assert_eq!(vm.scripts[&interner.get("S1").unwrap()].actions[0].action_id, -1);
+        assert_eq!(
+            vm.scripts[&interner.get("S1").unwrap()].actions[0].action_id,
+            -1
+        );
         assert_eq!(
             vm.scripts[&interner.get("S1").unwrap()].source,
             TeamAiDefinitionSource::FixedAimd
@@ -1639,7 +1599,13 @@ mod tests {
             restored.ai_trigger(interner.get("AT").unwrap()),
             vm.ai_trigger(interner.get("AT").unwrap())
         );
-        assert_eq!(restored.task_force(interner.get("TF1").unwrap()).unwrap().group, 9);
+        assert_eq!(
+            restored
+                .task_force(interner.get("TF1").unwrap())
+                .unwrap()
+                .group,
+            9
+        );
         assert_eq!(
             restored.scripts[&interner.get("S1").unwrap()].source,
             TeamAiDefinitionSource::FixedAimd
@@ -1686,8 +1652,7 @@ mod tests {
         ));
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let trigger = vm.ai_trigger(interner.get("AT").unwrap()).unwrap();
@@ -1713,8 +1678,7 @@ mod tests {
 
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), false);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(
             vm.ai_trigger(interner.get("AT").unwrap())
@@ -1770,8 +1734,7 @@ mod tests {
         );
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert_eq!(
             diagnostics,
@@ -1849,17 +1812,14 @@ mod tests {
         );
         let duplicate = definition("DUPLICATE");
         assert_eq!(duplicate.combined_movement_zone, MovementZone::Infantry);
-        let duplicate_task_force = vm
-            .task_force(interner.get("DUP_TF").unwrap())
-            .unwrap();
+        let duplicate_task_force = vm.task_force(interner.get("DUP_TF").unwrap()).unwrap();
         assert_eq!(duplicate_task_force.entries.len(), 1);
         let duplicate_identity = TeamMemberTypeIdentity {
             category: ObjectCategory::Infantry,
             id: interner.get("DUP").unwrap(),
         };
         assert_eq!(
-            duplicate_task_force.entries[0].member_type,
-            duplicate_identity,
+            duplicate_task_force.entries[0].member_type, duplicate_identity,
             "the first searched native family is retained instead of an ambiguous name"
         );
 
@@ -1942,8 +1902,7 @@ mod tests {
         );
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let team_type = &vm.team_types[&interner.get("TT").unwrap()];
@@ -1982,9 +1941,8 @@ mod tests {
             "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\n",
         ))
         .expect("minimal rules");
-        let fixed = IniFile::from_str(
-            "[TaskForces]\n0=PARTIAL_TF\n[PARTIAL_TF]\n0=1,E1\n1=2,GHOST\n",
-        );
+        let fixed =
+            IniFile::from_str("[TaskForces]\n0=PARTIAL_TF\n[PARTIAL_TF]\n0=1,E1\n1=2,GHOST\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
         let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
@@ -2108,9 +2066,8 @@ mod tests {
             "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\n",
         ))
         .expect("minimal rules");
-        let fixed = IniFile::from_str(
-            "[TeamTypes]\n0=ONLY\n[ONLY]\nScript=NONE\nTaskForce=<NONE>\n",
-        );
+        let fixed =
+            IniFile::from_str("[TeamTypes]\n0=ONLY\n[ONLY]\nScript=NONE\nTaskForce=<NONE>\n");
         let registry = TeamAiIniRegistry::from_sources(&fixed, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
         let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
@@ -2158,8 +2115,7 @@ mod tests {
         let rules = RuleSet::from_ini(&rules_ini).expect("load retail rules");
         let registry = TeamAiIniRegistry::from_sources(&aimd, &IniFile::from_str(""), true);
         let mut interner = StringInterner::new();
-        let (vm, diagnostics) =
-            TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
+        let (vm, diagnostics) = TeamScriptVm::from_ini_registry(&registry, &mut interner, &rules);
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(vm.registry_counts(), (132, 88, 163, 165));
@@ -2272,9 +2228,7 @@ mod tests {
             .collect::<String>();
         assert_eq!(threshold_rows.lines().count(), 165);
         assert_eq!(
-            crate::util::sha256::sha256_hex(
-                threshold_rows.as_bytes()
-            ),
+            crate::util::sha256::sha256_hex(threshold_rows.as_bytes()),
             "76096bc2d9592ff4c1054c23a38660e74c3860afbc2882db5c6dcc2074da8aad",
             "every game-mode-nonzero retail AITrigger threshold must match the native oracle"
         );
@@ -2282,12 +2236,12 @@ mod tests {
         let zero_mode_registry =
             TeamAiIniRegistry::from_sources(&aimd, &IniFile::from_str(""), false);
         let mut zero_mode_interner = StringInterner::new();
-        let (zero_mode_vm, zero_mode_diagnostics) = TeamScriptVm::from_ini_registry(
-            &zero_mode_registry,
-            &mut zero_mode_interner,
-            &rules,
+        let (zero_mode_vm, zero_mode_diagnostics) =
+            TeamScriptVm::from_ini_registry(&zero_mode_registry, &mut zero_mode_interner, &rules);
+        assert!(
+            zero_mode_diagnostics.is_empty(),
+            "{zero_mode_diagnostics:?}"
         );
-        assert!(zero_mode_diagnostics.is_empty(), "{zero_mode_diagnostics:?}");
         let zero_mode_rows = zero_mode_vm
             .ai_trigger_order()
             .iter()
@@ -2302,9 +2256,7 @@ mod tests {
             .collect::<String>();
         assert_eq!(zero_mode_rows.lines().count(), 165);
         assert_eq!(
-            crate::util::sha256::sha256_hex(
-                zero_mode_rows.as_bytes()
-            ),
+            crate::util::sha256::sha256_hex(zero_mode_rows.as_bytes()),
             "3253b17c65d2006bf542c38a811ec68ef2847e588dc1f21165e7070af5d5e1f7",
             "every game-mode-zero retail AITrigger threshold must match the native oracle"
         );

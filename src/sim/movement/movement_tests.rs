@@ -6990,8 +6990,7 @@ fn deferred_crush_uses_binary_frame_after_cell_classification_with_offset_clocks
             victim.lifecycle.in_limbo = false;
             victim.lifecycle.cell_marked = true;
             victim.invulnerability = Some(InvulnerabilityState {
-                start_frame: 90,
-                duration_frames: 30,
+                timer: crate::sim::timer::CdTimer::started(90, 30),
                 kind: shield,
             });
             let health = victim.health.current;

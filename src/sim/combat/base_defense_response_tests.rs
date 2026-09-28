@@ -14,6 +14,7 @@ use crate::sim::team_script_vm::{
     TeamMemberTypeIdentity, TeamScriptAction, TeamScriptDefinition, TeamScriptMember,
     TeamTaskForceDefinition, TeamTaskForceEntry, TeamTypeDefinition,
 };
+use crate::sim::timer::CdTimer;
 
 fn threat(cost: i32, distance: i32, range: i32, speed: i32) -> ThreatFacts {
     ThreatFacts {
@@ -91,12 +92,7 @@ fn clear_terrain(width: u16, height: u16) -> ResolvedTerrainGrid {
 }
 
 #[test]
-fn gsi_04_05_cooldown_uses_inactive_sentinel_and_signed_wrapping_elapsed() {
-    assert_eq!(cooldown_remaining(-1, 225, 100), 0);
-    assert_eq!(cooldown_remaining(100, 225, 100), 225);
-    assert_eq!(cooldown_remaining(100, 225, 324), 1);
-    assert_eq!(cooldown_remaining(100, 225, 325), 0);
-    assert_eq!(cooldown_remaining(i32::MAX - 2, 6, i32::MIN + 1), 2);
+fn gsi_04_05_response_delay_is_the_native_ftol() {
     assert_eq!(response_delay_frames(0.25), 225);
     assert_eq!(response_delay_frames(-0.25), -225);
 }
@@ -217,8 +213,8 @@ fn gsi_04_05_zero_budget_still_suspends_low_priority_teams_before_scan_exit() {
             .get(2)
             .unwrap()
             .base_defense_response
-            .cooldown_start_frame,
-        -1
+            .cooldown,
+        CdTimer::from_raw(-1, 0)
     );
 }
 
@@ -309,8 +305,10 @@ fn gsi_04_05_positive_transaction_queues_in_order_and_arms_only_on_overshoot() {
         expected_rng.logical_state()
     );
     let attacker = context.entities.get(2).unwrap();
-    assert_eq!(attacker.base_defense_response.cooldown_start_frame, 41);
-    assert_eq!(attacker.base_defense_response.cooldown_duration_frames, 225);
+    assert_eq!(
+        attacker.base_defense_response.cooldown,
+        CdTimer::started(41, 225)
+    );
 }
 
 #[test]

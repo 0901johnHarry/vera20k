@@ -1229,13 +1229,17 @@ impl Simulation {
                 // `HouseClass+0x57D4` funds-nag TimerStruct and the
                 // `[0xA8F040]` low-power guard (`HouseClass::Update
                 // 0x004F8B3C..0x004F8DAB`): both live in the native save.
-                house.eva_funds_timer.hash(hasher);
+                // Folded with a 64-bit start, as before the timer was a
+                // `CdTimer`.
+                i64::from(house.eva_funds_timer.start_frame()).hash(hasher);
+                house.eva_funds_timer.duration().hash(hasher);
                 house.eva_low_power_guard.hash(hasher);
             }
             if schema.includes(HashFeature::BuildingRepair) {
                 house.repair_delay.to_bits().hash(hasher);
                 house.repair_start_latch.hash(hasher);
-                house.repair_latch_timer.hash(hasher);
+                i64::from(house.repair_latch_timer.start_frame()).hash(hasher);
+                house.repair_latch_timer.duration().hash(hasher);
             }
             // Tagged and folded only off their constructor values, so a house
             // without computer production hashes as earlier schemas did.
@@ -1584,8 +1588,8 @@ impl Simulation {
             site.level_steps.hash(hasher);
             site.duration.hash(hasher);
             site.remaining.hash(hasher);
-            site.level_timer_start.hash(hasher);
-            site.level_timer_duration.hash(hasher);
+            site.level_timer.start_frame().hash(hasher);
+            site.level_timer.duration().hash(hasher);
         }
     }
 
@@ -2039,11 +2043,11 @@ impl Simulation {
                 cloak.late_visible.hash(hasher);
                 cloak.force_visible_call.hash(hasher);
                 cloak.step_delta.hash(hasher);
-                cloak.step_timer.start_frame.hash(hasher);
+                cloak.step_timer.timer.start_frame().hash(hasher);
                 cloak.step_timer.speed.hash(hasher);
-                cloak.step_timer.duration_frames.hash(hasher);
-                cloak.recloak_delay_start.hash(hasher);
-                cloak.recloak_delay_frames.hash(hasher);
+                cloak.step_timer.timer.duration().hash(hasher);
+                cloak.recloak_delay.start_frame().hash(hasher);
+                cloak.recloak_delay.duration().hash(hasher);
                 if !schema.includes(HashFeature::RearmTimer) {
                     entity.rearm_timer.start_frame().hash(hasher);
                     entity.rearm_timer.duration().hash(hasher);
@@ -2075,17 +2079,17 @@ impl Simulation {
                 disguise.disguise_creation_frame.hash(hasher);
                 disguise.disguise_type.hash(hasher);
                 disguise.disguised_as_house.hash(hasher);
-                disguise.reveal.start_frame.hash(hasher);
+                disguise.reveal.timer.start_frame().hash(hasher);
                 disguise.reveal.neighbor_cell_packed.hash(hasher);
-                disguise.reveal.duration_frames.hash(hasher);
+                disguise.reveal.timer.duration().hash(hasher);
             } else {
                 0u8.hash(hasher);
             }
 
             if let Some(ref inv) = entity.invulnerability {
                 1u8.hash(hasher);
-                inv.start_frame.hash(hasher);
-                inv.duration_frames.hash(hasher);
+                inv.timer.start_frame().hash(hasher);
+                inv.timer.duration().hash(hasher);
                 let kind_byte: u8 = match inv.kind {
                     crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain => 0,
                     crate::sim::superweapon::invulnerability::InvulnKind::ForceShield => 1,
@@ -2150,7 +2154,8 @@ impl Simulation {
                 Some(pending) => {
                     true.hash(hasher);
                     pending
-                        .remaining_at(self.session.binary_frame as i32)
+                        .timer
+                        .remaining(self.session.binary_frame as i32)
                         .hash(hasher);
                     pending.source_entity_id.hash(hasher);
                 }
@@ -3819,9 +3824,10 @@ mod state_hash_field_tests {
     /// dedicated pre-v133 probe reproduces the v132 layout.
     #[test]
     fn house_eva_advice_affects_only_current_v133_hash_schema() {
-        use crate::sim::house_state::{HouseFrameTimer, HouseState};
+        use crate::sim::house_state::{HouseState, eva_funds_timer_at_construction};
+        use crate::sim::timer::CdTimer;
 
-        fn fixture(timer: HouseFrameTimer, guard: bool) -> Simulation {
+        fn fixture(timer: CdTimer, guard: bool) -> Simulation {
             let mut sim = Simulation::new();
             let owner = sim.interner.intern("Americans");
             let mut house = HouseState::new(owner, 0, Some(owner), true, 0, 10);
@@ -3831,15 +3837,9 @@ mod state_hash_field_tests {
             sim
         }
 
-        let baseline = fixture(HouseFrameTimer::default(), false);
-        let armed = fixture(
-            HouseFrameTimer {
-                start_frame: 40,
-                duration: 2_880,
-            },
-            false,
-        );
-        let guarded = fixture(HouseFrameTimer::default(), true);
+        let baseline = fixture(eva_funds_timer_at_construction(), false);
+        let armed = fixture(CdTimer::started(40, 2_880), false);
+        let guarded = fixture(eva_funds_timer_at_construction(), true);
 
         assert_ne!(baseline.state_hash(), armed.state_hash());
         assert_ne!(baseline.state_hash(), guarded.state_hash());
@@ -4059,8 +4059,7 @@ mod state_hash_field_tests {
         let mut entity = entity;
         entity.base_defense_response.recruitable_b = false;
         entity.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(7)));
-        entity.base_defense_response.cooldown_start_frame = 12;
-        entity.base_defense_response.cooldown_duration_frames = 225;
+        entity.base_defense_response.cooldown = crate::sim::timer::CdTimer::started(12, 225);
         changed.substrate.entities.insert(entity);
         assert_ne!(baseline_hash, changed.state_hash());
     }
@@ -5137,8 +5136,7 @@ mod c4_hash_tests {
             .get_mut(id)
             .unwrap()
             .pending_c4_detonation = Some(PendingC4Detonation {
-            start_frame: 100,
-            duration_frames: 30,
+            timer: crate::sim::timer::CdTimer::started(100, 30),
             source_entity_id: Some(7),
         });
         let h_with_pending = sim.state_hash();

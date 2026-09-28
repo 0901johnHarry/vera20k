@@ -83,8 +83,10 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             target.position.exact_z_leptons = Some(624);
             target.health.current = input["receiver_health"].as_i64().unwrap() as i32;
             target.invulnerability = Some(InvulnerabilityState {
-                start_frame: input["ic_start"].as_u64().unwrap() as u32,
-                duration_frames: input["ic_duration"].as_u64().unwrap() as u32,
+                timer: crate::sim::timer::CdTimer::started(
+                    input["ic_start"].as_u64().unwrap() as i32,
+                    input["ic_duration"].as_u64().unwrap() as i32,
+                ),
                 kind: InvulnKind::IronCurtain,
             });
         }
@@ -278,8 +280,10 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
             entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap();
             entity.lifecycle.in_limbo = input["limbo"].as_bool().unwrap();
             entity.invulnerability = (input["ic"] == true).then(|| InvulnerabilityState {
-                start_frame: input["start"].as_u64().unwrap() as u32,
-                duration_frames: input["duration"].as_u64().unwrap() as u32,
+                timer: crate::sim::timer::CdTimer::started(
+                    input["start"].as_u64().unwrap() as i32,
+                    input["duration"].as_u64().unwrap() as i32,
+                ),
                 kind: if input["ic_kind"] == 0 {
                     InvulnKind::IronCurtain
                 } else {
