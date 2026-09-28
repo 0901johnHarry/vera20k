@@ -63,6 +63,86 @@ binary provenance; no source-file touching or hand-written wait loops are needed
 Python tool changes also run `python -m tools.run_tests` with Python 3.12+ and
 `tools/requirements-test.txt` installed; the index lists optional retail evidence checks.
 
+## External AI opponent
+
+VERA20k can send a computer house's strategic observation to an OpenAI-compatible
+Chat Completions endpoint during a single-player skirmish. This is optional; the
+existing local AI remains available when the API has not taken control or its lease
+expires.
+
+Add the following table to your local, Git-ignored `config.toml`. Use the full
+Chat Completions URL and a model name accepted by that endpoint:
+
+```toml
+[external_ai]
+enabled = true
+endpoint = "https://api.example.com/v1/chat/completions"
+model = "your-model-name"
+
+# Optional settings; these are the defaults.
+request_interval_frames = 225
+request_timeout_secs = 15
+max_actions_per_response = 16
+control_lease_frames = 450
+```
+
+Set `VERA20K_AI_API_KEY` in the environment before launching the game. The key
+does not belong in `config.toml`, source control, save files, or replays. The
+authorization header is omitted when the variable is unset, for endpoints that do
+not require a key.
+
+PowerShell:
+
+```powershell
+$env:VERA20K_AI_API_KEY = "your-local-key"
+.\target\release\vera20k.exe
+```
+
+Linux or macOS:
+
+```sh
+export VERA20K_AI_API_KEY="your-local-key"
+./target/release/vera20k
+```
+
+Each request includes the controlled house name, frame, credits, map dimensions,
+production queue and available production options, and the house's living units
+and buildings. Enemy facts are included only while the house can currently see
+them; hidden, gap-covered, cloaked, disguised, and invisible enemies are omitted.
+The observation contains in-game strategic data, so enable the feature only when
+you are comfortable sending that data to the configured service.
+
+The provider's `choices[0].message.content` must contain a JSON object with an
+`actions` array. The game accepts only these action shapes:
+
+```json
+{
+  "actions": [
+    { "type": "queue_production", "type_id": "GI" },
+    { "type": "move", "entity_id": 42, "target_rx": 12, "target_ry": 8, "queue": false },
+    { "type": "attack_move", "entity_id": 42, "target_rx": 14, "target_ry": 9, "queue": false },
+    { "type": "guard", "entity_id": 42, "target_id": null }
+  ]
+}
+```
+
+An empty `actions` array is allowed. Production must appear in the supplied
+options. Unit IDs must belong to that computer house and still be active; guard
+targets must be friendly or currently visible to that house. Map destinations
+must be in bounds. The game checks every response against the current match
+before queuing its commands; rejected individual actions are ignored.
+
+Requests are scheduled per eligible computer house at the configured binary-frame
+interval. A successful, fresh response renews a replayable control lease and its
+accepted actions enter the ordinary command queue. Replays use those recorded
+commands and hashes without contacting the provider.
+
+Timeouts, malformed responses, stale responses, invalid settings, and provider
+errors do not renew a lease. If a previous lease is still active, the local AI
+resumes when that lease expires; otherwise it continues immediately. Retrying
+backs off after failures. Only computer houses under an active lease skip the
+current placeholder AI decisions.
+
 ## Your first pull request
 
 1. **Claim an issue** by commenting on it. One claim at a time; a claim with no update for 14

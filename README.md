@@ -29,7 +29,7 @@ engine, VERA20k aims to reproduce Yuri's Revenge itself.
 ## Status
 
 **Pre-alpha** (September 2026). A local skirmish on retail maps is playable on Windows against
-a placeholder AI.
+the placeholder AI, with optional OpenAI-compatible API control for computer houses.
 
 | Works | Partial or in progress | Not yet |
 |---|---|---|
@@ -61,6 +61,9 @@ relative `ra2_dir` paths are relative to that config file. Without a config, ass
 are searched beside the executable. For a macOS `.app`, put the config beside the
 binary in `Contents/MacOS/` so Finder launches work independently of the working
 directory. Keep this machine-specific config out of Git.
+
+To configure an optional external API opponent for a single-player skirmish, see
+[External AI setup](CONTRIBUTING.md#external-ai-opponent).
 
 `cargo test -p vera20k --lib` runs the tests, no game needed. More setup details are in
 [CONTRIBUTING.md](CONTRIBUTING.md#set-up).
