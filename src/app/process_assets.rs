@@ -58,6 +58,12 @@ impl ProcessAssets {
         self.native_rules.is_some()
     }
 
+    pub(crate) fn native_rules(
+        &self,
+    ) -> Option<&crate::rules::process_owner::NativeRulesProcessOwner> {
+        self.native_rules.as_ref()
+    }
+
     /// Split the two process-resident mutable authorities used by a synchronous
     /// scenario load. The leased MIX manager lives in `LoadingJob`; the native
     /// Rules registry remains here so every `?` after its destructive reset
@@ -82,13 +88,18 @@ impl ProcessAssets {
     /// Field-level split borrow: the resident manager and the terrain-variant
     /// cache live on the same owner, and the RMG preview path needs both at
     /// once.
-    pub(crate) fn manager_mut_with_tile_cache(
+    pub(crate) fn manager_and_rules_with_tile_cache(
         &mut self,
     ) -> (
         Option<&mut AssetManager>,
+        Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
         &mut crate::map::tile_variant_selector::TileVariantSelectorCache,
     ) {
-        (self.manager.as_mut(), &mut self.tile_variant_selector_cache)
+        (
+            self.manager.as_mut(),
+            self.native_rules.as_ref(),
+            &mut self.tile_variant_selector_cache,
+        )
     }
 
     pub(crate) fn is_available(&self) -> bool {

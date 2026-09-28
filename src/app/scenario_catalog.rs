@@ -92,7 +92,7 @@ mod tests {
             .and_then(|config| {
                 let mut assets =
                     crate::assets::asset_manager::AssetManager::new(&config.paths.ra2_dir).ok()?;
-                crate::app::frontend::list_maps::list_skirmish_scenario_records_with_assets(
+                crate::map::scenario_sources::list_skirmish_scenario_records_with_assets(
                     &config.paths.ra2_dir,
                     &mut assets,
                     None,

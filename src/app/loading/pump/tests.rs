@@ -547,7 +547,7 @@ fn gsi_04_12_generated_prefix_uses_accepted_staging_once() {
         .collect();
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         regenerated_map,
-        crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        crate::map::source::LoadedMapSource::Generated {
             seed_name: selected.to_ascii_lowercase(),
         },
     );
@@ -698,12 +698,12 @@ fn load_descriptor_source_family_format_matrix() {
         (Some(-7), -7, false),
     ];
     for source in [
-        crate::app::frontend::list_maps::LoadedMapSource::Loose {
+        crate::map::source::LoadedMapSource::Loose {
             path: std::path::PathBuf::from("mp01t4.map"),
             payload_len: 17,
             source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
-        crate::app::frontend::list_maps::LoadedMapSource::Mix {
+        crate::map::source::LoadedMapSource::Mix {
             logical_name: "mp01t4.map".to_string(),
             source_archive: "mapsmd03.mix".to_string(),
             entry_id: 0x1234,
@@ -766,7 +766,7 @@ fn load_descriptor_source_family_format_matrix() {
         let accepted = accepted_random_map_with_starts(&selected, 0x2345, &starts, &starts);
         let mut map = prefix_test_map(&starts);
         map.basic.new_ini_format = Some(4);
-        let source = crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        let source = crate::map::source::LoadedMapSource::Generated {
             seed_name: selected.to_ascii_lowercase(),
         };
         let initial =
@@ -799,7 +799,7 @@ fn accepted_and_resolved_legacy_share_one_stock_cursor_shape() {
     use crate::app::loading::fresh_scenario::{FreshScenarioFamily, FreshStartupProvenance};
 
     let starts = [(0, 20, 24), (1, 42, 46)];
-    let source = crate::app::frontend::list_maps::LoadedMapSource::Loose {
+    let source = crate::map::source::LoadedMapSource::Loose {
         path: std::path::PathBuf::from("mp01t4.map"),
         payload_len: 23,
         source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
@@ -868,7 +868,7 @@ fn accepted_and_resolved_legacy_share_one_stock_cursor_shape() {
 fn generic_manual_and_unresolved_legacy_reject_before_receipt_or_staging() {
     let selected = "Rejected.SED";
     let starts = [(0, 20, 24), (1, 42, 46)];
-    let source = crate::app::frontend::list_maps::LoadedMapSource::Generated {
+    let source = crate::map::source::LoadedMapSource::Generated {
         seed_name: selected.to_string(),
     };
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
@@ -895,7 +895,7 @@ fn generic_manual_and_unresolved_legacy_reject_before_receipt_or_staging() {
 
     let authored = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::Loose {
+        crate::map::source::LoadedMapSource::Loose {
             path: std::path::PathBuf::from("manual.map"),
             payload_len: 1,
             source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
@@ -1001,7 +1001,7 @@ fn gsi_04_12_generated_prefix_rejects_presentation_only_preview() {
     launch.selected_map_file = Some(selected.to_string());
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        crate::map::source::LoadedMapSource::Generated {
             seed_name: selected.to_string(),
         },
     );
@@ -1024,7 +1024,7 @@ fn generated_prefix_rejects_mismatched_source_name() {
     let accepted = accepted_random_map_with_starts(selected, 0x1414, &starts, &starts);
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        crate::map::source::LoadedMapSource::Generated {
             seed_name: "Other.Sed".to_string(),
         },
     );
@@ -1052,7 +1052,7 @@ fn generated_prefix_rejects_cooperative_mode() {
     let accepted = accepted_random_map_with_starts(selected, 0x1515, &starts, &starts);
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        crate::map::source::LoadedMapSource::Generated {
             seed_name: selected.to_string(),
         },
     );
@@ -1080,7 +1080,7 @@ fn generated_prefix_rejects_a_spoofed_stock_row_before_consuming_staging() {
     let accepted = accepted_random_map_with_starts(selected, 0x1516, &starts, &starts);
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::Generated {
+        crate::map::source::LoadedMapSource::Generated {
             seed_name: selected.to_string(),
         },
     );
@@ -1097,12 +1097,12 @@ fn authored_prefix_rejects_random_map_staging_for_loose_and_mix_sources() {
     let selected = "mp01t4.map";
     let starts = [(0, 20, 24), (1, 42, 46)];
     let sources = [
-        crate::app::frontend::list_maps::LoadedMapSource::Loose {
+        crate::map::source::LoadedMapSource::Loose {
             path: std::path::PathBuf::from(selected),
             payload_len: 1,
             source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),
         },
-        crate::app::frontend::list_maps::LoadedMapSource::Mix {
+        crate::map::source::LoadedMapSource::Mix {
             logical_name: selected.to_string(),
             source_archive: "mapsmd03.mix".to_string(),
             entry_id: 7,
@@ -1136,7 +1136,7 @@ fn stock_prefix_rejects_legacy_fallback_source() {
     let launch = test_launch_session(LaunchCountry::America);
     let initial = crate::app::loading::init::MapLoadInitial::from_test_map_source(
         prefix_test_map(&starts),
-        crate::app::frontend::list_maps::LoadedMapSource::LegacyFallback {
+        crate::map::source::LoadedMapSource::LegacyFallback {
             label: "fixture".to_string(),
         },
     );
@@ -1345,7 +1345,7 @@ fn loading_request_moves_exact_startup_authority_once() {
     assert_eq!(request.startup().accepted(), Some(&prepared));
     let initial = MapLoadInitial::from_test_map_source(
         prefix_test_map(&[(0, 20, 24), (1, 42, 46)]),
-        crate::app::frontend::list_maps::LoadedMapSource::Loose {
+        crate::map::source::LoadedMapSource::Loose {
             path: PathBuf::from("mp01t4.map"),
             payload_len: 1,
             source_sha256: crate::util::sha256::sha256_hex(b"synthetic map fixture"),

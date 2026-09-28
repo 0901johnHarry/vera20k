@@ -11,7 +11,7 @@ use vera20k::asset_tools::names::NameDict;
 use vera20k::asset_tools::report::{ErrorReport, to_json};
 use vera20k::asset_tools::{
     palette, render_dispatch, retail_corpus, root, verb_art, verb_compare, verb_csf, verb_extract,
-    verb_find, verb_info, verb_ls, verb_palette, verb_parse_check, verb_scan, verb_sound,
+    verb_find, verb_info, verb_ini, verb_ls, verb_palette, verb_parse_check, verb_scan, verb_sound,
 };
 
 const EXIT_FAILED: i32 = 1;
@@ -55,7 +55,7 @@ fn run(cli: Cli) -> Result<(), ErrorReport> {
         })?;
     log::info!("retail root {} (from {source:?})", ra2_dir.display());
 
-    let manager = root::open_manager(&ra2_dir, cli.all_mixes).map_err(|error| ErrorReport {
+    let mut manager = root::open_manager(&ra2_dir, cli.all_mixes).map_err(|error| ErrorReport {
         error,
         hint: Some(format!(
             "check that {} is the install root containing ra2md.mix",
@@ -65,6 +65,10 @@ fn run(cli: Cli) -> Result<(), ErrorReport> {
 
     match cli.verb {
         Verb::Help => unreachable!("handled before dispatch"),
+        Verb::IniGet { section, key } => {
+            let report = verb_ini::run(&mut manager, &ra2_dir, &section, &key, &cli.ini)?;
+            println!("{}", to_json(&report));
+        }
 
         // `find` hashes the requested name forward, so it needs no INI expansion —
         // only the offline dictionary, for naming palette entries and reporting

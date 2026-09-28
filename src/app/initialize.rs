@@ -7,7 +7,7 @@ use anyhow::Context;
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
 use crate::app::persistence::options_profile::{RetailOptionsLoad, RetailOptionsProfile};
 
-use super::frontend::list_maps;
+use crate::map::scenario_sources;
 use super::presentation::render;
 use super::{
     ActiveEventLoop, App, AppState, Arc, AssetManager, BTreeMap, BasicSection, BatchRenderer,
@@ -279,8 +279,8 @@ impl App {
         // load is spent inside the five seconds instead of before them.
         let (startup_rules, startup_rules_projection, startup_native_rules) = startup_asset_manager
             .as_ref()
-            .and_then(crate::app::loading::init_helpers::load_startup_rules)
-            .map(crate::app::loading::init_helpers::StartupRulesLoad::into_parts)
+            .and_then(crate::rules::retail_sources::load_startup_rules)
+            .map(crate::rules::retail_sources::StartupRulesLoad::into_parts)
             .map(|(rules, projection, owner)| (rules, projection, Some(owner)))
             .unwrap_or((None, None, None));
         let startup_sound_registry = startup_asset_manager
@@ -329,7 +329,7 @@ impl App {
         let skirmish_scenario_records =
             match (startup_asset_manager.as_mut(), game_config.as_ref()) {
                 (Some(assets), Some(config)) => {
-                    list_maps::list_skirmish_scenario_records_with_assets(
+                    scenario_sources::list_skirmish_scenario_records_with_assets(
                         &config.paths.ra2_dir,
                         assets,
                         startup_csf.as_ref(),
@@ -342,7 +342,7 @@ impl App {
                 Vec::new()
             });
         let skirmish_scenario_records = if skirmish_scenario_records.is_empty() {
-            list_maps::list_available_maps()
+            scenario_sources::list_available_maps()
                 .unwrap_or_else(|err| {
                     log::warn!("Could not list fallback maps: {:#}", err);
                     Vec::new()

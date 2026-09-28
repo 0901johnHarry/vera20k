@@ -5,10 +5,10 @@
 //! their supported combination before any Scenario cursor or load effect is
 //! installed; persistence/restore deliberately has no conversion into it.
 
-use crate::app::frontend::list_maps::LoadedMapSource;
 use crate::app::shell_random_map::AcceptedRmgStartStaging;
 use crate::map::map_file::MapFile;
 use crate::map::resolved_terrain::OverlayLoadSource;
+use crate::map::source::LoadedMapSource;
 use crate::match_bootstrap::LoadingStartup;
 use crate::sim::scenario_bootstrap::{
     MatchLaunchDescriptor, PreFillScenarioPrefixPlan, StockOfflinePrefixProjection,

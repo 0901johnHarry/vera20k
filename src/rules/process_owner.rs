@@ -162,8 +162,22 @@ impl NativeRulesProcessOwner {
         self.sources.fixed_sounds = sounds;
     }
 
-    pub(crate) fn bind_sinking_sounds(&self, rules: &mut RuleSet, processed: &ProcessedRulesLayers) {
+    pub(crate) fn bind_sinking_sounds(
+        &self,
+        rules: &mut RuleSet,
+        processed: &ProcessedRulesLayers,
+    ) {
         rules.bind_sinking_sounds(processed.ini(), &self.sources.fixed_sounds);
+    }
+
+    /// Immutable startup-selected root for consumers with a root-only native read.
+    pub(crate) fn selected_rules_root(&self) -> &IniFile {
+        &self.sources.selected_rules_root
+    }
+
+    /// Fixed ART snapshot, unaffected by mode/map Rules passes.
+    pub(crate) fn fixed_art(&self) -> &IniFile {
+        &self.sources.fixed_art
     }
 
     /// Build the shell-facing compatibility projection without changing the

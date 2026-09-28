@@ -301,6 +301,7 @@ pub(super) struct PreparedRandomMapGeneration {
 pub(super) fn prepare_random_map_generation(
     asset_manager: &mut crate::assets::asset_manager::AssetManager,
     options: &crate::map::rmg::RmgOptions,
+    native_rules: Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
 ) -> Option<PreparedRandomMapGeneration> {
     let settings = crate::map::rmg::RmgSettings::load(asset_manager);
     let theater_name = crate::map::rmg::emit::theater_name(options.theater);
@@ -308,10 +309,10 @@ pub(super) fn prepare_random_map_generation(
         log::warn!("random map: theater {theater_name} unavailable");
         return None;
     };
-    let terrain_rules = asset_manager
-        .get_ref("rulesmd.ini")
-        .and_then(|bytes| crate::rules::ini_parser::IniFile::from_bytes(bytes).ok())
-        .map(|ini| crate::rules::terrain_rules::TerrainRules::from_ini(&ini))
+    let terrain_rules = native_rules
+        .map(|owner| {
+            crate::rules::terrain_rules::TerrainRules::from_ini(owner.selected_rules_root())
+        })
         .unwrap_or_default();
     let resolved_inputs = crate::map::rmg::build::ResolvedTheaterInputs::from_theater(
         &theater,
@@ -322,7 +323,7 @@ pub(super) fn prepare_random_map_generation(
         crate::map::rmg::theater_blocks::TheaterTileBlocks::build(&theater.lookup, |name| {
             asset_manager.get(name)
         });
-    let tech_types = crate::app::loading::init_helpers::load_neutral_tech_types(asset_manager);
+    let tech_types = crate::app::loading::init_helpers::load_neutral_tech_types(native_rules);
     Some(PreparedRandomMapGeneration {
         theater,
         terrain_rules,
@@ -559,7 +560,8 @@ impl App {
             &mut state.frontend.random_map_retention,
             options,
         );
-        let (manager, tile_cache) = state.process_assets.manager_mut_with_tile_cache();
+        let (manager, native_rules, tile_cache) =
+            state.process_assets.manager_and_rules_with_tile_cache();
         let Some(asset_manager) = manager else {
             return false;
         };
@@ -570,7 +572,7 @@ impl App {
             resolved_inputs,
             blocks,
             tech_types,
-        }) = prepare_random_map_generation(asset_manager, options)
+        }) = prepare_random_map_generation(asset_manager, options, native_rules)
         else {
             return false;
         };
@@ -845,7 +847,8 @@ impl App {
         // never sees.
         let resolved_terrain = {
             let frontend_main_rng = &mut state.frontend.frontend_main_rng;
-            let (manager, selector_cache) = state.process_assets.manager_mut_with_tile_cache();
+            let (manager, _, selector_cache) =
+                state.process_assets.manager_and_rules_with_tile_cache();
             let asset_manager = manager.map(|m| &*m);
             build_random_map_preview_grid(
                 map_file,

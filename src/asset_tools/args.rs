@@ -16,6 +16,7 @@ use crate::asset_tools::verb_csf::CsfOptions;
 use crate::asset_tools::verb_extract::ExtractOptions;
 use crate::asset_tools::verb_find::FindOptions;
 use crate::asset_tools::verb_info::InfoOptions;
+use crate::asset_tools::verb_ini::IniOptions;
 use crate::asset_tools::verb_ls::{LsOptions, SortKey};
 use crate::asset_tools::verb_palette::PaletteForOptions;
 use crate::asset_tools::verb_parse_check::ParseCheckOptions;
@@ -40,6 +41,7 @@ pub enum Verb {
     ParseCheck,
     CorpusBaseline,
     Compare { name: String },
+    IniGet { section: String, key: String },
     Help,
 }
 
@@ -62,6 +64,7 @@ pub struct Cli {
     pub parse_check: ParseCheckOptions,
     pub compare: CompareOptions,
     pub corpus_baseline_out: Option<PathBuf>,
+    pub ini: IniOptions,
 }
 
 pub fn usage() -> &'static str {
@@ -72,6 +75,7 @@ USAGE
   asset <verb> [target] [options]
 
 VERBS
+  ini-get <SECTION> <KEY>  Inspect exact authored values and a production INI accessor.
   find <NAME>          Which archive wins, what shadows it, and what is
                        catalogued but unreachable by name lookup.
   ls <ARCHIVE>         Paged listing of one archive's entries.
@@ -92,6 +96,16 @@ VERBS
   corpus-baseline      Export a complete candidate inventory and decoder ratchets.
                        Requires --all-mixes --out <NEW_FILE>; never overwrites.
                        Rust decoder baselines are not native parity evidence.
+
+ini-get
+  --domain rules|art  Required; ARTMD is fixed and rejects scenario options.
+  --reader raw|int|bool|double|string|range|speed|coord
+                       Required; accessor output is not a final gameplay field.
+  --default <VALUE>   Required for typed readers (bool: true/false; coord: x,y,z).
+  --capacity <N>      Required for string only; native byte capacity.
+  --map <NAME/PATH>   Required with rules; production loose/MIX map selection.
+  --mode-id <ID>      Required with rules; selected skirmish MPModesMD row.
+                       --all-mixes is rejected. No campaign/extra TMCJ4F pass.
 
 GLOBAL OPTIONS
   --ra2-dir <PATH>     Retail install root. Overrides $RA2_DIR and config.toml.
@@ -195,6 +209,7 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         parse_check: ParseCheckOptions::default(),
         compare: CompareOptions::default(),
         corpus_baseline_out: None,
+        ini: IniOptions::default(),
     };
 
     let mut args = argv.into_iter().peekable();
@@ -202,6 +217,14 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         return Ok(cli);
     };
     if matches!(verb_word.as_str(), "-h" | "--help" | "help") {
+        return Ok(cli);
+    }
+
+    if verb_word == "ini-get"
+        && args
+            .peek()
+            .is_some_and(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
         return Ok(cli);
     }
 
@@ -220,6 +243,10 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
     };
 
     cli.verb = match verb_word.as_str() {
+        "ini-get" => Verb::IniGet {
+            section: require_target(target, "ini-get", "<SECTION> <KEY>")?,
+            key: value(&mut args, "ini-get key")?,
+        },
         "find" => Verb::Find {
             name: require_target(target, "find", "<NAME>")?,
         },
@@ -262,6 +289,22 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
     };
 
     while let Some(flag) = args.next() {
+        if matches!(cli.verb, Verb::IniGet { .. })
+            && !matches!(
+                flag.as_str(),
+                "--ra2-dir"
+                    | "--domain"
+                    | "--reader"
+                    | "--default"
+                    | "--capacity"
+                    | "--map"
+                    | "--mode-id"
+                    | "-h"
+                    | "--help"
+            )
+        {
+            return Err(flag_not_valid(&flag, &cli.verb));
+        }
         if matches!(cli.verb, Verb::CorpusBaseline)
             && !matches!(
                 flag.as_str(),
@@ -277,6 +320,20 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
             }
             "--ra2-dir" => cli.ra2_dir = Some(PathBuf::from(value(&mut args, "--ra2-dir")?)),
             "--all-mixes" => cli.all_mixes = true,
+            "--domain" | "--reader" | "--default" | "--capacity" | "--map" | "--mode-id" => {
+                if !matches!(cli.verb, Verb::IniGet { .. }) {
+                    return Err(flag_not_valid(&flag, &cli.verb));
+                }
+                match flag.as_str() {
+                    "--domain" => cli.ini.domain = Some(value(&mut args, &flag)?),
+                    "--reader" => cli.ini.reader = Some(value(&mut args, &flag)?),
+                    "--default" => cli.ini.default = Some(value(&mut args, &flag)?),
+                    "--capacity" => cli.ini.capacity = Some(number(&mut args, &flag)?),
+                    "--map" => cli.ini.map = Some(value(&mut args, &flag)?),
+                    "--mode-id" => cli.ini.mode_id = Some(number(&mut args, &flag)?),
+                    _ => unreachable!(),
+                }
+            }
             // One output root serves every verb that writes files.
             "--out" => {
                 let dir = PathBuf::from(value(&mut args, "--out")?);
@@ -398,6 +455,9 @@ pub fn parse<I: IntoIterator<Item = String>>(argv: I) -> Result<Cli, String> {
         }
     }
 
+    if matches!(cli.verb, Verb::IniGet { .. }) {
+        cli.ini.validate()?;
+    }
     if matches!(cli.verb, Verb::CorpusBaseline) {
         if !cli.all_mixes {
             return Err("corpus-baseline requires --all-mixes: the reference includes archives outside startup reach".to_string());
@@ -455,6 +515,7 @@ fn flag_not_valid(flag: &str, verb: &Verb) -> String {
         Verb::Scan => "scan",
         Verb::ParseCheck => "parse-check",
         Verb::CorpusBaseline => "corpus-baseline",
+        Verb::IniGet { .. } => "ini-get",
         Verb::Help => "help",
     };
     format!("{flag} is not valid for `{verb_name}`")
@@ -558,6 +619,134 @@ mod tests {
         assert_eq!(
             cli.ra2_dir.as_deref(),
             Some(std::path::Path::new("D:/games-CD/ra2"))
+        );
+    }
+    #[test]
+    fn ini_query_requires_explicit_domain_reader_and_scenario() {
+        let cli = parse(args(&[
+            "ini-get",
+            "General",
+            "TreeStrength",
+            "--domain",
+            "rules",
+            "--reader",
+            "int",
+            "--default",
+            "-1",
+            "--map",
+            "Dustbowl.mmx",
+            "--mode-id",
+            "1",
+        ]))
+        .unwrap();
+        assert!(
+            matches!(cli.verb, Verb::IniGet { section, key } if section == "General" && key == "TreeStrength")
+        );
+        assert_eq!(cli.ini.default.as_deref(), Some("-1"));
+        for words in [
+            vec!["ini-get", "S", "K"],
+            vec!["ini-get", "S", "K", "--domain", "rules", "--reader", "raw"],
+            vec!["ini-get", "S", "K", "--domain", "art", "--reader", "int"],
+            vec![
+                "ini-get", "S", "K", "--domain", "art", "--reader", "raw", "--map", "x",
+            ],
+            vec![
+                "ini-get",
+                "S",
+                "K",
+                "--domain",
+                "art",
+                "--reader",
+                "raw",
+                "--all-mixes",
+            ],
+            vec![
+                "ini-get",
+                "S",
+                "K",
+                "--domain",
+                "art",
+                "--reader",
+                "bool",
+                "--default",
+                "yes",
+            ],
+            vec![
+                "ini-get",
+                "S",
+                "K",
+                "--domain",
+                "art",
+                "--reader",
+                "string",
+                "--default",
+                "x",
+            ],
+            vec![
+                "ini-get",
+                "S",
+                "K",
+                "--domain",
+                "art",
+                "--reader",
+                "raw",
+                "--capacity",
+                "4",
+            ],
+            vec!["find", "x", "--domain", "art"],
+        ] {
+            assert!(parse(args(&words)).is_err(), "accepted {words:?}");
+        }
+        assert!(matches!(
+            parse(args(&["ini-get", "--help"])).unwrap().verb,
+            Verb::Help
+        ));
+    }
+
+    #[test]
+    fn ini_string_capacity_and_coord_defaults_are_explicit_cli_values() {
+        let cli = parse(args(&[
+            "ini-get",
+            "ART",
+            "Key",
+            "--domain",
+            "art",
+            "--reader",
+            "string",
+            "--default",
+            "",
+            "--capacity",
+            "128",
+        ]))
+        .unwrap();
+        assert_eq!(cli.ini.capacity, Some(128));
+        assert!(
+            parse(args(&[
+                "ini-get",
+                "ART",
+                "Key",
+                "--domain",
+                "art",
+                "--reader",
+                "coord",
+                "--default",
+                "-1,0,3"
+            ]))
+            .is_ok()
+        );
+        assert!(
+            parse(args(&[
+                "ini-get",
+                "ART",
+                "Key",
+                "--domain",
+                "art",
+                "--reader",
+                "coord",
+                "--default",
+                "1,2"
+            ]))
+            .is_err()
         );
     }
 }

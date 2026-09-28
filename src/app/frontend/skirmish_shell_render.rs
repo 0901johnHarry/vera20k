@@ -991,7 +991,7 @@ mod tests {
         let config = crate::util::config::GameConfig::load().expect("game config");
         let mut assets =
             crate::assets::asset_manager::AssetManager::new(&config.paths.ra2_dir).expect("assets");
-        let records = crate::app::frontend::list_maps::list_skirmish_scenario_records_with_assets(
+        let records = crate::map::scenario_sources::list_skirmish_scenario_records_with_assets(
             &config.paths.ra2_dir,
             &mut assets,
             None,

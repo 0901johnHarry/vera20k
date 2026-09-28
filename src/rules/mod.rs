@@ -79,7 +79,8 @@
 //! ### In VERA
 //! - Parser `ini_parser.rs`, readers `ini_value.rs` (not `str::parse`); layers
 //!   `native_processing.rs` (`RulesLayerStack`), `process_owner.rs`, loaders
-//!   `app/loading/init_helpers.rs`, `app/loading/init.rs`. Typed readers fold passes via
+//!   `retail_sources.rs` for shared byte selection and `app/loading/init.rs` for orchestration.
+//!   Typed readers fold passes via
 //!   `projected_values`, which cannot model per-pass clamps or literal defaults. Fields:
 //!   each type's `from_ini_section`; `art_data.rs`, `team_ai_ini.rs`, `sound_ini.rs`.
 //! - VERA-only: `sound.ini` under SOUNDMD, case-insensitive sound keys, fatal missing
@@ -92,6 +93,9 @@
 //! - `retail_ini_fixture.rs`: a missing file prints SKIPPED and passes unless
 //!   `VERA20K_REQUIRE_RETAIL_INI=1`; `retail_rules_and_art()` has no LANGRULE, mode or
 //!   map layer. Test-only `load_rules_with_merged_ini` runs the production stack.
+//! - `asset ini-get` inspects exact source provenance and primitive reader results
+//!   through the production owner; see `tools/ini_lookup.md`. These are not arbitrary
+//!   final gameplay fields after constructors, clamps and post-read passes.
 //!
 //! ## Dependency rules
 //! - rules/ depends on: assets/ (reads INI files extracted from .mix archives)
@@ -130,6 +134,7 @@ pub mod powerups;
 pub(crate) mod process_owner;
 pub mod projectile_type;
 pub mod radar_event_config;
+pub(crate) mod retail_sources;
 pub mod ruleset;
 pub mod shp_vehicle_sequence;
 pub mod smudge_type;

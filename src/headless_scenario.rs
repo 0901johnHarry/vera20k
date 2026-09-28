@@ -127,10 +127,9 @@ pub(crate) fn load_with_launch(
     // Preserve the process-owned cold Rules registry before theater archive
     // priority changes. The same owner then performs the active noncampaign
     // reset/rebuild and transfers its move-only native-ID receipt.
-    let (_, _, mut native_rules_owner) =
-        crate::app::loading::init_helpers::load_startup_rules(&assets)
-            .ok_or_else(|| "load native startup rules".to_string())?
-            .into_parts();
+    let (_, _, mut native_rules_owner) = crate::rules::retail_sources::load_startup_rules(&assets)
+        .ok_or_else(|| "load native startup rules".to_string())?
+        .into_parts();
     let scenario_prefix_plan =
         crate::sim::scenario_bootstrap::prepare_stock_offline_scenario_prefix_plan(
             &launch,
@@ -140,17 +139,7 @@ pub(crate) fn load_with_launch(
         )
         .map_err(|error| format!("prepare stock-offline scenario prefix: {error}"))?;
     let override_file = launch.session().mode.override_file.trim();
-    let (override_bytes, override_source) = assets
-        .get_with_source(override_file)
-        .ok_or_else(|| format!("load game-mode rules override {override_file}"))?;
-    log::info!(
-        "Loading game-mode rules override {} ({} bytes) from {}",
-        override_file,
-        override_bytes.len(),
-        override_source,
-    );
-    let mode_override = crate::rules::ini_parser::IniFile::from_bytes(&override_bytes)
-        .map_err(|error| format!("parse game-mode rules override {override_file}: {error}"))?;
+    let mode_override = crate::rules::retail_sources::select_ini(&assets, override_file)?.ini;
     let (mut rules, rules_ini, art_ini, native_rules_receipt) = native_rules_owner
         .load_noncampaign_scenario(Some(&mode_override), &map.ini)
         .map_err(|error| format!("load native noncampaign rules: {error}"))?

@@ -12,7 +12,7 @@
 //! bytes, but a render it produces is not parity evidence.
 //!
 //! ## Dependency rules
-//! - May depend on `assets/`, `rules/`, `util/`, and the CPU-only parts of
+//! - May depend on `assets/`, `rules/`, `util/`, `map/` source selection, `skirmish_modes`, and the CPU-only parts of
 //!   `render/` (bitmap font glyph data).
 //! - Must NEVER depend on `sim/`, `ui/`, `sidebar/`, `audio/`, `net/`, or any
 //!   `app*` module — and nothing in `sim/` may depend on this.
@@ -37,6 +37,7 @@ pub mod verb_csf;
 pub mod verb_extract;
 pub mod verb_find;
 pub mod verb_info;
+pub mod verb_ini;
 pub mod verb_ls;
 pub mod verb_palette;
 pub mod verb_parse_check;
