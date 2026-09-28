@@ -72,14 +72,26 @@ use crate::sim::intern::InternedId;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
-    /// The house rung's per-house steps in HouseClass::Array order: each
-    /// house's defeat gate (see the module doc), then its building choice
-    /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
-    /// scan and the result timers, which VERA also skips on frame zero.
+    /// The house rung with its defeat pass: see [`Self::house_rung`].
+    #[cfg(test)]
     pub(super) fn check_defeat(
         &mut self,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+    ) {
+        self.house_rung(rules, registry, true);
+    }
+
+    /// The house rung's per-house steps in HouseClass::Array order: each
+    /// house's defeat gate (see the module doc), then its building choice
+    /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
+    /// scan and the result timers. Without `defeat_pass` (VERA's first tick)
+    /// only the building choices run.
+    pub(super) fn house_rung(
+        &mut self,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+        defeat_pass: bool,
     ) {
         let outcome_tick = self.session.tick.saturating_add(1);
         let savour_frames = crate::rules::ruleset::savour_delay_frames(
@@ -90,8 +102,8 @@ impl Simulation {
                 .unwrap_or(0.03),
         );
         // 0x004F8E86..0x004F8EB7: not a campaign, past frame zero.
-        let past_frame_zero = (self.session.binary_frame as i32) > 0;
-        let defeat_gate = self.session.game_mode_nonzero && past_frame_zero;
+        let defeat_gate =
+            defeat_pass && self.session.game_mode_nonzero && (self.session.binary_frame as i32) > 0;
         // The interner resolves names case-insensitively, as native type
         // lookups do.
         let base_units = rules.map_or([None; 3], |rules| {
@@ -117,7 +129,7 @@ impl Simulation {
                 crate::sim::ai_base_building::update_building_choice(self, rules, owner, registry);
             }
         }
-        if !past_frame_zero {
+        if !defeat_pass {
             return;
         }
 

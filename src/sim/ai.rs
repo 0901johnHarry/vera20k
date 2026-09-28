@@ -66,7 +66,8 @@ pub fn tick_ai(
     for ai in ai_players.iter_mut() {
         // A house defeated this tick issues no commands at all. gamemd
         // evaluates each house's defeat before its AI manage/produce step;
-        // Phase 8 runs check_defeat before this loop, so the flag is current.
+        // Phase 8's house rung runs every defeat gate before this loop, so
+        // the flag is current.
         // Without this gate the defeat reorder would be a no-op.
         if crate::sim::house_state::house_state_for_owner_id(&sim.houses, ai.owner)
             .is_some_and(|h| h.is_defeated)

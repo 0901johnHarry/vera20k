@@ -331,7 +331,7 @@ pub struct HouseState {
     /// in every skirmish, so without it the alive set can never shrink to one.
     ///
     /// Stamped once at house creation, while a `RuleSet` is still in hand, and
-    /// then read straight off the house — `check_defeat` takes
+    /// then read straight off the house — the house rung takes
     /// `rules: Option<&RuleSet>` and never has to resolve the country itself. A
     /// house built with no rules available is stamped `false`, the INI default
     /// for `MultiplayPassive=`; there is no runtime fallback, because gamemd has

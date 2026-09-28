@@ -3430,7 +3430,7 @@ impl Simulation {
     /// Accepted House result after its serialized SavourDelay has expired.
     /// Simulation termination and app outcome presentation share this query.
     /// Explicit solo wins/losses remain valid; the developer solo exception
-    /// belongs only to automatic victory creation in `check_defeat`.
+    /// belongs only to automatic victory creation in the house rung.
     pub(crate) fn ready_outcome_for_owner(
         &self,
         owner: InternedId,
@@ -5650,7 +5650,7 @@ impl Simulation {
         // house's tracking counts (`house_defeat.rs`), which construction and
         // the frame-end pending-delete drain move: a death reaches the gate on
         // the next frame. Each house's building choice follows its own gate.
-        self.check_defeat(rules, overlay_registry);
+        self.house_rung(rules, overlay_registry, self.session.tick > 0);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
@@ -5661,10 +5661,11 @@ impl Simulation {
         // houses are gated out inside tick_ai).
         // PRODUCES: commands applied immediately in the same tick.
         // Temporarily take ai_players out to avoid borrow conflict with &self.
-        if rules.is_some() && !self.ai_players.is_empty() {
+        if let Some(ai_rules) = rules
+            && !self.ai_players.is_empty()
+        {
             let mut ai_state = std::mem::take(&mut self.ai_players);
-            let ai_commands =
-                ai::tick_ai(self, &mut ai_state, rules.expect("rules checked above"));
+            let ai_commands = ai::tick_ai(self, &mut ai_state, ai_rules);
             #[cfg(test)]
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::AiGenerated);
             self.ai_players = ai_state;
