@@ -309,6 +309,13 @@ impl TacticalCaptureSession {
         output: &GameRenderOutput,
     ) -> Result<(bool, Value)> {
         validate_loaded_resources(state)?;
+        let unit_atlas = state
+            .match_state
+            .match_presentation
+            .unit_atlas
+            .as_ref()
+            .context("unit atlas absent at final map render")?
+            .statistics()?;
         let ready = output.sidebar_view.is_some()
             && !state.match_state.paused()
             && !state.match_state.match_presentation.show_save_load_panel
@@ -325,6 +332,7 @@ impl TacticalCaptureSession {
                 "surface_extent": [state.renderer.gpu.config.width, state.renderer.gpu.config.height],
                 "ui_scale": state.match_state.match_presentation.ui_scale,
                 "gpu": super::super::evidence::GpuAdapterEvidence::from_observation(state.renderer.gpu.capture_adapter_observation()),
+                "unit_atlas": unit_atlas,
             }),
         ))
     }
@@ -347,7 +355,7 @@ impl TacticalCaptureSession {
             pixels,
         )?;
         let manifest = json!({
-            "schema_version": "vera20k.map-observation.v1", "status": "COMPLETE",
+            "schema_version": "vera20k.map-observation.v2", "status": "COMPLETE",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "inputs": self.map_state()?.inputs, "map_source": self.map_source_evidence,
@@ -373,7 +381,7 @@ impl TacticalCaptureSession {
 
     pub(super) fn publish_map_failure(&self, error: &str) -> Result<()> {
         let profile = self.request.map_profile().context("map profile missing")?;
-        let manifest = json!({"schema_version": "vera20k.map-observation.v1", "status": "FAILED",
+        let manifest = json!({"schema_version": "vera20k.map-observation.v2", "status": "FAILED",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "failure": {"stage": self.failure_stage, "message": error}, "frame": null,
