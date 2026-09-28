@@ -21,6 +21,8 @@
 //!   consumes state without becoming a gameplay authority.
 
 // --- Core types: entity storage, components, commands, RNG, interning ---
+pub(crate) mod ai_base_building;
+pub(crate) mod ai_base_site;
 pub mod anim_class;
 #[cfg(test)]
 pub(crate) mod arena_fixture;

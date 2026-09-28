@@ -36,9 +36,12 @@
 //! Every placed or deployed building starts with Unlimbo's `Begin_Mode(0)` and
 //! the Construction mission queued (`vt+0x484` = `0x0044D6A0`); the route
 //! decides the rest:
-//! - A computer house's factory places it and commences the mission at once
-//!   (`BuildingClass::ExitObject 0x00445329..0x0044533F`): first visited the
-//!   frame after, complete at N+1+(count-1)*rate.
+//! - A computer house's Construction Yard places it in the yard's own Update
+//!   (`production::factory_ai`) and commences the mission at once
+//!   (`BuildingClass::Exit_Object 0x00445329..0x0044533F`). The building
+//!   joins the Logic vector, whose count `LogicClass::AI` re-reads
+//!   (`0x0055B613`), so its first Update is in the placement frame N:
+//!   complete at N+(count-1)*rate.
 //! - A human player's PLACE event (`HouseClass::Place_Production 0x004FB0E0`,
 //!   `ExitObject` places nothing for a house `IsControlledByHuman`) leaves it
 //!   queued, and the factory's OVER_OUT queues `Begin_Mode(1)`
@@ -148,11 +151,13 @@ impl BuildingUp {
         }
     }
 
-    /// A building a computer house's factory places at frame `now`, after
-    /// that frame's Logic pass: ExitObject commences the mission at once.
+    /// A building a computer house's yard places at frame `now`, in the
+    /// yard's Update: ExitObject commences the mission at once and the
+    /// building's first Update is in this frame.
     pub fn placed_by_computer(control: [i32; 3], now: i32) -> Self {
         Self {
             mission: ConstructionMission::Due,
+            first_frame: now,
             ..Self::unlimboed(control, now)
         }
     }
@@ -261,7 +266,7 @@ impl BuildingUp {
                 )
             };
         }
-        Self::placed_by_computer([0, ticks, 1], current_frame.wrapping_sub(1))
+        Self::placed_by_computer([0, ticks, 1], current_frame)
     }
 }
 
@@ -449,7 +454,9 @@ mod tests {
             let input = &row["input"];
             let name = input["name"].as_str().unwrap();
             let frames = row["frames"].as_array().unwrap();
-            // The first visit restarts the timer at its own frame.
+            // The first visit restarts the timer at its own frame, the frame
+            // after the rows' placement (no Update runs in the placement
+            // frame here).
             let origin = frames[0]["timer"][0].as_i64().unwrap() as i32 - 1;
             let mut building = BuildingUp::placed_by_computer(control(input), origin);
             for frame in frames {

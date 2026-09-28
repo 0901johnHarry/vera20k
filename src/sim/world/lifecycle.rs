@@ -2547,6 +2547,16 @@ impl Simulation {
                 resolvable: self.substrate.entities.contains(stable_id),
             });
         }
+        // The Building prelude of this Detach_All(1) abandons the building's
+        // own factory (`0x0044EC01..0x0044EC21`).
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Structure)
+        {
+            crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
+        }
         // RESIDUAL: this Detach_All(1) (`0x005F4D61`) also visits the concealed
         // object itself, so native runs the SpawnManager owner arm on a live
         // spawner's Limbo: docked children UnInit with a zero regen timer, and
@@ -2869,8 +2879,10 @@ impl Simulation {
     ///
     /// RESIDUALS: the Building prelude also abandons the building's production
     /// at the kill (`0x0044EC01..0x0044EEC8`, `0x004FAA10`), deleting its
-    /// object whether or not it is finished. VERA has no per-building factory
-    /// pointer: the next production phase (`revalidate_and_step_factories`)
+    /// object whether or not it is finished. A computer building's own factory
+    /// is abandoned here (`production::detach_building_factory`), but VERA
+    /// keeps the player's production per house, with no factory pointer on
+    /// the building: the next production phase (`revalidate_and_step_factories`)
     /// abandons an unfinished build that lost its factory and a finished one
     /// once no factory of its category remains. Trigger: a house with two
     /// factories of a category loses the one its production is attached to.
@@ -2890,6 +2902,9 @@ impl Simulation {
         };
         match category {
             EntityCategory::Structure => {
+                // The Building prelude opens with the building's own factory
+                // (`0x0044EC01..0x0044EC21`).
+                crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
                 // The pre-hit contact copy the NowDead loop walks.
                 let contacts: Vec<u64> = self
                     .substrate

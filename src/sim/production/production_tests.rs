@@ -1295,7 +1295,7 @@ fn naval_delivery_nonzero_canenter_keeps_pending_and_does_not_try_second_produce
 }
 
 #[test]
-fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
+fn naval_empty_fnpc_reuses_pending_identity_and_records_the_delivery_once() {
     let rules = naval_production_rules();
     let mut sim = Simulation::new();
     let mut terrain = water_terrain(40, 40);
@@ -1381,8 +1381,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
     assert_eq!(sim.substrate.entities.len(), entity_count_before);
     assert_eq!(sim.owned_object_counts(americans).1, owned_units_before);
     assert_eq!(
-        sim.houses[&americans].stats.built, 1,
-        "completion is accounted before the refused delivery"
+        sim.houses[&americans].stats.built, 0,
+        "Record_Last_Built follows only a successful exit (0x004FB4B7)"
     );
 
     let registry_bytes = bincode::serialize(&sim.production.factory_shadow)
@@ -1411,8 +1411,8 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
         "sentinel retry must not account for a second Unit"
     );
     assert_eq!(
-        sim.houses[&americans].stats.built, 1,
-        "the serialized held-object latch prevents retry accounting"
+        sim.houses[&americans].stats.built, 0,
+        "a refused retry records nothing"
     );
     assert_eq!(
         sim.production.active_producer_by_owner[&americans][&ProductionCategory::Ship],
@@ -1450,7 +1450,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
     assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
     assert_eq!(
         sim.houses[&americans].stats.built, 1,
-        "successful retry commits the already-accounted held identity"
+        "the successful retry records the delivered unit"
     );
     let promoted = sim
         .production
@@ -1485,7 +1485,7 @@ fn naval_empty_fnpc_reuses_pending_identity_and_accounts_completion_once() {
     ));
     assert_eq!(
         sim.houses[&americans].stats.built, 2,
-        "the newly promoted object owns one fresh completion edge"
+        "the promoted object's delivery records it"
     );
 }
 

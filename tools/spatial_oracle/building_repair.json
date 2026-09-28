@@ -488,6 +488,38 @@
           "draws": [],
           "estimate": 300,
           "events": [],
+          "frame": 190,
+          "grand_opening": false,
+          "health": 300,
+          "latched": 0,
+          "mission": [
+            18,
+            -1
+          ],
+          "random_indices": {
+            "after": [
+              0,
+              103
+            ],
+            "before": [
+              0,
+              103
+            ]
+          },
+          "repairing": 0,
+          "spent": 0,
+          "timer": [
+            0,
+            0
+          ],
+          "wrench": 0
+        },
+        {
+          "balance": 5000,
+          "damaged": 1,
+          "draws": [],
+          "estimate": 300,
+          "events": [],
           "frame": 191,
           "grand_opening": false,
           "health": 300,
@@ -581,38 +613,6 @@
         {
           "balance": 5000,
           "damaged": 1,
-          "draws": [],
-          "estimate": 300,
-          "events": [],
-          "frame": 194,
-          "grand_opening": false,
-          "health": 300,
-          "latched": 0,
-          "mission": [
-            18,
-            -1
-          ],
-          "random_indices": {
-            "after": [
-              0,
-              103
-            ],
-            "before": [
-              0,
-              103
-            ]
-          },
-          "repairing": 0,
-          "spent": 0,
-          "timer": [
-            0,
-            0
-          ],
-          "wrench": 0
-        },
-        {
-          "balance": 5000,
-          "damaged": 1,
           "draws": [
             [
               4,
@@ -633,7 +633,7 @@
               25
             ]
           ],
-          "frame": 195,
+          "frame": 194,
           "grand_opening": true,
           "health": 300,
           "latched": 1,
@@ -654,7 +654,39 @@
           "repairing": 1,
           "spent": 0,
           "timer": [
-            195,
+            194,
+            25
+          ],
+          "wrench": 1
+        },
+        {
+          "balance": 5000,
+          "damaged": 1,
+          "draws": [],
+          "estimate": 300,
+          "events": [],
+          "frame": 195,
+          "grand_opening": false,
+          "health": 300,
+          "latched": 1,
+          "mission": [
+            5,
+            -1
+          ],
+          "random_indices": {
+            "after": [
+              2,
+              105
+            ],
+            "before": [
+              2,
+              105
+            ]
+          },
+          "repairing": 1,
+          "spent": 0,
+          "timer": [
+            194,
             25
           ],
           "wrench": 1
@@ -686,39 +718,7 @@
           "repairing": 1,
           "spent": 2,
           "timer": [
-            195,
-            25
-          ],
-          "wrench": 0
-        },
-        {
-          "balance": 4998,
-          "damaged": 1,
-          "draws": [],
-          "estimate": 308,
-          "events": [],
-          "frame": 197,
-          "grand_opening": false,
-          "health": 308,
-          "latched": 1,
-          "mission": [
-            5,
-            -1
-          ],
-          "random_indices": {
-            "after": [
-              2,
-              105
-            ],
-            "before": [
-              2,
-              105
-            ]
-          },
-          "repairing": 1,
-          "spent": 2,
-          "timer": [
-            195,
+            194,
             25
           ],
           "wrench": 0
@@ -744,6 +744,38 @@
           "draws": [],
           "estimate": 300,
           "events": [],
+          "frame": 190,
+          "grand_opening": false,
+          "health": 300,
+          "latched": 0,
+          "mission": [
+            18,
+            -1
+          ],
+          "random_indices": {
+            "after": [
+              0,
+              103
+            ],
+            "before": [
+              0,
+              103
+            ]
+          },
+          "repairing": 0,
+          "spent": 0,
+          "timer": [
+            0,
+            0
+          ],
+          "wrench": 0
+        },
+        {
+          "balance": 5000,
+          "damaged": 1,
+          "draws": [],
+          "estimate": 300,
+          "events": [],
           "frame": 191,
           "grand_opening": false,
           "health": 300,
@@ -805,38 +837,6 @@
         {
           "balance": 5000,
           "damaged": 1,
-          "draws": [],
-          "estimate": 300,
-          "events": [],
-          "frame": 193,
-          "grand_opening": false,
-          "health": 300,
-          "latched": 0,
-          "mission": [
-            18,
-            -1
-          ],
-          "random_indices": {
-            "after": [
-              0,
-              103
-            ],
-            "before": [
-              0,
-              103
-            ]
-          },
-          "repairing": 0,
-          "spent": 0,
-          "timer": [
-            0,
-            0
-          ],
-          "wrench": 0
-        },
-        {
-          "balance": 5000,
-          "damaged": 1,
           "draws": [
             [
               4,
@@ -857,7 +857,7 @@
               25
             ]
           ],
-          "frame": 194,
+          "frame": 193,
           "grand_opening": true,
           "health": 300,
           "latched": 1,
@@ -878,7 +878,39 @@
           "repairing": 1,
           "spent": 0,
           "timer": [
-            194,
+            193,
+            25
+          ],
+          "wrench": 1
+        },
+        {
+          "balance": 5000,
+          "damaged": 1,
+          "draws": [],
+          "estimate": 300,
+          "events": [],
+          "frame": 194,
+          "grand_opening": false,
+          "health": 300,
+          "latched": 1,
+          "mission": [
+            5,
+            -1
+          ],
+          "random_indices": {
+            "after": [
+              2,
+              105
+            ],
+            "before": [
+              2,
+              105
+            ]
+          },
+          "repairing": 1,
+          "spent": 0,
+          "timer": [
+            193,
             25
           ],
           "wrench": 1
@@ -910,42 +942,10 @@
           "repairing": 1,
           "spent": 0,
           "timer": [
-            194,
+            193,
             25
           ],
           "wrench": 1
-        },
-        {
-          "balance": 4998,
-          "damaged": 1,
-          "draws": [],
-          "estimate": 308,
-          "events": [],
-          "frame": 196,
-          "grand_opening": false,
-          "health": 308,
-          "latched": 1,
-          "mission": [
-            5,
-            -1
-          ],
-          "random_indices": {
-            "after": [
-              2,
-              105
-            ],
-            "before": [
-              2,
-              105
-            ]
-          },
-          "repairing": 1,
-          "spent": 2,
-          "timer": [
-            194,
-            25
-          ],
-          "wrench": 0
         }
       ],
       "input": {

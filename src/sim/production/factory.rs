@@ -586,11 +586,25 @@ pub struct FactoryView<'a> {
     pub ready: bool,
 }
 
-/// Deterministic registry of all factories, keyed by (house, category) rather
+/// Who holds a factory. gamemd keeps every FactoryClass in one vector,
+/// stepped in construction order, and points at each from one holder: the
+/// House's slot for the category, which a player's production fills
+/// (`HouseClass::Begin_Production @ 0x004FA350`), or the building that
+/// produces for a computer house (`BuildingClass+0x524`, filled by
+/// `BuildingClass::Factory_AI @ 0x004500F0`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum FactoryHolder {
+    House(InternedId, ProductionCategory),
+    Building(u64),
+}
+
+/// Deterministic registry of all factories, keyed by their holder rather
 /// than gamemd's global factory array, so it needs no fixed-size player array.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FactoryRegistry {
-    factories: BTreeMap<(InternedId, ProductionCategory), Factory>,
+    factories: BTreeMap<FactoryHolder, Factory>,
 }
 
 /// One planned P6 revalidation disposition for a `(owner, category)` factory — the output of
@@ -613,9 +627,7 @@ pub(crate) struct RevalAction {
 impl FactoryRegistry {
     /// Saved keys participate in factory identity; restoration must validate
     /// them against the embedded values before accepting world relationships.
-    pub(super) fn keyed_factories(
-        &self,
-    ) -> impl Iterator<Item = (&(InternedId, ProductionCategory), &Factory)> {
+    pub(super) fn keyed_factories(&self) -> impl Iterator<Item = (&FactoryHolder, &Factory)> {
         self.factories.iter()
     }
 
@@ -651,7 +663,7 @@ impl FactoryRegistry {
 
     /// Read-only sidebar projection. Never mutates.
     pub fn view(&self, owner: InternedId, category: ProductionCategory) -> Option<FactoryView<'_>> {
-        let f = self.factories.get(&(owner, category))?;
+        let f = self.factories.get(&FactoryHolder::House(owner, category))?;
         Some(FactoryView {
             progress: f.progress,
             on_hold: f.on_hold,
@@ -674,9 +686,90 @@ impl FactoryRegistry {
     /// Iterate factories in construction (`insertion_seq`) order, the order
     /// `LogicClass` runs `FactoryClass::AI` in (not the BTreeMap key order).
     pub fn iter_insertion_ordered(&self) -> Vec<&Factory> {
-        let mut all: Vec<&Factory> = self.factories.values().collect();
-        all.sort_by_key(|f| f.insertion_seq);
+        self.holders_insertion_ordered()
+            .into_iter()
+            .map(|(_, f)| f)
+            .collect()
+    }
+
+    /// [`Self::iter_insertion_ordered`] with each factory's holder.
+    pub(crate) fn holders_insertion_ordered(&self) -> Vec<(FactoryHolder, &Factory)> {
+        let mut all: Vec<(FactoryHolder, &Factory)> = self
+            .factories
+            .iter()
+            .map(|(&holder, f)| (holder, f))
+            .collect();
+        all.sort_by_key(|(_, f)| f.insertion_seq);
         all
+    }
+
+    /// The House-slot factories in construction order: a player's production,
+    /// which the house revalidates and delivers.
+    fn house_factories_insertion_ordered(&self) -> impl Iterator<Item = &Factory> {
+        self.holders_insertion_ordered()
+            .into_iter()
+            .filter(|(holder, _)| matches!(holder, FactoryHolder::House(..)))
+            .map(|(_, f)| f)
+    }
+
+    pub(super) fn factory(&self, holder: FactoryHolder) -> Option<&Factory> {
+        self.factories.get(&holder)
+    }
+
+    /// The factory `BuildingClass+0x524` holds for building `building`.
+    pub(crate) fn building_factory(&self, building: u64) -> Option<&Factory> {
+        self.factories.get(&FactoryHolder::Building(building))
+    }
+
+    /// `new FactoryClass` for building `building` (`0x0045036C..0x00450387`,
+    /// ctor `0x004C98B0` appending it to the factory vector) and the create
+    /// path of `FactoryClass::StartProduction @ 0x004C9C70` for `type_id`
+    /// (`0x004C9D6E..0x004C9DEA`): the object is held with no rate yet and
+    /// the Balance seeded from `cost`, the owner's Cost_Of. The caller
+    /// constructs the object and starts its rate.
+    pub(super) fn create_building_factory(
+        &mut self,
+        building: u64,
+        owner: InternedId,
+        category: ProductionCategory,
+        type_id: InternedId,
+        insertion_seq: u64,
+        cost: i32,
+    ) {
+        self.factories.insert(
+            FactoryHolder::Building(building),
+            Factory {
+                owner,
+                category,
+                balance: seeded_balance(cost),
+                object: Some(PendingObject {
+                    type_id,
+                    entity_id: None,
+                    completion_accounted: false,
+                }),
+                insertion_seq,
+                ..Factory::default()
+            },
+        );
+    }
+
+    /// Delete building `building`'s factory without abandoning it: the
+    /// failed StartProduction (`0x004503A7 -> 0x004502DC`, no object held)
+    /// and the placed object's release (`FactoryClass::CompletedProduction
+    /// @ 0x004CA1A0` lets the object go before the delete at `0x004501C6`).
+    pub(super) fn remove_building_factory(&mut self, building: u64) -> Option<Factory> {
+        self.factories.remove(&FactoryHolder::Building(building))
+    }
+
+    /// `FactoryClass::AbandonProduction @ 0x004C9FF0`, then the delete, for
+    /// building `building`'s factory: `0x0045022C`, `0x004502D1`,
+    /// `BuildingClass::Detach_All(1)` (`0x0044EC0B`) and
+    /// `BuildingClass::ChangeOwner` (`0x004486EB`). Returns the object to
+    /// refund and destroy.
+    pub(super) fn abandon_building_factory(&mut self, building: u64) -> Option<AbandonedObject> {
+        self.factories
+            .remove(&FactoryHolder::Building(building))?
+            .abandon_production()
     }
 
     /// Test-only mutable access to the first factory in sweep order (the `factories`
@@ -684,11 +777,7 @@ impl FactoryRegistry {
     /// live in the `world` module and so cannot reach the private map directly.
     #[cfg(test)]
     pub(crate) fn test_first_mut(&mut self) -> Option<&mut Factory> {
-        let key = self
-            .iter_insertion_ordered()
-            .first()
-            .map(|f| (f.owner, f.category))?;
-        self.factories.get_mut(&key)
+        self.factories.values_mut().min_by_key(|f| f.insertion_seq)
     }
 
     /// Test-only mutable access to a specific (owner, category) factory (the map is
@@ -700,7 +789,8 @@ impl FactoryRegistry {
         owner: InternedId,
         category: ProductionCategory,
     ) -> Option<&mut Factory> {
-        self.factories.get_mut(&(owner, category))
+        self.factories
+            .get_mut(&FactoryHolder::House(owner, category))
     }
 
     /// Test-only: force a (owner, category) factory to the completed-and-held state
@@ -714,7 +804,10 @@ impl FactoryRegistry {
         owner: InternedId,
         category: ProductionCategory,
     ) -> bool {
-        match self.factories.get_mut(&(owner, category)) {
+        match self
+            .factories
+            .get_mut(&FactoryHolder::House(owner, category))
+        {
             Some(f) if f.object.is_some() => {
                 f.progress = PRODUCTION_STEPS;
                 f.balance = 0;
@@ -743,7 +836,8 @@ impl FactoryRegistry {
         cost: i32,
         max_queued: i32,
     ) -> EnqueueOutcome {
-        if let Some(f) = self.factories.get_mut(&(owner, category)) {
+        let holder = FactoryHolder::House(owner, category);
+        if let Some(f) = self.factories.get_mut(&holder) {
             if f.object.is_some() {
                 if i32::try_from(f.queue.len()).unwrap_or(i32::MAX) >= max_queued {
                     return EnqueueOutcome::QueueFull;
@@ -773,7 +867,7 @@ impl FactoryRegistry {
         }
         // No factory yet -> create one with the active build armed.
         self.factories.insert(
-            (owner, category),
+            holder,
             Factory {
                 owner,
                 category,
@@ -808,7 +902,7 @@ impl FactoryRegistry {
         frame: u32,
     ) -> bool {
         self.factories
-            .get_mut(&(owner, category))
+            .get_mut(&FactoryHolder::House(owner, category))
             .is_some_and(|f| f.suspend(frame))
     }
 
@@ -822,7 +916,9 @@ impl FactoryRegistry {
         time_to_build: i32,
         frame: u32,
     ) {
-        if let Some(f) = self.factories.get_mut(&(owner, category))
+        if let Some(f) = self
+            .factories
+            .get_mut(&FactoryHolder::House(owner, category))
             && f.manual
         {
             f.manual = false;
@@ -837,7 +933,7 @@ impl FactoryRegistry {
         owner: InternedId,
         category: ProductionCategory,
     ) -> Option<(InternedId, bool, bool)> {
-        let f = self.factories.get(&(owner, category))?;
+        let f = self.factories.get(&FactoryHolder::House(owner, category))?;
         let object = f.object.as_ref()?;
         Some((object.type_id, f.manual, f.progress >= PRODUCTION_STEPS))
     }
@@ -850,7 +946,7 @@ impl FactoryRegistry {
         category: ProductionCategory,
     ) -> Option<InternedId> {
         self.factories
-            .get(&(owner, category))
+            .get(&FactoryHolder::House(owner, category))
             .and_then(|f| f.queue.front())
             .map(|e| e.type_id)
     }
@@ -864,21 +960,17 @@ impl FactoryRegistry {
         category: ProductionCategory,
         next_cost: i32,
     ) -> Option<InternedId> {
-        let f = self.factories.get_mut(&(owner, category))?;
+        let f = self
+            .factories
+            .get_mut(&FactoryHolder::House(owner, category))?;
         f.object = None;
         f.start_next_queued(next_cost)
     }
 
     /// Arm the active build's rate and step timer at `frame`
     /// ([`Factory::start_rate`]).
-    pub(super) fn start_rate(
-        &mut self,
-        owner: InternedId,
-        category: ProductionCategory,
-        time_to_build: i32,
-        frame: u32,
-    ) {
-        if let Some(f) = self.factories.get_mut(&(owner, category)) {
+    pub(super) fn start_rate(&mut self, holder: FactoryHolder, time_to_build: i32, frame: u32) {
+        if let Some(f) = self.factories.get_mut(&holder) {
             f.start_rate(time_to_build, frame);
         }
     }
@@ -888,11 +980,10 @@ impl FactoryRegistry {
     /// through completion and every delivery retry.
     pub(super) fn link_active_entity(
         &mut self,
-        owner: InternedId,
-        category: ProductionCategory,
+        holder: FactoryHolder,
         entity_id: u64,
     ) -> Option<u64> {
-        let factory = self.factories.get_mut(&(owner, category))?;
+        let factory = self.factories.get_mut(&holder)?;
         let object = factory.object.as_mut()?;
         if object.entity_id.is_none() {
             object.entity_id = Some(entity_id);
@@ -909,7 +1000,10 @@ impl FactoryRegistry {
         owner: InternedId,
         category: ProductionCategory,
     ) -> bool {
-        let Some(factory) = self.factories.get_mut(&(owner, category)) else {
+        let Some(factory) = self
+            .factories
+            .get_mut(&FactoryHolder::House(owner, category))
+        else {
             return false;
         };
         if factory.progress < PRODUCTION_STEPS {
@@ -925,12 +1019,16 @@ impl FactoryRegistry {
         true
     }
 
-    /// Drop EVERY idle factory (no active object AND empty queue) registry-wide — the
+    /// Drop EVERY idle House-slot factory (no active object AND empty queue) — the
     /// post-cancel / post-delivery sweep (replaces the `queues_by_owner.retain` prune). An
-    /// idle factory should never persist into a hashed tick; this enforces it.
+    /// idle factory should never persist into a hashed tick; this enforces it. A
+    /// building's factory is deleted by its own operations (`production::factory_ai`).
     pub(crate) fn prune_all_idle(&mut self) {
-        self.factories
-            .retain(|_, f| f.object.is_some() || !f.queue.is_empty());
+        self.factories.retain(|holder, f| {
+            matches!(holder, FactoryHolder::Building(_))
+                || f.object.is_some()
+                || !f.queue.is_empty()
+        });
     }
 
     /// P6 read/classify phase: re-validate every factory's active + queued builds and plan
@@ -946,7 +1044,7 @@ impl FactoryRegistry {
     ) -> Vec<RevalAction> {
         use crate::sim::production::production_tech::revalidate_eligibility;
         let mut plan: Vec<RevalAction> = Vec::new();
-        for f in self.iter_insertion_ordered() {
+        for f in self.house_factories_insertion_ordered() {
             let owner_name = sim.interner.resolve(f.owner).to_string();
             let permanent = |type_id: InternedId| -> bool {
                 matches!(
@@ -1020,7 +1118,10 @@ impl FactoryRegistry {
             abandoned_finished: Vec::new(),
         };
         for action in plan {
-            let Some(f) = self.factories.get_mut(&(action.owner, action.category)) else {
+            let Some(f) = self
+                .factories
+                .get_mut(&FactoryHolder::House(action.owner, action.category))
+            else {
                 continue;
             };
             // Remove dropped queued entries back-to-front so the ascending indices stay valid.
@@ -1056,8 +1157,7 @@ impl FactoryRegistry {
     /// The `(owner, category)` keys whose active build has completed and is held for
     /// delivery, in construction (`insertion_seq`) order — the delivery read pass.
     pub(crate) fn completed_keys(&self) -> Vec<(InternedId, ProductionCategory)> {
-        self.iter_insertion_ordered()
-            .iter()
+        self.house_factories_insertion_ordered()
             .filter(|f| f.object.is_some() && f.progress >= PRODUCTION_STEPS)
             .map(|f| (f.owner, f.category))
             .collect()
@@ -1070,7 +1170,7 @@ impl FactoryRegistry {
         &self,
         sim: &crate::sim::world::Simulation,
         rules: &RuleSet,
-    ) -> BTreeMap<(InternedId, ProductionCategory), TimeToBuildInputs> {
+    ) -> BTreeMap<FactoryHolder, TimeToBuildInputs> {
         let mut out = BTreeMap::new();
         for (&key, f) in &self.factories {
             if f.suspended || f.manual || f.progress >= PRODUCTION_STEPS {
@@ -1104,22 +1204,22 @@ impl FactoryRegistry {
     pub(super) fn step_all(
         &mut self,
         houses: &mut BTreeMap<InternedId, crate::sim::house_state::HouseState>,
-        prepared: &BTreeMap<(InternedId, ProductionCategory), TimeToBuildInputs>,
+        prepared: &BTreeMap<FactoryHolder, TimeToBuildInputs>,
         frame: u32,
     ) {
         // Sweep order = construction order (a strictly monotonic enqueue stamp at each
         // creation -> no ties -> total order -> deterministic).
-        let mut order: Vec<(u64, InternedId, ProductionCategory)> = self
-            .factories
-            .iter()
-            .map(|(&(o, c), f)| (f.insertion_seq, o, c))
+        let order: Vec<FactoryHolder> = self
+            .holders_insertion_ordered()
+            .into_iter()
+            .map(|(holder, _)| holder)
             .collect();
-        order.sort_by_key(|&(seq, _, _)| seq);
 
-        for (_, owner, category) in order {
-            let Some(f) = self.factories.get_mut(&(owner, category)) else {
+        for holder in order {
+            let Some(f) = self.factories.get_mut(&holder) else {
                 continue;
             };
+            let owner = f.owner;
             // Only an armed, in-flight build steps: object held, not complete (held for
             // delivery), not suspended, not manually paused.
             if f.object.is_none() || f.suspended || f.manual || f.progress >= PRODUCTION_STEPS {
@@ -1135,7 +1235,7 @@ impl FactoryRegistry {
             // which calls `0x004CA6E0` at `0x00508D88`). VERA recomputes it from the
             // live power, factory count and rules each sweep, so a change reaches
             // the rate sooner (recorded residual).
-            if let Some(inputs) = prepared.get(&(owner, category)) {
+            if let Some(inputs) = prepared.get(&holder) {
                 f.set_rate(time_to_build(inputs));
             }
 
@@ -1178,7 +1278,10 @@ impl FactoryRegistry {
         type_id: InternedId,
         all: bool,
     ) -> CancelOutcome {
-        let Some(f) = self.factories.get_mut(&(owner, category)) else {
+        let Some(f) = self
+            .factories
+            .get_mut(&FactoryHolder::House(owner, category))
+        else {
             return CancelOutcome::NoMatch;
         };
         // `FactoryClass::Remove_First @ 0x004CA620`: the first match, the
@@ -1298,10 +1401,14 @@ mod tests {
             insertion_seq: 0,
             ..Factory::default()
         };
-        reg.factories
-            .insert((owner, ProductionCategory::Building), fa);
-        reg.factories
-            .insert((owner, ProductionCategory::Infantry), fb);
+        reg.factories.insert(
+            FactoryHolder::House(owner, ProductionCategory::Building),
+            fa,
+        );
+        reg.factories.insert(
+            FactoryHolder::House(owner, ProductionCategory::Infantry),
+            fb,
+        );
         let ordered: Vec<u64> = reg
             .iter_insertion_ordered()
             .iter()
@@ -1393,7 +1500,11 @@ mod tests {
                 ProductionCategory::Vehicle
             };
             let mut reg = reg_with(owner, category, armed_factory(inputs.cost));
-            reg.start_rate(owner, category, time_to_build(&inputs), start_frame);
+            reg.start_rate(
+                FactoryHolder::House(owner, category),
+                time_to_build(&inputs),
+                start_frame,
+            );
             let mut houses = BTreeMap::from([(
                 owner,
                 crate::sim::house_state::HouseState::new(
@@ -1405,7 +1516,7 @@ mod tests {
                     10,
                 ),
             )]);
-            let prepared = BTreeMap::from([((owner, category), inputs)]);
+            let prepared = BTreeMap::from([(FactoryHolder::House(owner, category), inputs)]);
             let deposits: BTreeMap<u32, i32> = row["deposits"]
                 .as_array()
                 .unwrap()
@@ -1429,11 +1540,11 @@ mod tests {
                     let accepted = if kind == "suspend" {
                         reg.suspend(owner, category, frame)
                     } else {
-                        let held = reg.factories[&(owner, category)].manual;
+                        let held = reg.factories[&FactoryHolder::House(owner, category)].manual;
                         reg.resume(owner, category, time_to_build(&inputs), frame);
                         held
                     };
-                    let f = &reg.factories[&(owner, category)];
+                    let f = &reg.factories[&FactoryHolder::House(owner, category)];
                     order_results.push(serde_json::json!([
                         frame,
                         kind,
@@ -1445,9 +1556,11 @@ mod tests {
                         f.manual || f.suspended,
                     ]));
                 }
-                let before = reg.factories[&(owner, category)].step_timer.start_frame();
+                let before = reg.factories[&FactoryHolder::House(owner, category)]
+                    .step_timer
+                    .start_frame();
                 reg.step_all(&mut houses, &prepared, frame);
-                let f = &reg.factories[&(owner, category)];
+                let f = &reg.factories[&FactoryHolder::House(owner, category)];
                 if f.step_timer.start_frame() != before {
                     let credits = houses[&owner].economy.credits;
                     attempts.push(serde_json::json!([frame, f.progress, f.on_hold, credits]));
@@ -1467,7 +1580,7 @@ mod tests {
                 row["order_results"],
                 "{label}: the holds and resumes"
             );
-            let f = &reg.factories[&(owner, category)];
+            let f = &reg.factories[&FactoryHolder::House(owner, category)];
             let economy = &houses[&owner].economy;
             let end = &row["final"];
             assert_eq!(
@@ -1747,7 +1860,14 @@ mod tests {
     /// `factories` map is private but in-module).
     fn reg_with(owner: InternedId, category: ProductionCategory, f: Factory) -> FactoryRegistry {
         let mut reg = FactoryRegistry::default();
-        reg.factories.insert((owner, category), f);
+        reg.factories.insert(
+            FactoryHolder::House(owner, category),
+            Factory {
+                owner,
+                category,
+                ..f
+            },
+        );
         reg
     }
 
@@ -2233,8 +2353,8 @@ mod tests {
             reg.clear_active_and_advance(owner, vehicle, 700),
             Some(tank)
         );
-        reg.start_rate(owner, vehicle, 540, 100);
-        reg.start_rate(owner, infantry, 540, 100);
+        reg.start_rate(FactoryHolder::House(owner, vehicle), 540, 100);
+        reg.start_rate(FactoryHolder::House(owner, infantry), 540, 100);
         // The first steps charge 700 / 53 = 13 and 200 / 53 = 3; the house has 13.
         let mut houses = BTreeMap::from([(
             owner,
@@ -2242,8 +2362,8 @@ mod tests {
         )]);
         reg.step_all(&mut houses, &BTreeMap::new(), 110);
         let (tank_factory, soldier_factory) = (
-            &reg.factories[&(owner, vehicle)],
-            &reg.factories[&(owner, infantry)],
+            &reg.factories[&FactoryHolder::House(owner, vehicle)],
+            &reg.factories[&FactoryHolder::House(owner, infantry)],
         );
         assert_eq!((tank_factory.progress, tank_factory.on_hold), (1, false));
         assert_eq!(

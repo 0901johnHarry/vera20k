@@ -687,6 +687,23 @@ fn techno_ai_shell(
             if let Some(rules) = rules {
                 building_missions::process_delayed_fire(sim, id, rules, ctx);
                 crate::sim::production::update_repair_and_power(sim, rules, id);
+                // A `Factory=` type's own production (`0x004401BB..0x004401CD`).
+                let factory_type = sim
+                    .substrate
+                    .entities
+                    .get(id)
+                    .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+                    .and_then(|ty| ty.factory);
+                if let Some(factory_type) = factory_type {
+                    crate::sim::production::factory_ai(
+                        sim,
+                        rules,
+                        id,
+                        factory_type,
+                        ctx.path_grid,
+                        ctx.overlay_registry,
+                    );
+                }
             }
             // BuildingClass::Update consumes the shared C4/PostMortem latch at
             // its late tail. Keep the forced receiver inline in this object's

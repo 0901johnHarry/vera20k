@@ -214,14 +214,15 @@ pub(crate) fn update_repair_and_power(sim: &mut Simulation, rules: &RuleSet, id:
     repair_step(sim, rules, id);
 }
 
-/// Get_Mission (vt+0x184) is Construction or Selling (`0x00450659..
-/// 0x00450679`). VERA keeps a build-up in `building_up` without the
-/// Construction mission and steps it after the object pass, where native
-/// completes it earlier in the building's own Update and commences the queued
-/// Guard (`0x0043FF91`): the completion frame reads Guard
-/// ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)). A sale
-/// commences Selling (`production_sell::begin_selling`).
-fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
+/// Get_Mission (vt+0x184) is Construction or Selling, read later in the
+/// building's own Update: by UpdateRepairAndPower (`0x00450659..0x00450679`)
+/// and Factory_AI (`0x0045025E..0x0045027A`). VERA keeps a build-up in
+/// `building_up` without the Construction mission and steps it after the
+/// object pass, where native completes it earlier in the building's own
+/// Update and commences the queued Guard (`0x0043FF91`): the completion frame
+/// reads Guard ([`BuildingUp::completes_at`](crate::sim::components::BuildingUp)).
+/// A sale commences Selling (`production_sell::begin_selling`).
+pub(super) fn constructing_or_selling(sim: &Simulation, entity: &GameEntity) -> bool {
     entity.building_up.is_some_and(|build_up| {
         !build_up.completes_at(sim.session.binary_frame as i32, &sim.session.game_options)
     }) || entity.mission.effective().known() == Some(MissionType::Selling)

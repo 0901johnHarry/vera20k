@@ -681,13 +681,12 @@ fn completed_building_moves_into_ready_placement_pool() {
         vec![gacnst]
     );
     let held_id = held.object.unwrap().entity_id.unwrap();
-    let built = sim.houses[&americans].stats.built;
-    assert_eq!(built, built_before + 1);
     let rng = sim.scenario_rng.logical_state();
     for _ in 0..3 {
         assert!(!tick_production(&mut sim, &rules, &height_map, None));
     }
-    assert_eq!(sim.houses[&americans].stats.built, built);
+    // Record_Last_Built waits for the placement (`0x004FB4B7`).
+    assert_eq!(sim.houses[&americans].stats.built, built_before);
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building),
         held_id
@@ -711,7 +710,10 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
 
     let americans = sim.interner.intern("Americans");
+    // The house whose Record_Last_Built counts the placement.
+    super::credits_entry_for_owner(&mut sim, "Americans");
     ready_building(&mut sim, &rules, "Americans", "GACNST");
+    let built_before = sim.houses[&americans].stats.built;
     let held_id = sim
         .production
         .factory_shadow
@@ -740,6 +742,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     ));
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
+    assert_eq!(sim.houses[&americans].stats.built, built_before + 1);
 
     let structures = sim
         .substrate
@@ -852,17 +855,17 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
 }
 
 /// A building placed in frame P (the command tail) completes its build-up at
-/// P + 2 + (count - 1) * rate for a human player (the PLACE route: an idle
-/// frame, then the mission) and P + 1 + (count - 1) * rate for a computer
-/// house (ExitObject commences at once), from its type's Buildup control
-/// (`sim::building_construction`); the tactical capture ledger pins the
-/// human route.
+/// P + 2 + (count - 1) * rate from its type's Buildup control
+/// (`sim::building_construction`): the PLACE route, an idle frame, then the
+/// mission, whichever house sent the event. A computer yard places without
+/// one (`sim::ai_base_building::exit_building`). The tactical capture ledger
+/// pins the route.
 #[test]
 fn a_placed_building_completes_its_buildup_after_the_command_frame() {
-    let (placed, completed) = placed_gapowr_completion(true);
-    assert_eq!(completed, Some(placed + 2 + 25 * 2));
-    let (placed, completed) = placed_gapowr_completion(false);
-    assert_eq!(completed, Some(placed + 1 + 25 * 2));
+    for human in [true, false] {
+        let (placed, completed) = placed_gapowr_completion(human);
+        assert_eq!(completed, Some(placed + 2 + 25 * 2), "human {human}");
+    }
 }
 
 #[test]

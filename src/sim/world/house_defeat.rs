@@ -34,11 +34,12 @@
 //! ordering read from the disassembly.
 //!
 //! RESIDUALS:
-//! - VERA runs the gate in its own house pass after the anger rung and before
-//!   every house's AI, not inside each house's Update between its other steps
-//!   (ledger T2-28). Trigger: every defeat. Effect: natively the houses before
-//!   the defeated one in HouseClass::Array ran their AI before its sweep, so
-//!   they saw its objects alive; in VERA every AI sees them dead.
+//! - VERA runs the gate in its own house pass after the anger rung, followed
+//!   in each house by its building choice, but before every house's
+//!   `sim::ai` stand-in (ledger T2-28). Trigger: every defeat. Effect:
+//!   natively the houses before the defeated one in HouseClass::Array ran
+//!   their unit choice and teams before its sweep, so they saw its objects
+//!   alive; in VERA the stand-in sees them dead.
 //! - TechnoClass::Array order stands on stable-id order (construction order),
 //!   which matches for every source VERA constructs in native order.
 //! - Slave release: a Slave Miner killed with no attacker hands its slaves on
@@ -71,12 +72,26 @@ use crate::sim::intern::InternedId;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
-    /// The house rung's defeat pass (see the module doc), then the game-over
-    /// scan and the result timers.
+    /// The house rung with its defeat pass: see [`Self::house_rung`].
+    #[cfg(test)]
     pub(super) fn check_defeat(
         &mut self,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+    ) {
+        self.house_rung(rules, registry, true);
+    }
+
+    /// The house rung's per-house steps in HouseClass::Array order: each
+    /// house's defeat gate (see the module doc), then its building choice
+    /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
+    /// scan and the result timers. Without `defeat_pass` (VERA's first tick)
+    /// only the building choices run.
+    pub(super) fn house_rung(
+        &mut self,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+        defeat_pass: bool,
     ) {
         let outcome_tick = self.session.tick.saturating_add(1);
         let savour_frames = crate::rules::ruleset::savour_delay_frames(
@@ -87,41 +102,35 @@ impl Simulation {
                 .unwrap_or(0.03),
         );
         // 0x004F8E86..0x004F8EB7: not a campaign, past frame zero.
-        if self.session.game_mode_nonzero && (self.session.binary_frame as i32) > 0 {
-            // The interner resolves names case-insensitively, as native type
-            // lookups do.
-            let base_units = rules.map_or([None; 3], |rules| {
-                std::array::from_fn(|slot| {
-                    rules
-                        .general
-                        .base_unit_types
-                        .get(slot)
-                        .and_then(|name| self.interner.get(name))
-                })
-            });
-            let build_refinery_2 = rules
-                .and_then(|rules| rules.build_refinery_types.get(2))
-                .and_then(|name| self.interner.get(name));
-            for owner in self.session.house_order.clone() {
-                let Some(house) = self.houses.get(&owner) else {
-                    continue;
-                };
-                if house.is_defeated || house.multiplay_passive {
-                    continue;
-                }
-                let alive = if self.session.game_options.short_game {
-                    house.tracking.short_game_alive(&base_units)
-                } else {
-                    house.tracking.normal_game_alive(build_refinery_2)
-                };
-                if alive {
-                    continue;
-                }
+        let defeat_gate =
+            defeat_pass && self.session.game_mode_nonzero && (self.session.binary_frame as i32) > 0;
+        // The interner resolves names case-insensitively, as native type
+        // lookups do.
+        let base_units = rules.map_or([None; 3], |rules| {
+            std::array::from_fn(|slot| {
+                rules
+                    .general
+                    .base_unit_types
+                    .get(slot)
+                    .and_then(|name| self.interner.get(name))
+            })
+        });
+        let build_refinery_2 = rules
+            .and_then(|rules| rules.build_refinery_types.get(2))
+            .and_then(|name| self.interner.get(name));
+        for owner in self.session.house_order.clone() {
+            if defeat_gate && self.house_holds_nothing(owner, &base_units, build_refinery_2) {
                 if let Some(rules) = rules {
                     self.house_blowup_all(owner, rules, registry);
                 }
                 self.mplayer_defeated(owner, outcome_tick, savour_frames);
             }
+            if let Some(rules) = rules {
+                crate::sim::ai_base_building::update_building_choice(self, rules, owner, registry);
+            }
+        }
+        if !defeat_pass {
+            return;
         }
 
         // Check if all remaining alive houses are mutually allied → game over.
@@ -186,6 +195,27 @@ impl Simulation {
         // the wrapping frame commit below, matching Main_Tick's early return.
         for house in self.houses.values_mut() {
             house.advance_outcome_savour(outcome_tick);
+        }
+    }
+
+    /// The defeat gate's test (`0x004F8E92..0x004F8F77`): a house neither
+    /// defeated nor `MultiplayPassive=` whose counts say it holds nothing.
+    fn house_holds_nothing(
+        &self,
+        owner: InternedId,
+        base_units: &[Option<InternedId>; 3],
+        build_refinery_2: Option<InternedId>,
+    ) -> bool {
+        let Some(house) = self.houses.get(&owner) else {
+            return false;
+        };
+        if house.is_defeated || house.multiplay_passive {
+            return false;
+        }
+        if self.session.game_options.short_game {
+            !house.tracking.short_game_alive(base_units)
+        } else {
+            !house.tracking.normal_game_alive(build_refinery_2)
         }
     }
 

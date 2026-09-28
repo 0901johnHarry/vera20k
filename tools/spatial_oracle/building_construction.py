@@ -30,9 +30,9 @@ and the Construction mission.
   placement (HouseClass::Place_Production: Unlimbo's vt+0x484(1, 1) =
   0x44D6A0, then the factory's OVER_OUT, BuildingClass::Receive_Radio(3)
   0x43C2D0), a computer house's (ExitObject: vt+0x484(1, 1) then Commence
-  0x5B3570, 0x445329..0x44533F), a deploy (vt+0x484(1, 1), UnitClass::Deploy's
-  Queue_Mission(Construction) 0x7396D5 and +0x6DD 0x73984E; its first Update
-  in the same frame), or an UndeploysInto sale of an idle building
+  0x5B3570, 0x445329..0x44533F; its first Update in the same frame), a deploy
+  (vt+0x484(1, 1), UnitClass::Deploy's Queue_Mission(Construction) 0x7396D5
+  and +0x6DD 0x73984E; its first Update in the same frame), or an UndeploysInto sale of an idle building
   (Sell_Back(-1) 0x447110) with or without an ArchiveTarget, stopped at the
   stage-2 visit that finds +0x6DD (0x449CA7, before the unit is built). The
   factory's other radio traffic (TechnoClass::Receive_Radio 0x6F4AB0), the
@@ -295,8 +295,11 @@ def route(case):
             u.mem_write(building + 0x6DD, bytes([1]))
     signed = lambda address: struct.unpack('<i', u.mem_read(address, 4))[0]
     frames = []
-    # A deployed building's first Update is in its creation frame.
-    for k in range(0 if kind == 'deploy' else 1, case['frames'] + 1):
+    # A deployed building's first Update is in its creation frame, and so is
+    # a computer house's: Deploy runs in the unit's Update and ExitObject in
+    # the yard's, the new building joins the Logic vector and LogicClass::AI
+    # re-reads its count (0x55B613).
+    for k in range(0 if kind in ('deploy', 'computer') else 1, case['frames'] + 1):
         u.mem_write(FRAME, dwords(frame + k))
         before = len(calls)
         try:

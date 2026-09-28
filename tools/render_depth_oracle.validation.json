@@ -7,7 +7,7 @@
     "tools/render_depth_oracle.py": "6ca4008919eb234df32d14d9ce98385ef35ade02ac2ae84a2a55d4abe436b90d",
     "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
     "tools/tests/test_render_depth_oracle.py": "35b98881659b2fc3944a4fb6d95b1695e82a102c04684df0f9b6335e6de7397c",
-    "tools/tests/test_oracle_lifecycle.py": "7326d04b8d4beb15d0723bbbeea842619090c817e0e2038e87fef6ab6c2b6c58",
+    "tools/tests/test_oracle_lifecycle.py": "572c5d7ffa7f1f9a46160c6be4ca7e4d64af2eae9aa133a8f24aa8fee642d20f",
     "src/render/foot_depth.rs": "8cdf2d93c28495fe8400d70012d5977ccd7cab5910ce8857158e208a36c63481",
     "tools/test_native_oracle.py": "8d7d349bdc699fbcb2bd86b1e1ea74f1ba1b175c70ac9030754330c88177fffa"
   },
@@ -782,7 +782,7 @@
       },
       "retained_local_proofs": {
         "summary.json": {
-          "sha256": "cebb705f04b27797742f5acdc62a618254bb5ba55dff0232fbeca813d6f83b2e",
+          "sha256": "6479c8452477ca56f2e7294739ce1d86a28413b960dc0f527c6a3dde16e34607",
           "local_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/foot-z-pinned-replay/summary.json"
         },
         "publication.json": {
@@ -806,7 +806,24 @@
           "local_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/foot-z-pinned-replay/anytown-encoding-proof.json"
         }
       },
-      "limits": "These are bounded existing oracle fixtures, not whole-game parity. The source guard did not change their native instructions or fixture data. Historical receipts remain historical. A broader indexed dependency-refresh/input-preparation coordinator remains a follow-up; this run composed existing producers in isolated staging."
+      "limits": "These are bounded existing oracle fixtures, not whole-game parity. The source guard did not change their native instructions or fixture data. Historical receipts remain historical. A broader indexed dependency-refresh/input-preparation coordinator remains a follow-up; this run composed existing producers in isolated staging.",
+      "postpublication_checks": [
+        {
+          "command": "python -m tools.spatial_oracle.anytown_damage.validate_packet --manifest-only --check",
+          "exit_code": 0,
+          "log_sha256": "513577cc7519a69c4f78354a67ce403c571cc4cd12855363dc31976d64ed0972"
+        },
+        {
+          "command": "python -m tools.spatial_oracle.shrapnel_repair.validate_packet --check",
+          "exit_code": 0,
+          "log_sha256": "c5683cc3fe1b010d940810683e855126a0e49f623671b4e8b0f646b8e6d126cd"
+        }
+      ]
     }
+  },
+  "main_integration": {
+    "origin_main": "a0d7df63f7f25133adcbc6fc79273d4265dbe22a",
+    "conflict": "Retained both Foot Z and AI oracle entries in lifecycle test registration. No Foot producer/shared runner/native payload changes.",
+    "readiness": "Pending repeated full strict-retail lib/clippy and Python suite after this merge."
   }
 }

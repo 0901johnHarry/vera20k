@@ -331,7 +331,7 @@ pub struct HouseState {
     /// in every skirmish, so without it the alive set can never shrink to one.
     ///
     /// Stamped once at house creation, while a `RuleSet` is still in hand, and
-    /// then read straight off the house — `check_defeat` takes
+    /// then read straight off the house — the house rung takes
     /// `rules: Option<&RuleSet>` and never has to resolve the country itself. A
     /// house built with no rules available is stamped `false`, the INI default
     /// for `MultiplayPassive=`; there is no runtime fallback, because gamemd has
@@ -460,6 +460,11 @@ pub struct HouseState {
     /// directly enter House CRC.
     #[serde(default)]
     pub ai_activation: HouseAiActivationLatches,
+    /// The computer's production mode, building choice and naval latch
+    /// (`HouseClass+0x1E4`, `+0x564C`, `+0x1F0`), owned by
+    /// `sim::ai_base_building`. Persisted and hashed (schema v232).
+    #[serde(default)]
+    pub(crate) ai_production: crate::sim::ai_base_building::HouseAiProduction,
     /// Native `HouseClass+0x242`: "a harvester of this house found no ore".
     ///
     /// Exhaustive instruction census (`search_instructions` operand `+0x242]`,
@@ -702,6 +707,7 @@ impl HouseState {
             },
             strategy_emergency: HouseStrategyEmergencyState::default(),
             ai_activation: HouseAiActivationLatches::default(),
+            ai_production: Default::default(),
             harvester_no_ore: false,
             eva_funds_timer: HouseFrameTimer::default(),
             eva_low_power_guard: false,
@@ -733,7 +739,9 @@ pub struct MatchStatistics {
     pub units_lost: u32,
     /// Buildings of this house that were destroyed.
     pub buildings_lost: u32,
-    /// Objects this house finished producing.
+    /// Objects of this house that left their factory, `DontScore=` types
+    /// excepted: placed buildings and delivered units
+    /// (`production::factory_lifecycle::record_last_built`).
     pub built: u32,
     /// Score earned by destroying other houses' objects: the sum of each
     /// victim's point value at the moment it died.

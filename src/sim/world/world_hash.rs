@@ -1138,7 +1138,7 @@ impl Simulation {
             house.map_is_clear.hash(hasher);
             house.spy_sat_active.hash(hasher);
             if schema.includes(HashFeature::HouseDefeatTracking) {
-                house.tracking.hash(hasher);
+                house.tracking.hash_defeat_counters(hasher);
             } else {
                 // Earlier schemas folded a count of the owner's buildings and
                 // one of its other objects, each added at construction and
@@ -1237,6 +1237,16 @@ impl Simulation {
                 house.repair_start_latch.hash(hasher);
                 house.repair_latch_timer.hash(hasher);
             }
+            // Tagged and folded only off their constructor values, so a house
+            // without computer production hashes as earlier schemas did.
+            let gatherers = house.tracking.resource_gatherers();
+            if schema.includes(HashFeature::AiBaseBuilding)
+                && (house.ai_production != Default::default() || gatherers != 0)
+            {
+                b"ai-base-building-v1".hash(hasher);
+                house.ai_production.hash(hasher);
+                gatherers.hash(hasher);
+            }
         }
     }
 
@@ -1264,7 +1274,7 @@ impl Simulation {
             }
         }
         self.production.next_enqueue_order.hash(hasher);
-        self.hash_factory_registry(hasher); // P5b: the authoritative factory registry
+        self.hash_factory_registry(hasher, schema); // P5b: the authoritative factory registry
 
         // Live ore/gem identity and quantity are folded by `hash_overlay_grid`.
         self.production
@@ -1307,8 +1317,16 @@ impl Simulation {
     /// contract. Explicit-field folding (NOT `#[derive(Hash)]`) so `SpecialItem`'s
     /// three states + the Option presence tags fold distinctly, consistent with the
     /// rest of this file.
-    fn hash_factory_registry(&self, hasher: &mut impl Hasher) {
-        for f in self.production.factory_shadow.iter_insertion_ordered() {
+    fn hash_factory_registry(&self, hasher: &mut impl Hasher, schema: HashSchema) {
+        for (holder, f) in self.production.factory_shadow.holders_insertion_ordered() {
+            // The building that holds a computer's factory (`BuildingClass+0x524`);
+            // a House's factory folds as earlier schemas did.
+            if schema.includes(HashFeature::AiBaseBuilding)
+                && let crate::sim::production::FactoryHolder::Building(building) = holder
+            {
+                b"building-factory-v1".hash(hasher);
+                building.hash(hasher);
+            }
             f.owner.hash(hasher);
             (f.category as u8).hash(hasher);
             f.insertion_seq.hash(hasher);
@@ -1831,6 +1849,12 @@ impl Simulation {
             {
                 entity.repairing.hash(hasher);
                 entity.ai_repairable.hash(hasher);
+            }
+            if schema.includes(HashFeature::AiBaseBuilding)
+                && entity.ai_placement_timer != crate::sim::timer::CdTimer::default()
+            {
+                b"ai-placement-timer-v1".hash(hasher);
+                entity.ai_placement_timer.hash(hasher);
             }
             if schema.includes(HashFeature::BaseDefenseResponse) {
                 b"base-defense-response-v1".hash(hasher);

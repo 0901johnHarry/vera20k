@@ -303,6 +303,7 @@ fn stamp_scoring_flags(
     ge.tracking_facts = crate::sim::house_tracking::TrackingFacts {
         insignificant: obj.is_some_and(|o| o.insignificant),
         unit_like_building,
+        resource_gatherer: obj.is_some_and(|o| o.resource_gatherer),
     };
 }
 

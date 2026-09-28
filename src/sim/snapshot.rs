@@ -681,7 +681,10 @@ use crate::sim::world::Simulation;
 // (`sim::mcv_deploy`), so the AI player state loses its `mcv_deployed` latch,
 // and the build-site test (`sim::build_site`) replaces the terrain's derived
 // `build_blocked` cache, which the dynamic cell state no longer carries.
-const SNAPSHOT_VERSION: u32 = 231;
+// 231 -> 232: a computer house's building choice, production mode and naval
+// latch (`HouseAiProduction`), and its factory buildings' own factories and
+// placement timers (`production::factory_ai`).
+const SNAPSHOT_VERSION: u32 = 232;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3668,7 +3671,8 @@ mod tests {
         // 228 -> 229: the native production events; a user hold clears the rate.
         // 229 -> 230: every building's `+0x388` facing.
         // 230 -> 231: no AI `mcv_deployed` latch; no terrain `build_blocked`.
-        assert_eq!(super::SNAPSHOT_VERSION, 231);
+        // 231 -> 232: computer production state on houses and factory buildings.
+        assert_eq!(super::SNAPSHOT_VERSION, 232);
     }
 
     #[test]

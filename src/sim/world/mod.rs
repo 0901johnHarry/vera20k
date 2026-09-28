@@ -134,7 +134,7 @@ use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::animation;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
-use crate::sim::command::{Command, CommandEnvelope};
+use crate::sim::command::CommandEnvelope;
 use crate::sim::components::{AnimClassSpawnDescriptor, Position};
 use crate::sim::docking::aircraft_dock;
 use crate::sim::docking::building_dock;
@@ -3430,7 +3430,7 @@ impl Simulation {
     /// Accepted House result after its serialized SavourDelay has expired.
     /// Simulation termination and app outcome presentation share this query.
     /// Explicit solo wins/losses remain valid; the developer solo exception
-    /// belongs only to automatic victory creation in `check_defeat`.
+    /// belongs only to automatic victory creation in the house rung.
     pub(crate) fn ready_outcome_for_owner(
         &self,
         owner: InternedId,
@@ -4438,6 +4438,11 @@ impl Simulation {
         }
         // Building4484AF precedes the delegated Techno owner transfer.
         self.enable_building_after_owner_change(stable_id, rules);
+        // `0x004486DF..0x00448701`: the building's own factory is abandoned
+        // for its old owner.
+        if category == EntityCategory::Structure {
+            crate::sim::production::detach_building_factory(self, rules, stable_id);
+        }
         // gamemd-derived: `BuildingClass::ChangeOwner @ 0x00448260` removes
         // this pointer from the old House BuildConst vector before delegating
         // the Techno owner swap, then appends it to the new House tail.
@@ -5613,7 +5618,7 @@ impl Simulation {
 
     /// Spine region (LATE): AI commands, defeat detection, building animations,
     /// radar aging, and the late frame/tick commit. Accumulates
-    /// `spawned_entities` (AI and command placements). Returns false when
+    /// `spawned_entities` (command placements). Returns false when
     /// the terminating call skips frame commit and pending-delete processing.
     fn run_late_region(
         &mut self,
@@ -5638,16 +5643,16 @@ impl Simulation {
         // defeat processing and strategic AI command generation. Native anger
         // decay is unconditional; only the activation substep needs RuleSet.
         self.update_houses_anger_and_activation(rules);
-        // --- Phase 8: Defeat detection (runs BEFORE AI) ---
+        // --- Phase 8: Defeat detection and building choice (runs BEFORE AI) ---
         // gamemd evaluates each house's defeat before its AI manage/produce step,
         // so a defeated house issues no AI command this tick; tick_ai skips any
         // house flagged defeated via its is_defeated gate. The gate reads the
         // house's tracking counts (`house_defeat.rs`), which construction and
         // the frame-end pending-delete drain move: a death reaches the gate on
-        // the next frame.
+        // the next frame. Each house's building choice follows its own gate.
+        self.house_rung(rules, overlay_registry, self.session.tick > 0);
+        #[cfg(test)]
         if self.session.tick > 0 {
-            self.check_defeat(rules, overlay_registry);
-            #[cfg(test)]
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
         }
 
@@ -5656,24 +5661,22 @@ impl Simulation {
         // houses are gated out inside tick_ai).
         // PRODUCES: commands applied immediately in the same tick.
         // Temporarily take ai_players out to avoid borrow conflict with &self.
-        if rules.is_some() && !self.ai_players.is_empty() {
+        if let Some(ai_rules) = rules
+            && !self.ai_players.is_empty()
+        {
             let mut ai_state = std::mem::take(&mut self.ai_players);
-            let ai_commands = ai::tick_ai(
-                self,
-                &mut ai_state,
-                rules.expect("rules checked above"),
-                path_grid,
-                overlay_registry,
-            );
+            let ai_commands = ai::tick_ai(self, &mut ai_state, ai_rules);
             #[cfg(test)]
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::AiGenerated);
             self.ai_players = ai_state;
-            let mut ai_tail_path_grid = path_grid
+            // The stand-in queues units and orders attacks; it places and
+            // spawns nothing.
+            let ai_tail_path_grid = path_grid
                 .cloned()
                 .or_else(|| self.path_grid.as_deref().cloned());
             for cmd in &ai_commands {
                 let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
-                let applied = self.apply_command_with_overlays(
+                self.apply_command_with_overlays(
                     &cmd_owner_str,
                     &cmd.payload,
                     rules,
@@ -5681,19 +5684,6 @@ impl Simulation {
                     height_map,
                     overlay_registry,
                 );
-                if applied && self.is_wall_placement_command(&cmd.payload, rules) {
-                    ai_tail_path_grid = self.path_grid.as_deref().cloned().or(ai_tail_path_grid);
-                }
-                let placed_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
-                placed_building_owners.extend(placed_owner);
-                if (applied
-                    && matches!(cmd.payload, Command::DeployMcv { entity_id }
-                    if self.substrate.entities.get(entity_id).is_none_or(|e| e.dying)))
-                    || placed_owner.is_some()
-                    || applied && matches!(cmd.payload, Command::LaunchSuperWeapon { .. })
-                {
-                    *spawned_entities = true;
-                }
             }
         }
 
