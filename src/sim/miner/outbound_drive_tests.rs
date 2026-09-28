@@ -348,6 +348,16 @@ fn spawn_stock_refinery(
     oracle: &OutboundContractOracle,
     anchor: (u16, u16),
 ) -> u64 {
+    // Unlimbo appends the refinery to its House's building list (House+0x68),
+    // which the return's Find_Docking_Bay walks; a fixture without the House
+    // gets a human one, as the miner code treats a missing House.
+    if sim
+        .interner
+        .get("Americans")
+        .is_none_or(|owner| !sim.houses.contains_key(&owner))
+    {
+        seed_human_house(sim, "Americans");
+    }
     let id = sim
         .spawn_object(
             "GAREFN",

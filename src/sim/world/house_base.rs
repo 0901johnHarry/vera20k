@@ -206,6 +206,13 @@ impl Simulation {
         }
     }
 
+    /// For a fixture that stores a building directly: the House+68 append its
+    /// Unlimbo would make ([`Self::append_house_base_building`]).
+    #[cfg(test)]
+    pub(crate) fn append_house_base_building_for_test(&mut self, id: u64) {
+        self.append_house_base_building(id);
+    }
+
     /// `BuildingClass::ChangeOwner`'s moves between the two Houses' lists:
     /// before the Techno owner swap it stable-removes the building from the
     /// old House's FactoryPlant list, recomputes and removes it from House+68

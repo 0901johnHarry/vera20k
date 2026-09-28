@@ -5209,21 +5209,25 @@ impl Simulation {
 
     /// Find houses with at least one native-eligible SpySat provider. This is
     /// the House-rung edge detector; consumers read the persisted house latch.
+    /// `HouseClass::Update_SpySat @ 0x00508F60` walks the House's building
+    /// list (House+0x68, items `+0x6C`, count `+0x78`) in its order.
     fn collect_spy_sat_candidate_owners(&self, rules: &RuleSet) -> BTreeSet<InternedId> {
         let selling =
             crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Selling);
         let mut active = BTreeSet::new();
         let mut scanned_houses = BTreeSet::new();
         for &owner in self.session.house_order.iter().chain(self.houses.keys()) {
-            if !self.houses.contains_key(&owner) || !scanned_houses.insert(owner) {
+            let Some(house) = self.houses.get(&owner) else {
+                continue;
+            };
+            if !scanned_houses.insert(owner) {
                 continue;
             }
-            for &stable_id in self.substrate.entities.ids_for_owner(owner) {
+            for &stable_id in house.base_projection.buildings() {
                 let Some(entity) = self.substrate.entities.get(stable_id) else {
                     continue;
                 };
-                let coarse_candidate = entity.category == EntityCategory::Structure
-                    && !entity.lifecycle.in_limbo
+                let coarse_candidate = !entity.lifecycle.in_limbo
                     && entity.lifecycle.cell_marked
                     && entity.mission.current() != selling
                     && entity.mission.queued() != selling
