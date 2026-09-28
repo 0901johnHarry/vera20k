@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::{map_file, theater};
 use vera20k::rules::art_data::ArtRegistry;
 use vera20k::rules::ini_parser::IniFile;
@@ -29,7 +29,8 @@ fn diagnose_placement_constraints() {
         return;
     }
 
-    let mut asset_manager = AssetManager::new(ra2_dir).expect("AssetManager");
+    let mut asset_manager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager");
 
     // Load rules
     let rules_data = asset_manager

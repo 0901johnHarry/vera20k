@@ -821,7 +821,7 @@ mod tests {
 mod corpus_tests {
     use std::path::Path;
 
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::rules::ini_parser::IniFile;
 
     const CONTRACT_RULES: &str =
@@ -860,7 +860,8 @@ mod corpus_tests {
     fn test_retail_ini_accessor_corpus_parity() {
         let root =
             std::env::var("RA2_DIR").expect("set RA2_DIR to the installed retail RA2/YR directory");
-        let assets = AssetManager::new(Path::new(&root)).expect("load retail archive stack");
+        let assets = AssetManager::new(Path::new(&root), MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail archive stack");
         let rulesmd = assets
             .get("rulesmd.ini")
             .expect("rulesmd.ini in retail archive stack");

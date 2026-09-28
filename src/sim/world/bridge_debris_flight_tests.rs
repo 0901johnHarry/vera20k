@@ -228,7 +228,7 @@ fn retail_bridge_landing_inputs_match_original_readers() {
 #[test]
 #[ignore = "requires the configured retail install and stock Hills.mmx"]
 fn retail_hills_layered_bridge_landing_inputs_match_original_readers() {
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::process_owner::NativeRulesProcessOwner;
 
@@ -240,7 +240,7 @@ fn retail_hills_layered_bridge_landing_inputs_match_original_readers() {
                 .paths
                 .ra2_dir
         });
-    let assets = AssetManager::new(&retail).unwrap();
+    let assets = AssetManager::new(&retail, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let read = |name: &str| IniFile::from_bytes(&assets.get(name).unwrap()).unwrap();
     let root = read("RULESMD.INI");
     let art = read("ARTMD.INI");

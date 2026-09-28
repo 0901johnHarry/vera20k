@@ -12,10 +12,6 @@ use std::path::{Path, PathBuf};
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::util::config::GameConfig;
 
-/// Retail's digital-install media index. Startup selects the `03` archive family
-/// from it. Pinned explicitly so the tool never takes the `-CD` branch.
-const RETAIL_MEDIA_INDEX: i32 = 2;
-
 /// Where the retail root came from, for diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootSource {
@@ -59,27 +55,20 @@ fn check(dir: PathBuf, source: RootSource) -> Result<(PathBuf, RootSource), Stri
 
 /// Build the archive stack.
 ///
-/// Always pins [`MediaArchiveMode::Numbered`] rather than using `AssetManager::new`.
-/// The default mode substring-matches `-CD` across every process argument, so a
-/// perfectly ordinary flag or path containing that sequence would otherwise flip
-/// the whole manager into wildcard media mode.
+/// Pins the stock numbered archive policy. Command arguments and paths cannot
+/// change media selection.
 ///
 /// `all_mixes` additionally mounts archives the startup path skips. It is a
 /// tooling-only widening of the search set, so results found only that way are
 /// not what the game would resolve.
 pub fn open_manager(ra2_dir: &Path, all_mixes: bool) -> Result<AssetManager, String> {
-    let mut manager = AssetManager::new_with_media_mode(
-        ra2_dir,
-        MediaArchiveMode::Numbered {
-            media_index: RETAIL_MEDIA_INDEX,
-        },
-    )
-    .map_err(|err| {
-        format!(
-            "could not mount archives under {}: {err}",
-            ra2_dir.display()
-        )
-    })?;
+    let mut manager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).map_err(|err| {
+            format!(
+                "could not mount archives under {}: {err}",
+                ra2_dir.display()
+            )
+        })?;
 
     if all_mixes {
         manager

@@ -2426,7 +2426,7 @@ fn push_candidate(candidates: &mut Vec<String>, candidate: String) {
 #[cfg(test)]
 mod anim_runtime_metadata_tests {
     use super::*;
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 
     #[test]
     fn building_body_fields_match_original_native_readers() {
@@ -2910,7 +2910,8 @@ mod anim_runtime_metadata_tests {
             std::env::var_os("RA2_DIR")
                 .expect("set RA2_DIR to the installed retail RA2/YR directory"),
         );
-        let assets = AssetManager::new(&ra2_dir).expect("load retail RA2/YR archive stack");
+        let assets = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail RA2/YR archive stack");
         let artmd_bytes = assets.get_ref("ARTMD.INI").expect("load retail ARTMD.INI");
         let artmd = IniFile::from_bytes(artmd_bytes).expect("parse retail ARTMD.INI");
         let registry = ArtRegistry::from_ini(&artmd);
@@ -2952,7 +2953,8 @@ mod anim_runtime_metadata_tests {
             std::env::var_os("RA2_DIR")
                 .expect("set RA2_DIR to the installed retail RA2/YR directory"),
         );
-        let assets = AssetManager::new(&ra2_dir).expect("load retail RA2/YR archive stack");
+        let assets = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail RA2/YR archive stack");
         let artmd_bytes = assets.get_ref("ARTMD.INI").expect("load retail ARTMD.INI");
         let artmd = IniFile::from_bytes(artmd_bytes).expect("parse retail ARTMD.INI");
         let registry = ArtRegistry::from_ini(&artmd);

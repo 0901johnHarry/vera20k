@@ -18,7 +18,7 @@
 
 use std::path::Path;
 
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::map_file::{self, MapFile};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -118,12 +118,13 @@ pub(crate) fn load_with_launch(
     let mut map = map_file::load_from_path(&map_path)
         .map_err(|error| format!("parse {}: {error}", map_path.display()))?;
 
-    let mut assets = AssetManager::new(retail_dir).map_err(|error| {
-        format!(
-            "open retail MIX archives in {}: {error}",
-            retail_dir.display()
-        )
-    })?;
+    let mut assets =
+        AssetManager::new(retail_dir, MediaArchiveMode::STOCK_DIGITAL).map_err(|error| {
+            format!(
+                "open retail MIX archives in {}: {error}",
+                retail_dir.display()
+            )
+        })?;
     // Preserve the process-owned cold Rules registry before theater archive
     // priority changes. The same owner then performs the active noncampaign
     // reset/rebuild and transfers its move-only native-ID receipt.

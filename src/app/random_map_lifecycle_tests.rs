@@ -118,8 +118,11 @@ fn gsi_04_12_random_map_ui_to_sed_launch_lifecycle_converges() {
     );
     assert!(retail_dir.join("gamemd.exe").is_file());
     crate::map::rmg::trig::install_from_dir(&retail_dir);
-    let mut assets = crate::assets::asset_manager::AssetManager::new(&retail_dir)
-        .expect("active-retail AssetManager");
+    let mut assets = crate::assets::asset_manager::AssetManager::new(
+        &retail_dir,
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .expect("active-retail AssetManager");
     let (_, _, native_rules) = crate::rules::retail_sources::load_startup_rules(&assets)
         .expect("retail startup Rules")
         .into_parts();

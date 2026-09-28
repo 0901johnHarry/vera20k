@@ -172,6 +172,7 @@ fn begin_loading_plays_loading_theme_and_polls_theme_through_the_lease() {
     )
     .expect("write thememd.ini");
     let mut process_assets = crate::app::process_assets::ProcessAssets::from_startup(
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
         Some(AssetManager::from_loose_root_for_test(&dir)),
         None,
         None,
@@ -227,6 +228,7 @@ fn loading_replacement_and_terminal_retirement_preserve_cache_and_admission_orde
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("sentinel.bin"), b"first winner").unwrap();
     let mut assets = crate::app::process_assets::ProcessAssets::from_startup(
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
         Some(AssetManager::from_loose_root_for_test(&dir)),
         None,
         None,
@@ -370,13 +372,17 @@ fn loading_preparation_consumes_real_source_and_returns_lease_on_initial_and_adm
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let map_path = dir.join("mp01t4.map");
-    let map_bytes = AssetManager::new(&ra2_dir)
-        .unwrap()
-        .get("Fight.MAP")
-        .expect("retail Fight.MAP fixture");
+    let map_bytes = AssetManager::new(
+        &ra2_dir,
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .unwrap()
+    .get("Fight.MAP")
+    .expect("retail Fight.MAP fixture");
     std::fs::write(&map_path, map_bytes).unwrap();
     std::fs::write(dir.join("sentinel.bin"), b"keep this cache").unwrap();
     let mut assets = crate::app::process_assets::ProcessAssets::from_startup(
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
         Some(AssetManager::from_loose_root_for_test(&dir)),
         None,
         None,
@@ -1603,5 +1609,76 @@ fn selected_generic_progress_uses_no_native_loader_metadata() {
     assert_eq!(phase.runtime_color_scheme_count, 0);
     for raw in [8, 6, 8, 12, 100, 200] {
         phase.sink.milestone(raw);
+    }
+}
+
+/// Startup absence and a lost loading lease both rebuild from the retained
+/// launch policy, never the harness argv. Distinct MAPSMD entries make a policy
+/// reset observable through production archive loading and lookup.
+#[test]
+fn absent_and_lost_loading_managers_preserve_media_policy() {
+    use crate::assets::asset_manager::MediaArchiveMode;
+    use crate::map::source::test_support::{TestDirectory, make_new_format_mix_bytes};
+
+    let dir = TestDirectory::new("media-recovery-Cd-path");
+    let empty = make_new_format_mix_bytes(&[]);
+    for name in [
+        "ra2md.mix",
+        "ra2.mix",
+        "cachemd.mix",
+        "cache.mix",
+        "localmd.mix",
+        "local.mix",
+        "conqmd.mix",
+        "conquer.mix",
+        "cameomd.mix",
+        "cameo.mix",
+        "multimd.mix",
+        "movmd03.mix",
+    ] {
+        dir.write(name, &empty);
+    }
+    dir.write(
+        "mapsmd03.mix",
+        &make_new_format_mix_bytes(&[("stock.bin", b"stock")]),
+    );
+    dir.write(
+        "mapsmd01.mix",
+        &make_new_format_mix_bytes(&[("wildcard.bin", b"wildcard")]),
+    );
+    for mode in [
+        MediaArchiveMode::STOCK_DIGITAL,
+        MediaArchiveMode::CdWildcard,
+    ] {
+        let mut owner =
+            crate::app::process_assets::ProcessAssets::from_startup(mode, None, None, None);
+        let mut session = LoadingSession::from_request(LoadingRequest::unverified_legacy_skirmish(
+            test_launch_session(LaunchCountry::America),
+            unverified_seed(1),
+        ));
+        for lost_lease in [false, true] {
+            if lost_lease {
+                session.job.retire(&mut owner);
+                // Exercise the actual leased-but-lost recovery branch.
+                drop(owner.lease_for_loading().unwrap());
+                assert!(owner.is_leased());
+                session = LoadingSession::from_request(LoadingRequest::unverified_legacy_skirmish(
+                    test_launch_session(LaunchCountry::America),
+                    unverified_seed(1),
+                ));
+            }
+            ensure_session_job_asset_manager(&mut owner, &mut session, Some(dir.path().to_owned()))
+                .expect("production archive reconstruction");
+            let manager = session.job.asset_manager.as_ref().unwrap();
+            assert_eq!(manager.get_ref("stock.bin"), Some(b"stock".as_slice()));
+            assert_eq!(
+                manager.contains("wildcard.bin"),
+                mode == MediaArchiveMode::CdWildcard
+            );
+            assert_eq!(owner.media_archive_mode(), mode);
+            assert!(!owner.is_leased());
+        }
+        session.job.retire(&mut owner);
+        assert!(owner.is_available());
     }
 }

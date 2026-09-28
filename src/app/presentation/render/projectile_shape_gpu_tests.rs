@@ -6,6 +6,7 @@
 use super::super::draw_plan_lowering::{NativeDisplayOrder, lower_object_instances};
 use super::*;
 use crate::app::presentation::instances::projectile_draw_instance;
+use crate::assets::asset_manager::MediaArchiveMode;
 use crate::assets::{asset_manager::AssetManager, pal_file::Palette};
 use crate::map::houses::HouseColorMap;
 use crate::map::resolved_terrain::{test_flat_cell, test_flat_ground_grid};
@@ -130,7 +131,7 @@ fn retail_bullet_atlas_geometry_and_layer_replay_match_original_shape_pixels() {
                 .paths
                 .ra2_dir
         });
-    let assets = AssetManager::new(&root).unwrap();
+    let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let native: Value = serde_json::from_str(include_str!(
         "../../../../tools/projectile_oracle/bridge_render_shape.json"
     ))
@@ -443,7 +444,7 @@ fn retail_ifv_dragon_all_frames_and_flight_match_original_shape_pixels() {
                 .paths
                 .ra2_dir
         });
-    let assets = AssetManager::new(&root).unwrap();
+    let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let original = IniFile::from_bytes(assets.get_ref("rulesmd.ini").unwrap()).unwrap();
     let art = IniFile::from_bytes(assets.get_ref("artmd.ini").unwrap()).unwrap();
     let weapon_name = original.section("FV").unwrap().get("Weapon1").unwrap();

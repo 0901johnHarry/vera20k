@@ -204,11 +204,12 @@ mod tests {
     #[test]
     #[ignore] // Requires RA2_DIR env var pointing to retail game files
     fn parse_real_game_fnt() {
-        use crate::assets::asset_manager::AssetManager;
+        use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
         use std::path::Path;
         let dir = std::env::var("RA2_DIR").expect("Set RA2_DIR to your RA2/YR install directory");
         let ra2_dir = Path::new(&dir);
-        let mut mgr = AssetManager::new(ra2_dir).expect("AssetManager");
+        let mut mgr =
+            AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager");
         mgr.load_all_disk_mixes().ok();
         for name in [
             "local.mix",

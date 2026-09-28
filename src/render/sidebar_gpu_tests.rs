@@ -350,7 +350,11 @@ fn retail_command_bar_atlas_and_production_append_match_native_capture() {
                 .paths
                 .ra2_dir
         });
-    let mut assets = crate::assets::asset_manager::AssetManager::new(&root).unwrap();
+    let mut assets = crate::assets::asset_manager::AssetManager::new(
+        &root,
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .unwrap();
     assets.load_nested("localmd.mix").unwrap();
     let (art, rgba, size) = super::sidebar_chrome::packed_command_bar_fixture(
         &assets,

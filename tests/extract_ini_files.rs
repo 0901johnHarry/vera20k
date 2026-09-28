@@ -24,8 +24,11 @@ fn extract_original_ini_files() {
         return;
     }
 
-    let am = vera20k::assets::asset_manager::AssetManager::new(&game_dir)
-        .expect("Failed to load asset manager");
+    let am = vera20k::assets::asset_manager::AssetManager::new(
+        &game_dir,
+        vera20k::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .expect("Failed to load asset manager");
 
     let ini_dir = Path::new("ini");
     fs::create_dir_all(ini_dir).expect("Failed to create ini/ directory");

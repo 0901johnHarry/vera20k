@@ -35,6 +35,8 @@ use crate::app::presentation::lighting::rebuild_lighting_grid_from_sim;
 #[cfg(test)]
 use crate::app::presentation::lighting::{build_lighting_grid_from_view, derive_lighting_view};
 use crate::assets::asset_manager::AssetManager;
+#[cfg(test)]
+use crate::assets::asset_manager::MediaArchiveMode;
 use crate::assets::shp_file::ShpFile;
 use crate::map::actions::ActionMap;
 use crate::map::basic::{BasicSection, BridgeDestroyabilityMode};
@@ -3557,7 +3559,8 @@ mod random_map_retail_tests {
                 };
                 let (seed_dir, seed_name) = write_seed(&options, &tag);
 
-                let mut asset_manager = AssetManager::new(&ra2).expect("AssetManager::new");
+                let mut asset_manager = AssetManager::new(&ra2, MediaArchiveMode::STOCK_DIGITAL)
+                    .expect("AssetManager::new");
                 let (_, _, native_rules) =
                     crate::rules::retail_sources::load_startup_rules(&asset_manager)
                         .expect("retail startup Rules")

@@ -18,8 +18,11 @@ fn main() {
     let out_dir = Path::new("ini");
 
     println!("Loading MIX archives from {}...", ra2_dir.display());
-    let asset_manager = vera20k::assets::asset_manager::AssetManager::new(ra2_dir)
-        .expect("Failed to load MIX archives");
+    let asset_manager = vera20k::assets::asset_manager::AssetManager::new(
+        ra2_dir,
+        vera20k::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .expect("Failed to load MIX archives");
 
     fs::create_dir_all(out_dir).expect("Failed to create ini/ directory");
 

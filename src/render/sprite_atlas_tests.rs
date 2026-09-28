@@ -1,6 +1,7 @@
 //! Tests for SHP sprite atlas key collection and deduplication.
 
 use super::*;
+use crate::assets::asset_manager::MediaArchiveMode;
 
 struct StoredFrameTestDirectory(std::path::PathBuf);
 
@@ -988,7 +989,8 @@ fn retail_animations_render_from_the_file_their_frames_are_counted_in() {
         });
     let scenario =
         crate::headless_scenario::load(&root, "Dustbowl.mmx", 0x0B21_D6E5).expect("Dustbowl loads");
-    let mut assets = AssetManager::new(&root).expect("retail archives");
+    let mut assets =
+        AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).expect("retail archives");
     let theater_name = scenario.map.header.theater.clone();
     let theater =
         crate::map::theater::load_theater(&mut assets, &theater_name).expect("theater loads");

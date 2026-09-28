@@ -602,8 +602,11 @@ fn resident_bridge_recalc_and_presentation_match_original_execution() {
 #[ignore = "requires active retail assets; original NewUrban Wood suffix boundary"]
 fn retail_bridge_recalc_and_presentation_match_original_execution() {
     let retail = std::env::var("RA2_DIR").expect("retail directory");
-    let mut assets =
-        crate::assets::asset_manager::AssetManager::new(std::path::Path::new(&retail)).unwrap();
+    let mut assets = crate::assets::asset_manager::AssetManager::new(
+        std::path::Path::new(&retail),
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .unwrap();
     let theater = crate::map::theater::load_theater(&mut assets, "NEWURBAN").unwrap();
     let corpus = bridge_catalog_corpus();
     let group = corpus["groups"]

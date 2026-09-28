@@ -2450,7 +2450,7 @@ mod tests {
     fn active_retail_low_end_tmp_blocks_stamp_native_fields() {
         use std::path::PathBuf;
 
-        use crate::assets::asset_manager::AssetManager;
+        use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
         use crate::map::rmg::theater_blocks::TheaterTileBlocks;
 
         let retail_dir = std::env::var_os("RA2_DIR")
@@ -2461,7 +2461,8 @@ mod tests {
                     .map(|config| config.paths.ra2_dir)
             })
             .expect("set RA2_DIR to the installed active-retail YR directory");
-        let mut assets = AssetManager::new(&retail_dir).expect("load retail MIX stack");
+        let mut assets = AssetManager::new(&retail_dir, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail MIX stack");
         let mut saw_multicell = false;
         let mut saw_hole = false;
         let mut saw_nonzero_slope = false;

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use super::load_rules_with_merged_ini;
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::theater;
 use crate::rules::buildup_asset_catalog::{BuildupAssetCatalog, NO_BUILDUP, buildup_shp_names};
 use crate::rules::object_type::ObjectCategory;
@@ -37,7 +37,8 @@ fn retail_buildup_controls_bind_in_every_theater() {
     );
     let mut pinned = 0;
     for theater_name in THEATERS {
-        let mut assets = AssetManager::new(&retail_dir).expect("open retail MIX archives");
+        let mut assets = AssetManager::new(&retail_dir, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("open retail MIX archives");
         theater::load_theater(&mut assets, theater_name).expect("load retail theater");
         let (mut rules, _rules_ini, art_ini, _receipt) =
             load_rules_with_merged_ini(&assets, None, None).expect("load production rules");

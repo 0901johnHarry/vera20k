@@ -22,7 +22,7 @@
 //!   cargo test --test bridge_pathfinding_g5_g6_fidelity_probe -- --ignored --nocapture
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::map_file::{self, MapFile};
 use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
@@ -217,7 +217,8 @@ fn probe_g5_g6_against_retail_maps() {
         eprintln!("SKIP: RA2 dir not found at {}", dir_str);
         return;
     }
-    let mut am = AssetManager::new(ra2_dir).expect("AssetManager::new");
+    let mut am =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager::new");
     // Pull in standard mix archives where map files and theater data live.
     for mix in &[
         "maps01.mix",
@@ -455,7 +456,8 @@ fn probe_g5_astar_rejects_all_trusted_firing_pairs() {
         eprintln!("SKIP: RA2 dir not found at {}", dir_str);
         return;
     }
-    let mut am = AssetManager::new(ra2_dir).expect("AssetManager::new");
+    let mut am =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager::new");
     for mix in &[
         "maps01.mix",
         "maps02.mix",

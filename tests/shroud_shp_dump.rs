@@ -17,7 +17,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use image::RgbaImage;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::shp_file::ShpFile;
 use vera20k::render::shroud_buffer::{SHROUD_EDGE_LUT, extract_shp_brightness};
 
@@ -152,7 +152,8 @@ fn dump_shroud_shp_layout() {
         return;
     };
 
-    let asset_manager = AssetManager::new(&ra2_dir).expect("asset manager");
+    let asset_manager =
+        AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let Some((shp_bytes, source)) = asset_manager.get_with_source("shroud.shp") else {
         panic!("shroud.shp not found in any MIX archive");
     };

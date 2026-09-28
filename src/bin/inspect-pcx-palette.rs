@@ -5,7 +5,7 @@
 //! buttons contains.
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::pcx_file::PcxFile;
 use vera20k::assets::shp_file::ShpFile;
@@ -23,7 +23,8 @@ fn main() {
     let ra2_dir = Path::new("C:/Users/enok/Documents/Command and Conquer Red Alert II/");
     let out_dir = Path::new("target/pcx-dump");
     std::fs::create_dir_all(out_dir).expect("create target/pcx-dump");
-    let assets = AssetManager::new(ra2_dir).expect("Failed to load MIX archives");
+    let assets = AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to load MIX archives");
 
     println!("=== Button PCXs ===");
     for name in [

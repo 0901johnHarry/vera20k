@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::hva_file::HvaFile;
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::vpl_file::VplFile;
@@ -31,7 +31,8 @@ fn render_real_vxl_to_png() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("AssetManager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager");
 
     // Find a VXL file in the MIX chain.
     let mut vxl_name: Option<&str> = None;

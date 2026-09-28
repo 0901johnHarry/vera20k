@@ -9,7 +9,7 @@
 //! Usage: `cargo run --bin inspect-water-tiles`
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::tmp_file::TmpFile;
 
@@ -21,7 +21,8 @@ fn main() {
 
     let ra2_dir = Path::new("C:/Users/enok/Documents/Command and Conquer Red Alert II/");
     println!("Loading MIX archives from {}...", ra2_dir.display());
-    let asset_manager = AssetManager::new(ra2_dir).expect("Failed to load MIX archives");
+    let asset_manager = AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to load MIX archives");
 
     // Load the temperate iso palette
     let (pal_bytes, pal_source) = asset_manager

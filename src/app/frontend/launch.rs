@@ -1,7 +1,7 @@
 //! Neutral top-level launch dispatch for interactive and capture modes.
 //!
-//! The retail switch table is consumed first, then every remaining non-tactical
-//! argument is delegated byte-for-byte to the sealed shell parser. This module
+//! Capture vectors reach their sealed parsers unchanged. Interactive arguments
+//! pass through the retail switch table before shell dispatch. This module
 //! owns only mode routing and the strict tactical profile/contract/output
 //! boundary.
 
@@ -152,16 +152,10 @@ impl TacticalCaptureRequest {
 
 /// Parse the neutral application launch boundary.
 ///
-/// Native's global switch table runs over every argument before launch
-/// dispatch, so it is consumed here first: without that, a player typing the
-/// one switch the community actually uses (`-WIN`) gets no window at all. Only
-/// the arguments native does not recognise reach the mode parsers, so the
-/// sealed capture contract — a misspelled automation flag must never open an
-/// interactive window — is untouched.
-///
-/// Tactical mode is then recognized only when its flag is the first remaining
-/// argument. Every other vector, including an empty vector and malformed or
-/// non-UTF-8 shell vectors, is passed unchanged to the existing shell parser.
+/// Capture option values bypass the retail switch table. Ordinary arguments
+/// pass through that table, then the shell parser rejects anything left over.
+/// Tactical capture requires its flag first; malformed vectors never silently
+/// open an interactive window.
 pub fn parse_launch_args<I>(args: I) -> Result<AppLaunchMode>
 where
     I: IntoIterator<Item = OsString>,
@@ -185,9 +179,7 @@ where
             ShellAppLaunchMode::ShellCapture(request) => Ok(AppLaunchMode::ShellCapture(request)),
         };
     }
-    // `AssetManager` reads the original process argv for `-CD` itself, using
-    // native's substring match; consuming the switch with the same predicate
-    // here keeps the two matchers from disagreeing about what `-CD` means.
+    // This is the only process-argument owner for retail startup decisions.
     let (retail_options, args) = consume_retail_switches(args);
     if retail_options.usage_requested {
         return Ok(AppLaunchMode::Usage);
@@ -384,15 +376,16 @@ mod tests {
 
     #[test]
     fn a_cd_superstring_launches_instead_of_aborting() {
-        // The asset layer already selects the wildcard media branch for any
-        // argument *containing* `-CD`, so the launch parser must accept the
-        // same set or an argument like `-CDROM` refuses to start the game.
+        // Native substring matching also accepts -CDROM.
         let AppLaunchMode::Interactive(options) =
             parse_launch_args([OsString::from("-CDROM")]).expect("parse")
         else {
             panic!("a -CD superstring must stay an interactive launch");
         };
-        assert!(options.cd_media);
+        assert_eq!(
+            options.media_archive_mode,
+            crate::assets::asset_manager::MediaArchiveMode::CdWildcard
+        );
     }
 
     #[test]
@@ -430,6 +423,11 @@ mod tests {
             panic!("a -CD-containing output path must stay a tactical capture");
         };
         assert_eq!(request.output_dir(), output);
+        let app = crate::app::App::new_tactical_capture(request);
+        assert_eq!(
+            app.startup_options.media_archive_mode,
+            crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        );
         std::fs::remove_dir(parent).expect("remove test directory");
     }
 
