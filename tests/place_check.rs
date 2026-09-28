@@ -1,5 +1,5 @@
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 
@@ -17,7 +17,8 @@ fn inspect_place_shp() {
     if !ra2_dir.exists() {
         return;
     }
-    let asset_manager = AssetManager::new(ra2_dir).expect("AssetManager");
+    let asset_manager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager");
 
     let shp_data = asset_manager.get("place.shp").expect("place.shp");
     let shp = ShpFile::from_bytes(&shp_data).expect("parse place.shp");

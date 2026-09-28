@@ -18,11 +18,23 @@ pub(crate) trait OrdinaryBridgeHost {
     fn rebuild_rectangle(&mut self, rect: Rect) -> Result<(), Self::Error>;
 }
 
-pub(super) fn member(overlay: i32, family: Family) -> bool {
+pub(crate) fn member(overlay: i32, family: Family) -> bool {
     match family {
         Family::Low => (74..=101).contains(&overlay),
         Family::High => (205..=232).contains(&overlay),
     }
+}
+
+/// Native ordinary selector classification, shared by damage, repair and hut
+/// callers. These are overlay axes; the longitudinal walk is perpendicular.
+pub(crate) fn axis(overlay: i32, family: Family) -> Option<super::Axis> {
+    member(overlay, family).then(|| {
+        if north_south(overlay, family) {
+            super::Axis::NS
+        } else {
+            super::Axis::EW
+        }
+    })
 }
 
 pub(super) fn north_south(overlay: i32, family: Family) -> bool {
@@ -36,7 +48,7 @@ pub(super) fn offset(point: CellCoord, x: i16, y: i16) -> CellCoord {
     (point.0.wrapping_add(x), point.1.wrapping_add(y))
 }
 
-/// Original57CCF0/57F440 select the middle of the three-cell width using
+/// Original57BAA0/57CCF0/57F440 select the middle of the three-cell width using
 /// live overlay membership. Reads retain native shared-dummy lookup effects.
 pub(super) fn centered<H: OrdinaryBridgeHost>(
     host: &mut H,

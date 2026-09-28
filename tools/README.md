@@ -11,13 +11,21 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Wait for builds; test, check, lint or build the current checkout; preserve A/B binaries | `python -m tools.cargo_run` (below) |
 | Find a built host executable for shell use | `python -m tools.cargo_run --resolve asset --profile release` (below) |
 | Run retail corpus checks or export a decoder-baseline candidate | [retail corpus](retail_corpus.md) |
+| Inspect exact retail INI values through production sources and readers | [INI lookup](ini_lookup.md), `asset ini-get` |
+| Select media archives without ambient argument parsing | [media policy](media_policy.md) |
 | Inspect/extract/render assets | [asset browser](asset_browser/README.md), `asset` binary |
 | Reproduce FireAt-tail launch goldens | [projectile fixture family](projectile_oracle/README.md) |
+| Reproduce native projectile launch, timer, collision and arc-domain goldens | [projectile comparisons](projectile_oracle/README.md); shared [slope initializer](native_slope.py) |
+| Reproduce palette, scanline, brightness and Ground/Level goldens | [checked palette oracle](palette_oracle/README.md) |
+| Reproduce ground-height setters and Unit/Infantry placement leaves | [checked ramp-height oracle](ramp_height_oracle.md) |
+| Reproduce native animation boundary decisions and stores | [checked Anim boundary oracle](anim_oracle/README.md) |
+| Refresh Anytown packet source provenance after helper maintenance | [checked native replay and receipt refresh](spatial_oracle/anytown_damage/README.md) |
 | Read/disassemble native VAs; scan callers, fields and bytes | [native inspection](native_inspect.md), `python -m tools.native_inspect` |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |
 | Capture and certify tactical routes | [tactical certification](tactical_certification/README.md) |
+| Measure resident unit-atlas texture pages and sprite counts | [production map observation](map_observation.md#resident-unit-atlas-measurement) |
 | Load a chosen retail map, step, capture and exit | [map observation](map_observation.md), `python -m tools.map_observation` |
 | Run one bounded child with retained diagnostics | `tools.child_process.run_child` (shared by capture wrappers) |
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |

@@ -114,7 +114,9 @@ fn build_sim() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
     (sim, rules, BTreeMap::new())
 }
 
-fn build_concrete_c4_sim() -> (
+fn build_ordinary_c4_sim(
+    overlay: u8,
+) -> (
     Simulation,
     RuleSet,
     crate::map::overlay_types::OverlayTypeRegistry,
@@ -126,8 +128,8 @@ fn build_concrete_c4_sim() -> (
          Locomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n"
     );
     let (mut sim, rules, registry) = super::entry_test_fixture::fixture_with_rules(&ini);
-    // Same raw concrete strip as BombClass::Detonate's hut fixture. Ordinary
-    // concrete overlays do not create structural/deck runtime cells.
+    // A raw ordinary three-cell width, with resident TMP/navigation owners.
+    // Overlay families do not imply structural/deck geometry.
     for y in [14, 15, 16] {
         sim.resolved_terrain
             .as_mut()
@@ -135,11 +137,11 @@ fn build_concrete_c4_sim() -> (
             .cell_mut(17, y)
             .unwrap()
             .bridge_facts
-            .overlay_id = Some(0xD4);
+            .overlay_id = Some(overlay);
         sim.overlay_grid
             .as_mut()
             .unwrap()
-            .place_overlay(17, y, 0xD4, 0);
+            .place_overlay(17, y, overlay, 0);
     }
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain_with_map_size(
         sim.resolved_terrain.as_ref().unwrap(),
@@ -261,58 +263,6 @@ fn seed_bridge_with_state(sim: &mut Simulation, state: DamageState) {
             0xD1
         }
         DamageState::Healthy { .. } => 0xCD,
-    };
-    for &(rx, ry) in BRIDGE_CELLS {
-        let role = if (rx, ry) == (10, 10) {
-            BridgeCellRole::Anchor
-        } else {
-            BridgeCellRole::Body
-        };
-        bs.test_seed_cell(
-            rx,
-            ry,
-            BridgeRuntimeCell {
-                deck_present: true,
-                destroyable: true,
-                deck_level: 0,
-                bridge_group_id: Some(1),
-                damage_state: state,
-                axis: Some(Axis::NS),
-                role,
-                anchor_span_id: Some(1),
-                overlay_byte,
-                bridgehead_anchor_class: crate::sim::bridge_state::BridgeheadAnchorClass::Variant0,
-            },
-        );
-    }
-    sim.bridge_state = Some(bs);
-}
-
-fn seed_low_bridge_with_state(sim: &mut Simulation, state: DamageState) {
-    let mut bs = BridgeRuntimeState::default();
-    let span = AnchorSpan {
-        id: 1,
-        anchor: (10, 10),
-        cells: [
-            Some((10, 10)),
-            Some((10, 11)),
-            Some((10, 12)),
-            Some((10, 13)),
-            Some((10, 9)),
-            None,
-        ],
-        axis: Axis::NS,
-        direction: Direction::S,
-        damage_state: state,
-        bridge_group_id: 1,
-    };
-    bs.test_seed_anchor_span(span);
-    let overlay_byte = match state {
-        DamageState::Destroyed => 0x64,
-        DamageState::Damaged | DamageState::PartialCollapseA | DamageState::PartialCollapseB => {
-            0x50
-        }
-        DamageState::Healthy { .. } => 0x4A,
     };
     for &(rx, ry) in BRIDGE_CELLS {
         let role = if (rx, ry) == (10, 10) {
@@ -589,7 +539,7 @@ fn capture_building_command_accepts_noncapturable_bridge_repair_hut() {
 /// separate concrete bridge integration tests.
 #[test]
 fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
-    let (mut sim, rules, registry) = build_concrete_c4_sim();
+    let (mut sim, rules, registry) = build_ordinary_c4_sim(0xD4);
     let heights = BTreeMap::new();
     let cabhut = sim
         .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
@@ -735,7 +685,7 @@ fn c4_on_cabhut_without_bridge_clears_pending_marker() {
 fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
     use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
 
-    let (mut sim, rules, registry) = build_concrete_c4_sim();
+    let (mut sim, rules, registry) = build_ordinary_c4_sim(0xD4);
     let heights = BTreeMap::new();
     let cabhut = sim
         .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
@@ -977,11 +927,18 @@ fn stock_cabhut_no_overlay_without_starter_is_noop() {
 
 #[test]
 fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
-    let (mut sim, rules, heights) = build_sim();
-    let cabhut = spawn_cabhut(&mut sim, 9, 10);
-    let seal = spawn_seal(&mut sim, 10, 10);
+    // Original574C20 ->574780 ->575220 reaches the same live ordinary owner
+    // as the physical hut corpus. The retired fixture populated only a runtime
+    // cache, leaving CellClass overlays empty and providing no Recalc inputs.
+    let (mut sim, rules, registry) = build_ordinary_c4_sim(0x4A);
+    let heights = BTreeMap::new();
+    let cabhut = sim
+        .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
+        .expect("hut beside the wooden strip");
+    let seal = sim
+        .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
+        .expect("SEAL beside the hut");
     let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
-    seed_low_bridge_with_state(&mut sim, DamageState::Healthy { variant: 0 });
     sim.substrate
         .entities
         .get_mut(cabhut)
@@ -992,25 +949,25 @@ fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
         source_entity_id: Some(seal),
     });
 
-    let bridge_state_changed_seen = advance_pending_c4_to_detonation(&mut sim, &rules, &heights);
-
+    let mut changed = false;
+    for _ in 0..=rules.c4_delay_ticks {
+        changed |=
+            step_with_overlay_registry(&mut sim, &rules, &heights, &registry).bridge_state_changed;
+    }
     let hut = sim.substrate.entities.get(cabhut).unwrap();
     assert_eq!(hut.health.current, hut_hp);
     assert!(!hut.dying);
     assert!(hut.pending_c4_detonation.is_none());
-    assert!(bridge_state_changed_seen);
-    assert!(
-        BRIDGE_CELLS.iter().any(|&(rx, ry)| matches!(
-            sim.bridge_state
-                .as_ref()
-                .unwrap()
-                .cell(rx, ry)
-                .unwrap()
-                .damage_state,
-            DamageState::Destroyed
-        )),
-        "low overlay CABHUT dispatch must destroy at least one seeded bridge cell"
-    );
+    assert!(changed);
+    for y in [14, 15, 16] {
+        let cell = sim.resolved_terrain.as_ref().unwrap().cell(17, y).unwrap();
+        assert_eq!(cell.bridge_facts.overlay_id, Some(100));
+        assert!(!cell.bridge_facts.has_structural_bridge());
+        assert_eq!(
+            sim.overlay_grid.as_ref().unwrap().cell(17, y).overlay_id,
+            Some(100)
+        );
+    }
 }
 
 #[test]

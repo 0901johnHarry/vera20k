@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "tools/native_oracle.py": "dd5dbf5f3532b0eb20d761b8637c18ca8033317b67e99481f633c45dec6b2de3",
+    "tools/native_oracle.py": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
     "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
     "tools/rmg_oracle/gen_rng_vectors.py": "bac5dde765d07d3f522b7281a21a8527869f5d4da59eb385e7f9fed7493775a2",
@@ -74,7 +74,7 @@
     "retail_manifest.json": "9df77839f1c47a0849195b864f62f07cf5f92c9cfad65ad147e2bf729879c94f",
     "shrapnel_repair.json.gz": "cc7367d7fd3f99540a84c43004c8e9638420249224c709f7f6e8a9c9d716c555",
     "shrapnel_repair.meta.json": "71dc629c56a9d483ff338a79bb0f0a4c33c8b2c76ec829031129721054351c7e",
-    "shrapnel_repair.py": "5f510f31b235acd1749aee6da2f512fbf3381892355b45fd7c5b9bccd472d347",
+    "shrapnel_repair.py": "766d30e22188ef36c66a940eb4546ad52e025fa80e80c864a9644a1a4662b27c",
     "validate_packet.py": "52ec7ec8d9b126b5d4bde9055b18618165240c39d27420c56d458fc7cc5260d4",
     "zone_composition.json.gz": "9e720b8740c2736074082ba4a09f26e93066204d022b28c7c85c5968d54e3ab0",
     "zone_composition.meta.json": "d1f13de56c16216f10cd931ac5d6b33404afbdd02797b7904cb10efe9881b073",

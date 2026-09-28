@@ -241,6 +241,26 @@ def anim_state(uc, anim):
                 is_bouncing=uc.mem_read(anim + 0x194, 1)[0])
 
 
+def constructor_state(uc, anim):
+    """Observe original421EA0 state for callers composing the whole constructor.
+
+    This extends the shared decoder without changing existing launch vectors.
+    Stores421EB8..422016 and422241..4222BD establish these fields;4226BF..422707
+    completes the loop count and invokes Start when the delay is zero.
+    """
+    word = lambda offset: signed(read32(uc, anim + offset))
+    byte = lambda offset: uc.mem_read(anim + offset, 1)[0]
+    return dict(**anim_state(uc, anim), native_id=word(0x10),
+                alive=byte(0x90), limbo=byte(0x81), marked=byte(0x74),
+                draw_flags=read32(uc, anim + 0x190), z_adjust=word(0x100),
+                runtime=dict(current_frame=word(0xAC), frame_step=word(0xC4),
+                    delay_remaining=word(0x184), rate_reload=word(0xC0),
+                    frame_timer=[word(0xB4), word(0xBC)],
+                    loop_remaining=byte(0x195), first_ai_guard=byte(0x19C),
+                    constructor_reverse=byte(0x120), inactive=byte(0x198),
+                    paused=byte(0x19E)))
+
+
 def execute(case):
     machine = Machine(case["seed"])
     uc = machine.uc

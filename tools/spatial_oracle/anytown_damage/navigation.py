@@ -8,6 +8,7 @@ from tools.spatial_oracle.bridge_rim import TABLE,CELLS,DUMMY,MAP,COORD
 from tools.native_oracle import run_checked,RET_MAGIC,STACK_BASE,STACK_SIZE
 from tools.spatial_oracle.map_queries import packed,dwords,normalize
 from collections import Counter
+import copy
 
 class Navigation(Geometry):
  allocate=ConnectivityRepair.allocate
@@ -15,10 +16,17 @@ class Navigation(Geometry):
  nav_snapshot=ConnectivityRepair.nav_snapshot
  graph_snapshot=HierarchyRepair.graph_snapshot
  dummy_snapshot=HierarchyRepair.dummy_snapshot
- def __init__(self,r,t,tiles):
-  case=crop_inputs(t);raw,sections,physical=map_inputs();case['cells']=[[*c,p['tile'],p['subtile'],0,p['overlay'],p['frame'],None,p['level'],0] for c,p in sorted(physical.items(),key=lambda kv:(kv[0][1],kv[0][0]))];case['supplied_cells']=[];case['boundary']='Physical full-diamond tile/subtile/level/ice/overlay/frame supplied from MAP bytes; original Cell constructor and Recalc derive runtime land/slope/class. Actual native scenario/file loader, actor command dispatch and projectile admission excluded.'
+ def __init__(self,r,t,tiles,*,case=None,create_actor=True,actor_coord=(87,53),actor_height=4,admission_cells=None,stages=None,scenario_theater=None):
+  self.create_actor=create_actor;self.actor_coord=actor_coord;self.actor_height=actor_height
+  self.admission_cells=admission_cells if admission_cells is not None else [(87,53),(86,54),(87,54),(88,54),(87,55),(85,54),(89,54)]
+  self.stages=stages;self.tile_count=t['count']
+  case=copy.deepcopy(case) if case is not None else crop_inputs(t);raw,sections,physical=map_inputs(r.map_file);case['cells']=[[*c,p['tile'],p['subtile'],0,p['overlay'],p['frame'],None,p['level'],0] for c,p in sorted(physical.items(),key=lambda kv:(kv[0][1],kv[0][0]))];case['supplied_cells']=[];case['boundary']='Physical full-diamond tile/subtile/level/ice/overlay/frame supplied from MAP bytes; original Cell constructor and Recalc derive runtime land/slope/class. Actual native scenario/file loader, actor command dispatch and projectile admission excluded.'
   case['local_size']=normalize(case['size'],case['local_size'])['normalized'];self.activity='bootstrap';self.counters=Counter();self.illegal=[];self.range_pending=[];self.used_tile_heads=set();self.tile_image_getter=None
   super().__init__(case);u=self.uc;self.width=sum(case['size']);self.side=self.width+1;self.physical=physical
+  if scenario_theater is not None:
+   # Copy the original Map/Theater reader's output into this VM's retained
+   # Scenario receiver before original Terrain/Cell consumers execute.
+   u.mem_write(sr.u32(u,0xA8B230)+0x1258,dwords(scenario_theater['value']))
   u.mem_map(0x24000000,0x400000);u.mem_write(0x24000000,bytes(r.u.mem_read(0x24000000,0x400000)))
   u.mem_map(0x44000000,0x800000);u.mem_map(0x48000000,0x8000000)
   for a,n in [(0xA83D80,24),(0xA8E318,24),(0x8B4150,24),(0xB0F4E8,24),(0xB0EDC0,0x1000),(0x89EA40,12*36)]:u.mem_write(a,bytes(r.u.mem_read(a,n)))
@@ -72,7 +80,9 @@ class Navigation(Geometry):
   for level in range(3):
    header=MAP+0x8C+level*24;self.call(0x58AE60,this=header,args=(0,0),count=1000);u.mem_write(header,dwords(0x7ED4A0));u.mem_write(header+16,dwords(0,w*h*4//(1<<(2*(level+1)))));buckets=self.allocate(256*24);root=self.allocate(16);u.mem_write(root,dwords(buckets,0x56CB80,256,20));u.mem_write(MAP+0x80+level*4,dwords(root));u.mem_write(buckets,bucket_template*256)
   for level in (2,1,0):self.call(0x581F90,args=(level,),count=80000000)
-  self.call(0x42C1C0,this=0x87E8B8,count=10000000);self.actor_constructor_before={k:sr.rng_state(u,p) for k,p in self.rngs.items()};self.trace.clear();self.build_actor(r.mtnk);self.actor_constructor=dict(before_rng=self.actor_constructor_before,after_rng={k:sr.rng_state(u,p) for k,p in self.rngs.items()},trace=list(self.trace));self.initial=self.state();print('native hierarchy established',[len(x['records']) for x in self.initial['graphs']],flush=True)
+  self.call(0x42C1C0,this=0x87E8B8,count=10000000);self.actor_constructor_before={k:sr.rng_state(u,p) for k,p in self.rngs.items()};self.trace.clear()
+  if self.create_actor:self.build_actor(r.mtnk)
+  self.actor_constructor=dict(before_rng=self.actor_constructor_before,after_rng={k:sr.rng_state(u,p) for k,p in self.rngs.items()},trace=list(self.trace));self.initial=self.state();print('native hierarchy established',[len(x['records']) for x in self.initial['graphs']],flush=True)
   self.activity='bridge'
  def sweep(self):
   self.call(0x578350);coords=[]
@@ -87,21 +97,21 @@ class Navigation(Geometry):
   return [dict(coord=list(c),tile=sr.i32(u,p+0x38),subtile=u.mem_read(p+0x11A,1)[0],level=u.mem_read(p+0x11B,1)[0],slope=u.mem_read(p+0x11C,1)[0],land=sr.i32(u,p+0xEC),zone_type=sr.i32(u,p+0x4C),flags=sr.u32(u,p+0x140),occupation=u.mem_read(p+0x124,1)[0],has_ground_object=bool(sr.u32(u,p+0xE4))) for c,p in self.ptrs.items()]
  def build_actor(self,typ):
   u=self.uc;self.actor=self.allocate(0x800);self.drive=self.allocate(0x100);house=self.allocate(0x17000);u.mem_write(0xB0F720,dwords(0x7EB6D4,self.allocate(4096),1024,1,0,10));sp=STACK_BASE+STACK_SIZE-0x1000;u.mem_write(sp,dwords(RET_MAGIC,typ,0));u.reg_write(UC_X86_REG_ESP,sp);u.reg_write(UC_X86_REG_ECX,self.actor);run_checked(u,0x7353C0,0x7354CE,count=300000)
-  self.call(0x4AF540,this=self.drive);u.mem_write(self.drive+0xC,dwords(self.actor));u.mem_write(self.drive+0x14,dwords(1));u.mem_write(self.actor+0x674,dwords(self.drive+4));u.mem_write(self.actor+0x21C,dwords(house));u.mem_write(self.actor+0x6C,dwords(sr.u32(u,typ+0xA0)));u.mem_write(self.actor+0x90,b'\x01');u.mem_write(self.actor+0x81,b'\0');u.mem_write(self.actor+0xAC,dwords(5));u.mem_write(self.actor+0xB4,dwords(-1));u.mem_write(self.actor+0x3D5,b'\1');u.mem_write(self.actor+0x6D8,dwords(-1));u.mem_write(self.actor+0x338,dwords(-1));u.mem_write(self.actor+0x684,b'\xff');u.mem_write(self.actor+0x9C,dwords(87*256+128,53*256+128,416));u.mem_write(self.actor+0x55C,packed(87,53));self.call(0x4AF4A0,this=0)
+  self.call(0x4AF540,this=self.drive);u.mem_write(self.drive+0xC,dwords(self.actor));u.mem_write(self.drive+0x14,dwords(1));u.mem_write(self.actor+0x674,dwords(self.drive+4));u.mem_write(self.actor+0x21C,dwords(house));u.mem_write(self.actor+0x6C,dwords(sr.u32(u,typ+0xA0)));u.mem_write(self.actor+0x90,b'\x01');u.mem_write(self.actor+0x81,b'\0');u.mem_write(self.actor+0xAC,dwords(5));u.mem_write(self.actor+0xB4,dwords(-1));u.mem_write(self.actor+0x3D5,b'\1');u.mem_write(self.actor+0x6D8,dwords(-1));u.mem_write(self.actor+0x338,dwords(-1));u.mem_write(self.actor+0x684,b'\xff');u.mem_write(self.actor+0x9C,dwords(self.actor_coord[0]*256+128,self.actor_coord[1]*256+128,self.actor_height*sr.i32(u,0x89E7C0)));u.mem_write(self.actor+0x55C,packed(*self.actor_coord));self.call(0x4AF4A0,this=0)
  def movement_admissions(self):
   result=[];u=self.uc;before={k:sr.rng_state(u,p) for k,p in self.rngs.items()};fn=sr.u32(u,sr.u32(u,self.actor)+0x1AC);assert fn==0x73F0A0
-  for c in [(87,53),(86,54),(87,54),(88,54),(87,55),(85,54),(89,54)]:
-   p=self.ptrs[c];value=self.call(fn,this=self.actor,args=(p,4,4,0,1),count=300000);result.append(dict(candidate=list(c),direction=4,height=4,previous_cell=None,arg5=1,land=sr.i32(u,p+0xEC),class_result=value))
+  for c in self.admission_cells:
+   p=self.ptrs[c];value=self.call(fn,this=self.actor,args=(p,4,self.actor_height,0,1),count=300000);result.append(dict(candidate=list(c),direction=4,height=self.actor_height,previous_cell=None,arg5=1,land=sr.i32(u,p+0xEC),class_result=value))
   assert before=={k:sr.rng_state(u,p) for k,p in self.rngs.items()}
   return result
- def state(self):return dict(rng={k:sr.rng_state(self.uc,p) for k,p in self.rngs.items()},movement_admissions=self.movement_admissions(),navigation=self.nav_snapshot(),graphs=self.graph_snapshot(),dummy=self.dummy_snapshot(),cells=self.cell_plane())
+ def state(self):return dict(rng={k:sr.rng_state(self.uc,p) for k,p in self.rngs.items()},movement_admissions=self.movement_admissions() if self.create_actor else [],navigation=self.nav_snapshot(),graphs=self.graph_snapshot(),dummy=self.dummy_snapshot(),cells=self.cell_plane())
  def observe(self,u,a,n,d):
   if self.phase!='measure':return super().observe(u,a,n,d)
   if self.range_pending and a==self.range_pending[-1][0]:
    _,row=self.range_pending.pop();row['result']=u.reg_read(UC_X86_REG_EAX)
   if a==self.tile_image_getter:
    p=u.reg_read(UC_X86_REG_ECX)
-   if 0x44480000<=p<0x44480000+838*0x400:
+   if 0x44480000<=p<0x44480000+self.tile_count*0x400:
     index=(p-0x44480000)//0x400;self.used_tile_heads.add(index);assert sr.u32(u,p+0xA4),('reached primary TMP absent',index)
   if a==0x65C7E0:
    sp=u.reg_read(UC_X86_REG_ESP);this=u.reg_read(UC_X86_REG_ECX);stream=next(k for k,p in self.rngs.items() if p==this);row=dict(kind='range_request',stream=stream,minimum=sr.i32(u,sp+4),maximum=sr.i32(u,sp+8));self.trace.append(row);self.range_pending.append((sr.u32(u,sp),row));self.counters[f'{self.activity}:{stream}:range_requests']+=1
@@ -135,7 +145,7 @@ class Navigation(Geometry):
   assert not 0x401000<=a<0x7E1000
  def run(self):
   stages=[]
-  for name,fn,c in [('first_damage',0x57CCF0,self.case['impact']),('collapse',0x57CCF0,self.case['impact']),('repair',0x573540,self.case['start'])]:
+  for name,fn,c in (self.stages if self.stages is not None else [('first_damage',0x57CCF0,self.case['impact']),('collapse',0x57CCF0,self.case['impact']),('repair',0x573540,self.case['start'])]):
    counts0=self.counters.copy();self.trace.clear();self.pending.clear();rng0={k:sr.rng_state(self.uc,p) for k,p in self.rngs.items()};self.uc.mem_write(COORD,packed(*c));answer=self.call(fn,args=(COORD,),count=80000000)
    stages.append(dict(name=name,returned_low_byte=answer&255,trace=list(self.trace),rng_before=rng0,rng_after={k:sr.rng_state(self.uc,p) for k,p in self.rngs.items()},state=self.state(),native_reached_delta=dict(self.counters-counts0)));assert not self.pending and not self.range_pending;assert sha(bytes(self.uc.mem_read(0x401000,0x3E0000)))==self.code_hash;print(name,'done',flush=True)
   return stages

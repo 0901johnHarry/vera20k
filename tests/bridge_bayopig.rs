@@ -2,7 +2,7 @@
 //! Run with: cargo test --test bridge_bayopig -- --nocapture
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::map_file::MapFile;
 use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::rules::ini_parser::IniFile;
@@ -23,7 +23,7 @@ fn inspect_bayopig_bridges() {
         return;
     }
 
-    let mut am = AssetManager::new(ra2_dir).expect("AM");
+    let mut am = AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AM");
     for mix_name in &[
         "maps01.mix",
         "maps02.mix",
@@ -90,7 +90,7 @@ fn dump_bridge_shp_frames() {
         println!("SKIP");
         return;
     }
-    let mut am = AssetManager::new(ra2_dir).expect("AM");
+    let mut am = AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AM");
     let _ = am.load_all_disk_mixes();
     // Load theater mixes where bridge SHPs live
     for mix in &[

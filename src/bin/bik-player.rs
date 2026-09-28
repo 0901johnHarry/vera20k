@@ -13,7 +13,7 @@ mod bik_player_ui;
 use eframe::egui;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::bink_audio::BinkAudioDecoder;
 use vera20k::assets::bink_decode::BinkDecoder;
 use vera20k::assets::bink_file::BinkFile;
@@ -68,9 +68,9 @@ pub struct BikPlayerApp {
 impl BikPlayerApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // AssetManager is optional — the player works without one (filesystem mode).
-        let asset_manager = GameConfig::load()
-            .ok()
-            .and_then(|cfg| AssetManager::new(&cfg.paths.ra2_dir).ok());
+        let asset_manager = GameConfig::load().ok().and_then(|cfg| {
+            AssetManager::new(&cfg.paths.ra2_dir, MediaArchiveMode::STOCK_DIGITAL).ok()
+        });
 
         let available_entries = asset_manager
             .as_ref()

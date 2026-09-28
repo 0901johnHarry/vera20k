@@ -158,7 +158,17 @@ pub fn skirmish_modes_from_assets(
             message: err.to_string(),
         })?;
 
-    let modes = parse_mpmodes_ini_with_overrides(&roster_ini, |name| {
+    skirmish_modes_from_selected_ini(assets, &roster_ini, &source)
+}
+
+/// Consume the same selected roster in the app and provenance-bearing tools.
+/// Mode body interpretation stays here; callers supply source identity only.
+pub(crate) fn skirmish_modes_from_selected_ini(
+    assets: &AssetManager,
+    roster_ini: &IniFile,
+    source: &str,
+) -> Result<Vec<SkirmishGameMode>, SkirmishModeLoadError> {
+    let modes = parse_mpmodes_ini_with_overrides(roster_ini, |name| {
         let Some((data, override_source)) = assets.get_with_source(name) else {
             log::warn!(
                 "Skirmish MPMode override {name} is missing; using native constructor defaults"
@@ -182,7 +192,9 @@ pub fn skirmish_modes_from_assets(
     });
 
     if modes.is_empty() {
-        Err(SkirmishModeLoadError::EmptyRoster { archive: source })
+        Err(SkirmishModeLoadError::EmptyRoster {
+            archive: source.to_owned(),
+        })
     } else {
         Ok(modes)
     }

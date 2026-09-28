@@ -82,33 +82,10 @@ pub enum MediaArchiveMode {
 }
 
 impl MediaArchiveMode {
-    fn from_arguments<I, S>(arguments: I, media_index: i32) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        // Native uppercases every argument after argv[0], then uses `strstr`
-        // rather than whole-token equality for the literal `-CD`.
-        if arguments.into_iter().any(|argument| {
-            argument
-                .as_ref()
-                .to_string_lossy()
-                .to_ascii_uppercase()
-                .contains("-CD")
-        }) {
-            Self::CdWildcard
-        } else {
-            Self::Numbered { media_index }
-        }
-    }
-}
-
-impl Default for MediaArchiveMode {
-    fn default() -> Self {
-        // The active retail YR executable reports media index 2 for the stock
-        // digital-install path, selecting the `03` archive family.
-        Self::from_arguments(std::env::args_os().skip(1), 2)
-    }
+    /// Stock digital YR uses media index 2, selecting the `03` archive family.
+    /// Tools and capture callers select this explicitly; asset loading never
+    /// examines process arguments.
+    pub const STOCK_DIGITAL: Self = Self::Numbered { media_index: 2 };
 }
 
 /// An owned result from retail's cache-first `LoadFileFromMIX` path.
@@ -220,11 +197,6 @@ const KNOWN_NESTED_MIX_NAMES: &[&str] = &[
 ];
 
 impl AssetManager {
-    /// Load the core runtime archive stack.
-    pub fn new(ra2_dir: &Path) -> Result<Self, AssetError> {
-        Self::new_with_media_mode(ra2_dir, MediaArchiveMode::default())
-    }
-
     #[cfg(test)]
     pub(crate) fn from_loose_root_for_test(ra2_dir: &Path) -> Self {
         Self {
@@ -240,10 +212,7 @@ impl AssetManager {
     }
 
     /// Load the core runtime archive stack for one native media-selection mode.
-    pub fn new_with_media_mode(
-        ra2_dir: &Path,
-        media_mode: MediaArchiveMode,
-    ) -> Result<Self, AssetError> {
+    pub fn new(ra2_dir: &Path, media_mode: MediaArchiveMode) -> Result<Self, AssetError> {
         let mut manager = Self {
             archives: Vec::new(),
             archive_catalog: Vec::new(),
@@ -1193,22 +1162,6 @@ mod tests {
             .expect("sticky fallback");
         assert_eq!(&*cached.bytes, b"archived");
         assert_eq!(&*cached.source_archive, "first.mix");
-    }
-
-    #[test]
-    fn media_mode_matches_native_uppercase_substring_command_line_test() {
-        assert_eq!(
-            MediaArchiveMode::from_arguments(["-cd"], 2),
-            MediaArchiveMode::CdWildcard
-        );
-        assert_eq!(
-            MediaArchiveMode::from_arguments(["prefix-CDsuffix"], 2),
-            MediaArchiveMode::CdWildcard
-        );
-        assert_eq!(
-            MediaArchiveMode::from_arguments(["--shell-capture"], 2),
-            MediaArchiveMode::Numbered { media_index: 2 }
-        );
     }
 
     #[test]

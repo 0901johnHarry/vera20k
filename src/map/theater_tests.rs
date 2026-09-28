@@ -833,7 +833,7 @@ fn active_retail_automatic_shell_corpus_is_exact() {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::assets::tmp_file::TmpFile;
 
     let retail_dir = std::env::var_os("RA2_DIR")
@@ -845,7 +845,8 @@ fn active_retail_automatic_shell_corpus_is_exact() {
         })
         .expect("set RA2_DIR to the installed retail RA2/YR directory");
     assert!(retail_dir.is_dir(), "{}", retail_dir.display());
-    let mut assets = AssetManager::new(&retail_dir).expect("load retail MIX stack");
+    let mut assets = AssetManager::new(&retail_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("load retail MIX stack");
 
     let mut loaded_assets = 0usize;
     let mut candidate_base_ids = 0usize;

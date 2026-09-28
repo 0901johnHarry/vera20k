@@ -10,7 +10,7 @@
 //! Usage: `cargo run --bin extract-bridge-frames`
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 
@@ -19,7 +19,8 @@ fn main() {
 
     let ra2_dir = Path::new("C:/Users/enok/Documents/Command and Conquer Red Alert II/");
     println!("Loading MIX archives from {}...", ra2_dir.display());
-    let asset_manager = AssetManager::new(ra2_dir).expect("Failed to load MIX archives");
+    let asset_manager = AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to load MIX archives");
 
     // 1. Load bridge.tem
     let (bridge_bytes, source) = asset_manager

@@ -14,9 +14,12 @@
 //! the cap is deliberately not reproduced.
 //!
 //! ## Dependency rules
-//! - Pure argv parsing; no filesystem/render/sim/ui/audio dependencies.
+//! - Pure argv parsing; uses the asset media policy value type only.
+//! - No filesystem/render/sim/ui/audio behavior.
 
 use std::ffi::OsString;
+
+use crate::assets::asset_manager::MediaArchiveMode;
 
 /// The value `OptionsClass::SetDefaults` writes into both screen-size fields
 /// before anything reads them. The built-in default rule tests for exactly this.
@@ -71,8 +74,10 @@ pub struct ScreenSize {
 pub struct RetailStartupOptions {
     /// A help form was passed: print usage and terminate before a window opens.
     pub usage_requested: bool,
-    /// `-CD` selected the wildcard media-archive branch.
-    pub cd_media: bool,
+    /// The one parsed archive policy, retained by the process asset owner.
+    /// Parse_Command_Line52F620 writes 0x89E3A0; Init_Mix_Files530460
+    /// consumes it at 0x53079E. See tools/media_policy.md.
+    pub media_archive_mode: MediaArchiveMode,
     /// `-WIN` asked for windowed presentation. This engine only ever presents
     /// in a window, so the switch is accepted and has nothing left to change.
     pub windowed: bool,
@@ -89,7 +94,7 @@ impl Default for RetailStartupOptions {
     fn default() -> Self {
         Self {
             usage_requested: false,
-            cd_media: false,
+            media_archive_mode: MediaArchiveMode::STOCK_DIGITAL,
             windowed: false,
             audio_enabled: true,
             screen_width: SCREEN_SIZE_UNSET,
@@ -102,7 +107,7 @@ impl RetailStartupOptions {
     fn apply(&mut self, recognized: RecognizedSwitch) {
         match recognized {
             RecognizedSwitch::Usage => self.usage_requested = true,
-            RecognizedSwitch::CdMedia => self.cd_media = true,
+            RecognizedSwitch::CdMedia => self.media_archive_mode = MediaArchiveMode::CdWildcard,
             RecognizedSwitch::Windowed => self.windowed = true,
             RecognizedSwitch::NoAudio => self.audio_enabled = false,
             RecognizedSwitch::ScreenSize { width, height } => {
@@ -297,7 +302,10 @@ mod tests {
             .expect("usage must separate applied and unapplied switches");
 
         for form in ["-<W>X<H>", "-480", "-16"] {
-            assert!(applied.contains(form), "{form} must be advertised as applied");
+            assert!(
+                applied.contains(form),
+                "{form} must be advertised as applied"
+            );
             assert!(
                 !unapplied.contains(form),
                 "{form} must not remain in the unapplied group"
@@ -309,10 +317,22 @@ mod tests {
     fn cd_matches_as_a_substring_but_win_matches_whole_token() {
         // Native searches for `-CD` with `strstr`, so an argument that merely
         // contains it selects the wildcard media branch.
-        assert!(consume(&["-CD"]).0.cd_media);
-        assert!(consume(&["-cd"]).0.cd_media);
-        assert!(consume(&["-CDROM"]).0.cd_media);
-        assert!(consume(&["prefix-CDsuffix"]).0.cd_media);
+        assert_eq!(
+            consume(&["-CD"]).0.media_archive_mode,
+            MediaArchiveMode::CdWildcard
+        );
+        assert_eq!(
+            consume(&["-cd"]).0.media_archive_mode,
+            MediaArchiveMode::CdWildcard
+        );
+        assert_eq!(
+            consume(&["-CDROM"]).0.media_archive_mode,
+            MediaArchiveMode::CdWildcard
+        );
+        assert_eq!(
+            consume(&["prefix-CDsuffix"]).0.media_archive_mode,
+            MediaArchiveMode::CdWildcard
+        );
         // `-WIN` is a whole-token compare: a superstring is not the switch.
         assert!(consume(&["-win"]).0.windowed);
         assert!(consume(&["-WIN"]).0.windowed);

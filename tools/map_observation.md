@@ -43,7 +43,8 @@ the child's atomically published `child-output/{capture.json,frame.bgra}`.
 `run.json` records exact input hashes, command, child PID/status, timeout, receipt
 validation and capture artifact identities. A valid observation requires unchanged
 profile/config/executable/contract files, matching profile and contract receipts,
-zero initial tick/frame/time, the requested final tick/frame and endpoint step
+a v2 child manifest with resident UnitAtlas statistics, zero initial tick/frame/time,
+the requested final tick/frame and endpoint step
 receipts, a loaded loose/MIX map digest, hidden unfocused rendering without input
 violations, and correctly sized/hashed BGRA bytes. Simulation time must advance
 for nonzero steps; its scheduling formula remains owned by Rust. Zero steps must
@@ -68,3 +69,49 @@ The saved [validation receipt](map_observation.validation.json) records the chec
 release binary and source snapshot, repeated MIX-map state, loose-map and zero-step
 captures, missing-map diagnostics, and the explicit coverage limits. It is a run
 summary, not a native oracle golden.
+
+## Resident unit-atlas measurement
+
+The final rendered frame records `render.unit_atlas` in the v2 child manifest;
+the validated wrapper retains it as `capture.unit_atlas` in `run.json`. The
+`UnitAtlas` owner reads actual wgpu texture descriptors and resident entries.
+It reports resident sprite count, the last actual build's rasterized sprite count,
+and each page's extent, format, dimensions, mip/sample counts and texel payload
+bytes, plus their total. Page count is the length of `pages`.
+
+Pages are currently single-layer, single-mip, single-sample D2 `R8Uint`, so the
+payload is width × height bytes, including unused page space. Unsupported
+descriptors fail observation rather than retaining stale byte arithmetic. The
+last-build count includes rasterized shadow sprites, can differ from admitted
+resident entries, and stays unchanged on a no-op refresh.
+
+This is resident UnitAtlas texture payload for the captured scenario. It excludes
+CPU caches, `VxlPoseFrameCache`, `VxlSlopeTransitionCache`, other atlases, palettes,
+driver overhead and peak allocation; it does not establish 30-player saturation.
+Statistics are captured with the final render evidence before readback and kept
+outside deterministic simulation fingerprints. GPU allocation may differ across
+adapters even for identical simulation state.
+
+This replaces the retired `measure-atlas` binary, which estimated a hardcoded
+roster and tile sizes without constructing an atlas. The unused
+`bridge-oracle-compare` binary was also retired: its trace schema had no repository
+producer, and its five bin-only tests covered that abandoned comparison schema,
+not active bridge behavior. Current native bridge comparison owners remain in
+[`anytown_damage`](spatial_oracle/anytown_damage/README.md) and
+[`shrapnel_damage`](spatial_oracle/shrapnel_damage/navigation.md); their native
+outputs and Rust regression witnesses are preserved.
+
+For a headless retail growth/no-op/fresh-pack comparison on a real GPU:
+
+```sh
+VERA20K_REQUIRE_RETAIL_INI=1 python -m tools.cargo_run -- test -p vera20k --lib --release \
+  render::atlas_refresh_retail_tests::retail_atlas_refresh_costs -- --ignored --nocapture
+```
+
+Set `RA2_DIR` or provide the local config for that test. It emits the same owner's
+statistics at each allocation stage; fresh and grown totals need not match.
+
+The [atlas observation validation](atlas_observation.validation.json) records
+before/after production captures and the explicit retail GPU atlas refresh test.
+The older `map_observation.validation.json` remains historical v1 evidence; it
+has not been retroactively given statistics or new source identities.

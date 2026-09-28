@@ -5,17 +5,16 @@ bodies; cursor selection and walks execute without replaced dependencies.
 Structural-record and other-axis branches remain outside this stock witness.
 """
 from pathlib import Path
-import hashlib,json,struct,sys
+import hashlib,struct
 from unicorn.x86_const import *
 
 from tools.native_oracle import NATIVE_SHA256,provenance
 from tools.spatial_oracle.shrapnel_repair.packet_io import finish_vectors
 from .publication import publication_projection
 from tools.spatial_oracle.anytown_damage.anytown_resident import Resident,rules,inputs,identity,sr
-from tools.spatial_oracle.anytown_damage.validate_packet import inputs as validate_inputs
+from tools.spatial_oracle.anytown_damage.validate_packet import inputs as validate_inputs, source_provenance
 
 HERE=Path(__file__).resolve().parent
-ROOT=HERE.parents[2]
 FRAME=1000
 
 
@@ -111,13 +110,6 @@ def generate():
 
 
 def metadata():
-    sources={}
-    for module in list(sys.modules.values()):
-        file=getattr(module,'__file__',None)
-        if file:
-            p=Path(file).resolve()
-            if p.suffix=='.py' and p.is_relative_to(ROOT/'tools'):
-                sources[p.relative_to(ROOT).as_posix()]=sha(p.read_bytes())
     result=provenance(scope=__doc__,assumptions=[
         'Physical XMP03T4.MAP cells, exact theater tile bases and original overlay/land readers are reused from anytown_damage.Resident. Both actual hut coordinates are supplied directly to original587410.',
         'Healthy, first_damage, collapsed and repaired states are made by zero/one/two original57CCF0 calls at87,54, plus original573540 from the selected hut for repaired. No overlay edits manufacture cursor results.',
@@ -130,7 +122,7 @@ def metadata():
         'Native seed0 streams and frame1000 are supplied, not a full scenario-loaded RNG position. Preparatory repair consumes native MapGen; every cursor query records its own unchanged or changed streams independently.'
     ],entry_points={'cursor':0x587410,'lookup':0x5657A0,'damage':0x57CCF0,'repair':0x573540,
                     'recalc':0x47D2B0,'structural_branch_excluded':0x5876C6})
-    result.update(harness_sha256=sha(Path(__file__).read_bytes()),sources=dict(sorted(sources.items())))
+    result.update(source_provenance(__file__))
     return result
 
 

@@ -17,9 +17,11 @@
 //! A double return keeps the resident manager and logs instead of silently
 //! replacing process-sticky state.
 
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 
 pub(crate) struct ProcessAssets {
+    /// Selected at launch, retained even if initial archive loading fails.
+    media_archive_mode: MediaArchiveMode,
     manager: Option<AssetManager>,
     leased: bool,
     /// One process-resident native Rules registry authority. Unlike the MIX
@@ -40,11 +42,13 @@ pub(crate) struct ProcessAssets {
 
 impl ProcessAssets {
     pub(crate) fn from_startup(
+        media_archive_mode: MediaArchiveMode,
         manager: Option<AssetManager>,
         csf: Option<crate::assets::csf_file::CsfFile>,
         native_rules: Option<crate::rules::process_owner::NativeRulesProcessOwner>,
     ) -> Self {
         Self {
+            media_archive_mode,
             manager,
             leased: false,
             native_rules,
@@ -54,8 +58,18 @@ impl ProcessAssets {
         }
     }
 
+    pub(crate) fn media_archive_mode(&self) -> MediaArchiveMode {
+        self.media_archive_mode
+    }
+
     pub(crate) fn has_native_rules(&self) -> bool {
         self.native_rules.is_some()
+    }
+
+    pub(crate) fn native_rules(
+        &self,
+    ) -> Option<&crate::rules::process_owner::NativeRulesProcessOwner> {
+        self.native_rules.as_ref()
     }
 
     /// Split the two process-resident mutable authorities used by a synchronous
@@ -82,13 +96,18 @@ impl ProcessAssets {
     /// Field-level split borrow: the resident manager and the terrain-variant
     /// cache live on the same owner, and the RMG preview path needs both at
     /// once.
-    pub(crate) fn manager_mut_with_tile_cache(
+    pub(crate) fn manager_and_rules_with_tile_cache(
         &mut self,
     ) -> (
         Option<&mut AssetManager>,
+        Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
         &mut crate::map::tile_variant_selector::TileVariantSelectorCache,
     ) {
-        (self.manager.as_mut(), &mut self.tile_variant_selector_cache)
+        (
+            self.manager.as_mut(),
+            self.native_rules.as_ref(),
+            &mut self.tile_variant_selector_cache,
+        )
     }
 
     pub(crate) fn is_available(&self) -> bool {
@@ -137,7 +156,7 @@ impl ProcessAssets {
 
 #[cfg(test)]
 mod tests {
-    use super::ProcessAssets;
+    use super::{MediaArchiveMode, ProcessAssets};
     use crate::assets::asset_manager::AssetManager;
 
     fn test_manager(label: &str) -> AssetManager {
@@ -155,13 +174,13 @@ mod tests {
     #[test]
     fn asset_manager_lease_returns_on_success_failure_and_cancel() {
         // Absent slot: nothing to lease, nothing available.
-        let mut absent = ProcessAssets::from_startup(None, None, None);
+        let mut absent = ProcessAssets::from_startup(MediaArchiveMode::STOCK_DIGITAL, None, None, None);
         assert!(!absent.is_available());
         assert!(absent.lease_for_loading().is_none());
 
         // Success-shaped cycle: lease out, manager comes home.
         let mut assets =
-            ProcessAssets::from_startup(Some(test_manager("cycle")), None, None);
+            ProcessAssets::from_startup(MediaArchiveMode::STOCK_DIGITAL, Some(test_manager("cycle")), None, None);
         assert!(assets.is_available());
         let leased = assets.lease_for_loading().expect("available manager leases");
         assert!(!assets.is_available(), "leased slot has no resident manager");
@@ -190,7 +209,7 @@ mod tests {
 
     #[test]
     fn gsi_04_01_process_owner_binds_grid_clones_and_map_reloads() {
-        let assets = ProcessAssets::from_startup(None, None, None);
+        let assets = ProcessAssets::from_startup(MediaArchiveMode::STOCK_DIGITAL, None, None, None);
         let process_dummy = assets.shared_cell_dummy.clone();
         let mut first = crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(
             0,

@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::houses::HouseColorMap;
 use crate::render::batch::BatchRenderer;
 use crate::render::sprite_atlas::{self, ShpPaletteContext, ShpSpriteKey};
@@ -81,7 +81,8 @@ fn retail_atlas_refresh_costs() {
     let root = retail_root();
     let mut scenario =
         crate::headless_scenario::load(&root, "Dustbowl.mmx", 0x0B21_D6E5).expect("Dustbowl loads");
-    let mut assets = AssetManager::new(&root).expect("retail archives");
+    let mut assets =
+        AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).expect("retail archives");
     let theater_name = scenario.map.header.theater.clone();
     let theater =
         crate::map::theater::load_theater(&mut assets, &theater_name).expect("theater loads");
@@ -212,6 +213,13 @@ fn retail_atlas_refresh_costs() {
     )
     .expect("initial unit atlas");
     settle(&device, &queue);
+    let initial_unit_statistics = units.statistics().expect("initial texture descriptors");
+    assert!(initial_unit_statistics.resident_sprite_count > 0);
+    assert!(initial_unit_statistics.total_texel_payload_bytes > 0);
+    eprintln!(
+        "initial unit statistics: {}",
+        serde_json::to_string(&initial_unit_statistics).unwrap()
+    );
     eprintln!(
         "initial unit atlas: {:.0} ms, {} sprites on {} pages",
         ms(started.elapsed()),
@@ -351,6 +359,25 @@ fn retail_atlas_refresh_costs() {
     )
     .expect("refreshed unit atlas");
     settle(&device, &queue);
+    let grown_unit_statistics = units.statistics().expect("grown texture descriptors");
+    assert!(
+        grown_unit_statistics.resident_sprite_count > initial_unit_statistics.resident_sprite_count
+    );
+    assert!(
+        grown_unit_statistics
+            .pages
+            .starts_with(&initial_unit_statistics.pages),
+        "growth preserves resident page resources"
+    );
+    assert!(
+        grown_unit_statistics.total_texel_payload_bytes
+            > initial_unit_statistics.total_texel_payload_bytes,
+        "new model demand allocates a growth page"
+    );
+    eprintln!(
+        "grown unit statistics: {}",
+        serde_json::to_string(&grown_unit_statistics).unwrap()
+    );
     eprintln!(
         "unit refresh (new vehicle type): {:.1} ms, {} sprites on {} pages",
         ms(started.elapsed()),
@@ -361,6 +388,23 @@ fn retail_atlas_refresh_costs() {
         covers(sim, &sprites, &units),
         (true, true),
         "both refreshes satisfy the check"
+    );
+    units = unit_atlas::build_unit_atlas(
+        &device,
+        &queue,
+        &batch,
+        sim.entities(),
+        &assets,
+        Some(rules),
+        Some(art),
+        Some(units),
+        Some(&sim.interner),
+    )
+    .expect("unit atlas no-op refresh");
+    assert_eq!(
+        units.statistics().expect("no-op texture descriptors"),
+        grown_unit_statistics,
+        "a no-op retains pages, resident keys and the last actual build count"
     );
 
     for building in [first_building, second_building] {
@@ -446,4 +490,17 @@ fn retail_atlas_refresh_costs() {
     )
     .expect("map-load unit atlas of the grown world");
     assert_eq!(units.sprite_count(), loaded_units.sprite_count());
+    let loaded_unit_statistics = loaded_units
+        .statistics()
+        .expect("fresh texture descriptors");
+    assert_eq!(
+        grown_unit_statistics.resident_sprite_count,
+        loaded_unit_statistics.resident_sprite_count
+    );
+    // A fresh pack and append-only growth have different packing histories;
+    // neither texture allocation is an estimate of the other's resource use.
+    eprintln!(
+        "fresh unit statistics: {}",
+        serde_json::to_string(&loaded_unit_statistics).unwrap()
+    );
 }

@@ -10,16 +10,19 @@ def summary(a,b):
   return dict(equal=False,native_length=len(a),production_length=len(b),different_entries=len(examples),first=examples[:5])
  return dict(equal=False,native=a,production=b)
 
-def compare(native,prefix,repaired=None):
+def compare(native,prefix,repaired=None,*,stage_indices=None):
  data=json.loads(gzip.decompress(native.read_bytes()));rows=[]
  overlays={(r[0],r[1]):r[5] for r in data['case']['cells']}
- stages=[('loaded',data['initial'],None),('damaged',data['stages'][0]['state'],data['stages'][0]),('collapsed',data['stages'][1]['state'],data['stages'][1])]
- if repaired is not None:stages.append(('repaired',data['stages'][2]['state'],data['stages'][2]))
+ if stage_indices is None:
+  stages=[('loaded',data['initial'],None),('damaged',data['stages'][0]['state'],data['stages'][0]),('collapsed',data['stages'][1]['state'],data['stages'][1])]
+  if repaired is not None:stages.append(('repaired',data['stages'][2]['state'],data['stages'][2]))
+ else:
+  stages=[(label,data['initial'] if index is None else data['stages'][index]['state'],None if index is None else data['stages'][index])for label,index in stage_indices]
  for label,state,stage in stages:
   if stage:
    for event in stage['trace']:
     if event['kind']=='overlay':overlays[tuple(event['coord'])]=event['value']
-  path=repaired if label=='repaired' else Path(str(prefix)+'.'+label+'.json');root=json.loads(path.read_bytes());actual=root['navigation'];checks={}
+  path=repaired if label=='repaired' and repaired is not None else Path(str(prefix)+'.'+label+'.json');root=json.loads(path.read_bytes());actual=root['navigation'];checks={}
   for key,value in state['navigation'].items():checks['navigation.'+key]=summary(value,actual.get(key,actual['rust'].get(key)))
   for level,graph in enumerate(state['graphs']):
    for key,value in graph.items():checks[f'graphs.{level}.{key}']=summary(value,actual['graphs'][level][key])
@@ -37,7 +40,9 @@ def compare(native,prefix,repaired=None):
   checks['representative_cells']={'equal':all(c['comparison']['equal']for c in selected),'count':len(selected),'mismatches':[c for c in selected if not c['comparison']['equal']]}
   checks['dummy']='Not compared: production uses Debug text, native stores structured fields; both inspected separately.'
   rows.append(dict(state=label,production_file=path.name,production_sha256=sha(path),frame=root['frame'],checks=checks,all_compared_equal=all(v.get('equal',True) for v in checks.values()if isinstance(v,dict))))
- return dict(native_file=native.name,native_sha256=sha(native),production_prefix=prefix.name,states=rows,all_compared_equal=all(r['all_compared_equal']for r in rows),scope='All class/level/base-ID planes,13 complete movement rows,zone count,three graph IDs/padding IDs/full ordered records; allocated live level/slope planes and77 representative cells per state. Runtime objects/occupancy and RNG are not compared across these different caller boundaries. '+('Repaired production export included.' if repaired is not None else 'Production repair export not supplied.'))
+ scope='All class/level/base-ID planes,13 complete movement rows,zone count,three graph IDs/padding IDs/full ordered records; allocated live level/slope planes and77 representative cells per state. Runtime objects/occupancy and RNG are not compared across these different caller boundaries. '+('Repaired production export included.' if repaired is not None else 'Production repair export not supplied.')
+ if stage_indices is not None:scope='All class/level/base-ID planes,13 complete movement rows,zone count,three graph IDs/padding IDs/full ordered records; allocated live level/slope planes and every exported representative cell at each explicitly mapped stage. Runtime objects/occupancy and RNG are not compared across these different caller boundaries.'
+ return dict(native_file=native.name,native_sha256=sha(native),production_prefix=prefix.name,states=rows,all_compared_equal=all(r['all_compared_equal']for r in rows),scope=scope)
 
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('prefix',type=Path);p.add_argument('--native',type=Path,default=Path(__file__).with_name('navigation.json.gz'));p.add_argument('--output',type=Path);p.add_argument('--repaired',type=Path,help='explicit repaired production export; compares the frozen fourth native state');a=p.parse_args();result=compare(a.native,a.prefix,a.repaired);text=json.dumps(result,indent=2)+'\n'

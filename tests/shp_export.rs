@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 
@@ -262,7 +262,8 @@ fn export_identified_shp_pngs() {
     }
     fs::create_dir_all(&output_dir).expect("create export dir");
 
-    let asset_manager = AssetManager::new(&ra2_dir).expect("asset manager");
+    let asset_manager =
+        AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let candidate_names = candidate_shp_names();
 
     let mut exported = 0usize;

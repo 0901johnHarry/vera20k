@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 use vera20k::map::map_file;
@@ -31,7 +31,8 @@ fn print_overlay_id_mapping_for_dustbowl() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
     let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
 
@@ -182,7 +183,8 @@ fn inspect_tib20_frames() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let mut found_any = false;
 
     let pal_data = asset_manager
@@ -260,7 +262,8 @@ fn inspect_problem_overlay_assets() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     for name in [
         "lobrdg27.tem",
         "LOBRDG27.tem",
@@ -296,7 +299,8 @@ fn inspect_problem_overlay_frames() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     for name in ["LOBRDG27.tem", "FENCE21.tem"] {
         let data = asset_manager.get(name).expect("overlay asset");
         let shp = ShpFile::from_bytes(&data).expect("parse shp");
@@ -327,7 +331,8 @@ fn dump_raw_overlaytypes_ranges() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let (rules_bytes, source) = asset_manager
         .get_with_source("rulesmd.ini")
         .or_else(|| asset_manager.get_with_source("rules.ini"))
@@ -393,7 +398,8 @@ fn compare_overlay_index_modes() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
     let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
     let (rules_bytes, _) = asset_manager
@@ -456,7 +462,8 @@ fn yr_overlay_registry_matches_ra2_resource_families() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let (rules_bytes, _) = asset_manager
         .get_with_source("rulesmd.ini")
         .or_else(|| asset_manager.get_with_source("rules.ini"))
@@ -484,7 +491,8 @@ fn inspect_tib01_palette_indices() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
 
     // --- Load TIB01.tem SHP ---
     let shp_data = asset_manager
@@ -684,7 +692,8 @@ fn dustbowl_overlay_168_stays_non_resource() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let map_path = ra2_dir.join("Dustbowl.mmx");
     let map = map_file::load_from_path(&map_path).expect("load Dustbowl.mmx");
     let (rules_bytes, _) = asset_manager
@@ -708,7 +717,8 @@ fn print_overlay_id_mapping_for_goldst() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let map_path = ra2_dir.join("GoldSt.mmx");
     let map = match map_file::load_from_path(&map_path) {
         Ok(map) => map,
@@ -767,7 +777,8 @@ fn inspect_pips_shp() {
         return;
     }
 
-    let asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("asset manager");
+    let asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
 
     // Load the unit palette to show actual RGB colors for pip indices.
     let pal = asset_manager

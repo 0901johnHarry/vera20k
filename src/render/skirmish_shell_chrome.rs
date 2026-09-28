@@ -1099,6 +1099,7 @@ fn pack_entries(
 
 #[cfg(test)]
 mod tests {
+    use crate::assets::asset_manager::MediaArchiveMode;
     use super::{
         AssetManager, OWNER_DRAW_FLAG_TRANSPARENT_RGB, PRIMITIVE_BEVEL_COLOR_A_RGB,
         PRIMITIVE_BEVEL_COLOR_B_RGB, RenderedShellEntry, ShellAssetRole, TRACKBAR_FRAME_BORDER,
@@ -1119,7 +1120,8 @@ mod tests {
 
     fn retail_assets() -> AssetManager {
         let config = crate::util::config::GameConfig::load().expect("game config");
-        let mut assets = AssetManager::new(&config.paths.ra2_dir).expect("asset manager");
+        let mut assets = AssetManager::new(&config.paths.ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("asset manager");
         assert!(
             assets
                 .register_neutral_archives()

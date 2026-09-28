@@ -258,7 +258,11 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
 
     let (mut scenario, pristine) = retail_hills_collapsed_scene(|_, _| {});
     let retail = std::path::PathBuf::from(std::env::var_os("RA2_DIR").unwrap());
-    let mut assets = crate::assets::asset_manager::AssetManager::new(&retail).unwrap();
+    let mut assets = crate::assets::asset_manager::AssetManager::new(
+        &retail,
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+    )
+    .unwrap();
     let theater =
         crate::map::theater::load_theater(&mut assets, &scenario.map.header.theater).unwrap();
     eprintln!(

@@ -33,7 +33,7 @@ mod occupants;
 #[path = "bridge_ordinary_publication.rs"]
 mod ordinary_publication;
 
-pub(crate) use ordinary_publication::{damage_concrete, repair_from_engineer};
+pub(crate) use ordinary_publication::{damage_ordinary, repair_from_engineer};
 
 #[cfg(test)]
 #[path = "bridge_pavement_publication_tests.rs"]

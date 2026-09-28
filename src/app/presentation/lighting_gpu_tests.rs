@@ -21,7 +21,7 @@ use std::path::PathBuf;
 #[ignore = "requires stock retail assets, a diagnostic authored lamp map and a GPU"]
 fn stock_lamp_loaded_by_scenario_changes_actual_terrain_pixels() {
     use super::lighting::MatchLighting;
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::lighting::{CellLightGrid, parse_lighting};
     use crate::map::terrain::{TerrainCell, TerrainGrid, TilePlacement};
     use crate::map::theater::{TileKey, load_theater, load_tile_images};
@@ -60,7 +60,7 @@ fn stock_lamp_loaded_by_scenario_changes_actual_terrain_pixels() {
         sub_tile,
         variant: 0,
     };
-    let mut assets = AssetManager::new(&root).unwrap();
+    let mut assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let theater = load_theater(&mut assets, &scenario.map.header.theater).unwrap();
     let tile = load_tile_images(
         &assets,

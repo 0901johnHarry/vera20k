@@ -7,7 +7,7 @@ use super::{
     is_generic_sidebar_shp_name, resolve_sidebar_asset_in_order,
 };
 use crate::app::presentation::sidebar_build::build_gclock_instance;
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::assets::mix_archive::MixArchive;
 use crate::assets::mix_hash::mix_hash;
 use crate::assets::pal_file::Palette;
@@ -158,7 +158,8 @@ fn atlas_cell_has_alpha(
 #[test]
 #[ignore = "requires the configured stock retail RA2/YR install"]
 fn retail_yuri_generic_route_uses_side_two_and_builds_production_clock() {
-    let assets = AssetManager::new(&retail_ra2_dir()).expect("load retail asset stack");
+    let assets = AssetManager::new(&retail_ra2_dir(), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("load retail asset stack");
     let allied = SidebarSideRoute::for_theme(&assets, SidebarTheme::Allied);
     let soviet = SidebarSideRoute::for_theme(&assets, SidebarTheme::Soviet);
     let yuri = SidebarSideRoute::for_theme(&assets, SidebarTheme::Yuri);
@@ -225,7 +226,8 @@ fn retail_yuri_generic_route_uses_side_two_and_builds_production_clock() {
 #[test]
 #[ignore = "requires the configured stock retail RA2/YR install"]
 fn retail_in_game_shell_art_preserves_side_route_and_frame_transparency() {
-    let assets = AssetManager::new(&retail_ra2_dir()).expect("load retail asset stack");
+    let assets = AssetManager::new(&retail_ra2_dir(), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("load retail asset stack");
     // Independent stock MIX/SHP reads: both SIDE2B canvases are 168x50;
     // SIDEBTTN has three 125x25 frames, with 28 skipped pixels per Allied
     // frame and none per Soviet frame. Yuri shares the Soviet generic art
@@ -306,7 +308,7 @@ fn original_n1_tables_drive_sidebar_palette_and_skip_alpha() {
 #[test]
 #[ignore = "requires the configured stock retail RA2/YR install"]
 fn retail_modal_backgrounds_use_ui_palette_for_every_theme_and_size() {
-    let assets = AssetManager::new(&retail_ra2_dir()).unwrap();
+    let assets = AssetManager::new(&retail_ra2_dir(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
     for (theme, archive_name, names, palette_name, old_palette_name) in [
         (
             SidebarTheme::Allied,
@@ -404,7 +406,7 @@ fn retail_radar_histories_match_original_4912b0_stores() {
         "../../tools/sidebar_oracle/radar_surface.json"
     ))
     .unwrap();
-    let assets = AssetManager::new(&retail_ra2_dir()).unwrap();
+    let assets = AssetManager::new(&retail_ra2_dir(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
     for c in packet.cases {
         let archive = assets.archive(&c.archive).unwrap();
         let raw = archive.get_by_name(&c.name).unwrap();

@@ -1,7 +1,7 @@
 //! Source-ordered scenario records for the Skirmish Choose Map modal.
 //!
 //! Retail Choose Map consumes a scenario-record list in source append order.
-//! This module models that list. `list_maps::list_available_maps` supplies
+//! This module models that list. `scenario_sources::list_available_maps` supplies
 //! records only when the asset-backed scan finds none.
 
 use crate::map::scenario_menu::MapMenuEntry;

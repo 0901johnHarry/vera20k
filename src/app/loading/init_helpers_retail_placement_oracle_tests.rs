@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use super::load_rules_with_merged_ini;
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::entities::EntityCategory;
 use crate::map::map_file::{self, MapFile};
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -265,7 +265,8 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(map.header.theater, "TEMPERATE");
     assert_eq!((map.header.width, map.header.height), (70, 76));
 
-    let mut assets = AssetManager::new(&retail_dir).expect("open retail MIX archives");
+    let mut assets = AssetManager::new(&retail_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("open retail MIX archives");
     let theater =
         theater::load_theater(&mut assets, &map.header.theater).expect("load retail theater");
     let (mut rules, rules_ini, art_ini, _receipt) =

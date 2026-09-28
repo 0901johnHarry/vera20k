@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use image::RgbaImage;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::mix_archive::MixArchive;
 use vera20k::assets::mix_hash::mix_hash;
 use vera20k::assets::pal_file::Palette;
@@ -246,8 +246,8 @@ fn sidebar_unknown_entries_probe() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
     let known_ids = known_sidebar_ids();
 
     for mix_name in ["sidec01.mix", "sidec02.mix", "sidec02md.mix"] {
@@ -313,8 +313,8 @@ fn export_suspicious_unknown_sidebar_shps() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
     let sidec01 = MixArchive::from_bytes(
         asset_manager
             .get("sidec01.mix")
@@ -424,8 +424,8 @@ fn sidebar_chrome_inspect() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
 
     // Inspect Allied sidebar chrome
     inspect_sidebar_mix(&asset_manager, "sidec01.mix");
@@ -453,8 +453,8 @@ fn sidebar_chrome_slot_positions() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
 
     // Load side2.shp from the asset manager (it lives inside sidec01.mix)
     let shp_data: Vec<u8> = asset_manager
@@ -669,8 +669,8 @@ fn inspect_tab_and_button_frames() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
 
     // Load sidec01.mix as a nested MIX to extract files from it
     let mix_data: Vec<u8> = asset_manager
@@ -748,8 +748,8 @@ fn export_power_bar_candidates() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
     let mix_data: Vec<u8> = asset_manager
         .get("sidec01.mix")
         .expect("sidec01.mix not found");
@@ -873,8 +873,8 @@ fn dump_powerp_pixels() {
         eprintln!("SKIP: RA2 dir not found");
         return;
     }
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
     let mix_data: Vec<u8> = asset_manager
         .get("sidec01.mix")
         .expect("sidec01.mix not found");

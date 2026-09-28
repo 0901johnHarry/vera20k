@@ -124,6 +124,28 @@ pub struct UnitAtlasPage {
     pub texture: BatchTexture,
 }
 
+/// Observation of resident palette-index textures, including unused page space.
+/// This excludes CPU caches, pose/slope caches, other atlases and driver overhead.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct UnitAtlasStatistics {
+    pub resident_sprite_count: usize,
+    /// Last non-no-op build's rasterized sprites, including shadow sprites;
+    /// this is not the number successfully admitted to pages.
+    pub last_build_rasterized_sprite_count: u32,
+    pub pages: Vec<UnitAtlasPageStatistics>,
+    pub total_texel_payload_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct UnitAtlasPageStatistics {
+    pub extent: [u32; 3],
+    pub format: &'static str,
+    pub dimension: &'static str,
+    pub mip_level_count: u32,
+    pub sample_count: u32,
+    pub texel_payload_bytes: u64,
+}
+
 /// A paged GPU texture atlas containing pre-rendered unit voxel sprites.
 ///
 /// Created once at map load and queried per-frame to build unit
@@ -281,6 +303,52 @@ impl UnitAtlas {
     /// Number of unique sprites in the atlas.
     pub fn sprite_count(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Derive capture evidence from the actual resources. No simulation state
+    /// or per-frame counters are maintained for this observation.
+    pub(crate) fn statistics(&self) -> anyhow::Result<UnitAtlasStatistics> {
+        let mut pages = Vec::with_capacity(self.pages.len());
+        let mut total_texel_payload_bytes = 0_u64;
+        for page in &self.pages {
+            // wgpu 27 exposes the original descriptor through TextureView's
+            // texture handle. Do not estimate from sprite sizes or roster keys.
+            let texture = page.texture.view.texture();
+            let extent = texture.size();
+            anyhow::ensure!(
+                texture.format() == wgpu::TextureFormat::R8Uint
+                    && texture.dimension() == wgpu::TextureDimension::D2
+                    && texture.mip_level_count() == 1
+                    && texture.sample_count() == 1
+                    && extent.depth_or_array_layers == 1
+                    && extent.width > 0
+                    && extent.height > 0,
+                "UnitAtlas payload accounting requires a single-layer/mip/sample D2 R8Uint texture: {:?}, {:?}, {:?}, mips={}, samples={}",
+                extent,
+                texture.format(),
+                texture.dimension(),
+                texture.mip_level_count(),
+                texture.sample_count(),
+            );
+            let texel_payload_bytes = u64::from(extent.width) * u64::from(extent.height);
+            total_texel_payload_bytes = total_texel_payload_bytes
+                .checked_add(texel_payload_bytes)
+                .ok_or_else(|| anyhow::anyhow!("UnitAtlas texture payload total overflow"))?;
+            pages.push(UnitAtlasPageStatistics {
+                extent: [extent.width, extent.height, extent.depth_or_array_layers],
+                format: "R8Uint",
+                dimension: "D2",
+                mip_level_count: texture.mip_level_count(),
+                sample_count: texture.sample_count(),
+                texel_payload_bytes,
+            });
+        }
+        Ok(UnitAtlasStatistics {
+            resident_sprite_count: self.entries.len(),
+            last_build_rasterized_sprite_count: self.rendered,
+            pages,
+            total_texel_payload_bytes,
+        })
     }
 
     /// Number of texture pages in the atlas.

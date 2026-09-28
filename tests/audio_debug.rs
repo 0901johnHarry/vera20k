@@ -1,7 +1,7 @@
 //! Debug test to trace why audio.idx can't be found.
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::mix_hash::mix_hash;
 
 fn ra2_dir() -> String {
@@ -11,7 +11,8 @@ fn ra2_dir() -> String {
 #[test]
 #[ignore] // Requires RA2_DIR (retail game files)
 fn debug_audio_idx_lookup() {
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     // Print the hash we're looking for.
     let hash_idx = mix_hash("audio.idx");

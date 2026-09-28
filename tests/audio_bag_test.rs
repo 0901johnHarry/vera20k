@@ -3,7 +3,7 @@
 //! Tests that the full pipeline works: AssetManager → idx/bag → decode → playable samples.
 
 use std::path::Path;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::audio_bag::{AudioIndex, decode_bag_audio};
 use vera20k::assets::mix_archive::MixArchive;
 
@@ -14,7 +14,8 @@ fn ra2_dir() -> String {
 #[test]
 #[ignore] // Requires RA2_DIR (retail game files)
 fn test_load_audio_idx_from_mix() {
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     // Try YR first, then base RA2.
     let (idx_name, bag_name) = if assets.get("audiomd.idx").is_some() {
@@ -65,7 +66,8 @@ fn test_load_audio_idx_from_mix() {
 #[test]
 #[ignore] // Requires RA2_DIR (retail game files)
 fn test_lookup_known_gi_voice() {
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     let idx_data = assets
         .get("audiomd.idx")
@@ -133,7 +135,8 @@ fn test_lookup_known_gi_voice() {
 #[test]
 #[ignore] // Requires RA2_DIR (retail game files)
 fn test_lookup_eva_sounds() {
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     // EVA sounds are in AUDIOMD.MIX (YR expansion). Load it explicitly
     // because both AUDIO.MIX and AUDIOMD.MIX have internal entries named "audio.idx".
@@ -200,7 +203,8 @@ fn test_sound_registry_with_real_soundmd() {
     use vera20k::rules::ini_parser::IniFile;
     use vera20k::rules::sound_ini::SoundRegistry;
 
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     let soundmd_bytes = assets.get("soundmd.ini").expect("soundmd.ini should exist");
     let soundmd_text = String::from_utf8(soundmd_bytes).expect("valid utf8");
@@ -232,7 +236,8 @@ fn test_eva_registry_with_real_evamd() {
     use vera20k::rules::ini_parser::IniFile;
     use vera20k::rules::sound_ini::{EvaRegistry, EvaSide};
 
-    let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
+    let assets = AssetManager::new(Path::new(&ra2_dir()), MediaArchiveMode::STOCK_DIGITAL)
+        .expect("AssetManager");
 
     let evamd_bytes = assets.get("evamd.ini").expect("evamd.ini should exist");
     let evamd_text = String::from_utf8_lossy(&evamd_bytes).into_owned();

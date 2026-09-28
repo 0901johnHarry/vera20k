@@ -859,8 +859,11 @@ mod tests {
         if !config.paths.ra2_dir.exists() {
             return;
         }
-        let assets = crate::assets::asset_manager::AssetManager::new(&config.paths.ra2_dir)
-            .expect("install loads");
+        let assets = crate::assets::asset_manager::AssetManager::new(
+            &config.paths.ra2_dir,
+            crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        )
+        .expect("install loads");
         let bytes = assets.get_ref("PROGBARM.SHP").expect("progbarm");
         let shp = crate::assets::shp_file::ShpFile::from_bytes(bytes).expect("parse shp");
         let f = &shp.frames[0];
@@ -940,8 +943,11 @@ mod tests {
             return;
         }
 
-        let mut assets = crate::assets::asset_manager::AssetManager::new(&config.paths.ra2_dir)
-            .expect("configured RA2 install should load");
+        let mut assets = crate::assets::asset_manager::AssetManager::new(
+            &config.paths.ra2_dir,
+            crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        )
+        .expect("configured RA2 install should load");
         assert!(
             assets
                 .register_loading_archives()

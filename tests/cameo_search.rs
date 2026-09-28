@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::mix_archive::MixArchive;
 use vera20k::assets::mix_hash::mix_hash;
 
@@ -129,8 +129,8 @@ fn find_cameo_icon_files() {
         return;
     }
 
-    let asset_manager: AssetManager =
-        AssetManager::new(&ra2_dir).expect("Failed to create AssetManager");
+    let asset_manager: AssetManager = AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL)
+        .expect("Failed to create AssetManager");
 
     // ---------------------------------------------------------------
     // Step 1: Direct lookup of ICON SHP files via asset_manager.get()

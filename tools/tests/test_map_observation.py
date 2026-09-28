@@ -29,6 +29,16 @@ class MapObservationTests(unittest.TestCase):
         self.executable.write_bytes(b'fake executable identity')
         self.contract = repository_contract_path()
         self.output = self.root / 'observation'
+        self.unit_atlas = {
+            'resident_sprite_count': 7, 'last_build_rasterized_sprite_count': 23,
+            'pages': [
+                {'extent': [2, 3, 1], 'format': 'R8Uint', 'dimension': 'D2',
+                 'mip_level_count': 1, 'sample_count': 1, 'texel_payload_bytes': 6},
+                {'extent': [5, 2, 1], 'format': 'R8Uint', 'dimension': 'D2',
+                 'mip_level_count': 1, 'sample_count': 1, 'texel_payload_bytes': 10},
+            ],
+            'total_texel_payload_bytes': 16,
+        }
         self.change = lambda manifest: None
         self.result = ChildResult(42, 0, False, b'child output\n', b'', ())
         environment = patch.dict('os.environ', {}, clear=True)
@@ -52,7 +62,7 @@ class MapObservationTests(unittest.TestCase):
         identity = lambda path: {'path': str(path), 'byte_length': path.stat().st_size,
                                  'sha256': sha256_bytes(path.read_bytes())}
         manifest = {
-            'schema_version': 'vera20k.map-observation.v1', 'status': 'COMPLETE',
+            'schema_version': 'vera20k.map-observation.v2', 'status': 'COMPLETE',
             'profile': {'sha256': sha256_bytes(self.profile_path.read_bytes()),
                         'request': deepcopy(self.profile)},
             'contract': {'sha256': sha256_bytes(self.contract.read_bytes())},
@@ -68,7 +78,8 @@ class MapObservationTests(unittest.TestCase):
             'lifecycle': {'window_hidden': True, 'window_focused': False,
                           'focus_violations': 0, 'input_violations': 0},
             'render': {'ready': True, 'sidebar_view_present': True,
-                       'surface_extent': [2, 2], 'internal_extent': [2, 2]},
+                       'surface_extent': [2, 2], 'internal_extent': [2, 2],
+                       'unit_atlas': deepcopy(self.unit_atlas)},
             'frame': {'file_name': 'frame.bgra', 'width': 2, 'height': 2, 'row_stride': 8,
                       'byte_length': 16, 'sha256': sha256_bytes(frame),
                       'pixel_layout': 'BGRA8', 'surface_format': 'Bgra8UnormSrgb'},
@@ -88,10 +99,73 @@ class MapObservationTests(unittest.TestCase):
         report = self.run_capture()
         self.assertEqual(report['status'], 'VALID', report['errors'])
         self.assertEqual(report['capture']['exact_step_count'], 3)
+        self.assertEqual(report['capture']['unit_atlas'], self.unit_atlas)
         self.assertEqual((self.output / 'stdout.log').read_bytes(), b'child output\n')
         self.assertEqual((self.output / 'profile.json').read_bytes(), self.profile_path.read_bytes())
         self.assertEqual(json.loads((self.output / 'run.json').read_text()), report)
         self.assertEqual(report['parity_certification'], 'NONE')
+
+    def test_empty_atlas_receipt_is_valid(self):
+        self.unit_atlas.update(resident_sprite_count=0, last_build_rasterized_sprite_count=0,
+                               pages=[], total_texel_payload_bytes=0)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['unit_atlas'], self.unit_atlas)
+
+    def test_atlas_statistics_are_required_by_v2(self):
+        changes = [lambda m: m['render'].pop('unit_atlas'),
+                   lambda m: m.update(schema_version='vera20k.map-observation.v1')]
+        for value in (None, [], 1, 'statistics'):
+            changes.append(lambda m, v=value: m['render'].update(unit_atlas=v))
+        for key in self.unit_atlas:
+            changes.append(lambda m, k=key: m['render']['unit_atlas'].pop(k))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'atlas-missing-{index}'
+                self.change = change
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID')
+                self.assertIsNone(report['capture'])
+
+    def test_atlas_counts_require_nonnegative_integers(self):
+        for key in ('resident_sprite_count', 'last_build_rasterized_sprite_count',
+                    'total_texel_payload_bytes'):
+            for index, value in enumerate((-1, True, False, 1.0, '1', None)):
+                with self.subTest(key=key, value=value):
+                    self.output = self.root / f'atlas-count-{key}-{index}'
+                    self.change = lambda m, k=key, v=value: m['render']['unit_atlas'].update({k: v})
+                    self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_atlas_page_descriptor_and_payload_arithmetic_are_checked(self):
+        cases = [('format', 'Rgba8Uint'), ('dimension', 'D3'),
+                 ('mip_level_count', 2), ('mip_level_count', True),
+                 ('sample_count', 4), ('sample_count', 1.0),
+                 ('texel_payload_bytes', 7), ('texel_payload_bytes', 6.0),
+                 ('texel_payload_bytes', True)]
+        for extent in ([], [2, 3], [2, 3, 1, 1], '2,3,1', None,
+                       [0, 3, 1], [2, -1, 1], [True, 3, 1], [2, False, 1],
+                       [2.0, 3, 1], [2, '3', 1], [2, 3, 2], [2, 3, True], [2, 3, 1.0]):
+            cases.append(('extent', extent))
+        for index, (key, value) in enumerate(cases):
+            with self.subTest(key=key, value=value):
+                self.output = self.root / f'atlas-page-{index}'
+                self.change = lambda m, k=key, v=value: m['render']['unit_atlas']['pages'][0].update({k: v})
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+        for index, key in enumerate(self.unit_atlas['pages'][0]):
+            with self.subTest(missing=key):
+                self.output = self.root / f'atlas-page-missing-{index}'
+                self.change = lambda m, k=key: m['render']['unit_atlas']['pages'][0].pop(k)
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_atlas_pages_and_total_payload_are_checked(self):
+        changes = [lambda m: m['render']['unit_atlas'].update(total_texel_payload_bytes=15)]
+        for value in (None, {}, 'pages', [None], [[]], [1]):
+            changes.append(lambda m, v=value: m['render']['unit_atlas'].update(pages=v))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'atlas-total-{index}'
+                self.change = change
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_zero_steps_requires_unchanged_initial_state(self):
         self.profile['ticks'] = 0

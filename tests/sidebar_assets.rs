@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 
@@ -53,7 +53,8 @@ fn debug_probe_sidebar_assets() {
         return;
     }
 
-    let asset_manager = AssetManager::new(&ra2_dir).expect("asset manager");
+    let asset_manager =
+        AssetManager::new(&ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("asset manager");
     let candidates = [
         "sidec01.mix",
         "sidec02.mix",

@@ -977,8 +977,11 @@ mod tests {
         let ra2_dir = PathBuf::from(
             std::env::var("RA2_DIR").expect("set RA2_DIR to the retail RA2/YR directory"),
         );
-        let mut assets =
-            crate::assets::asset_manager::AssetManager::new(&ra2_dir).expect("retail assets");
+        let mut assets = crate::assets::asset_manager::AssetManager::new(
+            &ra2_dir,
+            crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        )
+        .expect("retail assets");
         let map_bytes = assets.get("XMP29U2.MAP").expect("XMP29U2.MAP asset");
         let map = crate::map::map_file::MapFile::from_bytes(&map_bytes).expect("retail map");
         let theater = crate::map::theater::load_theater(&mut assets, &map.header.theater)

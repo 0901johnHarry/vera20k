@@ -202,7 +202,7 @@ fn endpoint_test_terrain() -> ResolvedTerrainGrid {
 #[test]
 #[ignore = "requires retail assets, VERA20K_XMP34U4_MAP and a GPU"]
 fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::terrain::{TerrainCell, TerrainGrid, TilePlacement};
     use crate::map::theater::{TileKey, load_theater, load_tile_images};
     use std::collections::HashSet;
@@ -236,7 +236,7 @@ fn retail_pavement_live_damage_changes_actual_terrain_pixels() {
         variant: 1,
         ..pristine
     };
-    let mut assets = AssetManager::new(&root).unwrap();
+    let mut assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let theater = load_theater(&mut assets, &scenario.map.header.theater).unwrap();
     let tiles = load_tile_images(
         &assets,

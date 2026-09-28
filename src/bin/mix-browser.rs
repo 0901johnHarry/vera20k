@@ -15,7 +15,7 @@ mod mix_browser_ui;
 use eframe::egui;
 use mix_browser_data::{ShpIndex, build_best_dictionary, load_mix_contents};
 use mix_browser_preview::PreviewState;
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::rules::art_data::ArtRegistry;
 use vera20k::rules::color_scheme::ColorSchemeEntry;
@@ -680,13 +680,14 @@ fn main() -> eframe::Result {
         }
     };
 
-    let mut asset_manager = match AssetManager::new(&config.paths.ra2_dir) {
-        Ok(manager) => manager,
-        Err(err) => {
-            eprintln!("Error: AssetManager init failed ({})", err);
-            std::process::exit(1);
-        }
-    };
+    let mut asset_manager =
+        match AssetManager::new(&config.paths.ra2_dir, MediaArchiveMode::STOCK_DIGITAL) {
+            Ok(manager) => manager,
+            Err(err) => {
+                eprintln!("Error: AssetManager init failed ({})", err);
+                std::process::exit(1);
+            }
+        };
     if let Err(err) = asset_manager.load_all_disk_mixes() {
         eprintln!("Warning: could not scan extra disk MIX files ({})", err);
     }

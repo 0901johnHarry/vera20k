@@ -23,8 +23,9 @@ use crate::render::tile_atlas::{self, TileAtlas};
 use crate::render::unit_atlas::{self, UnitAtlas};
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
-use crate::rules::native_processing::{ProcessedRulesLayers, RulesLayerStack};
 use crate::rules::process_owner::NativeRulesProcessOwner;
+#[cfg(test)]
+use crate::rules::retail_sources::load_startup_rules;
 use crate::rules::ruleset::RuleSet;
 
 use crate::sim::world::Simulation;
@@ -241,121 +242,6 @@ pub(crate) fn theater_ext_for(theater_name: &str) -> &'static str {
     }
 }
 
-/// Compose the startup rules passes (root, then LANGRULE) in retail order. The
-/// mode and scenario layers are the match load's, on
-/// `NativeRulesProcessOwner::load_noncampaign_scenario`.
-fn compose_rules_layers(
-    rulesmd: IniFile,
-    langrule: Option<&IniFile>,
-    fixed_art: &IniFile,
-) -> Result<ProcessedRulesLayers, crate::rules::error::RulesError> {
-    let mut layers = RulesLayerStack::new(rulesmd);
-    if let Some(langrule) = langrule {
-        layers.push(
-            crate::rules::native_processing::RulesLayerKind::LangRule,
-            langrule.clone(),
-        );
-    }
-    layers.process_with_fixed_art(fixed_art)
-}
-
-fn load_retail_rules_root(asset_manager: &AssetManager) -> Option<(IniFile, Option<IniFile>)> {
-    let (data, source) = asset_manager.get_with_source("rulesmd.ini")?;
-    log::info!("Loading rulesmd.ini ({} bytes) from {}", data.len(), source);
-    let rulesmd = IniFile::from_bytes(&data).ok()?;
-    let langrule = asset_manager
-        .get_with_source("langrule.ini")
-        .and_then(|(bytes, source)| {
-            log::info!(
-                "Loading optional langrule.ini ({} bytes) from {}",
-                bytes.len(),
-                source
-            );
-            IniFile::from_bytes(&bytes).ok()
-        });
-    Some((rulesmd, langrule))
-}
-
-/// Cold-start native Rules authority plus the one shell compatibility
-/// projection derived from the same selected INI snapshots.
-pub(crate) struct StartupRulesLoad {
-    compatibility_rules: Option<RuleSet>,
-    compatibility_projection: Option<IniFile>,
-    native_owner: NativeRulesProcessOwner,
-}
-
-impl StartupRulesLoad {
-    pub(crate) fn into_parts(self) -> (Option<RuleSet>, Option<IniFile>, NativeRulesProcessOwner) {
-        (
-            self.compatibility_rules,
-            self.compatibility_projection,
-            self.native_owner,
-        )
-    }
-}
-
-/// Select RULESMD/LANGRULE/ARTMD once and reproduce cold native construction.
-///
-/// The shell-facing projection is deliberately separate. If its typed Rust
-/// parse fails, native process ownership still survives instead of being
-/// reconstructed later from a `RuleSet`.
-pub(crate) fn load_startup_rules(asset_manager: &AssetManager) -> Option<StartupRulesLoad> {
-    let (rulesmd, langrule) = load_retail_rules_root(asset_manager)?;
-    let fixed_art = load_retail_ini(asset_manager, "artmd.ini").or_else(|| {
-        log::warn!("artmd.ini not found or could not be parsed during native rules startup");
-        None
-    })?;
-    let mut native_owner =
-        NativeRulesProcessOwner::from_cold_start_sources(rulesmd, langrule, fixed_art)
-            .map_err(|error| log::warn!("Native rules cold startup failed: {error}"))
-            .ok()?;
-    // Init_Game52C763..52C796 reads SOUNDMD once, independently of the
-    // scenario's Rules passes. Both startup and later match projections use
-    // this same catalog for native sound-reference validity and retention.
-    if let Some(sound_ini) = load_retail_ini(asset_manager, "soundmd.ini") {
-        native_owner.select_fixed_sounds(crate::rules::sound_ini::SoundRegistry::from_ini(
-            &sound_ini,
-        ));
-    }
-
-    let (compatibility_rules, compatibility_projection) = match native_owner
-        .startup_compatibility_projection()
-    {
-        Ok(processed) => {
-            let mut compatibility_rules = RuleSet::from_processed_rules(&processed)
-                .map_err(|error| log::warn!("Failed to parse startup rules projection: {error}"))
-                .ok();
-            if let Some(rules) = compatibility_rules.as_mut() {
-                native_owner.bind_sinking_sounds(rules, &processed);
-            }
-            let compatibility_projection = processed.into_projection_discarding_native_receipt();
-            (compatibility_rules, Some(compatibility_projection))
-        }
-        Err(error) => {
-            log::warn!("Failed to build startup rules projection: {error}");
-            (None, None)
-        }
-    };
-
-    Some(StartupRulesLoad {
-        compatibility_rules,
-        compatibility_projection,
-        native_owner,
-    })
-}
-
-fn load_retail_rules_source_with_fixed_art(
-    asset_manager: &AssetManager,
-) -> Option<(IniFile, IniFile)> {
-    let (rulesmd, langrule) = load_retail_rules_root(asset_manager)?;
-    let fixed_art = load_retail_ini(asset_manager, "artmd.ini")?;
-    let processed = compose_rules_layers(rulesmd, langrule.as_ref(), &fixed_art).ok()?;
-    Some((
-        processed.into_projection_discarding_native_receipt(),
-        fixed_art,
-    ))
-}
-
 /// Load the distinct active-YR AI definition root.
 ///
 /// Retail provenance: `Load_Game_Rules @ 0x0052CD70` opens `AIMD.INI` as its
@@ -413,12 +299,6 @@ pub(crate) fn load_rules_with_merged_ini(
     Some((rules, processed_ini, fixed_art_ini, receipt))
 }
 
-fn load_retail_ini(asset_manager: &AssetManager, name: &str) -> Option<IniFile> {
-    let (data, source) = asset_manager.get_with_source(name)?;
-    log::info!("Loading {} ({} bytes) from {}", name, data.len(), source);
-    IniFile::from_bytes(&data).ok()
-}
-
 /// Resolve the neutral tech buildings the random map generator may place.
 ///
 /// The type list lives in `[AI] NeutralTechBuildings` and each footprint in
@@ -426,13 +306,19 @@ fn load_retail_ini(asset_manager: &AssetManager, name: &str) -> Option<IniFile> 
 /// An unavailable INI yields an empty catalog, which the placement phase
 /// treats as "place nothing" rather than as an error.
 pub(crate) fn load_neutral_tech_types(
-    asset_manager: &AssetManager,
+    owner: Option<&NativeRulesProcessOwner>,
 ) -> Vec<crate::map::rmg::phases::tech_buildings::TechType> {
-    let Some((rules, art)) = load_retail_rules_source_with_fixed_art(asset_manager) else {
-        log::warn!("random map: rules/art INI unavailable; placing no neutral tech buildings");
+    let Some(owner) = owner else {
+        log::warn!("random map: startup rules/art unavailable; placing no neutral tech buildings");
         return Vec::new();
     };
-    let types = crate::map::rmg::tech_catalog::resolve(&rules, &art);
+    let Ok(processed) = owner.startup_compatibility_projection() else {
+        log::warn!(
+            "random map: startup rules projection failed; placing no neutral tech buildings"
+        );
+        return Vec::new();
+    };
+    let types = crate::map::rmg::tech_catalog::resolve(processed.ini(), owner.fixed_art());
     log::info!(
         "random map: resolved {} neutral tech building type(s)",
         types.len()
@@ -803,10 +689,10 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        compose_rules_layers, load_rules_with_merged_ini, missing_active_team_ai_registry_sections,
-        scheduler_anim_roots, startup_crate_anim_remap_keys,
+        load_rules_with_merged_ini, missing_active_team_ai_registry_sections, scheduler_anim_roots,
+        startup_crate_anim_remap_keys,
     };
-    use crate::assets::asset_manager::AssetManager;
+    use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::entities::EntityCategory;
     use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::TerrainTileAnimation;
@@ -1076,7 +962,8 @@ mod tests {
             "retail RA2/YR directory does not exist: {}",
             path.display()
         );
-        AssetManager::new(&path).expect("load retail RA2/YR assets")
+        AssetManager::new(&path, MediaArchiveMode::STOCK_DIGITAL)
+            .expect("load retail RA2/YR assets")
     }
 
     const RULES_BASE: &str = "[InfantryTypes]\n0=E1\n[E1]\nStrength=125\n\
@@ -1134,30 +1021,6 @@ mod tests {
         assert_eq!(
             a.object("E1").map(|o| o.strength),
             b.object("E1").map(|o| o.strength)
-        );
-    }
-
-    #[test]
-    fn langrule_overlays_standalone_rulesmd() {
-        let rulesmd = IniFile::from_str("[General]\nBuildSpeed=.7\nFlightLevel=1500\n");
-        let langrule = IniFile::from_str("[General]\nBuildSpeed=.58\n");
-        let fixed_art = IniFile::from_str("");
-        let processed = compose_rules_layers(rulesmd, Some(&langrule), &fixed_art)
-            .expect("Rules layers process");
-        let ini = processed.ini();
-        assert_eq!(
-            ini.section("General").unwrap().get("BuildSpeed"),
-            Some(".58")
-        );
-        assert_eq!(
-            ini.section("General").unwrap().get("FlightLevel"),
-            Some("1500")
-        );
-        let rules = RuleSet::from_processed_rules(&processed).expect("processed rules parse");
-        // ReadDouble scans into a float and widens it.
-        assert_eq!(
-            rules.production.build_speed,
-            crate::util::native_x87::NativeF64Bits::from_bits(f64::from(0.58_f32).to_bits())
         );
     }
 

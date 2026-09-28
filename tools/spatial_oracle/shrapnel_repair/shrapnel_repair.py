@@ -115,11 +115,15 @@ class Repair(OriginalRim):
   return result
 
 class ResidentRepair(Repair):
- def __init__(self,case,rules,theater):
+ def __init__(self,case,rules,theater,*,resident_cells=None):
   super().__init__(case);self.stage='resident_recalc';self.phase='setup';u=self.uc
+  # The ordinary damage witness touches nine cells. Hut walkers reuse this
+  # owner with a larger physical strip; preserve the original default order.
+  resident_cells=list(resident_cells) if resident_cells is not None else [(x,y) for y in range(58,61) for x in range(114,117)]
+  selected={tuple(c) for c in resident_cells};assert selected<=self.ptrs.keys()
   u.mem_map(0x44000000,0x800000);self.assets=[]
   u.mem_write(0xA8ED2C,dwords(0x44000000));u.mem_write(0xA8ED38,dwords(theater['count']))
-  needed=sorted({r['tile'] for r in case['supplied_cells'] if 114<=r['coord'][0]<=116 and 58<=r['coord'][1]<=60})
+  needed=sorted({r['tile'] for r in case['supplied_cells'] if tuple(r['coord']) in selected})
   for index,tile in enumerate(needed):
    path=ASSETS/theater['tiles'][tile];raw=path.read_bytes();tmp=bytearray(raw)
    data=0x44020000+index*0x10000;head=0x44010000+index*0x400
@@ -143,10 +147,9 @@ class ResidentRepair(Repair):
    u.mem_write(0x44300000+(y*165+x)*10+8,bytes([r['level']]))
   self.phase='measure'
   self.trace.clear();self.reached={};rng_before={k:rng_state(u,p) for k,p in self.rngs.items()}
-  for y in range(58,61):
-   for x in range(114,117):
-    p=self.ptrs[x,y];self.call(0x47D2B0,this=p,args=(-1,))
-    row=self.pending.pop(RET_MAGIC);row['result']=u.reg_read(UC_X86_REG_EAX);row['after']=self.snapshot(p)
+  for x,y in resident_cells:
+   p=self.ptrs[x,y];self.call(0x47D2B0,this=p,args=(-1,))
+   row=self.pending.pop(RET_MAGIC);row['result']=u.reg_read(UC_X86_REG_EAX);row['after']=self.snapshot(p)
   assert not self.pending and rng_before=={k:rng_state(u,p) for k,p in self.rngs.items()}
   self.initial_recalc=dict(trace=list(self.trace),reached=dict(self.reached),rng_unchanged=True)
   self.trace.clear();self.reached={}

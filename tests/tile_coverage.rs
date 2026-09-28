@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::tmp_file::TmpFile;
 use vera20k::map::map_file;
 use vera20k::map::terrain;
@@ -36,7 +36,8 @@ fn diagnose_tile_coverage() {
     }
 
     // 1. Load asset manager.
-    let mut asset_manager: AssetManager = AssetManager::new(ra2_dir).expect("AssetManager::new");
+    let mut asset_manager: AssetManager =
+        AssetManager::new(ra2_dir, MediaArchiveMode::STOCK_DIGITAL).expect("AssetManager::new");
 
     // 2. Load a map (Dustbowl is small/temperate).
     let map_names: &[&str] = &["Dustbowl.mmx", "Barrel.mmx", "Lostlake.mmx"];
