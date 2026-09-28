@@ -157,6 +157,11 @@ branches and boundaries. Avoid a second Python implementation of the algorithm.
 * Use `finish_vectors(generate, path, provenance=lambda: provenance(...))`. Lazy
   callables keep help and argument errors independent of native work. Record the
   scope, assumptions, substitutions (including none), and native entries explicitly.
+  Pass `source_paths={label: Path(...)}` when recording source provenance: the
+  shared publisher captures UTF-8/LF hashes before generation, rejects drift
+  through metadata construction before comparison/publication, and owns the
+  `source_normalized_lf_sha256` field. List the producer and its relevant helpers;
+  this is a run consistency check, not a source lock or an import-time attestation.
 * Consume native outputs in a focused Rust test of the actual production function.
   Assert case identity/coverage as well as output equality, and review the connection
   to callers independently. The HSV example checks 2,304 inputs, not all 256³ inputs

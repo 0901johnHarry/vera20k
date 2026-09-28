@@ -19,6 +19,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Reproduce FireAt-tail launch goldens | [projectile fixture family](projectile_oracle/README.md) |
 | Reproduce native projectile launch, timer, collision and arc-domain goldens | [projectile comparisons](projectile_oracle/README.md); shared [slope initializer](native_slope.py) |
 | Reproduce palette, scanline, brightness and Ground/Level goldens | [checked palette oracle](palette_oracle/README.md) |
+| Reproduce Unit Foot Z selectors/composition and prepare a cliff comparison map | [checked Foot Z oracle](render_depth_oracle.md) |
 | Reproduce ground-height setters and Unit/Infantry placement leaves | [checked ramp-height oracle](ramp_height_oracle.md) |
 | Reproduce native animation boundary decisions and stores | [checked Anim boundary oracle](anim_oracle/README.md) |
 | Refresh Anytown packet source provenance after helper maintenance | [checked native replay and receipt refresh](spatial_oracle/anytown_damage/README.md) |
