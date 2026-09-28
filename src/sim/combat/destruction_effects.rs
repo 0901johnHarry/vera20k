@@ -64,10 +64,6 @@
 //!     anim. Trigger: the Battle Fortress, stock's only `OmniCrusher=`,
 //!     crushing any vehicle but the five `OmniCrushResistant=` types.
 //!   - The `DeathFrames=` completion (`0x00736381`), dead on stock.
-//! - An art-less type (stock `gtpowexp` on GAPOWR, YAPOWR and YAROCK,
-//!   `tstlexp` on NAPOWR) constructs nothing, where native constructs an
-//!   End=0 anim that draws nothing; the pick is still drawn, so only anim
-//!   identities shift.
 //! - DestroyAnim's palette (TechnoType `+0xDF0`/`+0xDD0` -> anim
 //!   `+0xD4`/`+0xDC`) is presentation and not carried.
 //! - Step 5 (`RevealToAll=`, stock NAIRON, GACSPH, GADUMY, GAWEAT, NAMISL,

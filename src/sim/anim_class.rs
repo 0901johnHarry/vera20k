@@ -3413,14 +3413,13 @@ mod tests {
         );
     }
 
-    /// A producer can name art that resolves to no INI section — retail has
-    /// three (`MININUKE - ADDED 11/30` from `[CRNUKEWH] AnimList=`, plus
-    /// `GTPOWEXP` and `TSTLEXP` from the faction power plants' `Explosion=`).
-    /// Native mints a default AnimType, but `AnimTypeClass::ReadINI @
-    /// 0x00427D00` bails on the absent section before the image loader, so
-    /// `End` stays 0 and the anim dies unseen. VERA must decline the spawn
-    /// rather than panic or block the shot. Full residual on
-    /// `ArtRegistry::bind_anim_class_assets`.
+    /// A name with no registered AnimType declines the spawn rather than
+    /// panic or block the shot. Retail's art-less names are registered: rules
+    /// processing mints them as native does, and a minted type without an art
+    /// section (`gtpowexp` and `tstlexp` from the power plants' `Explosion=`)
+    /// keeps `End=0` because `AnimTypeClass::ReadINI @ 0x00427D00` bails
+    /// before the image loader, so its anim is constructed and dies unseen
+    /// (`ArtRegistry::bind_anim_class_assets`).
     #[test]
     fn combat_explosion_with_unbound_art_declines_instead_of_panicking() {
         let rules = runtime_rules("[TWLT036]\nEnd=8\n", &[("TWLT036", 8)]);
