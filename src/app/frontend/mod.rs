@@ -8,7 +8,6 @@ pub(crate) mod wol_welcome_render;
 pub(crate) mod credits_roll;
 pub(crate) mod fullscreen_movie;
 pub mod launch;
-pub(crate) mod list_maps;
 pub(crate) mod main_menu_shell_render;
 pub(crate) mod menu_page_render;
 pub(crate) mod movies_credits_render;

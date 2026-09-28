@@ -31,7 +31,7 @@ pub struct IniSection {
 }
 
 impl IniSection {
-    pub(super) fn new(name: String) -> Self {
+    pub(crate) fn new(name: String) -> Self {
         Self {
             name,
             entries: HashMap::new(),
@@ -230,7 +230,7 @@ pub struct IniFile {
 }
 
 impl IniFile {
-    pub(super) fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             sections: Vec::new(),
             first_section: HashMap::new(),

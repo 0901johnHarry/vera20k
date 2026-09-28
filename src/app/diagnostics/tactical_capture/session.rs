@@ -751,7 +751,7 @@ impl TacticalCaptureSession {
             .as_ref()
             .context("loaded map source evidence is absent")?;
         let (logical_name, source_archive, entry_id, payload_len, payload_sha256) = match loaded {
-            crate::app::frontend::list_maps::LoadedMapSource::Mix {
+            crate::map::source::LoadedMapSource::Mix {
                 logical_name,
                 source_archive,
                 entry_id,

@@ -11,9 +11,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::app::frontend::list_maps::{
-    LoadedMap, LoadedMapSource, load_map_by_name_or_path_with_assets, try_load_mmx,
-};
 use crate::app::frontend::skirmish::{
     build_overlay_atlas_from_map, house_color_map_for_launch_session,
 };
@@ -49,6 +46,9 @@ use crate::map::map_file::MapFile;
 use crate::map::overlay::{OverlayEntry, TerrainObject};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::source::{
+    LoadedMap, LoadedMapSource, load_map_by_name_or_path_with_assets, try_load_mmx,
+};
 use crate::map::tags::TagMap;
 use crate::map::terrain::{self, LocalBounds, TerrainGrid};
 use crate::map::theater;
@@ -2242,6 +2242,7 @@ pub use crate::map::scenario_menu::MapMenuEntry;
 pub(crate) fn load_map_initial_with_assets(
     ra2_dir: PathBuf,
     asset_manager: &mut AssetManager,
+    native_rules: Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
     requested_map: Option<&str>,
     progress: &mut dyn crate::app::loading::pump::LoadingProgressSink,
 ) -> Result<MapLoadInitial> {
@@ -2301,10 +2302,10 @@ pub(crate) fn load_map_initial_with_assets(
         // start-placement time, before any rock/rough/cliff terrain exists), but
         // it is resolved faithfully from `rulesmd.ini` when present; a missing
         // file falls back to the passable defaults.
-        let terrain_rules = asset_manager
-            .get_ref("rulesmd.ini")
-            .and_then(|bytes| crate::rules::ini_parser::IniFile::from_bytes(bytes).ok())
-            .map(|ini| crate::rules::terrain_rules::TerrainRules::from_ini(&ini))
+        let terrain_rules = native_rules
+            .map(|owner| {
+                crate::rules::terrain_rules::TerrainRules::from_ini(owner.selected_rules_root())
+            })
             .unwrap_or_default();
         let resolved = crate::map::rmg::build::ResolvedTheaterInputs::from_theater(
             &theater,
@@ -2322,7 +2323,7 @@ pub(crate) fn load_map_initial_with_assets(
         // `[AI] NeutralTechBuildings` plus each type's `Foundation=`. The phase
         // runs for every map type except 0, so an empty list here would both
         // strip the buildings and skip the draws the original consumes.
-        let tech_types = crate::app::loading::init_helpers::load_neutral_tech_types(asset_manager);
+        let tech_types = crate::app::loading::init_helpers::load_neutral_tech_types(native_rules);
         let generated = crate::map::rmg::build::generate_map(
             &options,
             &settings,
@@ -2505,24 +2506,11 @@ pub(crate) fn load_map_from_initial(
         if override_file.is_empty() {
             None
         } else {
-            let (data, source) = asset_manager
-                .get_with_source(override_file)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "selected game-mode rules override {override_file} is unavailable"
-                    )
-                })?;
-            log::info!(
-                "Loading game-mode rules override {} ({} bytes) from {}",
-                override_file,
-                data.len(),
-                source
-            );
-            Some(IniFile::from_bytes(&data).map_err(|error| {
-                anyhow::anyhow!(
-                    "failed to parse selected game-mode override {override_file}: {error}"
-                )
-            })?)
+            Some(
+                crate::rules::retail_sources::select_ini(&asset_manager, override_file)
+                    .map_err(anyhow::Error::msg)?
+                    .ini,
+            )
         }
     };
     let (loaded_rules, rules_ini, fixed_art_ini, native_rules_receipt) = native_rules_owner
@@ -3570,9 +3558,14 @@ mod random_map_retail_tests {
                 let (seed_dir, seed_name) = write_seed(&options, &tag);
 
                 let mut asset_manager = AssetManager::new(&ra2).expect("AssetManager::new");
+                let (_, _, native_rules) =
+                    crate::rules::retail_sources::load_startup_rules(&asset_manager)
+                        .expect("retail startup Rules")
+                        .into_parts();
                 let initial = load_map_initial_with_assets(
                     seed_dir,
                     &mut asset_manager,
+                    Some(&native_rules),
                     Some(&seed_name),
                     &mut SilentProgress,
                 )

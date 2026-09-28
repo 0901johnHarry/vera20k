@@ -301,11 +301,13 @@ impl LoadingRequest {
         &self,
         ra2_dir: std::path::PathBuf,
         asset_manager: &mut AssetManager,
+        native_rules: Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
         progress: &mut dyn LoadingProgressSink,
     ) -> anyhow::Result<MapLoadInitial> {
         init::load_map_initial_with_assets(
             ra2_dir,
             asset_manager,
+            native_rules,
             Some(self.selected_map_file()),
             progress,
         )
@@ -368,9 +370,10 @@ impl LoadingRequest {
         self,
         ra2_dir: PathBuf,
         assets: &mut AssetManager,
+        native_rules: Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
         progress: &mut dyn LoadingProgressSink,
     ) -> anyhow::Result<PreparedScenarioLoad> {
-        let initial = self.load_initial_with_assets(ra2_dir, assets, progress)?;
+        let initial = self.load_initial_with_assets(ra2_dir, assets, native_rules, progress)?;
         self.prepare_initial(initial)
     }
 
@@ -379,9 +382,10 @@ impl LoadingRequest {
         self,
         ra2_dir: PathBuf,
         assets: &mut AssetManager,
+        native_rules: Option<&crate::rules::process_owner::NativeRulesProcessOwner>,
         progress: &mut dyn LoadingProgressSink,
     ) -> anyhow::Result<init::RandomMapLaunchSnapshot> {
-        let prepared = self.prepare(ra2_dir, assets, progress)?;
+        let prepared = self.prepare(ra2_dir, assets, native_rules, progress)?;
         Ok(prepared
             .initial
             .into_random_map_launch_snapshot(assets, prepared.context))
@@ -1017,9 +1021,14 @@ fn prepare_loading_session(
                     progress: &mut native.progress,
                     cadence: native.progress_cadence,
                 };
-                request.prepare(ra2_dir, assets, &mut sink)
+                request.prepare(ra2_dir, assets, process_assets.native_rules(), &mut sink)
             } else {
-                request.prepare(ra2_dir, assets, &mut NoopProgressSink)
+                request.prepare(
+                    ra2_dir,
+                    assets,
+                    process_assets.native_rules(),
+                    &mut NoopProgressSink,
+                )
             };
             match prepared {
                 Ok(prepared) => LoadingStage::Prepared(prepared),

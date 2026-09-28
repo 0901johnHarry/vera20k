@@ -257,8 +257,8 @@ impl TacticalCaptureSession {
             ensure!(
                 matches!(
                     source,
-                    crate::app::frontend::list_maps::LoadedMapSource::Loose { .. }
-                        | crate::app::frontend::list_maps::LoadedMapSource::Mix { .. }
+                    crate::map::source::LoadedMapSource::Loose { .. }
+                        | crate::map::source::LoadedMapSource::Mix { .. }
                 ),
                 "map observation requires consumed loose or MIX map bytes"
             );

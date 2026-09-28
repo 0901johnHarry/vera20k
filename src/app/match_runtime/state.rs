@@ -23,7 +23,7 @@ pub(crate) struct MatchState {
     pub(crate) match_diagnostics: crate::app::match_diagnostics::MatchDiagnosticsState,
     pub(crate) map_basic: BasicSection,
     /// Exact source whose bytes produced the active parsed map.
-    pub(crate) loaded_map_source: Option<crate::app::frontend::list_maps::LoadedMapSource>,
+    pub(crate) loaded_map_source: Option<crate::map::source::LoadedMapSource>,
     /// Deterministic digest of the parsed source map INI. `None` only for
     /// generated/fallback worlds without an authoritative source-map payload.
     pub(crate) loaded_map_hash: Option<u64>,
