@@ -74,7 +74,7 @@ pub(crate) enum ResponseMission {
     AreaGuard,
 }
 
-/// The native FireError values the responder peek returns.
+/// The native FireError values this partial responder peek produces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
 pub(crate) enum ResponderPeekFireError {

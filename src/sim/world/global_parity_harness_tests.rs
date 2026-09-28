@@ -807,9 +807,10 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     );
 
     // Schema166 and older final projections folded an independently mutable
-    // detached curve. The archived receipt above cannot be regenerated from
-    // an active retained class. Current full-hash, actual replay, terminal
-    // coverage, miner engagement and unchanged absolute RNG pins remain gates.
+    // detached curve. Their archived receipts (removed after 148327c3) cannot
+    // be regenerated from an active retained class. Current full-hash, actual
+    // replay, terminal coverage, miner engagement and unchanged absolute RNG
+    // pins remain gates.
     for id in rep.substrate.entities.keys_sorted() {
         let entity = rep.substrate.entities.get(id).unwrap();
         println!(
@@ -1017,9 +1018,10 @@ fn dense_converging_setup() -> (
 /// it carries no hash-schema component at all — and that is confirmed rather
 /// than assumed. With `occupation_handoff` still on the struct but every
 /// behaviour writer neutralised (the experiment written out at
-/// `GLOBAL_HARNESS_PRE_LIFECYCLE_V28_HASH`), this fixture returns to exactly its
-/// previous committed value `0x0FC6_3769_AADD_1F8A`. So its shift is 100%
-/// behaviour and 0% schema — the mirror image of the global harness above.
+/// `GLOBAL_HARNESS_PRE_LIFECYCLE_V28_HASH` in this file at 148327c3), this
+/// fixture returns to exactly its previous committed value
+/// `0x0FC6_3769_AADD_1F8A`. So its shift is 100% behaviour and 0% schema —
+/// the mirror image of the global harness above.
 ///
 /// What is still NOT separated: the individual contribution of the object-list
 /// arm, the mask arm and the handoff mark, which landed together and were

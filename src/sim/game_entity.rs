@@ -507,6 +507,8 @@ pub struct GameEntity {
     /// Frames left on the newly-elite flash — `TechnoClass+0xF0`, seeded with
     /// `[AudioVisual] EliteFlashTimer=` at `0x006FA0DC` on the elite crossing.
     /// Presentation-only state; nothing in `sim/` reads it back.
+    /// RESIDUAL (GSI-08.12): no renderer reads it either, so a unit that just
+    /// turned elite does not flash.
     #[serde(default)]
     pub elite_flash_frames: u16,
     /// Mutable Techno instance armor multiplier. Native construction seeds

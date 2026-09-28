@@ -984,11 +984,6 @@ pub(crate) fn mission_handlers_run(sim: &Simulation, id: u64) -> bool {
         .is_some_and(|entity| entity.health.current > 0)
 }
 
-/// S4a pre-mission common block (the `TechnoClass::AI_Update` head: one-shot
-/// flag clear, turret-anim loop sound, cloak tick, health smoothing, target
-/// validation, …). The stock cloak producer now executes at the verified head;
-/// the remaining common-body items stay owned by their existing phases.
-#[allow(unused_variables)]
 /// `TechnoClass::AI_Update`'s leading common steps, in native order: the
 /// promotion sample (`0x006FA054`), the drain blocks (`0x006FA14B..
 /// 0x006FA224`, directly after the rank-cache write at `0x006FA145`), the

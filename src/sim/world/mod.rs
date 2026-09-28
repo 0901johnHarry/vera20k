@@ -3075,9 +3075,9 @@ impl Simulation {
     }
 
     // --- Main/global gameplay stream (`main_rng`) ---
-    // Its consumers borrow the field directly: the verified main-only weapon and
-    // warhead property rolls (not detonation scatter) and the HouseClass
-    // superpower/AI gate roll.
+    // Its consumers borrow the field directly: the terrain-load variant draws
+    // (`terrain_load_draws`), the Gattling stage Report pick, the death-sound
+    // picks and the MoveSound index draw.
 
     /// Test/replay helper for the per-game Scenario/Main pair only.
     ///

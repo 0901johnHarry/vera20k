@@ -3705,6 +3705,8 @@ mod tests {
         // 232 -> 233: house country cost factors and force values; each
         // Techno's value arm.
         // 233 -> 234: the house Strategy timer.
+        // 234 -> 235: house, spawn manager, cloak and disguise timers are
+        // `CdTimer`s.
         // 235 -> 236: the harvest overlay drops its unread frame count.
         assert_eq!(super::SNAPSHOT_VERSION, 236);
     }
