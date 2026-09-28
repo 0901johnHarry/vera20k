@@ -1247,6 +1247,11 @@ impl Simulation {
                 house.ai_production.hash(hasher);
                 gatherers.hash(hasher);
             }
+            let forces = house.tracking.force_values();
+            if schema.includes(HashFeature::AiBaseDefense) && forces != Default::default() {
+                b"house-force-values-v1".hash(hasher);
+                forces.hash(hasher);
+            }
         }
     }
 
