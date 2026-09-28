@@ -1975,7 +1975,7 @@ mod tests {
                  [TESTWALL]\nWall=yes\nArmor=concrete\nStrength=400\n",
             );
             let art = IniFile::from_str("[TESTWALL]\nDamageLevels=2\n");
-            let mut rules = RuleSet::from_ini(&ini).expect("air-first death rules");
+            let rules = RuleSet::from_ini(&ini).expect("air-first death rules");
             let blast = rules.warhead("BlastWH").unwrap().clone();
             let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
 
@@ -2181,7 +2181,7 @@ mod tests {
              [WIDEWH]\nCellSpread=11\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("band-11 rules");
+        let rules = RuleSet::from_ini(&ini).expect("band-11 rules");
         let wide = rules.warhead("WIDEWH").unwrap().clone();
         let mut stock = wide.clone();
         stock.cell_spread = SimFixed::from_num(10);
@@ -2650,7 +2650,7 @@ mod tests {
                  [CrushWH]\nCellSpread=0\nAffectsAllies=no\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
                 if damage_self { "yes" } else { "no" }
             ));
-            let mut rules = RuleSet::from_ini(&ini).expect("receiver admission fixture");
+            let rules = RuleSet::from_ini(&ini).expect("receiver admission fixture");
             let warhead = rules.warhead(warhead_name).unwrap().clone();
             let mut interner = test_interner();
             let _handles =
@@ -4261,7 +4261,7 @@ mod tests {
              [OUTERWH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n\
              [C4WH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("spawning Terrain rules");
+        let rules = RuleSet::from_ini(&ini).expect("spawning Terrain rules");
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolve_type_handles(&rules);
         let victim_id = sim
@@ -4416,7 +4416,7 @@ mod tests {
              [OUTERWH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n\
              [C4WH]\nWood=yes\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
         );
-        let mut rules = RuleSet::from_ini(&ini).expect("inert Terrain rules");
+        let rules = RuleSet::from_ini(&ini).expect("inert Terrain rules");
         let mut sim = crate::sim::world::Simulation::new();
         sim.resolve_type_handles(&rules);
         let victim_id = sim

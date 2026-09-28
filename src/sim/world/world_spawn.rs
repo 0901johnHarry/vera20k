@@ -185,7 +185,6 @@ impl Simulation {
             TechnoConstructorInit::FreshScenario => {
                 Ok((self.scenario_rng.next_u32() & 0xFFFF) as u16)
             }
-            TechnoConstructorInit::Restored(word) => Ok(word),
             TechnoConstructorInit::PreconsumedGenerated(generated) => {
                 let Some((entity_index, techno_type, cell)) = expected_generated_identity else {
                     return Err(GeneratedTechnoInitError::UnexpectedEntityIndex(

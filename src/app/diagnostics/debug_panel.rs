@@ -15,7 +15,7 @@ use crate::sim::debug_event_log::DebugEventKind;
 pub(crate) fn debug_panel_frame() -> egui::Frame {
     egui::Frame {
         fill: egui::Color32::from_rgb(245, 245, 245),
-        stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 180)),
+        stroke: egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(180, 180, 180)),
         inner_margin: egui::Margin::same(6),
         outer_margin: egui::Margin::same(2),
         corner_radius: egui::CornerRadius::same(3),
@@ -33,7 +33,7 @@ pub(crate) fn push_debug_light_visuals(ctx: &egui::Context) -> egui::Visuals {
     let mut visuals = egui::Visuals::light();
     visuals.window_fill = egui::Color32::from_rgb(245, 245, 245);
     visuals.panel_fill = egui::Color32::from_rgb(245, 245, 245);
-    visuals.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 180));
+    visuals.window_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(180, 180, 180));
     ctx.set_visuals(visuals);
     prev
 }

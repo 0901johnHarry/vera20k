@@ -1251,7 +1251,7 @@ mod map_wall_owner_candidate_tests {
         );
         let low_detail = derive_lighting_view(&config, Some(&sim), Some(&rules), 1);
         assert!(low_detail.point_lights.is_empty());
-        assert_ne!(lit.fingerprint, low_detail.fingerprint);
+        assert_ne!(lit, low_detail);
 
         sim.power_states.insert(
             owner,
@@ -1266,14 +1266,14 @@ mod map_wall_owner_candidate_tests {
         // House508C30->454CE0 RET and Building4549B0 animation-only
         // effects do not call LightSource disable on ordinary power loss.
         assert_eq!(offline.point_lights, lit.point_lights);
-        assert_eq!(lit.fingerprint, offline.fingerprint);
+        assert_eq!(lit, offline);
 
         let power = sim.power_states.get_mut(&owner).expect("power state");
         power.total_output = 100;
         power.is_low_power = false;
         let restored = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(restored.point_lights.len(), 1);
-        assert_eq!(lit.fingerprint, restored.fingerprint);
+        assert_eq!(lit, restored);
 
         sim.set_building_light_active(41, false);
         let disabled = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
@@ -1318,7 +1318,7 @@ mod map_wall_owner_candidate_tests {
         sim.change_owner(41, captured_owner);
         let captured_offline = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(captured_offline.point_lights, before_capture.point_lights);
-        assert_eq!(before_capture.fingerprint, captured_offline.fingerprint);
+        assert_eq!(before_capture, captured_offline);
 
         let power = sim
             .power_states
@@ -1328,14 +1328,14 @@ mod map_wall_owner_candidate_tests {
         power.is_low_power = false;
         let captured_online = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert_eq!(captured_online.point_lights.len(), 1);
-        assert_eq!(before_capture.fingerprint, captured_online.fingerprint);
+        assert_eq!(before_capture, captured_online);
 
         assert!(crate::sim::production::sell_building_now_for_test(
             &mut sim, &rules, 41
         ));
         let sold = derive_lighting_view(&config, Some(&sim), Some(&rules), 2);
         assert!(sold.point_lights.is_empty());
-        assert_ne!(captured_online.fingerprint, sold.fingerprint);
+        assert_ne!(captured_online, sold);
     }
 
     #[test]
@@ -1391,7 +1391,7 @@ mod map_wall_owner_candidate_tests {
     }
 
     #[test]
-    fn gsi_04_20_same_cell_radiation_merge_changes_complete_light_fingerprint() {
+    fn gsi_04_20_same_cell_radiation_merge_changes_the_light_view() {
         let rules = lighting_rules();
         let mut sim = Simulation::with_seed(0x421);
         let detonation = RadDetonation {
@@ -1409,7 +1409,7 @@ mod map_wall_owner_candidate_tests {
             .apply_detonation(detonation, 0, &rules.radiation, None);
         let merged = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(merged.point_lights.len(), 1);
-        assert_ne!(first.fingerprint, merged.fingerprint);
+        assert_ne!(first, merged);
         assert_ne!(
             first.point_lights[0].intensity,
             merged.point_lights[0].intensity

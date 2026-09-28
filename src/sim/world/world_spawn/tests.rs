@@ -1738,14 +1738,6 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(sim.discard_constructed_limbo(stable_id));
     assert!(sim.substrate.entities.get(stable_id).is_none());
-
-    let before_restore = sim.scenario_rng.logical_state();
-    assert_eq!(
-        sim.resolve_techno_constructor_word(TechnoConstructorInit::Restored(0x1357), None)
-            .unwrap(),
-        0x1357
-    );
-    assert_eq!(sim.scenario_rng.logical_state(), before_restore);
 }
 
 fn signed_health_rules(strength: i32) -> RuleSet {

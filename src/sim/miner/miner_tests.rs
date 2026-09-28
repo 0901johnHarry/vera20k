@@ -715,7 +715,6 @@ fn search_ore_becomes_wait_when_empty() {
 fn wait_no_ore_queues_guard_when_the_wait_expires() {
     let mut sim = Simulation::new();
     let rules = miner_rules();
-    let config = MinerConfig::default();
 
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 20, 20);
     spawn_refinery(&mut sim, 2, 10, 10);
@@ -806,7 +805,6 @@ fn wait_no_ore_queues_guard_when_the_wait_expires() {
 fn wait_no_ore_retry_gate_is_exactly_105_frames() {
     let mut sim = Simulation::new();
     let rules = miner_rules();
-    let config = MinerConfig::default();
 
     let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 20, 20);
     spawn_refinery(&mut sim, 2, 10, 10);
@@ -1736,7 +1734,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         entity.harvest_overlay = Some(HarvestOverlay {
             frame: 6,
             visible: true,
-            elapsed_frames: 0,
         });
     }
     arm_cutting(&mut sim, miner_id);
@@ -1759,7 +1756,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!((voxel.frame, voxel.elapsed_frames), (7, 1));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
-        assert_eq!((overlay.frame, overlay.elapsed_frames), (6, 0));
+        assert_eq!(overlay.frame, 6);
     }
 
     tick_miners_n(&mut sim, &rules, GATE - 1);
@@ -1792,8 +1789,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(
-            (overlay.frame, overlay.elapsed_frames),
-            (6, 0),
+            overlay.frame, 6,
             "nonzero overlay state remains live through F+18"
         );
     }
@@ -1821,7 +1817,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!((voxel.frame, voxel.elapsed_frames), (0, 0));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(!overlay.visible);
-        assert_eq!((overlay.frame, overlay.elapsed_frames), (0, 0));
+        assert_eq!(overlay.frame, 0);
     }
 
     open_playfield(&mut sim);
@@ -2422,67 +2418,6 @@ fn scan_ring_0_allows_harvesters_own_cell() {
         (MinerState::Harvest, None),
         "the own-cell answer starts cutting where the harvester stands",
     );
-}
-
-// ---------------------------------------------------------------------------
-// Mission_Harvest state 0 destination guard
-// ---------------------------------------------------------------------------
-
-/// Re-anchor the miner's Harvest dispatch timer so the very next dispatch runs.
-///
-/// A productive scan exits through the Rate epilogue (~14-16 frames), so the
-/// frames immediately behind it carry no Harvest dispatch at all. A fixture that
-/// means to observe the *next* dispatch has to ask for it rather than assume the
-/// following tick brings one: what that dispatch does is under test here, not
-/// which frame it lands on. Mirrors the helper of the same name in
-/// `outbound_drive_tests` — sibling test modules cannot share it.
-fn arm_dispatch_now(sim: &mut Simulation, entity_id: u64) {
-    let now = sim.session.binary_frame as i32;
-    sim.substrate
-        .entities
-        .get_mut(entity_id)
-        .expect("miner entity")
-        .mission
-        .write_dispatch_epilogue(now, 0);
-}
-
-/// End the outbound drive the way arrival or an abort does: the owner
-/// destination and the transitional MovementTarget both go null.
-///
-/// Both halves matter, and only because these fixtures spawn their miner
-/// through `spawn_drive_miner`: a move command writes `navigation.nav_com`
-/// only for a Drive or Ship locomotor, so on a locomotor-less miner this
-/// would be one real clear and one no-op.
-fn clear_outbound_drive(sim: &mut Simulation, entity_id: u64) {
-    let entity = sim
-        .substrate
-        .entities
-        .get_mut(entity_id)
-        .expect("miner entity");
-    entity.navigation.nav_com = None;
-    entity.movement_target = None;
-}
-
-/// A stock War Miner with the Drive locomotor it actually has in a match.
-///
-/// The destination guard reads the owner `navigation.nav_com` first and takes
-/// `movement_target` only as Rust's transitional second owner. A move command
-/// writes nav_com solely for Drive/Ship locomotors, and the shared
-/// `spawn_miner` attaches a locomotor only for the Chrono kind — so a bare
-/// fixture would hold the guard on the transitional field alone, never
-/// exercising the field that owns it once the Drive host migration lands and
-/// the transitional half goes away. Mirrors `spawn_search_miner` in
-/// `miner_system`'s own test module.
-fn spawn_drive_miner(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) -> u64 {
-    let miner_id = spawn_miner(sim, sid, MinerKind::War, rx, ry);
-    let entity = sim
-        .substrate
-        .entities
-        .get_mut(miner_id)
-        .expect("miner entity");
-    entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    entity.drive_locomotion = Some(Default::default());
-    miner_id
 }
 
 // ==========================================================================

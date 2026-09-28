@@ -655,7 +655,6 @@ pub fn tick_harvest_overlays(entities: &mut crate::sim::entity_store::EntityStor
             .get_mut(id)
             .and_then(|entity| entity.harvest_overlay.as_mut())
             .expect("an advancing overlay was just read");
-        overlay.elapsed_frames = 0;
         overlay.frame = (overlay.frame + 1) % HARVEST_OVERLAY_FRAMES;
     }
 }

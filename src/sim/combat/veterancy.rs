@@ -167,22 +167,6 @@ pub fn ftol_scale(value: i32, multiplier: f64) -> i32 {
     ))
 }
 
-/// `ftol_scale` gated on `HasWeaponAbility`; the caller passes the rules
-/// multiplier that belongs to `ability`.
-pub fn scale_if_ability(
-    value: i32,
-    rank: VeterancyRank,
-    object: &ObjectType,
-    ability: Ability,
-    multiplier: f64,
-) -> i32 {
-    if has_weapon_ability(rank, object, ability) {
-        ftol_scale(value, multiplier)
-    } else {
-        value
-    }
-}
-
 /// `FootClass::GetCurrentSpeed @ 0x004DB1A0`, the FASTER arm.
 ///
 /// gamemd-derived: the type speed is truncated to an integer lepton-per-frame
@@ -715,21 +699,6 @@ mod tests {
         assert_eq!(ftol_scale(50, f64::from(0.6f32)), 30);
         assert_eq!(ftol_scale(51, 0.6), 30);
         assert_eq!(ftol_scale(52, 0.6), 31);
-        let object = object_with(&[Ability::Rof], &[]);
-        assert_eq!(
-            scale_if_ability(50, VeterancyRank::Rookie, &object, Ability::Rof, 0.6),
-            50
-        );
-        assert_eq!(
-            scale_if_ability(
-                50,
-                VeterancyRank::Veteran,
-                &object,
-                Ability::Rof,
-                f64::from(0.6f32)
-            ),
-            30
-        );
     }
 
     /// `VeteranCombat=1.1` on the Grizzly's 65 damage: `ftol(71.5) = 71`.

@@ -3050,32 +3050,17 @@ impl Simulation {
     // --- Scenario stream (gamemd Scenario->Random @ Scen+0x218) ---
     // Keep accessors distinct even though several return the same stream today:
     // the intent name is the per-consumer routing record and the grep/audit anchor.
+    // Consumers that borrow `scenario_rng` directly beside other fields: infantry
+    // sub-cell rotation and paradrop sub-cell; destruction smudge, survivor and
+    // debris and the smudge type pick; the overlay/wall damage roll; ore growth
+    // and spread (queue, direction, variant, TIBTRE); the building damage-fire
+    // type and start frame.
     pub(crate) fn scatter_rng(&mut self) -> &mut SimRng {
         &mut self.scenario_rng
     } // bump displacement, idle/forced scatter, passenger unload exit, sell-eject
-    #[allow(dead_code)] // Stream-routing audit anchor; callers currently co-borrow the field.
-    pub(crate) fn subcell_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // infantry sub-cell rotation, paradrop sub-cell
-    #[allow(dead_code)] // Stream-routing audit anchor; callers currently co-borrow the field.
-    pub(crate) fn smudge_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // destruction smudge/survivor/debris, smudge type pick
-    #[allow(dead_code)] // Stream-routing audit anchor; callers currently co-borrow the field.
-    pub(crate) fn wall_damage_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // overlay/wall damage roll
     pub(crate) fn bridge_rng(&mut self) -> &mut SimRng {
         &mut self.scenario_rng
     } // bridge collapse/debris/explosion
-    #[allow(dead_code)] // Stream-routing audit anchor; callers currently co-borrow the field.
-    pub(crate) fn ore_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // ore growth/spread queue + direction + variant, TIBTRE
-    #[allow(dead_code)] // Stream-routing audit anchor; callers currently co-borrow the field.
-    pub(crate) fn anim_rng(&mut self) -> &mut SimRng {
-        &mut self.scenario_rng
-    } // building damage-fire type/start-frame
     pub(crate) fn particle_rng(&mut self) -> &mut SimRng {
         &mut self.scenario_rng
     } // particle/smoke/gas/fire lifetime/offset/dir/insert
@@ -3089,15 +3074,10 @@ impl Simulation {
         self.scenario_rng.clone()
     }
 
-    // --- Main/global gameplay stream ---
-    #[allow(dead_code)] // Named Main-stream audit anchor retained beside direct borrows.
-    pub(crate) fn weapon_spread_rng(&mut self) -> &mut SimRng {
-        &mut self.main_rng
-    } // verified main-only weapon/warhead property rolls; not detonation scatter
-    #[allow(dead_code)] // Named Main-stream audit anchor for the staged House AI consumer.
-    pub(crate) fn house_ai_rng(&mut self) -> &mut SimRng {
-        &mut self.main_rng
-    } // HouseClass superpower/AI gate roll
+    // --- Main/global gameplay stream (`main_rng`) ---
+    // Its consumers borrow the field directly: the verified main-only weapon and
+    // warhead property rolls (not detonation scatter) and the HouseClass
+    // superpower/AI gate roll.
 
     /// Test/replay helper for the per-game Scenario/Main pair only.
     ///
@@ -3237,8 +3217,8 @@ impl Simulation {
                 &self.substrate.occupancy,
                 &self.production.terrain_object_cells,
             )),
-            // ore growth/spread — scenario stream. Direct field (not ore_rng()): this
-            // literal co-borrows other &mut self fields, so the all-self accessor conflicts.
+            // ore growth/spread — scenario stream. Direct field: this literal
+            // co-borrows other &mut self fields, so an all-self accessor conflicts.
             rng: Some(&mut self.scenario_rng),
             binary_frame: self.session.binary_frame,
             spread_enabled: self.production.ore_growth_config.spreads,

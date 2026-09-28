@@ -350,13 +350,12 @@ pub(crate) struct GeneratedTechnoInit {
     pub native_unique_id: i32,
 }
 
-/// The three evidence-backed ways a live Techno obtains its persistent
+/// The two evidence-backed ways a live Techno obtains its persistent
 /// constructor word. Only `FreshScenario` is allowed to advance Scenario RNG.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TechnoConstructorInit {
     FreshScenario,
     PreconsumedGenerated(GeneratedTechnoInit),
-    Restored(u16),
 }
 
 /// Authored Building upgrades construct as distinct Technos, then Unlimbo at

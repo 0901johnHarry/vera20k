@@ -705,6 +705,8 @@ pub(crate) struct AutomaticTubeRequest {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AutomaticTubeAllocation {
+    /// Native's failed allocation; only test hosts answer it.
+    #[cfg(test)]
     AllocationNull,
     Allocated {
         native_unique_id: i32,
@@ -1113,7 +1115,9 @@ pub(crate) enum DestroyableCliffFamily {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DestroyableCliffMutation {
+    #[cfg(test)]
     pub family: DestroyableCliffFamily,
+    #[cfg(test)]
     pub origin: (i16, i16),
     pub original_footprint: Vec<(u16, u16)>,
     pub animation_cells: Vec<(i16, i16)>,
@@ -2584,6 +2588,7 @@ impl ResolvedTerrainGrid {
                         .allocate_automatic_tube(request)
                         .map_err(LoadCellRecalcError::Effect)?
                     {
+                        #[cfg(test)]
                         AutomaticTubeAllocation::AllocationNull => {}
                         AutomaticTubeAllocation::Allocated {
                             native_unique_id,
@@ -3546,7 +3551,9 @@ impl ResolvedTerrainGrid {
             }
         }
         Some(DestroyableCliffMutation {
+            #[cfg(test)]
             family,
+            #[cfg(test)]
             origin,
             original_footprint,
             animation_cells,

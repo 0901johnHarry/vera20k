@@ -25,8 +25,10 @@ use crate::sim::occupancy::{
 use crate::sim::particles::ParticleSystemStore;
 use crate::sim::voxel_anim::VoxelAnimStore;
 
+#[cfg(test)]
 const FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID: u64 = 1 << 63;
 
+#[cfg(test)]
 const fn first_multiplayer_feedback_anim_id() -> u64 {
     FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID
 }
@@ -143,6 +145,7 @@ pub(crate) struct ObjectSubstrate {
     #[serde(skip)]
     pub(crate) multiplayer_feedback_anims: AnimStore,
     // Reserved for the verified sync-exempt feedback spawn path, which is not wired yet.
+    #[cfg(test)]
     #[serde(skip, default = "first_multiplayer_feedback_anim_id")]
     pub(crate) next_multiplayer_feedback_anim_id: u64,
     #[serde(skip)]
@@ -179,6 +182,7 @@ impl ObjectSubstrate {
             anims: AnimStore::default(),
             voxel_anims: VoxelAnimStore::default(),
             multiplayer_feedback_anims: AnimStore::default(),
+            #[cfg(test)]
             next_multiplayer_feedback_anim_id: FIRST_MULTIPLAYER_FEEDBACK_ANIM_ID,
             multiplayer_feedback_pending_delete: Vec::new(),
             particle_systems: ParticleSystemStore::default(),
@@ -250,7 +254,6 @@ impl ObjectSubstrate {
         &self,
         hasher: &mut impl std::hash::Hasher,
         include_process_dummy: bool,
-        include_infantry_owners: bool,
     ) {
         if include_process_dummy && let Some(dummy) = self.raw_cell_occupation.dummy_for_hash() {
             b"raw-dummy-occupation-v1".hash(hasher);
@@ -271,10 +274,8 @@ impl ObjectSubstrate {
             ground.hash(hasher);
             1u8.hash(hasher); // deck-plane tag
             deck.hash(hasher);
-            if include_infantry_owners {
-                ground_owner.hash(hasher);
-                deck_owner.hash(hasher);
-            }
+            ground_owner.hash(hasher);
+            deck_owner.hash(hasher);
         }
     }
 

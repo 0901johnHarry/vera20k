@@ -1614,10 +1614,6 @@ SpreadPercentage=.06
         let mut rules = RuleSet::from_ini(&ini).expect("rules");
         rules.set_terrain_spawner_frame_count_for_test("TIBTRE01", STOCK_FRAME_COUNT);
         let mut sim = Simulation::new();
-        let overlay_registry = OverlayTypeRegistry::from_ini(
-            &IniFile::from_str("[OverlayTypes]\n0=FILL0\n1=FILL1\n2=TIB1\n"),
-            None,
-        );
         let objs = vec![
             TerrainObject {
                 rx: 5,

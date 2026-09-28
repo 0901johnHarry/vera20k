@@ -729,13 +729,9 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
     }
 }
 
-/// A Rocketeer (the retail `[JUMPJET]` Jumpjet block and
-/// `[RocketeerSequence]`) and an area warhead to shoot it down with.
-fn rocketeer_crash_rules() -> crate::rules::ruleset::RuleSet {
-    rocketeer_rules_armed(false)
-}
-
-/// The crash corpus's rules; `armed` gives the Rocketeer the shooter's gun.
+/// The crash corpus's rules: a Rocketeer (the retail `[JUMPJET]` Jumpjet block
+/// and `[RocketeerSequence]`) and an area warhead to shoot it down with;
+/// `armed` gives the Rocketeer the shooter's gun.
 fn rocketeer_rules_armed(armed: bool) -> crate::rules::ruleset::RuleSet {
     use crate::rules::ini_parser::IniFile;
     let mut rules = crate::rules::ruleset::RuleSet::from_ini(&IniFile::from_str(&format!(

@@ -618,11 +618,6 @@ impl NativeRulesRegistryState {
             .unwrap_or(0)
     }
 
-    #[cfg(test)]
-    pub(crate) fn tiberium_slot_count(&self) -> usize {
-        self.tiberiums.len()
-    }
-
     /// Consume the pre-reset registry owner at Full_Init's destructive Rules
     /// reset and return an owner with empty Type registries. RulesClass itself
     /// survives 6686C0, so its Gravity is retained for the first postpass.

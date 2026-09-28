@@ -74,16 +74,13 @@ pub(crate) enum ResponseMission {
     AreaGuard,
 }
 
+/// The native FireError values the responder peek returns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
-#[allow(dead_code)]
 pub(crate) enum ResponderPeekFireError {
     Clear = 0,
-    Ammo = 1,
-    Busy = 3,
     Illegal = 5,
     Cant = 6,
-    MustDeploy = 8,
     Cloaked = 9,
 }
 

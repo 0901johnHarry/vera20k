@@ -967,7 +967,7 @@ mod native_slot_tests {
             .iter()
             .filter(|row| row["input"]["source"] != "selfheal")
         {
-            let (mut sim, mut rules, id) = slot_test_fixture();
+            let (mut sim, _, id) = slot_test_fixture();
             let input = &row["input"];
             let mut text = String::from("[B]\nActiveAnim=OLD\n[OLD]\nLoopCount=-1\n");
             for slot in 0..21 {
@@ -985,7 +985,7 @@ mod native_slot_tests {
                     slot * 2 + 2
                 ));
             }
-            rules = RuleSet::from_ini_with_fixed_art_for_test(
+            let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
                 &IniFile::from_str(&registry),
                 &IniFile::from_str(&text),
             )

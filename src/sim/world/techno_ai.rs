@@ -3011,7 +3011,7 @@ mod tests {
     fn passive_gate_arms_follow_the_original() {
         let rules = passive_rules();
         let mut sim = Simulation::new();
-        let mut scans = |sim: &mut Simulation, id: u64| {
+        let scans = |sim: &mut Simulation, id: u64| {
             let before = sim.scenario_rng.state();
             passive_acquire_step(sim, id, Some(&rules), ObjectAiCtx::default());
             sim.scenario_rng.state() != before

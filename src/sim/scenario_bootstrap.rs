@@ -335,6 +335,7 @@ pub(crate) enum StockOfflineStartCallbackFamily {
 #[derive(Debug)]
 pub(crate) struct PreFillScenarioPrefixPlan {
     projection: StockOfflinePrefixProjection,
+    #[cfg(test)]
     first_gathered_starts: Vec<Waypoint>,
     first_house_timers: Vec<u32>,
     second_house_timers: Vec<u32>,
@@ -607,6 +608,7 @@ pub(crate) fn prepare_stock_offline_scenario_prefix_plan(
             final_gathered_starts,
             assignment,
         },
+        #[cfg(test)]
         first_gathered_starts,
         first_house_timers,
         second_house_timers,
@@ -4379,8 +4381,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: SIZE,
             map_height: SIZE,
-            basic: &map.basic,
-            special_flags: &map.special_flags,
             normal_lighting: crate::map::lighting::parse_lighting_profiles(&map.ini).normal,
             rules: &rules,
             overlay_registry: &overlays,

@@ -109,7 +109,7 @@ fn bridge_repair_test_rules() -> RuleSet {
 
 fn build_sim() -> (Simulation, RuleSet, BTreeMap<(u16, u16), u8>) {
     let mut sim = Simulation::new();
-    let mut rules = bridge_repair_test_rules();
+    let rules = bridge_repair_test_rules();
     sim.resolve_type_handles(&rules);
     sim.resolved_terrain = Some(dummy_resolved_terrain());
     (sim, rules, BTreeMap::new())

@@ -211,22 +211,6 @@ impl Simulation {
         true
     }
 
-    /// Stop a caller-owned track before retiring its descriptor/head. A mere
-    /// marker clear used to leave the retained cursor and raw claims alive.
-    pub(crate) fn cancel_drive_track(&mut self, id: u64) {
-        self.track_apply_occupation(id, TrackFamily::Drive, false, None);
-        if let Some(entity) = self.substrate.entities.get_mut(id)
-            && let Some(drive) = entity.drive_locomotion.as_mut()
-        {
-            drive.head_to = None;
-            drive.destination = None;
-            drive.track.clear_selector();
-            drive.track_valid = false;
-            drive.occupation_head_to = None;
-            drive.occupation_handoff = None;
-        }
-    }
-
     pub(crate) fn run_track_process(
         &mut self,
         invocation: TrackInvocation,

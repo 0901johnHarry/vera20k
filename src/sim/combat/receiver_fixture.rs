@@ -22,8 +22,6 @@ pub(crate) struct FixtureTrace {
 /// These are never deferred spawn requests and cannot construct a second anim.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ConstructedAnimObservation {
-    pub(crate) stable_id: u64,
-    pub(crate) native_unique_id: i32,
     pub(crate) type_id: InternedId,
     pub(crate) world_coord: crate::sim::anim_class::AnimWorldCoord,
 }
@@ -34,8 +32,6 @@ fn constructed_anims(world: &Simulation) -> Vec<ConstructedAnimObservation> {
         .anims
         .iter()
         .map(|(_, anim)| ConstructedAnimObservation {
-            stable_id: anim.stable_id,
-            native_unique_id: anim.native_unique_id,
             type_id: anim.type_id,
             world_coord: anim.world_coord,
         })

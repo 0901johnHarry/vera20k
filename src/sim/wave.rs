@@ -633,21 +633,31 @@ const PI_OVER_TWO_F64: NativeF64Bits = NativeF64Bits::from_bits(0x3ff9_21fb_5444
 const TAN_PI_OVER_EIGHT_F64: NativeF64Bits = NativeF64Bits::from_bits(0x3fda_8279_a061_eb64);
 const INV_TAN_PI_OVER_EIGHT_F64: NativeF64Bits = NativeF64Bits::from_bits(0x4003_504f_2e96_fc59);
 
+/// The geometry fields the wave reads, and (in tests) the intermediate values
+/// the machine fixtures compare.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // machine-fixture diagnostics retained beside the behavior fields
 struct Type0NonmagneticGeometry {
     source: ProjectileCoord,
     target: ProjectileCoord,
     edges: WaveEdgeGeometry,
     direction_octant: i32,
+    #[cfg(test)]
     horizontal: i32,
+    #[cfg(test)]
     sqrt_bits: NativeF32Bits,
+    #[cfg(test)]
     acos_index: usize,
+    #[cfg(test)]
     angle_bits: NativeF32Bits,
+    #[cfg(test)]
     trig_units: i32,
+    #[cfg(test)]
     sin_index: usize,
+    #[cfg(test)]
     cos_index: usize,
+    #[cfg(test)]
     target_screen: (i32, i32),
+    #[cfg(test)]
     firer_b_screen: (i32, i32),
 }
 
@@ -808,6 +818,8 @@ fn type0_nonmagnetic_geometry_with_tables(
         sqrt_approx_f32(angle_squared).expect("type-0 Wave angle squared length is finite");
     let angle_length = load_f32(angle_length_bits);
 
+    // The index is kept for the machine fixtures only.
+    #[cfg_attr(not(test), expect(unused_variables))]
     let (acos_index, mut angle) = if horizontal == 0 {
         let entry = NativeF32Bits::from_bits(acos.entry(0).to_bits());
         (
@@ -887,14 +899,23 @@ fn type0_nonmagnetic_geometry_with_tables(
         target,
         edges,
         direction_octant: direction_from_projected(target_screen, firer_b_screen),
+        #[cfg(test)]
         horizontal,
+        #[cfg(test)]
         sqrt_bits,
+        #[cfg(test)]
         acos_index,
+        #[cfg(test)]
         angle_bits,
+        #[cfg(test)]
         trig_units,
+        #[cfg(test)]
         sin_index,
+        #[cfg(test)]
         cos_index,
+        #[cfg(test)]
         target_screen,
+        #[cfg(test)]
         firer_b_screen,
     }
 }

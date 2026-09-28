@@ -99,7 +99,7 @@ fn drawing_main_leaves_scenario_untouched() {
     let mapgen_before = sim.mapgen_rng.state();
 
     for _ in 0..32 {
-        sim.weapon_spread_rng().next_u32();
+        sim.main_rng.next_u32();
     }
     assert_eq!(
         sim.scenario_rng.state(),
@@ -164,7 +164,7 @@ fn each_stream_reproduces_gamemd_raw_sequence_seed_one() {
 //
 // The central guard against a future edit silently re-pointing an accessor at
 // the wrong field. Each scenario accessor must advance ONLY scenario_rng (main
-// unchanged); each main accessor must advance ONLY main_rng.
+// unchanged).
 macro_rules! assert_routes_scenario {
     ($name:ident, $accessor:ident) => {
         #[test]
@@ -187,43 +187,10 @@ macro_rules! assert_routes_scenario {
     };
 }
 
-macro_rules! assert_routes_main {
-    ($name:ident, $accessor:ident) => {
-        #[test]
-        fn $name() {
-            let seed = 7u64;
-            let mut sim = Simulation::with_seed(seed);
-            let fresh = SimRng::new(seed);
-            sim.$accessor().next_u32();
-            assert_ne!(
-                sim.main_rng.state(),
-                fresh.state(),
-                concat!(stringify!($accessor), " must advance the main stream")
-            );
-            assert_eq!(
-                sim.scenario_rng.state(),
-                fresh.state(),
-                concat!(
-                    stringify!($accessor),
-                    " must NOT advance the scenario stream"
-                )
-            );
-        }
-    };
-}
-
 assert_routes_scenario!(route_scatter_rng, scatter_rng);
-assert_routes_scenario!(route_subcell_rng, subcell_rng);
-assert_routes_scenario!(route_smudge_rng, smudge_rng);
-assert_routes_scenario!(route_wall_damage_rng, wall_damage_rng);
 assert_routes_scenario!(route_bridge_rng, bridge_rng);
-assert_routes_scenario!(route_ore_rng, ore_rng);
-assert_routes_scenario!(route_anim_rng, anim_rng);
 assert_routes_scenario!(route_particle_rng, particle_rng);
 assert_routes_scenario!(route_superweapon_rng, superweapon_rng);
-
-assert_routes_main!(route_weapon_spread_rng, weapon_spread_rng);
-assert_routes_main!(route_house_ai_rng, house_ai_rng);
 
 // --- Test 5: ground-truth value parity vs gamemd (design §7.5, REQUIRED) ---
 //
@@ -249,7 +216,7 @@ fn scenario_stream_matches_gamemd_random_ranged_0_4() {
     const GAMEMD_RANGED_0_4_SEED1: [u32; 5] = [1, 2, 1, 0, 1];
     let mut sim = Simulation::with_seed(1);
     for (i, &expected) in GAMEMD_RANGED_0_4_SEED1.iter().enumerate() {
-        let got = sim.wall_damage_rng().next_range_u32_inclusive(0, 4);
+        let got = sim.scenario_rng.next_range_u32_inclusive(0, 4);
         assert_eq!(
             got, expected,
             "scenario RandomRanged(0,4) draw {i} must match gamemd"
@@ -264,7 +231,7 @@ fn main_stream_matches_gamemd_random_ranged_0_7() {
     const GAMEMD_RANGED_0_7_SEED1: [u32; 5] = [5, 6, 1, 2, 1];
     let mut sim = Simulation::with_seed(1);
     for (i, &expected) in GAMEMD_RANGED_0_7_SEED1.iter().enumerate() {
-        let got = sim.weapon_spread_rng().next_range_u32_inclusive(0, 7);
+        let got = sim.main_rng.next_range_u32_inclusive(0, 7);
         assert_eq!(
             got, expected,
             "main RandomRanged(0,7) draw {i} must match gamemd"
@@ -277,7 +244,7 @@ fn main_stream_matches_gamemd_random_ranged_0_7() {
 fn advancing_main_only_does_not_change_state_hash() {
     let mut sim = Simulation::with_seed(99);
     let before = sim.state_hash();
-    sim.weapon_spread_rng().next_u32();
+    sim.main_rng.next_u32();
     assert_eq!(
         sim.state_hash(),
         before,
@@ -333,7 +300,7 @@ fn snapshot_load_resets_scenario_and_omits_process_globals() {
         sim.scatter_rng().next_u32();
     }
     for _ in 0..7 {
-        sim.weapon_spread_rng().next_u32();
+        sim.main_rng.next_u32();
     }
     sim.mapgen_rng = SimRng::new(99);
     for _ in 0..3 {
@@ -415,7 +382,7 @@ fn production_in_scenario_load_retains_live_seed_main_and_mapgen() {
         live.scatter_rng().next_u32();
     }
     for _ in 0..7 {
-        live.weapon_spread_rng().next_u32();
+        live.main_rng.next_u32();
     }
     live.mapgen_rng = SimRng::new(99);
     for _ in 0..3 {
@@ -511,7 +478,7 @@ fn scenario_main_reseed_does_not_change_mapgen() {
 fn rng_views_name_all_three_streams() {
     let mut sim = Simulation::with_seed(5);
     sim.scatter_rng().next_u32();
-    sim.weapon_spread_rng().next_u32();
+    sim.main_rng.next_u32();
     sim.mapgen_rng.next_u32();
     let views = sim.rng_views();
     assert_eq!(views.scenario, sim.scenario_rng.logical_view());
