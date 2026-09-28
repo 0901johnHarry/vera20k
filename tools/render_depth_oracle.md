@@ -124,3 +124,9 @@ its original payload before its source pin changed; the palette corpus passed
 without rewriting its historical receipt. The replay checked 505 source files
 against its frozen snapshot before publication. A wider indexed coordinator for
 this dependency refresh and fixture preparation is still a tooling follow-up.
+
+After integrating concurrent AI work from main, both oracle lifecycle entries
+were retained and readiness was repeated: 298 Python tests passed (2 optional
+skips), 9,600 strict-retail Rust library tests passed (213 ignored), and clippy
+passed with 860 warnings. The release/capture evidence above predates that
+unrelated merge; it is not presented as a new AI runtime comparison.

@@ -1,6 +1,6 @@
 {
   "schema": "vera20k.foot-z-oracle-validation.v1",
-  "checked_at_utc": "2026-09-28T03:59:18.136419+00:00",
+  "checked_at_utc": "2026-09-28T04:05:11.363991+00:00",
   "base_commit": "d2c6cc118d996034bf7c7593c0b812f483615c09",
   "native_binary_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
   "source_sha256": {
@@ -824,6 +824,28 @@
   "main_integration": {
     "origin_main": "a0d7df63f7f25133adcbc6fc79273d4265dbe22a",
     "conflict": "Retained both Foot Z and AI oracle entries in lifecycle test registration. No Foot producer/shared runner/native payload changes.",
-    "readiness": "Pending repeated full strict-retail lib/clippy and Python suite after this merge."
+    "readiness": "PASSED",
+    "candidate_commit": "19feebc296ce07abde3b6326892311b0be01b432",
+    "checks": [
+      {
+        "command": "python -m tools.run_tests",
+        "result": "298 passed, 2 optional skips; 13.795s",
+        "exit_code": 0,
+        "log_sha256": "660b797d1f4392d761a7feb90748f823408c755697790d59bfd162e9802bc194"
+      },
+      {
+        "command": "python -m tools.cargo_run -- test -p vera20k --lib",
+        "result": "9600 passed, 213 ignored; 59.18s",
+        "exit_code": 0,
+        "log_sha256": "5e8403398279508229f6545b95b5c392654b0d06ee05570b90eb68c1aa8d43f9"
+      },
+      {
+        "command": "python -m tools.cargo_run -- clippy -p vera20k --lib",
+        "result": "passed; 860 warnings; 15.70s",
+        "exit_code": 0,
+        "log_sha256": "c613d6a0e0c3c8c29fef85de88a413831a8dac7930125e7ab2d77ea2ec238593"
+      }
+    ],
+    "production_evidence_scope": "The recorded identical-binary release/capture comparison predates the independent AI main merge. That merge does not change Foot Z production code, native producer, shared native runner or replayed packet dependencies; final integrated Rust/Python readiness was repeated. No new release or rendered parity claim is made for unrelated AI changes."
   }
 }
