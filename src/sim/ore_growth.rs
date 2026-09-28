@@ -2505,7 +2505,7 @@ SpreadPercentage=.06
         let (_ini, overlay_registry, tiberium_types) = tiberium_rebuild_fixture();
         let riparius = TiberiumTypeId(0);
         assert_eq!(tiberium_types.get(riparius).unwrap().growth, 2200);
-        let mut run = |tiberium_grows_flag: bool| -> Vec<u32> {
+        let run = |tiberium_grows_flag: bool| -> Vec<u32> {
             let mut overlay_grid = OverlayGrid::new(8, 8);
             let mut state = make_state(8, 8);
             state.reset_native_tiberium_classes(tiberium_types.len(), 0);

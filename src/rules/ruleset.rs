@@ -3216,8 +3216,6 @@ pub struct RuleSet {
     pub c4_delay_ticks: u32,
     /// Particle types in registry order. Index = `ParticleTypeId.0`.
     particle_types: Vec<ParticleType>,
-    /// Uppercase name → `ParticleTypeId` for case-insensitive lookup.
-    particle_types_by_name: HashMap<String, ParticleTypeId>,
     /// Particle system types in registry order. Index = `ParticleSystemTypeId.0`.
     particle_system_types: Vec<ParticleSystemType>,
     /// Uppercase name → `ParticleSystemTypeId` for case-insensitive lookup.
@@ -4089,7 +4087,6 @@ impl RuleSet {
             missile_spawn,
             c4_delay_ticks,
             particle_types,
-            particle_types_by_name,
             particle_system_types,
             particle_system_types_by_name,
             voxel_anim_types,
@@ -4746,9 +4743,10 @@ impl RuleSet {
     /// Resolve a particle type name to its ID (case-insensitive).
     #[cfg(test)]
     pub fn p_type_id_by_name(&self, name: &str) -> Option<ParticleTypeId> {
-        self.particle_types_by_name
-            .get(&name.to_ascii_uppercase())
-            .copied()
+        self.particle_types
+            .iter()
+            .position(|particle| particle.name.eq_ignore_ascii_case(name))
+            .map(|index| ParticleTypeId(index as u32))
     }
 
     /// Resolve a particle system type name to its ID (case-insensitive).

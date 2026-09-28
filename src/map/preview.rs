@@ -80,15 +80,6 @@ impl From<LzoError> for PreviewDecodeError {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PreviewChannelOrder {
-    Rgb,
-    #[allow(dead_code)]
-    Bgr,
-}
-
-const PREVIEW_CHANNEL_ORDER: PreviewChannelOrder = PreviewChannelOrder::Rgb;
-
 /// Parse preview metadata from map INI sections.
 pub fn parse_preview_section(ini: &IniFile) -> PreviewSection {
     let size = ini
@@ -148,15 +139,9 @@ fn expected_preview_rgba_len(width: u32, height: u32) -> Result<usize, PreviewDe
     usize::try_from(bytes).map_err(|_| PreviewDecodeError::PixelBufferTooLarge)
 }
 
+/// `[PreviewPack]` pixels are stored in RGB order.
 fn push_rgba_from_preview_pixel(out: &mut Vec<u8>, pixel: &[u8]) {
-    match PREVIEW_CHANNEL_ORDER {
-        PreviewChannelOrder::Rgb => {
-            out.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
-        }
-        PreviewChannelOrder::Bgr => {
-            out.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
-        }
-    }
+    out.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
 }
 
 /// Decode row-major 3-byte `[PreviewPack]` pixels into RGBA.

@@ -827,7 +827,6 @@ fn gsi_04_10_projectile_inert_suppresses_bridge_ore_and_collector_rng() {
     let mut interner = test_interner();
     let warhead = interner.intern("WH");
     let weapon = interner.intern("MissingWeapon");
-    let owner = interner.intern("Owner");
     let detonation = ProjectileDetonation {
         projectile_id: 1,
         source_id: 99,
@@ -1515,7 +1514,7 @@ fn gsi_04_07_damage_wad_precedes_wall_and_wood_armor_routing() {
              [WH]\n{extra_warhead_flags}\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
              [TESTWALL]\nWall=yes\nArmor={overlay_armor}\nStrength=1\n"
         ));
-        let mut rules = RuleSet::from_ini(&ini).expect("wall route rules");
+        let rules = RuleSet::from_ini(&ini).expect("wall route rules");
         let registry = OverlayTypeRegistry::from_ini(&ini, None);
         let mut entities = EntityStore::new();
         entities.insert(make_entity(1, "MTNK", 5, 5, 300));
@@ -1584,7 +1583,7 @@ fn gsi_04_07_damage_wall_dies_in_the_tail_after_both_attackers_fire() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [TESTWALL]\nWall=yes\nArmor=concrete\nStrength=400\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("live-order wall rules");
+    let rules = RuleSet::from_ini(&ini).expect("live-order wall rules");
     let registry = OverlayTypeRegistry::from_ini(&ini, None);
     let mut entities = EntityStore::new();
     entities.insert(make_entity(10, "MTNK", 5, 5, 300));
@@ -1704,7 +1703,7 @@ fn gsi_04_07_damage_prior_projectile_fatal_death_weapon_is_inline() {
         );
         let ini = IniFile::from_str(&ini_text);
         let art = IniFile::from_str("[TESTWALL]\nDamageLevels=2\n");
-        let mut rules = RuleSet::from_ini(&ini).expect("inline death-weapon rules");
+        let rules = RuleSet::from_ini(&ini).expect("inline death-weapon rules");
         let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
         assert_eq!(registry.flags(0).unwrap().strength, 400);
         assert_eq!(registry.flags(0).unwrap().damage_levels, 2);
@@ -3521,7 +3520,7 @@ fn gsi_04_07_damage_repair_bullet_cellspread_zero_keeps_signed_area_record() {
     let mut target = make_entity(10, "TARGET", 8, 5, 180);
     target.health.current = 100;
     entities.insert(target);
-    let mut occupancy = OccupancyGrid::new();
+    let occupancy = OccupancyGrid::new();
     let mut interner = test_interner();
     let warhead_ref = interner.intern("Mechanical");
     let weapon_ref = interner.intern("RepairBullet");
@@ -3800,7 +3799,7 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [TESTWALL]\nWall=yes\nArmor=concrete\nStrength=400\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("stock-shaped PostMortem rules");
+    let rules = RuleSet::from_ini(&ini).expect("stock-shaped PostMortem rules");
     let registry = OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = crate::sim::world::Simulation::new();
     sim.resolve_type_handles(&rules);
@@ -4128,7 +4127,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
          [Super]\nCellSpread=0\n\
          Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     );
-    let mut rules = RuleSet::from_ini(&ini).expect("fresh PostMortem attribution rules");
+    let rules = RuleSet::from_ini(&ini).expect("fresh PostMortem attribution rules");
     let mut sim = crate::sim::world::Simulation::new();
     sim.resolve_type_handles(&rules);
     let heights = BTreeMap::new();
@@ -4352,7 +4351,7 @@ fn gsi_08_05_tick_combat_respects_the_jittered_cooldown() {
     let mut main_rng = SimRng::new(1);
 
     // One call per frame: the rearm countdown is frame-anchored.
-    let mut fire_at =
+    let fire_at =
         |frame: u32, store: &mut EntityStore, interner: &mut StringInterner, rng: &mut SimRng| {
             align_attackers_to_targets(store, &rules, interner);
             tick_combat(
@@ -6954,10 +6953,6 @@ fn inviso_detonation_draws(
     effect
 }
 
-fn explosion_coord(effect: &ExplosionEffect) -> (u16, u16, SimFixed, SimFixed) {
-    (effect.rx, effect.ry, effect.sub_x, effect.sub_y)
-}
-
 fn constructed_anim_coord(
     anim: &super::receiver_fixture::ConstructedAnimObservation,
 ) -> (u16, u16, SimFixed, SimFixed) {
@@ -8623,7 +8618,7 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
     use crate::sim::terrain_object::TerrainObjectState;
 
     fn run(kind: InvulnKind, techno_distance: i32) -> i32 {
-        let mut rules = RuleSet::from_ini(&IniFile::from_str(
+        let rules = RuleSet::from_ini(&IniFile::from_str(
             "[General]\nTreeStrength=100\n\
              [InfantryTypes]\n\
              [VehicleTypes]\n0=VICTIM\n\
@@ -8711,7 +8706,7 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
         TerrainObjectLifecycle, TerrainObjectState, mark_terrain_raw_occupation,
     };
 
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+    let rules = RuleSet::from_ini(&IniFile::from_str(
         "[General]\nTreeStrength=10\n\
          [InfantryTypes]\n\
          [VehicleTypes]\n0=VICTIM\n\

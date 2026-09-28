@@ -108,12 +108,14 @@ enum OneCrateResult {
 /// Production invariants select `None`; focused tests inject the other cases
 /// without importing gamemd's object allocator into simulation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[cfg_attr(not(test), allow(dead_code))]
 enum ForcedPostPrecheckFailure {
     #[default]
     None,
+    #[cfg(test)]
     Allocation,
+    #[cfg(test)]
     Unlimbo,
+    #[cfg(test)]
     Mark,
 }
 

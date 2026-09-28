@@ -1342,7 +1342,7 @@ mod tests {
     #[test]
     fn seal_hovering_enemy_building_shows_demolish() {
         // 1. Load the narrow stock-shaped contract consumed by this cursor path.
-        let mut rules = cursor_contract_rules();
+        let rules = cursor_contract_rules();
 
         // 2. Build a Simulation. resolve_type_handles is required by the
         //    c4 tick path even though we don't tick here — keeps the sim in a
@@ -1407,7 +1407,7 @@ mod tests {
     /// for any harvester targeting a same-owner refinery.
     #[test]
     fn chrono_miner_hovering_own_refinery_shows_enter() {
-        let mut rules = cursor_contract_rules();
+        let rules = cursor_contract_rules();
 
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
@@ -1628,7 +1628,7 @@ mod tests {
     }
 
     fn sim_with_tank() -> (Simulation, RuleSet, u64) {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
         let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
@@ -1965,7 +1965,7 @@ mod tests {
     /// which is closer.
     #[test]
     fn secondary_only_unit_outranks_a_closer_unarmed_unit() {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
         let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();
@@ -1995,7 +1995,7 @@ mod tests {
     /// cell-index tie-break cannot separate them; the sub-cell offset can.
     #[test]
     fn tie_break_uses_lepton_distance_to_the_cell_centre() {
-        let mut rules = cell_action_rules();
+        let rules = cell_action_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
         let height_map: BTreeMap<(u16, u16), u8> = BTreeMap::new();

@@ -350,13 +350,12 @@ pub(crate) struct GeneratedTechnoInit {
     pub native_unique_id: i32,
 }
 
-/// The three evidence-backed ways a live Techno obtains its persistent
+/// The two evidence-backed ways a live Techno obtains its persistent
 /// constructor word. Only `FreshScenario` is allowed to advance Scenario RNG.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TechnoConstructorInit {
     FreshScenario,
     PreconsumedGenerated(GeneratedTechnoInit),
-    Restored(u16),
 }
 
 /// Authored Building upgrades construct as distinct Technos, then Unlimbo at
@@ -508,6 +507,8 @@ pub struct GameEntity {
     /// Frames left on the newly-elite flash — `TechnoClass+0xF0`, seeded with
     /// `[AudioVisual] EliteFlashTimer=` at `0x006FA0DC` on the elite crossing.
     /// Presentation-only state; nothing in `sim/` reads it back.
+    /// RESIDUAL (GSI-08.12): no renderer reads it either, so a unit that just
+    /// turned elite does not flash.
     #[serde(default)]
     pub elite_flash_frames: u16,
     /// Mutable Techno instance armor multiplier. Native construction seeds

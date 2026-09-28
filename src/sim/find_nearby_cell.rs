@@ -146,7 +146,7 @@ pub struct NearbyQuery<'a> {
     pub native_cells: Option<&'a crate::map::resolved_terrain::NativeCellQuery<'a>>,
     /// Live CellClass occupation, including retained heads not in Cell lists.
     /// None preserves the older caller's explicit list-only projection.
-    pub raw_occupation: Option<&'a RawCellOccupationGrid>,
+    pub(crate) raw_occupation: Option<&'a RawCellOccupationGrid>,
     /// Per-candidate passability config.
     pub passability: PassabilityArgs,
     /// Top-left rectangle dimensions forwarded to passability and, when enabled,
@@ -181,12 +181,14 @@ pub struct NearbyQuery<'a> {
     pub playfield_bounds: Option<crate::sim::cell_rect::PlayfieldBounds>,
 }
 
-/// A surviving FNPC candidate. `direct` records only the ordinary collection-time
-/// projection used for per-ring early-stop; bridge-aware collection deliberately
-/// leaves it false, and final partition always projects again rather than reading it.
+/// A surviving FNPC candidate. `direct` (kept for tests) records only the
+/// ordinary collection-time projection used for per-ring early-stop;
+/// bridge-aware collection deliberately leaves it false, and final partition
+/// always projects again rather than reading it.
 #[derive(Debug, Clone, Copy)]
 struct Candidate {
     cell: (i32, i32),
+    #[cfg(test)]
     direct: bool,
 }
 
@@ -363,6 +365,7 @@ where
             direct_found |= q.passability.bridge_aware_zone || direct;
             out.push(Candidate {
                 cell: (cx, cy),
+                #[cfg(test)]
                 direct,
             });
             // The candidate cap is checked after every accept, mid-ring — the

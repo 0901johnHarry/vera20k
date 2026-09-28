@@ -364,7 +364,7 @@ fn process_ini_passes(root: IniFile, later: IniFile) -> ProcessedRulesLayers {
 /// later rules layer, preserving entry order independently of the key text.
 #[test]
 fn map_overrides_union_type_registries_by_value() {
-    let mut rules = IniFile::from_str("[VehicleTypes]\n0=MTNK\n[Animations]\n0=RING1\n");
+    let rules = IniFile::from_str("[VehicleTypes]\n0=MTNK\n[Animations]\n0=RING1\n");
     let map = IniFile::from_str("[VehicleTypes]\n0=EVILTANK\n[Animations]\n0=EVILANIM\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(
@@ -1970,7 +1970,7 @@ fn projectiles_and_sides_keep_ordinary_compatibility_projection_overlay() {
 /// Sections not proven to be native registries keep ordinary overlay behavior.
 #[test]
 fn existing_unlisted_numbered_section_receives_ordinary_overlay() {
-    let mut rules = IniFile::from_str("[FutureTypes]\n0=KEEP\n");
+    let rules = IniFile::from_str("[FutureTypes]\n0=KEEP\n");
     let map = IniFile::from_str("[FutureTypes]\n0=EVIL\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(rules.section("FutureTypes").unwrap().get("0"), Some("EVIL"));
@@ -1980,7 +1980,7 @@ fn existing_unlisted_numbered_section_receives_ordinary_overlay() {
 /// are not numeric.
 #[test]
 fn map_registry_pass_uses_every_entry_in_source_order() {
-    let mut rules =
+    let rules =
         IniFile::from_str("[Particles]\n30=FireStream\n[ParticleSystems]\n10=GasCloudSys\n");
     let map = IniFile::from_str(
         "[Particles]\n30=EvilFire\nName=oops\n[ParticleSystems]\n10=EvilSys\nStray=1\n",
@@ -2003,7 +2003,7 @@ fn map_registry_pass_uses_every_entry_in_source_order() {
 /// with `""` would reset the field to the hardcoded Rust default at parse time.
 #[test]
 fn map_overrides_skip_empty_valued_keys() {
-    let mut rules = IniFile::from_str(
+    let rules = IniFile::from_str(
         "[General]\nBuildSpeed=.7\nFlightLevel=1500\n[CombatDamage]\nC4Delay=.03\n",
     );
     let map = IniFile::from_str("[General]\nBuildSpeed=\n[CombatDamage]\nC4Delay=.06\n");
@@ -2023,7 +2023,7 @@ fn map_overrides_skip_empty_valued_keys() {
 /// identity keeps its first HSV value, while a new name allocates.
 #[test]
 fn map_colors_keep_existing_identity_and_allocate_new_name() {
-    let mut rules = IniFile::from_str("[Colors]\nGold=42,252,252\nDarkRed=0,151,239\n");
+    let rules = IniFile::from_str("[Colors]\nGold=42,252,252\nDarkRed=0,151,239\n");
     let map = IniFile::from_str("[Colors]\ngold=1,2,3\nNeonPink=12,200,255\n");
     let rules = process_ini_passes(rules, map).into_projection_discarding_native_receipt();
     assert_eq!(

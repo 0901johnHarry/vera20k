@@ -8,7 +8,6 @@
 //! draws). The app submits immutable map/session inputs and consumes only the
 //! receipt.
 
-use crate::map::basic::{BasicSection, SpecialFlagsSection};
 use crate::map::houses::HouseRoster;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -23,8 +22,6 @@ use crate::skirmish_launch::SkirmishLaunchSession;
 pub(crate) struct ScenarioPostMapInput<'a> {
     pub(crate) map_width: u16,
     pub(crate) map_height: u16,
-    pub(crate) basic: &'a BasicSection,
-    pub(crate) special_flags: &'a SpecialFlagsSection,
     pub(crate) normal_lighting: crate::map::lighting::LightingProfileUnits,
     pub(crate) rules: &'a RuleSet,
     pub(crate) overlay_registry: &'a OverlayTypeRegistry,
@@ -190,6 +187,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::fmt::Write as _;
 
+    use crate::map::basic::{BasicSection, SpecialFlagsSection};
     use crate::map::bridge_facts::BridgeCellFacts;
     use crate::map::houses::HouseDefinition;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
@@ -358,8 +356,6 @@ mod tests {
         ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BASIC_DEFAULT,
-            special_flags: &SPECIAL_FLAGS_DEFAULT,
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules,
             overlay_registry: overlays,
@@ -367,11 +363,6 @@ mod tests {
             skirmish_session: None,
         }
     }
-
-    static BASIC_DEFAULT: std::sync::LazyLock<BasicSection> =
-        std::sync::LazyLock::new(BasicSection::default);
-    static SPECIAL_FLAGS_DEFAULT: std::sync::LazyLock<SpecialFlagsSection> =
-        std::sync::LazyLock::new(SpecialFlagsSection::default);
 
     /// `FUN_00684C30 @ 0x0068504D..0x006850F3`: one `RandomRanged(0, N-1)`
     /// Scenario draw per resource cell in `CellIterator` order, one native ID
@@ -737,8 +728,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &basic,
-            special_flags: &special_flags,
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -836,8 +825,6 @@ mod tests {
         sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -915,8 +902,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,
@@ -1013,8 +998,6 @@ mod tests {
         let output = sim.finalize_scenario_post_map(ScenarioPostMapInput {
             map_width: MAP_SIZE,
             map_height: MAP_SIZE,
-            basic: &BasicSection::default(),
-            special_flags: &SpecialFlagsSection::default(),
             normal_lighting: crate::map::lighting::ParsedLightingProfiles::default().normal,
             rules: &rules,
             overlay_registry: &overlays,

@@ -368,7 +368,7 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
         order(&mut sim, &rules, id, (20, 10));
         let grid = sim.path_grid.clone();
         let mut frame = 101;
-        let mut visit = |sim: &mut Simulation, frame: &mut u32| {
+        let visit = |sim: &mut Simulation, frame: &mut u32| {
             sim.session.binary_frame = *frame;
             sim.process_ground_locomotor_for_test(
                 id,

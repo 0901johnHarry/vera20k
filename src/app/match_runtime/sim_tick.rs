@@ -431,6 +431,13 @@ pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
 /// uninitialized mode the pump treats conservatively as non-advancing. This type
 /// is read ONLY by the app loop, never by `sim/` (the layering rule).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "VERA launches only offline skirmish (`current_session_mode`); the other game modes gamemd writes are kept for the modal pump and command bar"
+    )
+)]
 pub enum SessionMode {
     /// Campaign / single-player. The modal pump freezes the world.
     Campaign,
@@ -1488,19 +1495,14 @@ mod tests {
         ExactStepError, ExactStepReceipt, upsert_overlay_entries, validate_exact_step_receipt,
         world_point_to_cell,
     };
-    use crate::map::entities::EntityCategory;
     use crate::map::overlay::OverlayEntry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
     use crate::rules::locomotor_type::SpeedType;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
-    use crate::sim::combat::TargetKind;
-    use crate::sim::combat::combat_weapon::WeaponSlot;
-    use crate::sim::intern::{InternedId, StringInterner, test_intern};
+    use crate::sim::intern::StringInterner;
     use crate::sim::terrain_object::{
         TerrainObjectState, mark_terrain_occupation, unmark_terrain_occupation,
     };
-    use crate::sim::world::{FireOriginSnapshot, SimFireEvent};
-    use crate::util::fixed_math::SimFixed;
     use std::collections::BTreeMap;
 
     fn entry(rx: u16, ry: u16, overlay_id: u8, frame: u8) -> OverlayEntry {

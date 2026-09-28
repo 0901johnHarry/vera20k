@@ -630,11 +630,9 @@ fn sync_harvest_visuals(entity: &mut crate::sim::game_entity::GameEntity) {
         if is_harvesting && !ho.visible {
             ho.visible = true;
             ho.frame = 0;
-            ho.elapsed_frames = 0;
         } else if !is_harvesting && ho.visible {
             ho.visible = false;
             ho.frame = 0;
-            ho.elapsed_frames = 0;
         }
     }
 }
@@ -1807,90 +1805,6 @@ fn neighbour_reachable(
     false
 }
 
-fn native_tiberium_context<'a>(
-    sim: &'a Simulation,
-    rules: &'a RuleSet,
-    overlay_registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
-) -> Option<(
-    &'a crate::sim::overlay_grid::OverlayGrid,
-    &'a crate::map::overlay_types::OverlayTypeRegistry,
-    &'a crate::rules::tiberium_type::TiberiumTypeRegistry,
-)> {
-    let grid = sim.overlay_grid.as_ref()?;
-    let registry = overlay_registry?;
-    (!rules.tiberium_types.is_empty()).then_some((grid, registry, &rules.tiberium_types))
-}
-
-pub(crate) fn resource_cell_present(
-    sim: &Simulation,
-    rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    cell: (u16, u16),
-) -> bool {
-    if let Some((grid, registry, types)) = native_tiberium_context(sim, rules, overlay_registry) {
-        return crate::sim::tiberium::tiberium_cell_view(grid, registry, types, cell).is_some();
-    }
-    false
-}
-
-pub(crate) fn search_local_resource(
-    sim: &Simulation,
-    rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-    center: (u16, u16),
-    radius: u16,
-    filter: Option<&dyn Fn((u16, u16)) -> bool>,
-) -> Option<(u16, u16)> {
-    let (grid, registry, types) = native_tiberium_context(sim, rules, overlay_registry)?;
-    search_local_tiberium(grid, registry, types, center, radius, filter)
-}
-
-fn search_local_tiberium(
-    grid: &crate::sim::overlay_grid::OverlayGrid,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
-    types: &crate::rules::tiberium_type::TiberiumTypeRegistry,
-    center: (u16, u16),
-    radius: u16,
-    filter: Option<&dyn Fn((u16, u16)) -> bool>,
-) -> Option<(u16, u16)> {
-    if crate::sim::tiberium::tiberium_cell_view(grid, registry, types, center).is_some() {
-        return Some(center);
-    }
-    let cx = i32::from(center.0);
-    let cy = i32::from(center.1);
-    for ring in 1..i32::from(radius) {
-        let mut best_in_ring: Option<(i32, (u16, u16))> = None;
-        for col in -ring..=ring {
-            for (nx, ny) in [
-                (cx + col, cy - ring),
-                (cx + col, cy + ring),
-                (cx - ring, cy + col),
-                (cx + ring, cy + col),
-            ] {
-                if nx < 0 || ny < 0 || nx > i32::from(u16::MAX) || ny > i32::from(u16::MAX) {
-                    continue;
-                }
-                let cell = (nx as u16, ny as u16);
-                if filter.is_some_and(|candidate_filter| !candidate_filter(cell)) {
-                    continue;
-                }
-                let Some(view) =
-                    crate::sim::tiberium::tiberium_cell_view(grid, registry, types, cell)
-                else {
-                    continue;
-                };
-                if best_in_ring.is_none_or(|(value, _)| view.nominal_value > value) {
-                    best_in_ring = Some((view.nominal_value, cell));
-                }
-            }
-        }
-        if let Some((_, cell)) = best_in_ring {
-            return Some(cell);
-        }
-    }
-    None
-}
-
 /// Hand a selected stock-miner destination to the normal Drive command authority.
 #[cfg(test)]
 pub(crate) fn issue_stock_miner_drive_move(
@@ -2101,7 +2015,6 @@ pub(crate) fn effective_purifier_count(
 #[cfg(test)]
 mod harvest_scan_dispatch_tests {
     use super::*;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
@@ -2241,48 +2154,6 @@ mod harvest_scan_dispatch_tests {
         sim.resolved_terrain
             .get_or_insert_with(|| crate::map::resolved_terrain::test_flat_ground_grid(64));
         crate::sim::tiberium::test_support::place_tiberium_on_map(sim, cell, ResourceType::Ore, 6);
-    }
-
-    fn ore_authority_rules() -> (RuleSet, OverlayTypeRegistry, u8) {
-        let mut text = String::from(
-            "[Tiberiums]\n0=Riparius\n[Riparius]\nImage=1\nValue=25\n[OverlayTypes]\n",
-        );
-        for slot in 0..=102 {
-            if slot == 102 {
-                text.push_str("102=TIB01\n");
-            } else {
-                text.push_str(&format!("{slot}=FILL{slot:03}\n"));
-            }
-        }
-        text.push_str("[TIB01]\nTiberium=yes\n");
-        let ini = IniFile::from_str(&text);
-        let rules = RuleSet::from_ini(&ini).expect("ore authority rules");
-        let registry = OverlayTypeRegistry::from_ini(&ini, None);
-        let tib01 = registry.id_for_name("TIB01").expect("TIB01 slot");
-        (rules, registry, tib01)
-    }
-
-    #[test]
-    fn miner_queries_fail_closed_without_the_overlay_registry() {
-        let (rules, registry, tib01) = ore_authority_rules();
-        let config = MinerConfig::from_rules(&rules);
-        let mut sim = Simulation::new();
-        let mut overlay = crate::sim::overlay_grid::OverlayGrid::new(8, 8);
-        overlay.place_overlay(4, 4, tib01, 0);
-        overlay.take_dirty_cells();
-        sim.overlay_grid = Some(overlay);
-
-        assert!(!resource_cell_present(&sim, &rules, None, (4, 4)));
-        assert_eq!(
-            search_local_resource(&sim, &rules, None, (2, 2), 8, None),
-            None,
-            "without the overlay registry no cell can be classified as tiberium"
-        );
-        assert!(resource_cell_present(&sim, &rules, Some(&registry), (4, 4)));
-        assert_eq!(
-            search_local_resource(&sim, &rules, Some(&registry), (2, 2), 8, None,),
-            Some((4, 4)),
-        );
     }
 
     #[test]

@@ -1974,7 +1974,6 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
     let mut overlay = crate::sim::overlay_grid::OverlayGrid::new(10, 10);
     overlay.place_overlay(5, 5, ore_id, 9);
     sim.overlay_grid = Some(overlay);
-    let owner = sim.interner.intern("Americans");
     let detonation = crate::sim::projectile::ProjectileDetonation {
         projectile_id: 1,
         source_id: crate::sim::combat::RAD_NO_ATTACKER,
@@ -4313,7 +4312,7 @@ fn test_bridge_damage_rebuilds_path_grid() {
         assert!(grid_before.is_walkable_on_layer(x, 5, MovementLayer::Bridge));
     }
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     let _state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
         &mut sim,
@@ -4353,7 +4352,7 @@ fn test_bridge_collapse_signals_pathgrid_refresh() {
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(bridge_state);
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
 
     let state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
@@ -4446,7 +4445,7 @@ fn test_bridge_collapse_clears_transition_flag() {
     );
 
     // Damage event collapses all four structural stamp slots.
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     let _ = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
         &mut sim,
@@ -4507,7 +4506,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
         Some(&resolved),
     );
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
@@ -4561,7 +4560,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
         Some(&resolved),
     );
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
@@ -4621,7 +4620,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
         Some(&resolved),
     );
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
@@ -4673,7 +4672,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
         Some(&resolved),
     );
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
@@ -4728,7 +4727,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
         Some(&resolved),
     );
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     let _state_changed = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
         &mut sim,
@@ -5028,7 +5027,7 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
     sim.resolved_terrain = Some(resolved);
     sim.bridge_state = Some(bridge_state);
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     let mut building = make_test_entity("GACNST", EntityCategory::Structure);
     building.cell_x = 0;
     building.cell_y = 0;
@@ -5178,7 +5177,7 @@ fn test_bridge_snapshot_roundtrip_preserves_state_after_collapse() {
     sim.resolved_terrain = Some(resolved);
     sim.bridge_state = Some(bridge_state);
 
-    let mut rules = combat_test_rules();
+    let rules = combat_test_rules();
     sim.resolve_type_handles(&rules);
     let _ = crate::sim::world::bridge_orchestrator::apply_bridge_damage_events(
         &mut sim,

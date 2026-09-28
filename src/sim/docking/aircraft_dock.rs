@@ -99,6 +99,7 @@ impl AircraftAmmo {
         self.pending_release = true;
     }
 
+    #[cfg(test)]
     pub(crate) const fn release_pending(&self) -> bool {
         self.pending_release
     }

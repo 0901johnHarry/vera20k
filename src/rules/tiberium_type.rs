@@ -3,8 +3,6 @@
 //! `[Tiberiums]` defines the native `TiberiumClass` order. Simulation code uses
 //! this data as the bridge from overlay cells to per-type growth/spread state.
 
-use std::collections::HashMap;
-
 use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// Native tiberium density byte range is 0..=11.
@@ -50,7 +48,6 @@ pub struct TiberiumType {
 #[derive(Debug, Clone, Default)]
 pub struct TiberiumTypeRegistry {
     types: Vec<TiberiumType>,
-    by_name: HashMap<String, TiberiumTypeId>,
 }
 
 impl TiberiumTypeRegistry {
@@ -60,7 +57,6 @@ impl TiberiumTypeRegistry {
         };
 
         let mut types = Vec::new();
-        let mut by_name = HashMap::new();
         for name in section.get_values() {
             let Some(type_section) = ini.section(name) else {
                 continue;
@@ -68,12 +64,10 @@ impl TiberiumTypeRegistry {
             let Some(id) = u8::try_from(types.len()).ok().map(TiberiumTypeId) else {
                 break;
             };
-            let ty = TiberiumType::from_ini_section(id, name, type_section);
-            by_name.insert(name.to_ascii_uppercase(), id);
-            types.push(ty);
+            types.push(TiberiumType::from_ini_section(id, name, type_section));
         }
 
-        Self { types, by_name }
+        Self { types }
     }
 
     pub fn len(&self) -> usize {
@@ -94,7 +88,10 @@ impl TiberiumTypeRegistry {
 
     #[cfg(test)]
     pub fn id_by_name(&self, name: &str) -> Option<TiberiumTypeId> {
-        self.by_name.get(&name.to_ascii_uppercase()).copied()
+        self.types
+            .iter()
+            .find(|ty| ty.section.eq_ignore_ascii_case(name))
+            .map(|ty| ty.id)
     }
 }
 

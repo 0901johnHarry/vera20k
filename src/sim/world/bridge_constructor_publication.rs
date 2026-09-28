@@ -45,12 +45,9 @@ impl LivePublication<'_> {
         let handle = self
             .sim
             .load_objects
-            .construct_overlay(
-                id,
-                overlay,
-                (requested.0 as u16, requested.1 as u16),
-                || self.sim.native_unique_ids.as_mut().unwrap().next_id(),
-            )
+            .construct_overlay(id, (requested.0 as u16, requested.1 as u16), || {
+                self.sim.native_unique_ids.as_mut().unwrap().next_id()
+            })
             .map_err(|error| error.to_string())?;
 
         // Startup5FC310 initializes EmptyCell to(0,0). This gate occurs AFTER

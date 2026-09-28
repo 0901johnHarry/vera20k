@@ -39,10 +39,6 @@ pub(super) enum HashSchema {
     BeforeBuildingPowerIntegration,
     #[cfg(test)]
     Before(u16),
-    /// Test-only provenance probe: the `Before` composition with the raw
-    /// infantry owner identities excluded from the raw occupation fold.
-    #[cfg(test)]
-    BeforeWithoutRawInfantryOwners(u16),
 }
 
 /// First hash schema containing each gated layout. A feature can select an
@@ -55,6 +51,7 @@ pub(super) enum HashFeature {
     MasterFrame = 43,
     EntityAnimation = 44,
     /// Reserved historical positional bit; obsolete overlay state no longer exists.
+    #[cfg(test)]
     RetiredBuildingAnimOverlays = 45,
     TerminalScore = 46,
     PlayfieldAuthority = 47,
@@ -97,6 +94,7 @@ pub(super) enum HashFeature {
     RetiredTiberiumNodeState = 174,
     FootCrateSpeed = 181,
     DisplayLayers = 182,
+    #[cfg(test)]
     AnimationDisplay = 184,
     AircraftReleaseAuthority = 186,
     WeaponBurstAuthority = 187,
@@ -266,9 +264,7 @@ impl HashSchema {
                     | HashFeature::AiStrategy
             ),
             #[cfg(test)]
-            Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {
-                (_feature as u16) < version
-            }
+            Self::Before(version) => (_feature as u16) < version,
         }
     }
 
@@ -279,18 +275,6 @@ impl HashSchema {
         }
         true
     }
-
-    pub(super) const fn includes_raw_infantry_owners(self) -> bool {
-        match self {
-            Self::Current => true,
-            #[cfg(test)]
-            Self::BeforeBuildingPowerIntegration => true,
-            #[cfg(test)]
-            Self::Before(_) => true,
-            #[cfg(test)]
-            Self::BeforeWithoutRawInfantryOwners(_) => false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -300,9 +284,6 @@ mod tests {
     #[test]
     fn detached_track_absence_projection_ends_at_schema167() {
         assert!(!HashSchema::Before(167).includes(HashFeature::TrackAuthority));
-        assert!(
-            !HashSchema::BeforeWithoutRawInfantryOwners(161).includes(HashFeature::TrackAuthority)
-        );
         assert!(HashSchema::Before(168).includes(HashFeature::TrackAuthority));
         assert!(HashSchema::Current.includes(HashFeature::TrackAuthority));
     }

@@ -2,7 +2,6 @@
 //! occupants, navigation and rebuilding. Native scalar/navigation/occupant
 //! packets live in tools/spatial_oracle/shrapnel_damage. Ordinary world timing
 //! below is a Rust integration witness, not a native whole-world comparison.
-use super::*;
 use crate::headless_scenario::{HeadlessScenario, SIM_TICK_MS};
 use crate::rules::terrain_rules::LandType;
 use crate::sim::command::{Command, CommandEnvelope};

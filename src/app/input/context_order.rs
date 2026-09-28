@@ -1840,7 +1840,7 @@ mod tests {
     /// while the Chrono Miner is refused for having no primary weapon.
     #[test]
     fn attack_move_eligibility_follows_the_primary_weapon() {
-        let mut rules = chord_rules();
+        let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
         let height_map: std::collections::BTreeMap<(u16, u16), u8> =
@@ -1940,7 +1940,7 @@ mod tests {
     /// the first member that refuses.
     #[test]
     fn attack_move_chord_requires_every_selected_object() {
-        let mut rules = chord_rules();
+        let rules = chord_rules();
         let mut sim = Simulation::new();
         sim.resolve_type_handles(&rules);
         let height_map: std::collections::BTreeMap<(u16, u16), u8> =

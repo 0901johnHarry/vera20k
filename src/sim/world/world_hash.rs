@@ -577,40 +577,6 @@ impl Simulation {
         self.state_hash_with_schema(HashSchema::Before(167))
     }
 
-    /// Project out schema159's Cell lists/Sight0 and later gated layouts.
-    /// This does not reverse semantic changes: raw Infantry house IDs cannot
-    /// reconstruct the former entity-ID owner encoding. Prior pins remain
-    /// independent checks; no reverse owner mapping is invented here.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_cell_membership_v159(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::Before(159))
-    }
-
-    /// Provenance probe for the raw infantry owner identity change (entity id
-    /// -> mark-time House index, InfantryClass::MarkCellOccupancy 0x005217C0):
-    /// the schema-160 composition with the raw owner fields excluded. Equal
-    /// values across the change prove every other fold is unchanged.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_raw_infantry_owners_v161_probe(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::BeforeWithoutRawInfantryOwners(161))
-    }
-
-    /// Test-only provenance probe for the schema160 Foot path runtime
-    /// rebaseline: the retained timers/latch/count are projected back into the
-    /// former positional MovementTarget encoding instead of hashed as an owner.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_foot_path_runtime_v160(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::Before(160))
-    }
-
-    /// Test-only provenance probe for the schema161 bridge locomotor/raw
-    /// Dummy rebaseline: projects out only the schema161 payload and Dummy
-    /// composition. It cannot reverse the raw Infantry owner identity change.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_bridge_locomotor_v161(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::Before(161))
-    }
-
     /// Test-only provenance probe for the v29 Mission hash rebaseline.
     ///
     /// It retains lifecycle-v28 fields and reconstructs the exact prior
@@ -677,15 +643,6 @@ impl Simulation {
         self.state_hash_with_schema(HashSchema::Before(114))
     }
 
-    /// Test-only provenance probe for the schema-v117 disguise-detect folds:
-    /// the `CellClass+0xAC[house]` counter plane and the cached
-    /// `DetectDisguiseRange=` deposit radius. It reconstructs the committed
-    /// v115 hash layout.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_disguise_detect_v117(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::Before(117))
-    }
-
     /// Test-only provenance probe for the schema-v132 `HouseClass+0x242`
     /// harvester no-ore latch fold. It reconstructs the committed v117 layout.
     #[cfg(test)]
@@ -708,12 +665,6 @@ impl Simulation {
     #[cfg(test)]
     pub(crate) fn state_hash_without_credit_income_v135(&self) -> u64 {
         self.state_hash_with_schema(HashSchema::Before(135))
-    }
-
-    /// Reconstruct the v135 composition before the Infantry terminal-policy fold.
-    #[cfg(test)]
-    pub(crate) fn state_hash_without_infantry_terminal_v136(&self) -> u64 {
-        self.state_hash_with_schema(HashSchema::Before(136))
     }
 
     /// Test-only provenance probe for the schema-v115 retained wall-count and
@@ -782,7 +733,6 @@ impl Simulation {
         self.substrate.fold_raw_cell_occupation(
             &mut hasher,
             schema.includes(HashFeature::BridgeLocomotorAndDummy),
-            schema.includes_raw_infantry_owners(),
         );
         self.substrate.fold_hidden_occupation(&mut hasher);
         self.substrate.fold_air_slots(&mut hasher);

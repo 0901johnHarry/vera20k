@@ -492,12 +492,11 @@ pub(crate) fn damage_terrain_object_at_cell(
 mod tests {
     use super::*;
     use crate::map::overlay::TerrainObject;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::MovementZone;
     use crate::rules::ruleset::RuleSet;
-    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    use crate::rules::terrain_rules::LandType;
     use crate::sim::movement::bump_crush::{
         CrushCapability, build_blocker_neighbor_counts, collect_crush_victims,
     };

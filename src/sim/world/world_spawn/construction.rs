@@ -229,7 +229,6 @@ impl Simulation {
             ge.harvest_overlay = Some(HarvestOverlay {
                 frame: 0,
                 visible: false,
-                elapsed_frames: 0,
             });
         }
         // Passenger cargo for transports and garrisonable buildings.

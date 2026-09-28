@@ -8,14 +8,11 @@
 //! - Position stores isometric cell coords only. Where an entity is *drawn* is
 //!   `render::locomotor_visual`'s business, derived on read — sim/ writes no
 //!   screen coordinates.
-//! - Some types here (Facing, VoxelModel, etc.) are legacy wrappers
-//!   kept for any remaining call sites. The canonical data lives in GameEntity fields.
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends on map/ (EntityCategory type).
+//! - Part of sim/.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use crate::map::entities::EntityCategory;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -50,22 +47,6 @@ pub struct Position {
     pub sub_y: SimFixed,
 }
 
-/// Facing direction (0â€“255, RA2 convention).
-///
-/// 0 = north, 64 = east, 128 = south, 192 = west.
-/// Used for sprite/voxel rotation and movement direction.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Facing(pub u8);
-
-/// Independent turret facing direction (0–255, RA2 convention).
-///
-/// Only present on entities with `Turret=yes` in rules.ini (e.g., tanks, War Miner).
-/// The turret rotates independently from the body: it tracks attack targets,
-/// and returns to body facing when idle.
-/// 0 = north, 64 = east, 128 = south, 192 = west.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct TurretFacing(pub u8);
-
 /// Signed actual ObjectClass health (+0x6C in gamemd.exe).
 ///
 /// Live ObjectType::strength owns the cap/ratio denominator. EstimatedHealth
@@ -97,67 +78,6 @@ impl Health {
         )
     }
 }
-
-/// Vision radius in grid cells used for fog/shroud reveal.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Vision {
-    /// Reveal/visibility radius in cells.
-    pub range_cells: u16,
-}
-
-/// Marker component: this entity is rendered as a VXL voxel model.
-///
-/// Vehicles and aircraft use voxel models. The render loop loads the
-/// corresponding VXL+HVA files and renders them via the software rasterizer.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct VoxelModel;
-
-/// Marker component: this entity is rendered as a SHP 2D sprite.
-///
-/// Infantry and buildings use SHP sprites. Not yet wired to rendering â€”
-/// will be implemented when SHP sprite batching is added.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct SpriteModel;
-
-/// Which category this entity belongs to (unit, infantry, structure, aircraft).
-///
-/// Wraps the map::entities::EntityCategory enum so it can be used as an ECS component.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Category(pub EntityCategory);
-
-/// Infantry sub-cell position (0–4).
-///
-/// RA2 uses sub-cell spots 2, 3, 4 — up to 3 infantry per cell, each at a
-/// different sub-position. Only meaningful for infantry entities.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct SubCell(pub u8);
-
-/// Veterancy level: 0 = rookie, 100 = veteran, 200 = elite.
-///
-/// Affects unit stats (damage, armor, speed bonuses) and visual indicators.
-///
-/// This is the RANK PROJECTION of `GameEntity::veterancy_raw`, which is the
-/// authoritative running accumulator. gamemd-derived:
-/// `TechnoClass::Record_The_Kill @ 0x00702D40` awards the victim's cost —
-/// zeroed between allies, doubled for a veteran victim, tripled for an elite
-/// one — and `VeterancyClass::Add @ 0x0074FF50` divides it by the killer's own
-/// cost times `[General] VeteranRatio=`, clamping at `VeteranCap=`. The rank
-/// tests are `>= 1.0` for veteran and `>= 2.0` for elite. A Grizzly promotes on
-/// its third rookie Rhino and goes elite on its fifth.
-///
-/// The rank effects live in `sim::combat::veterancy`: the full 18-token
-/// ability arrays, `HasWeaponAbility`, the ROF/FIREPOWER/FASTER/SIGHT
-/// multipliers, self-heal, the promotion announcement and the elite flash
-/// timer, and the `Record_The_Kill` recipient chain.
-///
-/// RESIDUAL (GSI-08.12) — the elite flash is not DRAWN. `elite_flash_frames`
-/// counts down as native's `+0xF0` does, but VERA draws no rank chevrons or
-/// flash at all (`DrawVeterancyPips @ 0x0070A990` has no presentation
-/// counterpart). Trigger: every promotion. Player effect: a promoted unit
-/// shows no chevron and a new elite does not blink. Frequency: continuous.
-/// Downstream risk: none — presentation only.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Veterancy(pub u16);
 
 /// A building's construction animation (BState 0), set by
 /// `BuildingClass::Begin_Mode(0)` (`0x00447780`) from the type's control and
@@ -239,13 +159,6 @@ pub struct BuildingDown {
     /// read such a sale as archive-bearing (`+0x218`).
     pub undeploy_order: bool,
 }
-
-/// Marker component: this entity is currently selected by the player.
-///
-/// Added/removed dynamically via `world.insert_one()` / `world.remove_one()`.
-/// The render loop queries for `Selected` to draw selection indicators.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct Selected;
 
 /// Movement path target â€” entity is moving along a computed A* path.
 ///
@@ -905,18 +818,6 @@ pub struct HarvestOverlay {
     pub frame: u16,
     /// Whether the overlay is currently visible and animating.
     pub visible: bool,
-    /// Reached native frames accumulated since last image advance.
-    pub elapsed_frames: u16,
-}
-
-/// Tracks the last entity that dealt damage to this entity.
-///
-/// Used for retaliation: when an idle unit takes damage, it automatically
-/// attacks the source. Still subject to Verses gates (0%/1% block retaliation).
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct LastAttacker {
-    /// Stable entity ID of the attacker that dealt the most recent damage.
-    pub attacker: u64,
 }
 
 /// Constructor row for a generic AnimClass-like runtime spawn.
@@ -1097,7 +998,6 @@ pub struct PendingC4Detonation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::entities::EntityCategory;
 
     #[test]
     fn test_position_creation() {
@@ -1118,21 +1018,11 @@ mod tests {
         // GameEntity fields must be Send + Sync for future multithreaded sim ticks.
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Position>();
-        assert_send_sync::<Facing>();
-        assert_send_sync::<TurretFacing>();
         assert_send_sync::<Health>();
-        assert_send_sync::<Vision>();
-        assert_send_sync::<VoxelModel>();
-        assert_send_sync::<SpriteModel>();
-        assert_send_sync::<Category>();
-        assert_send_sync::<SubCell>();
-        assert_send_sync::<Veterancy>();
         assert_send_sync::<MovementTarget>();
         assert_send_sync::<BridgeOccupancy>();
         assert_send_sync::<OrderIntent>();
         assert_send_sync::<BuildingUp>();
-        assert_send_sync::<Selected>();
-        assert_send_sync::<LastAttacker>();
         assert_send_sync::<VoxelAnimation>();
         assert_send_sync::<HarvestOverlay>();
         assert_send_sync::<crate::sim::movement::locomotor::LocomotorState>();
@@ -1212,12 +1102,6 @@ mod tests {
         fn _assert_copy<T: Copy>() {}
         _assert_copy::<C4PlantState>();
         _assert_copy::<PendingC4Detonation>();
-    }
-
-    #[test]
-    fn test_category_wraps_entity_category() {
-        let cat: Category = Category(EntityCategory::Unit);
-        assert_eq!(cat.0, EntityCategory::Unit);
     }
 
     #[test]

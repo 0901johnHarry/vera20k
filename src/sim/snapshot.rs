@@ -691,7 +691,8 @@ use crate::sim::world::Simulation;
 // 234 -> 235: a House's EVA funds and repair latch timers, a spawn
 // manager's timers, and the cloak stage and disguise block timers are
 // `CdTimer`s (the last two save their words in a new order).
-const SNAPSHOT_VERSION: u32 = 235;
+// 235 -> 236: a harvester's overlay no longer saves its unread frame count.
+const SNAPSHOT_VERSION: u32 = 236;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3704,8 +3705,10 @@ mod tests {
         // 232 -> 233: house country cost factors and force values; each
         // Techno's value arm.
         // 233 -> 234: the house Strategy timer.
-        // 234 -> 235: house EVA, repair latch and spawn manager timers are CdTimers.
-        assert_eq!(super::SNAPSHOT_VERSION, 235);
+        // 234 -> 235: house, spawn manager, cloak and disguise timers are
+        // `CdTimer`s.
+        // 235 -> 236: the harvest overlay drops its unread frame count.
+        assert_eq!(super::SNAPSHOT_VERSION, 236);
     }
 
     #[test]
@@ -6504,7 +6507,7 @@ mod tests {
             Command::Stop { entity_id: 71 },
         ));
         sim.scatter_rng().next_u32();
-        sim.weapon_spread_rng().next_u32();
+        sim.main_rng.next_u32();
         sim.mapgen_rng.next_u32();
         let process_default = crate::sim::rng::SimRng::new(0).logical_state();
         assert_ne!(sim.rng_state().scenario, process_default);
