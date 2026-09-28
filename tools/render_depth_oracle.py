@@ -2,7 +2,9 @@
 
 Run ``python -m tools.render_depth_oracle`` with RA2_DIR or
 VERA20K_GAMEMD_EXE set. ``--check`` compares fresh native results to the saved
-JSON. Unicorn is an already-installed dependency; this tool downloads nothing.
+JSON; checking is the default, and only --write replaces the reference.
+Import and --help do not load retail data. Unicorn is an already-installed
+dependency; this tool downloads nothing.
 
 This is raw-function emulation, not a game/session or rendered-pixel oracle.
 Fixtures supply a Unit, its actual UnitType, ordinary mapped cells, and relocated
@@ -16,24 +18,23 @@ No executable or retail art bytes are copied into the vector file.
 
 from __future__ import annotations
 
-import argparse
-from collections import Counter, deque
 import hashlib
-import json
 from pathlib import Path
 import struct
 
-from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE, __version__ as unicorn_version
+from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, __version__ as unicorn_version
 from unicorn.x86_const import (
     UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EBX,
     UC_X86_REG_ESP, UC_X86_REG_EBP, UC_X86_REG_ESI, UC_X86_REG_EDI,
-    UC_X86_REG_EIP, UC_X86_REG_EFLAGS, UC_X86_REG_FPCW,
+    UC_X86_REG_EFLAGS, UC_X86_REG_FPCW,
 )
 
-from tools.rmg_oracle.harness import GAMEMD, NATIVE_FPCW, _load_image
+from tools.native_oracle import (
+    NATIVE_FPCW, NATIVE_SHA256, OracleError, load_image, run_checked,
+    finish_vectors, provenance,
+)
 
 
-NATIVE_SHA256 = "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
 STANDARD_Z_MULTIPLIER_BITS = 0x3FC25E5374344960  # startup store 0x006D1BDD
 MEM = 0x21000000
 CELL_TABLE = MEM
@@ -72,21 +73,14 @@ def signed(value: int) -> int:
 
 class NativeFixture:
     def __init__(self) -> None:
-        actual_hash = hashlib.sha256(GAMEMD.read_bytes()).hexdigest()
-        if actual_hash != NATIVE_SHA256:
-            raise RuntimeError(f"Unsupported gamemd SHA-256: {actual_hash}")
         self.uc = Uc(UC_ARCH_X86, UC_MODE_32)
-        _load_image(self.uc)
+        load_image(self.uc)
         self.uc.mem_map(MEM, 0x200000)
         self.uc.mem_map(RETURN, 0x1000)
         self.region_hashes = {
             name: hashlib.sha256(bytes(self.uc.mem_read(start, end - start))).hexdigest()
             for name, (start, end) in REGIONS.items()
         }
-        self.last_addresses: deque[int] = deque(maxlen=16)
-        self.visits: Counter[int] = Counter()
-        self.instruction_count = 0
-        self.uc.hook_add(UC_HOOK_CODE, self.observe)
         # Execute the retail initializer instead of copying inferred directions.
         self.call(0x49F2F0)
         self.directions = list(struct.iter_unpack("<hh", bytes(self.uc.mem_read(0x89F688, 32))))
@@ -116,18 +110,10 @@ class NativeFixture:
     @staticmethod
     def cell_address(x: int, y: int) -> int:
         if not (0 <= x < 8 and 0 <= y < 8):
-            raise ValueError("This fixture covers only its mapped 8x8 ordinary cell grid")
+            raise OracleError("This fixture covers only its mapped 8x8 ordinary cell grid")
         return CELLS + (y * 8 + x) * CELL_STRIDE
 
-    def observe(self, _uc: Uc, address: int, _size: int, _data: object) -> None:
-        self.last_addresses.append(address)
-        self.visits[address] += 1
-        self.instruction_count += 1
-
-    def call(self, address: int, receiver: int = UNIT) -> int:
-        self.last_addresses.clear()
-        self.visits.clear()
-        self.instruction_count = 0
+    def call(self, address: int, receiver: int = UNIT, required_addresses=()) -> int:
         self.uc.mem_write(STACK - 0x1000, bytes(0x1004))
         self.put32(STACK, RETURN)
         for register in [UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EBX,
@@ -137,13 +123,8 @@ class NativeFixture:
         self.uc.reg_write(UC_X86_REG_ECX, receiver)
         self.uc.reg_write(UC_X86_REG_EFLAGS, 2)
         self.uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
-        try:
-            self.uc.emu_start(address, RETURN, count=100000)
-        except Exception as error:
-            trail = ", ".join(f"0x{value:08X}" for value in self.last_addresses)
-            raise RuntimeError(f"Native 0x{address:08X} failed; final instructions: {trail}") from error
-        if self.uc.reg_read(UC_X86_REG_EIP) != RETURN:
-            raise RuntimeError(f"Native 0x{address:08X} did not return before instruction limit")
+        run_checked(self.uc, address, RETURN, count=100000,
+                    required_addresses=required_addresses)
         return signed(self.uc.reg_read(UC_X86_REG_EAX))
 
     def configure(self, case: dict) -> None:
@@ -177,7 +158,7 @@ class NativeFixture:
                 if cell["tmp_height"] != 30:
                     index = cell["tile_index"]
                     if not 0 <= index < 65:
-                        raise ValueError("Non-default TMP needs a mapped tile index")
+                        raise OracleError("Non-default TMP needs a mapped tile index")
                     tile = TMP_CELLS + index * 0x100
                     self.put32(tile + 4, 100)  # stored Y
                     self.put32(tile + 0x18, 130 - cell["tmp_height"])  # raw extra Y
@@ -187,12 +168,13 @@ class NativeFixture:
         self.configure(case)
         values = {}
         for name, address in TARGETS.items():
-            result = self.call(address)
+            # Require the helper visits in the full Foot run itself, not in
+            # the separate probes above it.
+            required = tuple(TARGETS[helper] for helper in (
+                "cliff_multiplier", "column_multiplier", "tunnel_multiplier", "base_z_adjust",
+            )) if name == "foot_z_adjust" else ()
+            result = self.call(address, required_addresses=required)
             values[name] = bool(result & 0xFF) if name == "near_bridge" else result
-        # Inspect the final full-Foot execution, not just the separate probes.
-        for name in ["cliff_multiplier", "column_multiplier", "tunnel_multiplier", "base_z_adjust"]:
-            if self.visits[TARGETS[name]] == 0:
-                raise RuntimeError(f"Full Foot execution bypassed required native callee {name}")
         return values
 
 
@@ -261,9 +243,8 @@ def generate() -> dict:
     for case in cases:
         case["native"] = fixture.execute(case)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "native_sha256": NATIVE_SHA256,
-        "generator_normalized_lf_sha256": hashlib.sha256(Path(__file__).read_text().encode()).hexdigest(),
         "unicorn_version": unicorn_version,
         "scope": "Raw-function emulation of original Foot Z composition and its original helpers over supplied Unit/type/cell/TMP fixtures; not full-game or pixel parity.",
         "restrictions": [
@@ -287,21 +268,30 @@ def generate() -> dict:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path(__file__).with_name("render_depth_vectors.json"))
-    parser.add_argument("--check", action="store_true", help="re-run native code and compare without writing")
-    args = parser.parse_args()
-    result = generate()
-    if args.check:
-        expected = json.loads(args.output.read_text())
-        # JSON tuples become lists when read; normalize before comparison.
-        if json.loads(json.dumps(result)) != expected:
-            raise SystemExit("FAIL: native Foot Z vectors differ from the saved fixture")
-        print(f"PASS: {len(result['cases'])} native Foot Z fixtures reproduce")
-    else:
-        args.output.write_text(json.dumps(result, indent=2) + "\n")
-        print(f"Wrote {len(result['cases'])} native Foot Z fixtures to {args.output}")
+def metadata() -> dict:
+    result = provenance(
+        scope="Raw-function execution of Foot Z composition and its original helpers; not full-game, loader or rendered-pixel parity.",
+        assumptions=[
+            "Supplied Unit using its original vtable and supplied UnitType storage, ordinary mapped 8x8 cells with a 512-wide native lookup stride, and relocated one-cell TMP headers; original constructors, INI readers and map loading do not execute.",
+            "Original direction initializer 0x0049F2F0 executes first with live x87 control 0x0E7F; the cached control word at 0x00822D80 is written afterward. Every call resets the live control word to 0x0E7F.",
+            "The fixture supplies startup AdjustForZ multiplier bits 0x3FC25E5374344960, current world XY 640/640, runtime type coefficients, clear-tile index and bridge tile base zero.",
+            "Actual Unit vtable with a null locomotor, no transporter, harvester alternative, overlays, low bridges or active tubes; ramp and cell flag 0x10000 remain zero. SHP/voxel caller admission, dummy/alias coordinates and active-game lifecycle are outside coverage.",
+            "Each complete Foot call must execute the original cliff, column, tunnel and base-Z helpers in that same run. Code hooks observe execution and stop only at the declared return boundary; no native instruction or result is replaced.",
+        ],
+        substitutions=[],
+        entry_points={"direction_initializer": REGIONS["direction_initializer"][0],
+                      **TARGETS, "tmp_dimensions": REGIONS["tmp_dimensions"][0]},
+    )
+    return result
+
+
+def main(argv=None) -> None:
+    root = Path(__file__).resolve().parents[1]
+    finish_vectors(generate, Path(__file__).with_name("render_depth_vectors.json"),
+                   provenance=metadata, argv=argv, source_paths={
+                       name: root / name for name in
+                       ("tools/render_depth_oracle.py", "tools/native_oracle.py")
+                   })
 
 
 if __name__ == "__main__":

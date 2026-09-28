@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Raw-function execution of Foot Z composition and its original helpers; not full-game, loader or rendered-pixel parity.",
+  "assumptions": [
+    "Supplied Unit using its original vtable and supplied UnitType storage, ordinary mapped 8x8 cells with a 512-wide native lookup stride, and relocated one-cell TMP headers; original constructors, INI readers and map loading do not execute.",
+    "Original direction initializer 0x0049F2F0 executes first with live x87 control 0x0E7F; the cached control word at 0x00822D80 is written afterward. Every call resets the live control word to 0x0E7F.",
+    "The fixture supplies startup AdjustForZ multiplier bits 0x3FC25E5374344960, current world XY 640/640, runtime type coefficients, clear-tile index and bridge tile base zero.",
+    "Actual Unit vtable with a null locomotor, no transporter, harvester alternative, overlays, low bridges or active tubes; ramp and cell flag 0x10000 remain zero. SHP/voxel caller admission, dummy/alias coordinates and active-game lifecycle are outside coverage.",
+    "Each complete Foot call must execute the original cliff, column, tunnel and base-Z helpers in that same run. Code hooks observe execution and stop only at the declared return boundary; no native instruction or result is replaced."
+  ],
+  "substitutions": [],
+  "entry_points": {
+    "direction_initializer": "0x0049F2F0",
+    "cliff_multiplier": "0x00704240",
+    "column_multiplier": "0x00703E70",
+    "tunnel_multiplier": "0x00704000",
+    "near_bridge": "0x00703B10",
+    "base_z_adjust": "0x00704350",
+    "foot_z_adjust": "0x004DAFC0",
+    "tmp_dimensions": "0x00547150"
+  },
+  "source_normalized_lf_sha256": {
+    "tools/render_depth_oracle.py": "6ca4008919eb234df32d14d9ce98385ef35ade02ac2ae84a2a55d4abe436b90d",
+    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c"
+  },
+  "payload_sha256": "178fb6e51f8b672564452cb27cf306eef7b2b3f17505b8b159460faa63f2e545"
+}

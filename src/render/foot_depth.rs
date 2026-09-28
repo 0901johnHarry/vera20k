@@ -588,7 +588,9 @@ mod tests {
                 ..Default::default()
             }
         }
-        assert_eq!(document["schema_version"], 1);
+        // Schema2 moves producer identity to the checked provenance sidecar;
+        // case order, fixture inputs and native outputs retain their schema.
+        assert_eq!(document["schema_version"], 2);
         assert_eq!(
             document["native_sha256"],
             "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"

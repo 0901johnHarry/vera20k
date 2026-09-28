@@ -937,6 +937,9 @@ impl TacticalCaptureSession {
         output: &GameRenderOutput,
     ) -> Result<bool> {
         self.render_frames = self.render_frames.saturating_add(1);
+        if self.request.map_profile().is_some() {
+            self.observe_map_draw(state, output)?;
+        }
         if !self.controller.initialized() {
             return Ok(false);
         }

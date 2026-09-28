@@ -44,19 +44,20 @@ impl App {
             session.drive_before_render(state)?;
         }
         state.diag.frame_timer.sample(Instant::now());
-        crate::app::input::tooltips::update(state);
+        let tooltip_ms = crate::app::input::tooltips::update(state);
         // The message clock has to observe the focus freeze exactly as it
         // observes a modal pause: a banner on screen when the player Alt+Tabs
         // must survive the absence with its remaining lifetime intact, not
         // expire against wall time while the world is stopped. Park the clock
         // and skip the expiry pass; `messages::update` closes the span and
         // resumes ownership on the first foreground frame.
-        if state.frontend.screen == GameScreen::InGame && !state.platform.window_active {
+        let message_ms = if state.frontend.screen == GameScreen::InGame && !state.platform.window_active {
             let wall = crate::app::input::tooltips::now_ms(state);
             state.match_state.match_presentation.message_clock.set_paused(true, wall);
+            None
         } else {
-            crate::app::input::messages::update(state);
-        }
+            crate::app::input::messages::update(state)
+        };
         if state
             .frontend.startup_splash
             .as_ref()
@@ -438,12 +439,17 @@ impl App {
                 }
             }
             GameScreen::InGame => {
+                let times = render::GameRenderTimes {
+                    radar_ms: state.radar_presentation_ms(Instant::now()),
+                    tooltip_ms,
+                    message_ms,
+                };
                 let game_output = if state.renderer.upscale_pass.is_some() {
                     // Render game to intermediate texture, then upscale to swapchain.
                     let up = state.renderer.upscale_pass.as_ref().unwrap();
                     let game_depth = up.depth_view().clone();
                     let saved_depth = std::mem::replace(&mut state.renderer.depth_view, game_depth);
-                    let result = render::render_game(state, &mut encoder);
+                    let result = render::render_game(state, &mut encoder, times);
                     state.renderer.depth_view = saved_depth;
                     let render_output = result?;
                     state.renderer.combat_light_renderer.copy_to(
@@ -457,7 +463,7 @@ impl App {
                         .draw(&mut encoder, &view);
                     render_output
                 } else {
-                    let render_output = render::render_game(state, &mut encoder)?;
+                    let render_output = render::render_game(state, &mut encoder, times)?;
                     state
                         .renderer.combat_light_renderer
                         .copy_to(&mut encoder, &output.texture);

@@ -61,7 +61,14 @@ pub(crate) const TIP_BOX_PAD: [f32; 2] = [4.0, 3.0];
 pub(crate) const TIP_TEXT_INSET: [f32; 2] = [2.0, 4.0];
 
 pub(crate) fn now_ms(state: &AppState) -> u64 {
-    state.match_state.match_presentation.tooltip_epoch.elapsed().as_millis() as u64
+    state.diagnostic_presentation_ms().unwrap_or_else(|| {
+        state
+            .match_state
+            .match_presentation
+            .tooltip_epoch
+            .elapsed()
+            .as_millis() as u64
+    })
 }
 
 /// CursorMoved feed (all screens).
@@ -90,7 +97,7 @@ pub(crate) fn on_button_event(state: &mut AppState) {
 
 /// Per-frame update: refresh regions for the live in-game surface, then pump
 /// the delayed-tooltip timer.
-pub(crate) fn update(state: &mut AppState) {
+pub(crate) fn update(state: &mut AppState) -> u64 {
     let now = now_ms(state);
     if state.frontend.screen == GameScreen::InGame
         && !state.match_state.paused() && state.frontend.keyboard_dialog.is_none()
@@ -100,6 +107,7 @@ pub(crate) fn update(state: &mut AppState) {
         state.match_state.match_presentation.tooltips.sync_regions(&[]);
     }
     state.match_state.match_presentation.tooltips.poll(now);
+    now
 }
 
 fn tip_rect(r: crate::sidebar::Rect) -> TipRect {

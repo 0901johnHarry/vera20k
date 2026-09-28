@@ -1355,6 +1355,14 @@ fn active_cursor_sequence(state: &AppState) -> Option<(CursorId, &SoftwareCursor
     cursor.get(id).map(|sequence| (id, sequence))
 }
 
+/// Observation of the same cursor selection used by the production draw.
+/// Map captures admit only a static arrow, so cursor wall time cannot alter it.
+pub(crate) fn static_default_cursor(state: &AppState) -> bool {
+    state.use_software_cursor()
+        && active_cursor_sequence(state)
+            .is_some_and(|(id, sequence)| id == CursorId::Default && sequence.frames.len() == 1)
+}
+
 pub(crate) fn build_software_cursor_instances(state: &AppState) -> Vec<SpriteInstance> {
     if !state.use_software_cursor() {
         return Vec::new();

@@ -24,7 +24,7 @@
     }
   },
   "dependencies": {
-    "tools/native_oracle.py": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e",
+    "tools/native_oracle.py": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
     "tools/native_slope.py": "737b8294db419d298d362029825a255ae70df9945bef4c8b588369a53eaf13de",
     "tools/projectile_oracle/bridge_render_inputs.py": "4bfc6d80d7cd0d75f3db0123bb646011b6706f9195a8c1137e0f397941bff9e4",
     "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
@@ -160,12 +160,16 @@
   "historical_identity_changes": {
     "hut_cursor_receipt.json": {
       "hut_cursor.meta.json": {
-        "current_sha256": "8d0a85aecbfe47544452aee3c8bb75df134c57cecd7d6c1c01c02602a3afed5f",
+        "current_sha256": "5775f1f9068b9ed3c3c1ed658f76555adbb3497d17c1e745ebab1705209d4ba0",
         "historical_sha256": "19f468c77abd0c585a19609043cbb480d364dfd11e0b68cb020070052d3caa87"
       },
       "hut_cursor.py": {
         "current_sha256": "79b8ddad3a2a14f97248d93f14518c44d09012b1f496d6dd8f485acd77044729",
         "historical_sha256": "52875c3734ad1b7422f1399f8e6baad0f8f14430520bf98c00ae9a62c651d5e9"
+      },
+      "tools/native_oracle.py": {
+        "current_sha256": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "historical_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e"
       },
       "tools/spatial_oracle/anytown_damage/hut_cursor.py": {
         "current_sha256": "79b8ddad3a2a14f97248d93f14518c44d09012b1f496d6dd8f485acd77044729",
@@ -178,12 +182,16 @@
     },
     "hut_receipt.json": {
       "hut.meta.json": {
-        "current_sha256": "45647663e4644f9253f7676562d68c72e73d33b54f2f08dde233813d27ab452f",
+        "current_sha256": "ce250a97664740a935601eff957d8163ebe37e7ff731694f4f22fb487b99ce91",
         "historical_sha256": "0d57ea0a8e9664db005748a6c28fc3d581c16eeae1dca60ddd44d06a42196ae8"
       },
       "hut.py": {
         "current_sha256": "9cc81f6889c2e132fca9ccf1fb98c768da221947bc0d2d213de11c6466b5093b",
         "historical_sha256": "000950121c307d77867148f5dd1f023b7dcc0236022d142117c82fe923f98435"
+      },
+      "tools/native_oracle.py": {
+        "current_sha256": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "historical_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e"
       },
       "tools/spatial_oracle/anytown_damage/hut.py": {
         "current_sha256": "9cc81f6889c2e132fca9ccf1fb98c768da221947bc0d2d213de11c6466b5093b",
@@ -195,6 +203,10 @@
       }
     },
     "mission_receipt.json": {
+      "tools/native_oracle.py": {
+        "current_sha256": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "historical_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e"
+      },
       "tools/projectile_oracle/ordinary_collision.py": {
         "current_sha256": "3dbbd6691f56cf4c8546f58317799169f7d52ea7741ebbfcec52390c97f01cf6",
         "historical_sha256": "5e0a862ae8e0169de9d2a7051a4152f9f757c2721f2d6b7f87a38fb84cbb77a3"
@@ -202,6 +214,12 @@
       "tools/spatial_oracle/anytown_damage/mtnk_attack.py": {
         "current_sha256": "c8c7d363b4b73fbf3593a2838e96f994b95c09da6db2375b17ddf23fdb907bd8",
         "historical_sha256": "a167202ae128a3242ee4ff136aa74c603e9f627da7a5b94ce3b61f2c4fe31113"
+      }
+    },
+    "navigation_receipt.json": {
+      "tools/native_oracle.py": {
+        "current_sha256": "79dac1057d97e706f106a26145f00fa220d92c172b5173876c60fed22c17530c",
+        "historical_sha256": "f3f58e1a15a4fd3be9e3bc2030819f079ab9155bdb08833e228c1c661445e51e"
       }
     }
   },
@@ -223,12 +241,12 @@
     "anytown_resident.py": "a3fd84ea7a7d038014fac37ebda4e72609f06662619506722fd11318b9d7f285",
     "hut.json.gz": "624dface5dfb18ce8f517879c0dd1ced7b5cb24881cdbb2702b31899aa62b06f",
     "hut.md": "114367c3c27e04fb79a2f12dbbbeef4292aef76fcb3264df8b8b18b24c4fa23c",
-    "hut.meta.json": "45647663e4644f9253f7676562d68c72e73d33b54f2f08dde233813d27ab452f",
+    "hut.meta.json": "ce250a97664740a935601eff957d8163ebe37e7ff731694f4f22fb487b99ce91",
     "hut.py": "9cc81f6889c2e132fca9ccf1fb98c768da221947bc0d2d213de11c6466b5093b",
     "hut_callsite_bytes.json": "dd1210b17a429b1fefde113f12ddc74e2d95e23e9c961e5e1998c04fe7cf9bba",
     "hut_cursor.json.gz": "6b98261d5685e82bdd103cbfcd1b000dda37cf534bf172d0620fe96fa31d9aa4",
     "hut_cursor.md": "e438363bdbde6acb489d5f0322fe3e3db783b2fac089cc1d2ca34df35be01325",
-    "hut_cursor.meta.json": "8d0a85aecbfe47544452aee3c8bb75df134c57cecd7d6c1c01c02602a3afed5f",
+    "hut_cursor.meta.json": "5775f1f9068b9ed3c3c1ed658f76555adbb3497d17c1e745ebab1705209d4ba0",
     "hut_cursor.py": "79b8ddad3a2a14f97248d93f14518c44d09012b1f496d6dd8f485acd77044729",
     "hut_cursor_native_bytes.json": "70763ad54713244975a668ecba9c34e5e64d431de54ab4fde9d95adc3ba9429c",
     "hut_cursor_promotion.json": "dbb5b28b7f6e5ab42867305d2823c88460ba2303ad64bc2f654a42c0edfdaac7",

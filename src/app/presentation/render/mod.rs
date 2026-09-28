@@ -65,6 +65,16 @@ impl GameRenderInstanceCounts {
 pub(crate) struct GameRenderOutput {
     pub sidebar_view: Option<SidebarView>,
     pub instance_counts: GameRenderInstanceCounts,
+    pub times: GameRenderTimes,
+}
+
+/// Actual HUD update inputs observed by the frame owner, and the radar draw
+/// input consumed here. The distinct ordinary clock epochs remain unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GameRenderTimes {
+    pub radar_ms: u64,
+    pub tooltip_ms: u64,
+    pub message_ms: Option<u64>,
 }
 
 /// Render one in-game frame: terrain, units, overlays, UI, sidebar.
@@ -74,14 +84,12 @@ pub(crate) struct GameRenderOutput {
 pub(crate) fn render_game(
     state: &mut AppState,
     encoder: &mut wgpu::CommandEncoder,
+    times: GameRenderTimes,
 ) -> Result<GameRenderOutput> {
-    // RadarClass::Draw 653100 uses wall-clock buckets, not simulation ticks.
-    let wall_ms = crate::app::match_runtime::sim_tick::monotonic_frame_pacer_ms(
-        state,
-        std::time::Instant::now(),
-    );
+    // RadarClass::Draw 653100 consumes timeGetTime buckets. The frame owner
+    // supplies wall time normally, or the map diagnostic's recorded OS input.
     if let Some(radar) = state.match_state.match_presentation.radar_anim.as_mut() {
-        radar.tick(&state.renderer.gpu, wall_ms);
+        radar.tick(&state.renderer.gpu, times.radar_ms);
     }
     let (sw, sh) = (state.render_width() as f32, state.render_height() as f32);
 
@@ -236,6 +244,7 @@ pub(crate) fn render_game(
     Ok(GameRenderOutput {
         instance_counts: sidebar.emitted_instance_counts(),
         sidebar_view: sidebar.view,
+        times,
     })
 }
 

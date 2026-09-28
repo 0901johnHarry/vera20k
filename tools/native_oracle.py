@@ -286,12 +286,15 @@ def first_difference(expected, actual, path="$", limit=180) -> str | None:
     return None
 
 
-def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None) -> None:
+def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None,
+                   source_paths: dict[str, Path] | None = None) -> None:
     """Default: check without writing. --write deliberately replaces the reference.
 
     Existing payloads retain their Rust-facing schema. A .meta.json sidecar records
     provenance and the canonical payload hash. Old files without metadata can be
-    compared, but their historical provenance is explicitly unknown.
+    compared, but their historical provenance is explicitly unknown. Optional
+    source_paths captures UTF-8/LF source identity before invoking the lazy
+    generator and rejects drift immediately before comparison or publication.
     """
     parser = argparse.ArgumentParser(description="Compare native outputs with recorded reference data")
     mode = parser.add_mutually_exclusive_group()
@@ -299,8 +302,17 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None) -> 
     mode.add_argument("--write", action="store_true", help="explicitly write outputs and provenance")
     parser.add_argument("--output", type=Path, default=default_path)
     args = parser.parse_args(argv)
+    def source_identity():
+        return {name: hashlib.sha256(path.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
+                for name, path in (source_paths or {}).items()}
+
+    sources = source_identity()
     data = data() if callable(data) else data
     provenance = provenance() if callable(provenance) else provenance
+    if source_paths is not None:
+        if "source_normalized_lf_sha256" in provenance:
+            raise OracleError("Source provenance must be supplied through source_paths")
+        provenance = dict(provenance, source_normalized_lf_sha256=sources)
     # Normalize tuples before comparisons; reject NaN/Infinity in either workflow.
     normalized = json.loads(_canonical(data))
     metadata = dict(provenance, payload_sha256=hashlib.sha256(_canonical(normalized)).hexdigest())
@@ -308,6 +320,8 @@ def finish_vectors(data, default_path: Path, *, provenance: dict, argv=None) -> 
     metadata_text = json.dumps(metadata, indent=2, allow_nan=False) + "\n"
     target = args.output
     sidecar = target.with_suffix(".meta.json")
+    if difference := first_difference(sources, source_identity()):
+        raise OracleError(f"Source changed during native generation: {difference}")
     if args.write:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(payload_text, encoding="utf-8")
