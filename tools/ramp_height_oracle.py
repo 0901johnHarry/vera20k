@@ -10,24 +10,23 @@ world-entry callbacks, occupancy, and rendering are not emulated.
 
 from __future__ import annotations
 
-import argparse
-from collections import Counter, deque
 import hashlib
-import json
 from pathlib import Path
 import struct
 
-from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE, __version__ as unicorn_version
+from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, __version__ as unicorn_version
 from unicorn.x86_const import (
     UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_EBX,
     UC_X86_REG_ESP, UC_X86_REG_EBP, UC_X86_REG_ESI, UC_X86_REG_EDI,
-    UC_X86_REG_EIP, UC_X86_REG_EFLAGS, UC_X86_REG_FPCW,
+    UC_X86_REG_EFLAGS, UC_X86_REG_FPCW,
 )
 
-from tools.rmg_oracle.harness import GAMEMD, NATIVE_FPCW, _load_image
+from tools.native_oracle import (
+    NATIVE_FPCW, NATIVE_SHA256, OracleError, load_image, run_checked,
+    finish_vectors, provenance,
+)
 
 
-NATIVE_SHA256 = "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c"
 MEM = 0x21000000
 CELL_TABLE = MEM
 CELL = MEM + 0x100000
@@ -53,28 +52,22 @@ def signed(value: int) -> int:
 
 class NativeFixture:
     def __init__(self) -> None:
-        actual_hash = hashlib.sha256(GAMEMD.read_bytes()).hexdigest()
-        if actual_hash != NATIVE_SHA256:
-            raise RuntimeError(f"Unsupported gamemd SHA-256: {actual_hash}")
         self.uc = Uc(UC_ARCH_X86, UC_MODE_32)
-        _load_image(self.uc)
+        load_image(self.uc)
         self.uc.mem_map(MEM, 0x200000)
         self.uc.mem_map(RETURN, 0x1000)
         self.region_hashes = {
             name: hashlib.sha256(bytes(self.uc.mem_read(start, end - start))).hexdigest()
             for name, (start, end) in REGIONS.items()
         }
-        self.last_addresses: deque[int] = deque(maxlen=16)
-        self.visits: Counter[int] = Counter()
-        self.uc.hook_add(UC_HOOK_CODE, self.observe)
         self.put32(0x87F924, CELL_TABLE)
         self.put32(0x87F928, 512 * 512)
         self.put32(0x89E7C0, 104)  # initialized Cell ground LevelHeight
         self.put32(0xAC13BC, 416)  # initialized Object SetHeight/GetHeight deck delta
         self.uc.mem_write(0x822D80, struct.pack("<H", NATIVE_FPCW))
-        # Assert that these are the actual Unit/Infantry type +0x6C owners.
-        assert self.get32(0x7F6284) == 0x747EB0
-        assert self.get32(0x7EB67C) == 0x5247D0
+        # These must be the actual Unit/Infantry type +0x6C owners, also under -O.
+        if self.get32(0x7F6284) != 0x747EB0 or self.get32(0x7EB67C) != 0x5247D0:
+            raise OracleError("Unexpected Unit/Infantry placement vtable entries")
 
     def put32(self, address: int, value: int) -> None:
         self.uc.mem_write(address, struct.pack("<I", value & 0xFFFFFFFF))
@@ -82,13 +75,8 @@ class NativeFixture:
     def get32(self, address: int) -> int:
         return struct.unpack("<i", self.uc.mem_read(address, 4))[0]
 
-    def observe(self, _uc: Uc, address: int, _size: int, _data: object) -> None:
-        self.last_addresses.append(address)
-        self.visits[address] += 1
-
-    def call(self, address: int, *args: int, receiver: int = OBJECT) -> int:
-        self.last_addresses.clear()
-        self.visits.clear()
+    def call(self, address: int, *args: int, receiver: int = OBJECT,
+             required_addresses=()) -> int:
         self.uc.mem_write(STACK - 0x1000, bytes(0x1000))
         for index, value in enumerate([RETURN, *args]):
             self.put32(STACK + index * 4, value)
@@ -99,13 +87,8 @@ class NativeFixture:
         self.uc.reg_write(UC_X86_REG_ECX, receiver)
         self.uc.reg_write(UC_X86_REG_EFLAGS, 2)
         self.uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
-        try:
-            self.uc.emu_start(address, RETURN, count=100000)
-        except Exception as error:
-            trail = ", ".join(f"0x{value:08X}" for value in self.last_addresses)
-            raise RuntimeError(f"Native 0x{address:08X} failed; final instructions: {trail}") from error
-        if self.uc.reg_read(UC_X86_REG_EIP) != RETURN:
-            raise RuntimeError(f"Native 0x{address:08X} did not return")
+        run_checked(self.uc, address, RETURN, count=100000,
+                    required_addresses=required_addresses)
         return signed(self.uc.reg_read(UC_X86_REG_EAX))
 
     def execute(self, case: dict) -> dict:
@@ -124,9 +107,8 @@ class NativeFixture:
         self.uc.mem_write(OBJECT + 0x9C, struct.pack("<iii", *case["coord"]))
         self.uc.mem_write(INPUT, struct.pack("<iii", *case["coord"]))
         ground = self.call(0x578080, INPUT, receiver=0x87F7E8)
-        self.call(0x5F5FA0, case["requested_height"])
-        if not self.visits[0x578080] or not self.visits[0x47B3A0]:
-            raise RuntimeError("Setter bypassed the original ground lookup/evaluator")
+        self.call(0x5F5FA0, case["requested_height"],
+                  required_addresses=(0x578080, 0x47B3A0))
         raw_z = self.get32(OBJECT + 0xA4)
         above_surface = self.call(0x5F5F40)
         adjusted = {}
@@ -186,20 +168,22 @@ def result() -> dict:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
-    path = Path(__file__).with_name("ramp_height_vectors.json")
-    actual = result()
-    if args.check:
-        expected = json.loads(path.read_text(encoding="utf-8"))
-        if expected != actual:
-            raise SystemExit("FAIL: ramp-height native vectors differ")
-        print(f"PASS: {len(actual['cases'])} native ramp-height fixtures reproduce")
-    else:
-        path.write_text(json.dumps(actual, indent=2) + "\n", encoding="utf-8")
-        print(f"Wrote {len(actual['cases'])} native ramp-height fixtures to {path}")
+def metadata() -> dict:
+    return provenance(
+        scope='Unmarked ground-height setter/getter and type placement leaves; not whole locomotor or rendering parity.',
+        assumptions=[
+            'Supplied initialized map cells and fixed 512-wide cell slots; shared dummy state follows original calls.',
+            'Ground LevelHeight=104 and bridge deck delta=416 leptons are supplied startup constants.',
+            'Live and cached x87 control words=0x0E7F; IsMarked=false suppresses world-entry/occupation callbacks.',
+        ],
+        substitutions=[],
+        entry_points={name: bounds[0] for name, bounds in REGIONS.items()},
+    )
+
+
+def main(argv=None) -> None:
+    finish_vectors(result, Path(__file__).with_name('ramp_height_vectors.json'),
+                   provenance=metadata, argv=argv)
 
 
 if __name__ == "__main__":
