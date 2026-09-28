@@ -66,7 +66,7 @@ class MapObservationTests(unittest.TestCase):
         identity = lambda path: {'path': str(path), 'byte_length': path.stat().st_size,
                                  'sha256': sha256_bytes(path.read_bytes())}
         manifest = {
-            'schema_version': 'vera20k.map-observation.v2', 'status': 'COMPLETE',
+            'schema_version': observation.CHILD_SCHEMA, 'status': 'COMPLETE',
             'profile': {'sha256': sha256_bytes(self.profile_path.read_bytes()),
                         'request': deepcopy(self.profile)},
             'contract': {'sha256': sha256_bytes(self.contract.read_bytes())},
@@ -83,7 +83,9 @@ class MapObservationTests(unittest.TestCase):
                           'focus_violations': 0, 'input_violations': 0},
             'render': {'ready': True, 'sidebar_view_present': True,
                        'surface_extent': [2, 2], 'internal_extent': [2, 2],
-                       'unit_atlas': deepcopy(self.unit_atlas)},
+                       'unit_atlas': deepcopy(self.unit_atlas),
+                       'presentation_clock': self.clock(ticks),
+                       'neutral_input': {'static_default_cursor': True, 'camera_input_idle': True}},
             'frame': {'file_name': 'frame.bgra', 'width': 2, 'height': 2, 'row_stride': 8,
                       'byte_length': 16, 'sha256': sha256_bytes(frame),
                       'pixel_layout': 'BGRA8', 'surface_format': 'Bgra8UnormSrgb'},
@@ -104,6 +106,11 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'VALID', report['errors'])
         self.assertEqual(report['capture']['exact_step_count'], 3)
         self.assertEqual(report['capture']['unit_atlas'], self.unit_atlas)
+        self.assertEqual(report['capture']['presentation_clock']['draws'], [
+            {'completed_steps': 1, 'radar_ms': 22, 'tooltip_ms': 22, 'message_ms': 22},
+            {'completed_steps': 2, 'radar_ms': 44, 'tooltip_ms': 44, 'message_ms': 44},
+            {'completed_steps': 3, 'radar_ms': 66, 'tooltip_ms': 66, 'message_ms': 66},
+        ])
         self.assertEqual((self.output / 'stdout.log').read_bytes(), b'child output\n')
         self.assertEqual((self.output / 'profile.json').read_bytes(), self.profile_path.read_bytes())
         self.assertEqual(json.loads((self.output / 'run.json').read_text()), report)
@@ -119,7 +126,7 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'VALID', report['errors'])
         self.assertEqual(report['capture']['unit_atlas'], self.unit_atlas)
 
-    def test_atlas_statistics_are_required_by_v2(self):
+    def test_atlas_statistics_remain_required(self):
         changes = [lambda m: m['render'].pop('unit_atlas'),
                    lambda m: m.update(schema_version='vera20k.map-observation.v1')]
         for value in (None, [], 1, 'statistics'):
@@ -177,7 +184,79 @@ class MapObservationTests(unittest.TestCase):
     def test_zero_steps_requires_unchanged_initial_state(self):
         self.profile['ticks'] = 0
         self.profile_path.write_text(json.dumps(self.profile))
-        self.assertEqual(self.run_capture()['status'], 'VALID')
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID')
+        self.assertEqual(report['capture']['presentation_clock']['draws'], [
+            {'completed_steps': 0, 'radar_ms': 0, 'tooltip_ms': 0, 'message_ms': 0}])
+
+    def test_clock_bounds_include_one_and_maximum_step_budgets(self):
+        for ticks in (1, 100_000):
+            with self.subTest(ticks=ticks):
+                clock = self.clock(ticks)
+                self.assertEqual(observation._presentation_clock(clock, ticks), clock)
+        self.assertEqual(self.clock(100_000)['draws'][-1]['radar_ms'], 2_200_000)
+        for ticks in (-1, 100_001):
+            with self.subTest(ticks=ticks), self.assertRaises(ValidationError):
+                observation._presentation_clock(self.clock(1), ticks)
+
+    def test_clock_schema_and_every_consumed_time_are_strict(self):
+        changes = [lambda c: c.update(extra='unrecognized'),
+                   lambda c: c.update(policy='wall-clock'),
+                   lambda c: c.update(draws=c['draws'][1:]),
+                   lambda c: c.update(draws=c['draws'] + [c['draws'][-1]]),
+                   lambda c: c.update(draws=list(reversed(c['draws']))),
+                   lambda c: c['draws'].__setitem__(1, deepcopy(c['draws'][0])),
+                   lambda c: c['draws'][0].update(completed_steps=0),
+                   lambda c: c['draws'][1].update(extra=True)]
+        for key in ('policy', 'origin_ms', 'interval_ms', 'draws'):
+            changes.append(lambda c, k=key: c.pop(k))
+        for key in ('completed_steps', 'radar_ms', 'tooltip_ms', 'message_ms'):
+            changes.append(lambda c, k=key: c['draws'][1].pop(k))
+            for value in (None, True, False, 44.0, '44', -1, 0, 66, 1 << 64):
+                changes.append(lambda c, k=key, v=value: c['draws'][1].update({k: v}))
+        for key, values in (('policy', (None, 1, True)),
+                            ('origin_ms', (None, True, False, 0.0, -1, 22)),
+                            ('interval_ms', (None, True, 22.0, 0, 16, -1)),
+                            ('draws', (None, {}, 'draws', [], [None, None, None],
+                                       [{}, {}, {}], [1, 2, 3]))):
+            for value in values:
+                changes.append(lambda c, k=key, v=value: c.update({k: v}))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'clock-{index}'
+                self.change = lambda m, f=change: f(m['render']['presentation_clock'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertTrue(any('presentation_clock' in error for error in report['errors']))
+        for index, value in enumerate((None, [], 'clock', 1)):
+            self.output = self.root / f'clock-object-{index}'
+            self.change = lambda m, v=value: m['render'].update(presentation_clock=v)
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+        self.output = self.root / 'clock-missing'
+        self.change = lambda m: m['render'].pop('presentation_clock')
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_neutral_input_evidence_is_required_and_strict(self):
+        changes = [lambda r: r.pop('neutral_input'),
+                   lambda r: r.update(neutral_input=None),
+                   lambda r: r['neutral_input'].update(extra=True)]
+        for key in ('static_default_cursor', 'camera_input_idle'):
+            changes.append(lambda r, k=key: r['neutral_input'].pop(k))
+            for value in (False, 1, 1.0, None, 'true'):
+                changes.append(lambda r, k=key, v=value: r['neutral_input'].update({k: v}))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'neutral-{index}'
+                self.change = lambda m, f=change: f(m['render'])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_live_capture_never_accepts_legacy_clock(self):
+        self.change = lambda m: (m.update(schema_version=observation.LEGACY_CHILD_SCHEMA),
+                                 m['render'].pop('presentation_clock'),
+                                 m['render'].pop('neutral_input'))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('schema_version', report['errors'][0])
 
     def test_loose_map_receipt_is_supported(self):
         self.change = lambda m: m['map_source'].update(kind='loose', path='/retail/Fight.MAP')
@@ -282,7 +361,30 @@ class MapObservationTests(unittest.TestCase):
         change(document)
         path.write_text(json.dumps(document))
 
+    @staticmethod
+    def clock(ticks):
+        return {'policy': 'map-exact-step-presentation-v1', 'origin_ms': 0, 'interval_ms': 22,
+                'draws': [{'completed_steps': step, 'radar_ms': step * 22,
+                           'tooltip_ms': step * 22, 'message_ms': step * 22}
+                          for step in (range(1, ticks + 1) if ticks else [0])]}
+
+    def make_legacy_clock(self, run):
+        manifest = run / 'child-output/capture.json'
+        def convert_child(document):
+            document['schema_version'] = observation.LEGACY_CHILD_SCHEMA
+            document['render'].pop('presentation_clock')
+            document['render'].pop('neutral_input')
+        self.edit_json(manifest, convert_child)
+        def convert_wrapper(document):
+            document['schema_version'] = observation.LEGACY_CLOCK_RUN_SCHEMA
+            document['capture'].pop('presentation_clock')
+            document['capture'].pop('neutral_input')
+            document['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                    sha256=sha256_bytes(manifest.read_bytes()))
+        self.edit_json(run / 'run.json', convert_wrapper)
+
     def make_legacy(self, run):
+        self.make_legacy_clock(run)
         self.edit_json(run / 'run.json',
                        lambda report: report.update(schema_version=observation.LEGACY_RUN_SCHEMA))
         (run / 'config.toml').unlink()
@@ -336,6 +438,74 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('input_violations', report['errors'][0])
 
+    def test_clock_semantics_survive_consistent_child_and_wrapper_rehash(self):
+        run = self.valid_capture('clock-rehash')
+        manifest = run / 'child-output/capture.json'
+        self.edit_json(manifest, lambda m: m['render']['presentation_clock']['draws'][1].update(
+            message_ms=43))
+        def rehash(report):
+            report['capture']['manifest'].update(byte_length=manifest.stat().st_size,
+                                                 sha256=sha256_bytes(manifest.read_bytes()))
+            report['capture']['presentation_clock']['draws'][1]['message_ms'] = 43
+        self.edit_json(run / 'run.json', rehash)
+        report = observation.validate_run(run)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('draws[1].message_ms', report['errors'][0])
+
+    def test_legacy_clock_permission_is_separate_and_projection_stays_historical(self):
+        run = self.valid_capture('wall-clock')
+        self.make_legacy_clock(run)
+        original = (run / 'run.json').read_bytes()
+        for options in ({}, {'allow_legacy_inputs': True}):
+            report = observation.validate_run(run, **options)
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertIn('--allow-legacy-clock', report['errors'][0])
+        report = observation.validate_run(run, allow_legacy_clock=True)
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['presentation_clock'], {'policy': 'legacy-wall-clock'})
+        self.assertNotIn('presentation_clock', report['capture'])
+        self.assertNotIn('neutral_input', report['capture'])
+        self.assertEqual((run / 'run.json').read_bytes(), original)
+
+    def test_legacy_clock_cannot_smuggle_diagnostic_guarantees(self):
+        for key, value in (('presentation_clock', self.clock(3)),
+                           ('neutral_input', {'static_default_cursor': True, 'camera_input_idle': True})):
+            run = self.valid_capture(f'legacy-smuggle-{key}')
+            self.make_legacy_clock(run)
+            self.edit_json(run / 'child-output/capture.json',
+                           lambda m, k=key, v=value: m['render'].update({k: v}))
+            report = observation.validate_run(run, allow_legacy_clock=True)
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertIn('legacy child v2', report['errors'][0])
+
+    def test_wrapper_and_child_clock_versions_must_correspond(self):
+        for index, (wrapper, child) in enumerate((
+                (observation.LEGACY_CLOCK_RUN_SCHEMA, observation.CHILD_SCHEMA),
+                (observation.RUN_SCHEMA, observation.LEGACY_CHILD_SCHEMA),
+                (observation.LEGACY_RUN_SCHEMA, observation.CHILD_SCHEMA))):
+            run = self.valid_capture(f'wrong-generation-{index}')
+            if wrapper == observation.LEGACY_RUN_SCHEMA:
+                self.make_legacy(run)
+            self.edit_json(run / 'run.json', lambda r, v=wrapper: r.update(schema_version=v))
+            self.edit_json(run / 'child-output/capture.json',
+                           lambda m, v=child: m.update(schema_version=v))
+            report = observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertIn('schema_version', report['errors'][0])
+
+    def test_mixed_clock_policies_are_invalid_even_with_equal_frame_bytes(self):
+        before = self.valid_capture('clock-before')
+        after = self.valid_capture('clock-after')
+        self.make_legacy_clock(before)
+        self.assertEqual((before / 'child-output/frame.bgra').read_bytes(),
+                         (after / 'child-output/frame.bgra').read_bytes())
+        report = observation.compare_runs(before, after, allow_legacy_clock=True)
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('presentation_clock', report['errors'][0])
+        self.make_legacy_clock(after)
+        report = observation.compare_runs(before, after, allow_legacy_clock=True)
+        self.assertEqual(report['status'], 'MATCH', report['errors'])
+
     def test_offline_validator_rejects_receipt_inconsistency_and_bad_types(self):
         changes = [lambda r: r.update(status='INVALID'),
                    lambda r: r.update(errors=['capture failed']),
@@ -375,15 +545,21 @@ class MapObservationTests(unittest.TestCase):
         rejected = observation.validate_run(run)
         self.assertEqual(rejected['status'], 'INVALID')
         self.assertIn('--allow-legacy-inputs', rejected['errors'][0])
-        report = observation.validate_run(run, allow_legacy_inputs=True)
+        rejected = observation.validate_run(run, allow_legacy_inputs=True)
+        self.assertEqual(rejected['status'], 'INVALID')
+        self.assertIn('--allow-legacy-clock', rejected['errors'][0])
+        rejected = observation.validate_run(run, allow_legacy_clock=True)
+        self.assertEqual(rejected['status'], 'INVALID')
+        self.assertIn('--allow-legacy-inputs', rejected['errors'][0])
+        report = observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)
         self.assertEqual(report['status'], 'VALID', report['errors'])
         self.assertEqual(report['input_provenance']['config'], 'EXTERNALLY_REVALIDATED_UNSEALED')
         self.assertEqual(report['input_provenance']['contract'], 'EXTERNALLY_REVALIDATED_UNSEALED')
         self.assertEqual(report['input_provenance']['profile'], 'SEALED_COPY')
         self.config.write_text('changed after original capture')
-        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True)['status'], 'INVALID')
+        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)['status'], 'INVALID')
         self.config.unlink()
-        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True)['status'], 'INVALID')
+        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)['status'], 'INVALID')
 
     def test_legacy_contract_cannot_be_replaced_or_silently_resealed(self):
         original_contract = self.root / 'legacy-contract.json'
@@ -392,11 +568,11 @@ class MapObservationTests(unittest.TestCase):
         run = self.valid_capture('legacy-contract')
         self.make_legacy(run)
         self.contract.write_bytes(self.contract.read_bytes() + b'\n')
-        report = observation.validate_run(run, allow_legacy_inputs=True)
+        report = observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('contract', report['errors'][0])
         self.contract.unlink()
-        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True)['status'], 'INVALID')
+        self.assertEqual(observation.validate_run(run, allow_legacy_inputs=True, allow_legacy_clock=True)['status'], 'INVALID')
 
     def test_offline_contract_semantics_survive_consistent_rehashing(self):
         run = self.valid_capture('contract-guards')
@@ -485,8 +661,8 @@ class MapObservationTests(unittest.TestCase):
         after = self.valid_capture('race-after')
         load = observation._load_run
 
-        def load_and_change(directory, allow_legacy):
-            result = load(directory, allow_legacy)
+        def load_and_change(directory, allow_legacy, allow_clock):
+            result = load(directory, allow_legacy, allow_clock)
             if directory == after:
                 (before / 'config.toml').write_bytes(b'changed during comparison')
             return result
@@ -518,12 +694,13 @@ class MapObservationTests(unittest.TestCase):
         before = self.valid_capture('legacy-before')
         after = self.valid_capture('legacy-after')
         self.make_legacy(before)
+        self.make_legacy_clock(after)
         self.assertEqual(observation.compare_runs(before, after)['status'], 'INVALID')
-        report = observation.compare_runs(before, after, allow_legacy_inputs=True)
+        report = observation.compare_runs(before, after, allow_legacy_inputs=True, allow_legacy_clock=True)
         self.assertEqual(report['status'], 'MATCH', report['errors'])
         self.edit_json(before / 'child-output/capture.json',
                        lambda m: m.update(schema_version='vera20k.map-observation.v1'))
-        report = observation.compare_runs(before, after, allow_legacy_inputs=True)
+        report = observation.compare_runs(before, after, allow_legacy_inputs=True, allow_legacy_clock=True)
         self.assertEqual(report['status'], 'INVALID')
         self.assertIn('schema_version', report['errors'][0])
 
@@ -575,6 +752,23 @@ class MapObservationTests(unittest.TestCase):
             self.assertEqual(observation.main(['validate', '--run', str(before), '--output',
                                                str(before / 'forbidden-report.json')]), 2)
             self.assertFalse((before / 'forbidden-report.json').exists())
+
+    def test_cli_legacy_clock_flag_is_offline_and_explicit(self):
+        run = self.valid_capture('cli-legacy-clock')
+        self.make_legacy_clock(run)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(observation.main(['validate', '--run', str(run), '--output',
+                                               str(self.root / 'clock-denied.json')]), 2)
+            self.assertEqual(observation.main(['validate', '--run', str(run),
+                                               '--allow-legacy-clock', '--output',
+                                               str(self.root / 'clock-allowed.json')]), 0)
+            with self.assertRaises(SystemExit) as error:
+                observation.main(['--allow-legacy-clock', '--profile', str(self.profile_path),
+                                  '--contract', str(self.contract), '--output', str(self.root / 'unused')])
+            self.assertEqual(error.exception.code, 2)
+        report = json.loads((self.root / 'clock-allowed.json').read_text())
+        self.assertEqual(report['presentation_clock']['policy'], 'legacy-wall-clock')
+        self.assertEqual(report['parity_certification'], 'NONE')
 
 
 if __name__ == '__main__':

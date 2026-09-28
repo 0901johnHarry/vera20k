@@ -247,6 +247,25 @@ pub(crate) fn edge_scroll_intent(
         .then(|| scroll_dir_from_octant(edge_scroll_octant(x, y, view_w, view_h)))
 }
 
+/// No wall-clock-driven camera input is active in an accepted map capture.
+/// Keep this observation beside the private coast/pan state it checks.
+pub(crate) fn camera_input_idle(state: &AppState) -> bool {
+    let input = &state.match_state.input;
+    input.keys_held.is_empty()
+        && !input.minimap_dragging
+        && !input.tactical_mouse.captured
+        && !input.tactical_mouse.left_held
+        && !input.tactical_mouse.right_held
+        && !input.tactical_mouse.right_pan_engaged
+        && input.edge_scroll.coasting_direction().is_none()
+        && edge_scroll_intent(
+            (input.cursor_x, input.cursor_y),
+            state.render_width() as i32,
+            state.render_height() as i32,
+        )
+        .is_none()
+}
+
 /// One edge-scroll step. Returns the camera delta in **window pixels**.
 ///
 /// `view_w`/`view_h` are the full window, sidebar included: gamemd's at-edge

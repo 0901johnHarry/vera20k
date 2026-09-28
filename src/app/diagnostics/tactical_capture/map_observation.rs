@@ -4,6 +4,8 @@
 use super::super::integrity::{SealedJsonFile, parse_strict_json, read_stable_regular_bytes};
 use super::super::manifest::{PublishFault, publish_transaction};
 use super::*;
+use crate::app::diagnostics::state::{MAP_PRESENTATION_CLOCK_POLICY, MAP_PRESENTATION_INTERVAL_MS};
+use crate::app::presentation::render::GameRenderTimes;
 use crate::skirmish_launch::{LaunchStartPosition, PreFillHouseRoster, SkirmishLaunchSession};
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +97,58 @@ pub(super) struct MapObservation {
     pub(super) initial: Option<Value>,
     inputs: Option<Value>,
     loaded_session: Option<Value>,
+    draws: Vec<MapDrawTime>,
+}
+
+#[derive(Debug, Serialize)]
+struct MapDrawTime {
+    completed_steps: u64,
+    radar_ms: u64,
+    tooltip_ms: u64,
+    message_ms: u64,
+}
+
+impl MapObservation {
+    fn observe_draw(
+        &mut self,
+        requested: u32,
+        completed_steps: u64,
+        times: GameRenderTimes,
+    ) -> Result<()> {
+        ensure!(self.initial.is_some(), "map draw precedes accepted L0");
+        ensure!(
+            self.draws.len() < requested.max(1) as usize,
+            "extra map draw"
+        );
+        let expected_step = if requested == 0 {
+            0
+        } else {
+            self.draws.len() as u64 + 1
+        };
+        ensure!(
+            completed_steps == expected_step,
+            "map draw skipped or repeated a committed step"
+        );
+        let expected_ms = expected_step
+            .checked_mul(MAP_PRESENTATION_INTERVAL_MS)
+            .context("map presentation time overflow")?;
+        let message_ms = times
+            .message_ms
+            .context("map draw omitted message expiry update")?;
+        ensure!(
+            times.radar_ms == expected_ms
+                && times.tooltip_ms == expected_ms
+                && message_ms == expected_ms,
+            "map draw consumed inconsistent presentation clocks"
+        );
+        self.draws.push(MapDrawTime {
+            completed_steps,
+            radar_ms: times.radar_ms,
+            tooltip_ms: times.tooltip_ms,
+            message_ms,
+        });
+        Ok(())
+    }
 }
 
 impl TacticalCaptureSession {
@@ -154,6 +208,7 @@ impl TacticalCaptureSession {
             "executable": artifact(&std::env::current_exe()?, "capture executable")?,
         });
         self.map_state_mut()?.inputs = Some(inputs);
+        state.diag.use_map_presentation_clock()?;
         state.match_state.input.cursor_x = 0.0;
         state.match_state.input.cursor_y = 0.0;
         let now_ms =
@@ -278,6 +333,10 @@ impl TacticalCaptureSession {
             self.exact_step_receipts.len() <= requested,
             "map observation exceeded tick budget"
         );
+        ensure!(
+            self.map_state()?.draws.len() == self.exact_step_receipts.len(),
+            "previous map step has no completed draw"
+        );
         if self.exact_step_receipts.len() < requested {
             self.advance_exact_step(state)?;
         }
@@ -286,6 +345,36 @@ impl TacticalCaptureSession {
             self.failure_stage = "final-render".to_owned();
         }
         Ok(())
+    }
+
+    pub(super) fn observe_map_draw(
+        &mut self,
+        state: &AppState,
+        output: &GameRenderOutput,
+    ) -> Result<()> {
+        let requested = self
+            .request
+            .map_profile()
+            .context("map profile missing")?
+            .value
+            .ticks;
+        let sim = &state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .context("map simulation absent")?
+            .simulation;
+        ensure!(
+            sim.session.tick == self.exact_step_receipts.len() as u64
+                && u64::from(sim.session.binary_frame) == sim.session.tick,
+            "map draw differs from committed exact-step receipts"
+        );
+        ensure!(
+            state.diagnostic_presentation_ms() == Some(output.times.radar_ms),
+            "map diagnostic presentation policy is not active"
+        );
+        self.map_state_mut()?
+            .observe_draw(requested, sim.session.tick, output.times)
     }
 
     pub(super) fn map_fingerprint(&self, state: &AppState) -> Result<Value> {
@@ -322,8 +411,18 @@ impl TacticalCaptureSession {
             && !state.main_menu_dialog_open()
             && !state.diag.debug_show_pathgrid
             && !state.diag.debug_unit_inspector
+            && !state.diag.debug_show_cell_grid
+            && !state.diag.debug_show_heightmap
+            && !state.match_state.match_presentation.show_hotkey_help
             && self.focus_violations == 0
             && self.input_violations == 0;
+        let static_default_cursor =
+            crate::app::presentation::ui_overlays::static_default_cursor(state);
+        let camera_input_idle = crate::app::input::camera::camera_input_idle(state);
+        ensure!(
+            ready && static_default_cursor && camera_input_idle,
+            "map observation requires every draw ready with a static cursor and idle camera input"
+        );
         Ok((
             ready,
             json!({"ready": ready, "sidebar_view_present": output.sidebar_view.is_some(),
@@ -333,6 +432,7 @@ impl TacticalCaptureSession {
                 "ui_scale": state.match_state.match_presentation.ui_scale,
                 "gpu": super::super::evidence::GpuAdapterEvidence::from_observation(state.renderer.gpu.capture_adapter_observation()),
                 "unit_atlas": unit_atlas,
+                "neutral_input": {"static_default_cursor": static_default_cursor, "camera_input_idle": camera_input_idle},
             }),
         ))
     }
@@ -354,8 +454,21 @@ impl TacticalCaptureSession {
             format!("{format:?}"),
             pixels,
         )?;
+        let map = self.map_state()?;
+        ensure!(
+            map.draws.len() == profile.value.ticks.max(1) as usize,
+            "incomplete map draw schedule"
+        );
+        let mut render = self
+            .last_render_evidence
+            .clone()
+            .context("map render evidence absent")?;
+        // Serialize the actual transcript only once, avoiding quadratic work
+        // across the up-to-100000-step capture route.
+        render["presentation_clock"] = json!({"policy": MAP_PRESENTATION_CLOCK_POLICY,
+            "origin_ms": 0, "interval_ms": MAP_PRESENTATION_INTERVAL_MS, "draws": map.draws});
         let manifest = json!({
-            "schema_version": "vera20k.map-observation.v2", "status": "COMPLETE",
+            "schema_version": "vera20k.map-observation.v3", "status": "COMPLETE",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "inputs": self.map_state()?.inputs, "map_source": self.map_source_evidence,
@@ -363,13 +476,13 @@ impl TacticalCaptureSession {
             "loaded_session": self.map_state()?.loaded_session,
             "final": self.map_fingerprint(state)?, "exact_step_count": self.exact_step_receipts.len(),
             "first_exact_step": self.exact_step_receipts.first(), "last_exact_step": self.exact_step_receipts.last(),
-            "frame": frame, "render": self.last_render_evidence,
+            "frame": frame, "render": render,
             "lifecycle": {"window_hidden": state.platform.window.is_visible() == Some(false),
                 "window_focused": state.platform.window.has_focus(), "focus_violations": self.focus_violations,
                 "input_violations": self.input_violations},
             "native_comparator": "NONE", "parity_certification": "NONE",
             "evidence_limitations": ["Production loading, exact stepping and GPU readback only; no native pixel or gameplay equivalence is established.",
-                "Simulation determinism is compared separately from wall-clock presentation and audio."],
+                "Radar and timed HUD presentation consume the recorded diagnostic exact-step clock; ordinary gameplay clocks are unchanged. Audio, menus, animated input and scenario exit are outside this comparison."],
         });
         publish_transaction(
             self.request.output_dir(),
@@ -381,7 +494,7 @@ impl TacticalCaptureSession {
 
     pub(super) fn publish_map_failure(&self, error: &str) -> Result<()> {
         let profile = self.request.map_profile().context("map profile missing")?;
-        let manifest = json!({"schema_version": "vera20k.map-observation.v2", "status": "FAILED",
+        let manifest = json!({"schema_version": "vera20k.map-observation.v3", "status": "FAILED",
             "profile": {"sha256": profile.sha256, "request": profile.value},
             "contract": {"sha256": self.request.sealed_contract().sha256},
             "failure": {"stage": self.failure_stage, "message": error}, "frame": null,
@@ -399,6 +512,75 @@ impl TacticalCaptureSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn initialized_map() -> MapObservation {
+        MapObservation {
+            initial: Some(json!({"tick": 0})),
+            ..Default::default()
+        }
+    }
+
+    fn times(ms: u64) -> GameRenderTimes {
+        GameRenderTimes {
+            radar_ms: ms,
+            tooltip_ms: ms,
+            message_ms: Some(ms),
+        }
+    }
+
+    #[test]
+    fn capture_retains_only_actual_draws_in_committed_order() {
+        let mut zero = initialized_map();
+        zero.observe_draw(0, 0, times(0)).unwrap();
+        assert!(zero.observe_draw(0, 0, times(0)).is_err());
+        let mut map = initialized_map();
+        assert!(map.observe_draw(3, 0, times(0)).is_err());
+        map.observe_draw(3, 1, times(22)).unwrap();
+        assert!(map.observe_draw(3, 1, times(22)).is_err());
+        assert!(map.observe_draw(3, 3, times(66)).is_err());
+        map.observe_draw(3, 2, times(44)).unwrap();
+        map.observe_draw(3, 3, times(66)).unwrap();
+        let evidence = serde_json::to_value(&map.draws).unwrap();
+        assert_eq!(evidence[0]["completed_steps"], 1);
+        assert_eq!(evidence[2]["radar_ms"], 66);
+        assert_eq!(map.draws.len(), 3);
+        assert!(map.observe_draw(3, 4, times(88)).is_err());
+    }
+
+    #[test]
+    fn capture_rejects_missing_hud_update_or_any_wall_clock_sample() {
+        assert!(
+            MapObservation::default()
+                .observe_draw(1, 1, times(22))
+                .is_err()
+        );
+        let mut map = initialized_map();
+        for sample in [
+            GameRenderTimes {
+                radar_ms: 9_876,
+                ..times(22)
+            },
+            GameRenderTimes {
+                tooltip_ms: 9_876,
+                ..times(22)
+            },
+            GameRenderTimes {
+                message_ms: Some(0),
+                ..times(22)
+            },
+            GameRenderTimes {
+                message_ms: None,
+                ..times(22)
+            },
+        ] {
+            assert!(map.observe_draw(1, 1, sample).is_err());
+            assert!(
+                map.draws.is_empty(),
+                "rejected observation must not advance schedule"
+            );
+        }
+        map.observe_draw(1, 1, times(22)).unwrap();
+    }
 
     fn example() -> MapCaptureProfile {
         serde_json::from_str(include_str!(

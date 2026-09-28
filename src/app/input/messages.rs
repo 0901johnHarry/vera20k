@@ -154,18 +154,23 @@ fn type_select_message_rgb(
 /// While paused the clock accumulates the span and `manage` is skipped — both
 /// halves are required: skipping alone would let wall-time deadlines expire
 /// the instant the game unpauses.
-pub(crate) fn update(state: &mut AppState) {
+pub(crate) fn update(state: &mut AppState) -> Option<u64> {
     if state.frontend.screen != GameScreen::InGame {
-        return;
+        return None;
     }
     let wall = crate::app::input::tooltips::now_ms(state);
     state.match_state.match_presentation.message_clock.set_paused(state.match_state.paused(), wall);
     if state.match_state.paused() {
-        return;
+        return None;
     }
     sync_view(state);
     let now = message_now_ms(state);
-    state.match_state.match_presentation.message_list.manage(now);
+    state
+        .match_state
+        .match_presentation
+        .message_list
+        .manage(now);
+    Some(now)
 }
 
 fn sync_view(state: &mut AppState) {
