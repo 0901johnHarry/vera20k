@@ -1970,10 +1970,10 @@
     "No new whole native ART read-sweep or joined terrain-Anim lifecycle corpus. Existing eleven corpora retain their own seams.",
     "Headless JSONL compares its declared limited fields, not a full state or rules hash. Capture compares initial/final full simulation fingerprints and exact full BGRA.",
     "Synthetic snapshot case uses Seed(0), no Scenario draws and the normal process-state retention; arbitrary snapshot equivalence not claimed.",
-    "Normal cargo test leaves 214 ignored tests; six relevant ignored tests were explicitly executed separately.",
-    "Full lib/clippy preceded a test-only generated retail trig initialization fix; that fixture and generated lifecycle were rerun after the fix.",
+    "Initial normal library suite leaves214 ignored tests, integrated suite leaves215. Six relevant ignored tests were explicitly executed on the ART candidate before the main integration; latest-main release map loads were separately compared.",
+    "Initial full lib/clippy preceded the test-only generated retail trig initialization fix; focused fixtures reran afterward. Latest integrated full lib/clippy includes all source fixes.",
     "Native-processing constructor trace constants have static/unreproduced provenance; issue745. Silent Next sound transition remains issue797.",
-    "Full suite/clippy/all-target check and captures precede critic cleanup of unused function parameters; affected building/miner tests and release rebuilt afterward. Latest-main integration will receive new paired validation."
+    "Full suite/clippy/all-target check and captures precede critic cleanup of unused function parameters; affected building/miner tests and release rebuilt afterward. Latest integrated full lib/clippy/release and fresh paired captures/headless comparisons include all fixes; see latest_integrated_validation."
   ],
   "recovered_failures": [
     {
@@ -2007,6 +2007,14 @@
         "sha256": "424c1c6ce17678893716e9cabcba173336c527d3e75d821cf2c2aedac893cf3d"
       },
       "reason": "Ignored generated fixture searched for native tables in temporary SED directory; fixed by initializing from actual retail root."
+    },
+    {
+      "log": {
+        "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-critic-fix.log",
+        "bytes": 18313,
+        "sha256": "e8c17dbf04812d77efb90711874f82e91fb1626e4257979cba66eb9243374d77"
+      },
+      "reason": "Compile caught the miner fixture caller of the removed unused frame flag; caller migrated, then7building/112miner checks passed. Integrated full suite also passed."
     }
   ],
   "artifacts_note": "Local logs and capture bundles are retained at recorded paths and hashed here; commands use the indexed existing owners. Receipt is not a new native golden.",
@@ -2019,5 +2027,1297 @@
     "blocking_findings": 0,
     "cleanup": "Unused ART parameter and adjacent unused finalize frame flag removed; affected test callers migrated. No function body decisions changed. Seven building_anim and112miner tests pass after cleanup. No second critic pass.",
     "independent_checks": "Eleven native --checks,112evidencehashes,3mapcomparisons,2headlesspairs all pass."
+  },
+  "latest_integrated_validation": {
+    "base_commit": "8e4437b2040b6050abe2fce11352a9380acec25c",
+    "candidate_commit": "45958561ac18bfb6e99c9baeb73622374b77d93e",
+    "reason": "Incoming AI base-defense PR796 changes simulation hashing; new paired baseline isolates ART preservation on current main. Clean automatic merge, no second critic.",
+    "rust": [
+      {
+        "command": "CARGO_BUILD_JOBS=2 VERA20K_REQUIRE_RETAIL_INI=1 VERA20K_REQUIRE_RETAIL_ASSETS=1 python -m tools.cargo_run -- test -p vera20k --lib",
+        "exit_code": 0,
+        "result": [
+          "warning: `vera20k` (lib test) generated 113 warnings (run `cargo fix --lib -p vera20k --tests` to apply 60 suggestions)",
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 18s",
+          "test result: ok. 9612 passed; 0 failed; 215 ignored; 0 measured; 0 filtered out; finished in 59.15s"
+        ],
+        "log": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-full-lib.log",
+          "bytes": 993514,
+          "sha256": "bfd7f3a22ee57fb4a8cffc19b6c2adb648828b2e168f9bd6bc9b614222e688a6"
+        }
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=2 VERA20K_REQUIRE_RETAIL_INI=1 VERA20K_REQUIRE_RETAIL_ASSETS=1 python -m tools.cargo_run -- clippy -p vera20k --lib",
+        "exit_code": 0,
+        "result": [
+          "warning: `vera20k` (lib) generated 861 warnings (run `cargo clippy --fix --lib -p vera20k -- ` to apply 541 suggestions)",
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 16.49s"
+        ],
+        "log": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-clippy.log",
+          "bytes": 506412,
+          "sha256": "cfe148ef7bd8cba4285fda9c5e44460e88c390be06cf64616111c6add16044c7"
+        }
+      }
+    ],
+    "builds": [
+      {
+        "label": "art-owner-main-before-20260928",
+        "manifest": {
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/manifest.json",
+          "bytes": 1436,
+          "sha256": "0a6e6fe1d275beeaa13062e59dcb55ace86b058465c37975ac516370e5be685c"
+        },
+        "source": {
+          "head": "8e4437b2040b6050abe2fce11352a9380acec25c",
+          "branch": "HEAD",
+          "source_sha256": "457b3a4384faf3f0e6ee9e4e4ed778b4ef3a652c8dd3499cf185a42dec5c79a9",
+          "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "dirty": false
+        },
+        "command": [
+          "cargo",
+          "build",
+          "--message-format=json-render-diagnostics",
+          "-p",
+          "vera20k",
+          "--release",
+          "--bin",
+          "vera20k",
+          "--bin",
+          "parity-digest"
+        ],
+        "artifacts": [
+          {
+            "source": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/parity-digest",
+            "file": "0/parity-digest",
+            "sha256": "3a31656d50531e207eb5567acf9691641fa5bb21b6b71d888a105e1eee73ec7f"
+          },
+          {
+            "source": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/vera20k",
+            "file": "1/vera20k",
+            "sha256": "bc9a4b8e4eccfbc59018af5530ebb02ac83187e34d23b67e44adf101c6612dad"
+          }
+        ]
+      },
+      {
+        "label": "art-owner-main-after-20260928",
+        "manifest": {
+          "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/manifest.json",
+          "bytes": 1458,
+          "sha256": "6c3ef23a90d27db13e0b5dd6c77a2a53c0634858cbe328c3d1c350959fdf2eaf"
+        },
+        "source": {
+          "head": "45958561ac18bfb6e99c9baeb73622374b77d93e",
+          "branch": "feature/art-registry-owner",
+          "source_sha256": "220f63837939056cccdb5592cc7084561ba3b8ffd3a30d66687790c8fcf25ffd",
+          "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "dirty": false
+        },
+        "command": [
+          "cargo",
+          "build",
+          "--message-format=json-render-diagnostics",
+          "-p",
+          "vera20k",
+          "--release",
+          "--bin",
+          "vera20k",
+          "--bin",
+          "parity-digest"
+        ],
+        "artifacts": [
+          {
+            "source": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/parity-digest",
+            "file": "0/parity-digest",
+            "sha256": "0ccde314ba58add417941d0c4f05bf8172f69983e3aabf5000f1855d2aba6d2f"
+          },
+          {
+            "source": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/target/owned-worktrees/5c896dc1cc21fcaf/release/vera20k",
+            "file": "1/vera20k",
+            "sha256": "9b30c3cade6e68040b7e0f8c0ace03e2782c83340bb2e3d2a77355995817d9ff"
+          }
+        ]
+      }
+    ],
+    "headless": [
+      {
+        "command": [
+          "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/0/parity-digest",
+          "--ra2-dir",
+          "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II",
+          "--map",
+          "Hills.mmx",
+          "--seed",
+          "305419896",
+          "--ticks",
+          "300",
+          "--out",
+          "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-headless-main-after.jsonl"
+        ],
+        "exit_code": 0,
+        "byte_equal": true,
+        "rows": 300,
+        "first_tick": 1,
+        "last_tick": 300,
+        "after": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-headless-main-after.jsonl",
+          "bytes": 63527,
+          "sha256": "10a42dab43072c67e5454cbd366a300529222a0af791fb2568e62bd4045fffca"
+        },
+        "before": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-headless-main-before.jsonl",
+          "bytes": 63527,
+          "sha256": "10a42dab43072c67e5454cbd366a300529222a0af791fb2568e62bd4045fffca"
+        }
+      },
+      {
+        "command": [
+          "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/0/parity-digest",
+          "--ra2-dir",
+          "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II",
+          "--map",
+          "Dustbowl.mmx",
+          "--seed",
+          "305419896",
+          "--ticks",
+          "300",
+          "--out",
+          "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-headless-main-after.jsonl"
+        ],
+        "exit_code": 0,
+        "byte_equal": true,
+        "rows": 300,
+        "first_tick": 1,
+        "last_tick": 300,
+        "after": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-headless-main-after.jsonl",
+          "bytes": 63829,
+          "sha256": "1d9dc234dcadcffc8668688cdc35f7100455a123376c57dec6f9185702a3de88"
+        },
+        "before": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-headless-main-before.jsonl",
+          "bytes": 63829,
+          "sha256": "1d9dc234dcadcffc8668688cdc35f7100455a123376c57dec6f9185702a3de88"
+        }
+      }
+    ],
+    "captures": [
+      {
+        "after_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-after",
+        "before_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-before",
+        "checked_at_utc": "2026-09-28T05:32:59.481471Z",
+        "differences": [],
+        "errors": [],
+        "native_comparator": "NONE",
+        "parity_certification": "NONE",
+        "schema_version": "vera20k.map-observation-comparison.v1",
+        "status": "MATCH",
+        "report": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-comparison.json",
+          "bytes": 25541,
+          "sha256": "ee22cde0cd7688916a8bad90aead95a9427e3a2105d6f36e7e0a76c50f9bae04"
+        },
+        "profile": {
+          "schema_version": "vera20k.map-observation-profile.v1",
+          "launch": {
+            "mode": {
+              "id": 1,
+              "ui_name_key": "GUI:Battle",
+              "tooltip_key": "STT:ModeBattle",
+              "override_file": "MPBattleMD.ini",
+              "map_filter": "standard",
+              "random_maps_allowed": true,
+              "allies_allowed": true,
+              "must_ally": false
+            },
+            "player_name": "VERA-DEPTH",
+            "local": {
+              "country": "America",
+              "country_random": false,
+              "color_index": 0,
+              "color_random": false,
+              "start_position": {
+                "Position": 0
+              },
+              "team": "None"
+            },
+            "opponents": [
+              {
+                "country": "Yuri",
+                "country_random": false,
+                "color_index": 1,
+                "color_random": false,
+                "start_position": {
+                  "Position": 1
+                },
+                "team": "None",
+                "difficulty": "Easy"
+              }
+            ],
+            "options": {
+              "starting_credits": 10000,
+              "unit_count": 0,
+              "tech_level": 10,
+              "game_speed": 1,
+              "default_ai_difficulty": 0,
+              "short_game": true,
+              "bases": true,
+              "bridges_destroyable": true,
+              "super_weapons": true,
+              "build_off_ally": true,
+              "crates": true,
+              "mcv_redeploy": true,
+              "fog_of_war": false,
+              "shroud": true,
+              "tiberium_grows": true,
+              "multi_engineer": false,
+              "harvester_truce": false,
+              "ally_change_allowed": true
+            },
+            "selected_map_file": "Dustbowl.mmx",
+            "pre_fill_house_roster": {
+              "human_nodes": [
+                {
+                  "priority": 0,
+                  "source_order": 0,
+                  "observer": false
+                }
+              ],
+              "ai_slots": [
+                {
+                  "slot_index": 0,
+                  "valid": true
+                },
+                {
+                  "slot_index": 1,
+                  "valid": false
+                },
+                {
+                  "slot_index": 2,
+                  "valid": false
+                },
+                {
+                  "slot_index": 3,
+                  "valid": false
+                },
+                {
+                  "slot_index": 4,
+                  "valid": false
+                },
+                {
+                  "slot_index": 5,
+                  "valid": false
+                },
+                {
+                  "slot_index": 6,
+                  "valid": false
+                }
+              ],
+              "fixed_tail": [
+                "Neutral",
+                "Special"
+              ]
+            }
+          },
+          "seed": 305419896,
+          "input_delay_ticks": 2,
+          "ticks": 30,
+          "width": 800,
+          "height": 600,
+          "timeout_seconds": 180
+        },
+        "before": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8405,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-before/run.json",
+            "sha256": "5836f730526553961816424804be0cc6d0fb2fcae216bbb34afd3e2b189e9aae"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31439040,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/1/vera20k",
+              "sha256": "bc9a4b8e4eccfbc59018af5530ebb02ac83187e34d23b67e44adf101c6612dad"
+            },
+            "profile": {
+              "byte_length": 2339,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl.json",
+              "sha256": "ca110ab51282755da2e6f28ad003507cebc5a38a4b4244e43f4c1ec81587c704"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 691815693765718469,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-before/child-output/frame.bgra",
+              "sha256": "4fbc36950e9f62e3709a2b0cf2d59d32d14f82e5c4caa02b5a7927f55f138d13"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 16834275169903128922,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 11968,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-before/child-output/capture.json",
+              "sha256": "63a32457aeaf58cef1a706ddcacf88c04e3a4694ec5c031baf4ff4643ed36b89"
+            },
+            "map_source": {
+              "kind": "loose",
+              "path": "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II/Dustbowl.mmx",
+              "payload_len": 125288,
+              "source_sha256": "46b07f8968be4c267cbdec5b99cf36e9bde98f4ac0d23b7d634abf86e9165a79"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 6720,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    4882,
+                    4987,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 24346534
+                }
+              ],
+              "resident_sprite_count": 6720,
+              "total_texel_payload_bytes": 24346534
+            }
+          }
+        },
+        "after": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8400,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-after/run.json",
+            "sha256": "65d15eb90cc9eda403caa8e0aa8a5d5ec661da1ecbbe96c22f5100cd3806dfa9"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31535184,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/1/vera20k",
+              "sha256": "9b30c3cade6e68040b7e0f8c0ace03e2782c83340bb2e3d2a77355995817d9ff"
+            },
+            "profile": {
+              "byte_length": 2339,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl.json",
+              "sha256": "ca110ab51282755da2e6f28ad003507cebc5a38a4b4244e43f4c1ec81587c704"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 691815693765718469,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-after/child-output/frame.bgra",
+              "sha256": "4fbc36950e9f62e3709a2b0cf2d59d32d14f82e5c4caa02b5a7927f55f138d13"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 16834275169903128922,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 11967,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/dustbowl-main-after/child-output/capture.json",
+              "sha256": "6709c5b44af6aab9f7f7cf049311d3a667eb6927dcc08aab873849fcf145601b"
+            },
+            "map_source": {
+              "kind": "loose",
+              "path": "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II/Dustbowl.mmx",
+              "payload_len": 125288,
+              "source_sha256": "46b07f8968be4c267cbdec5b99cf36e9bde98f4ac0d23b7d634abf86e9165a79"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 6720,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    4882,
+                    4987,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 24346534
+                }
+              ],
+              "resident_sprite_count": 6720,
+              "total_texel_payload_bytes": 24346534
+            }
+          }
+        }
+      },
+      {
+        "after_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-after",
+        "before_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-before",
+        "checked_at_utc": "2026-09-28T05:33:07.309624Z",
+        "differences": [],
+        "errors": [],
+        "native_comparator": "NONE",
+        "parity_certification": "NONE",
+        "schema_version": "vera20k.map-observation-comparison.v1",
+        "status": "MATCH",
+        "report": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-comparison.json",
+          "bytes": 25507,
+          "sha256": "dc1fc5599ad92d335afe69418f4f16c6412e061de82afe6070362151eeae46ba"
+        },
+        "profile": {
+          "schema_version": "vera20k.map-observation-profile.v1",
+          "launch": {
+            "mode": {
+              "id": 1,
+              "ui_name_key": "GUI:Battle",
+              "tooltip_key": "STT:ModeBattle",
+              "override_file": "MPBattleMD.ini",
+              "map_filter": "standard",
+              "random_maps_allowed": true,
+              "allies_allowed": true,
+              "must_ally": false
+            },
+            "player_name": "VERA-DEPTH",
+            "local": {
+              "country": "America",
+              "country_random": false,
+              "color_index": 0,
+              "color_random": false,
+              "start_position": {
+                "Position": 0
+              },
+              "team": "None"
+            },
+            "opponents": [
+              {
+                "country": "Yuri",
+                "country_random": false,
+                "color_index": 1,
+                "color_random": false,
+                "start_position": {
+                  "Position": 1
+                },
+                "team": "None",
+                "difficulty": "Easy"
+              }
+            ],
+            "options": {
+              "starting_credits": 10000,
+              "unit_count": 0,
+              "tech_level": 10,
+              "game_speed": 1,
+              "default_ai_difficulty": 0,
+              "short_game": true,
+              "bases": true,
+              "bridges_destroyable": true,
+              "super_weapons": true,
+              "build_off_ally": true,
+              "crates": true,
+              "mcv_redeploy": true,
+              "fog_of_war": false,
+              "shroud": true,
+              "tiberium_grows": true,
+              "multi_engineer": false,
+              "harvester_truce": false,
+              "ally_change_allowed": true
+            },
+            "selected_map_file": "Hills.mmx",
+            "pre_fill_house_roster": {
+              "human_nodes": [
+                {
+                  "priority": 0,
+                  "source_order": 0,
+                  "observer": false
+                }
+              ],
+              "ai_slots": [
+                {
+                  "slot_index": 0,
+                  "valid": true
+                },
+                {
+                  "slot_index": 1,
+                  "valid": false
+                },
+                {
+                  "slot_index": 2,
+                  "valid": false
+                },
+                {
+                  "slot_index": 3,
+                  "valid": false
+                },
+                {
+                  "slot_index": 4,
+                  "valid": false
+                },
+                {
+                  "slot_index": 5,
+                  "valid": false
+                },
+                {
+                  "slot_index": 6,
+                  "valid": false
+                }
+              ],
+              "fixed_tail": [
+                "Neutral",
+                "Special"
+              ]
+            }
+          },
+          "seed": 305419896,
+          "input_delay_ticks": 2,
+          "ticks": 30,
+          "width": 800,
+          "height": 600,
+          "timeout_seconds": 180
+        },
+        "before": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8388,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-before/run.json",
+            "sha256": "ff28468faed01471312b973c9b59f67f0c096f32bfea7a6ec43c0639991f2a21"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31439040,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/1/vera20k",
+              "sha256": "bc9a4b8e4eccfbc59018af5530ebb02ac83187e34d23b67e44adf101c6612dad"
+            },
+            "profile": {
+              "byte_length": 2336,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills.json",
+              "sha256": "affbc40ef314f0b38aa25ef7ffb1ab454693f6676af2b92a40079734337f7a4c"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 14974633532387725365,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-before/child-output/frame.bgra",
+              "sha256": "a40241641b37eca857caaa1146f0c683bff8aa0f3f8d343f4315e281610d38a0"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 2562106037494052671,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 12051,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-before/child-output/capture.json",
+              "sha256": "4ca8821fd163065c65d93371c960871aec4ffd89a7eb198cc60f31badfd1b8df"
+            },
+            "map_source": {
+              "kind": "loose",
+              "path": "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II/Hills.mmx",
+              "payload_len": 144760,
+              "source_sha256": "96de259a741f1fc4d0d4bc4de1a1582755e90a77c2404978814149113fc42f22"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 2240,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    3664,
+                    3780,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 13849920
+                }
+              ],
+              "resident_sprite_count": 2240,
+              "total_texel_payload_bytes": 13849920
+            }
+          }
+        },
+        "after": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8383,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-after/run.json",
+            "sha256": "0e6015b136a8613aa0dffcfe69261f4acd1c32e7399178d0bc5fa088bd529ac8"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31535184,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/1/vera20k",
+              "sha256": "9b30c3cade6e68040b7e0f8c0ace03e2782c83340bb2e3d2a77355995817d9ff"
+            },
+            "profile": {
+              "byte_length": 2336,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills.json",
+              "sha256": "affbc40ef314f0b38aa25ef7ffb1ab454693f6676af2b92a40079734337f7a4c"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 14974633532387725365,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-after/child-output/frame.bgra",
+              "sha256": "a40241641b37eca857caaa1146f0c683bff8aa0f3f8d343f4315e281610d38a0"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 2562106037494052671,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 12050,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/hills-main-after/child-output/capture.json",
+              "sha256": "216d6f8fa618505eae86527bd305e842dc20dff288719700d6b370e0905cf5ae"
+            },
+            "map_source": {
+              "kind": "loose",
+              "path": "/Users/halvor/Documents/vera20k-dev/game/Command and Conquer Red Alert II/Hills.mmx",
+              "payload_len": 144760,
+              "source_sha256": "96de259a741f1fc4d0d4bc4de1a1582755e90a77c2404978814149113fc42f22"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 2240,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    3664,
+                    3780,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 13849920
+                }
+              ],
+              "resident_sprite_count": 2240,
+              "total_texel_payload_bytes": 13849920
+            }
+          }
+        }
+      },
+      {
+        "after_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-after",
+        "before_path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-before",
+        "checked_at_utc": "2026-09-28T05:33:14.244633Z",
+        "differences": [],
+        "errors": [],
+        "native_comparator": "NONE",
+        "parity_certification": "NONE",
+        "schema_version": "vera20k.map-observation-comparison.v1",
+        "status": "MATCH",
+        "report": {
+          "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-comparison.json",
+          "bytes": 25547,
+          "sha256": "176687573da6955b0d280736eddefb1ccb3f016f5079f1645385f8f873e30998"
+        },
+        "profile": {
+          "schema_version": "vera20k.map-observation-profile.v1",
+          "launch": {
+            "mode": {
+              "id": 1,
+              "ui_name_key": "GUI:Battle",
+              "tooltip_key": "STT:ModeBattle",
+              "override_file": "MPBattleMD.ini",
+              "map_filter": "standard",
+              "random_maps_allowed": true,
+              "allies_allowed": true,
+              "must_ally": false
+            },
+            "player_name": "VERA-DEPTH",
+            "local": {
+              "country": "America",
+              "country_random": false,
+              "color_index": 0,
+              "color_random": false,
+              "start_position": {
+                "Position": 0
+              },
+              "team": "None"
+            },
+            "opponents": [
+              {
+                "country": "Yuri",
+                "country_random": false,
+                "color_index": 1,
+                "color_random": false,
+                "start_position": {
+                  "Position": 1
+                },
+                "team": "None",
+                "difficulty": "Easy"
+              }
+            ],
+            "options": {
+              "starting_credits": 10000,
+              "unit_count": 0,
+              "tech_level": 10,
+              "game_speed": 1,
+              "default_ai_difficulty": 0,
+              "short_game": true,
+              "bases": true,
+              "bridges_destroyable": true,
+              "super_weapons": true,
+              "build_off_ally": true,
+              "crates": true,
+              "mcv_redeploy": true,
+              "fog_of_war": false,
+              "shroud": true,
+              "tiberium_grows": true,
+              "multi_engineer": false,
+              "harvester_truce": false,
+              "ally_change_allowed": true
+            },
+            "selected_map_file": "XMP03T4.MAP",
+            "pre_fill_house_roster": {
+              "human_nodes": [
+                {
+                  "priority": 0,
+                  "source_order": 0,
+                  "observer": false
+                }
+              ],
+              "ai_slots": [
+                {
+                  "slot_index": 0,
+                  "valid": true
+                },
+                {
+                  "slot_index": 1,
+                  "valid": false
+                },
+                {
+                  "slot_index": 2,
+                  "valid": false
+                },
+                {
+                  "slot_index": 3,
+                  "valid": false
+                },
+                {
+                  "slot_index": 4,
+                  "valid": false
+                },
+                {
+                  "slot_index": 5,
+                  "valid": false
+                },
+                {
+                  "slot_index": 6,
+                  "valid": false
+                }
+              ],
+              "fixed_tail": [
+                "Neutral",
+                "Special"
+              ]
+            }
+          },
+          "seed": 305419896,
+          "input_delay_ticks": 2,
+          "ticks": 30,
+          "width": 800,
+          "height": 600,
+          "timeout_seconds": 180
+        },
+        "before": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8404,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-before/run.json",
+            "sha256": "f98936966e31f5553036de14c43dc6a9f96cfa3fad5ce81a0e6626d78cb4a124"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31439040,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-before-20260928/1/vera20k",
+              "sha256": "bc9a4b8e4eccfbc59018af5530ebb02ac83187e34d23b67e44adf101c6612dad"
+            },
+            "profile": {
+              "byte_length": 2338,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown.json",
+              "sha256": "3e10b5bb535355016869c719d4f32b9b862c231fdbf028b08a295aec56f119d6"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 16109756921626704384,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-before/child-output/frame.bgra",
+              "sha256": "b086cc41187eeef34aaab41fcdc1f9e1973ad896a1ced537c2445cdc1e61df2b"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 13231347428571795457,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 12056,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-before/child-output/capture.json",
+              "sha256": "63199b605f95ae3cffa8f0a96bcfac6a1887b7a5a5689b3b77a1c3f5f94ad082"
+            },
+            "map_source": {
+              "entry_id": -854728974,
+              "kind": "mix",
+              "logical_name": "XMP03T4.MAP",
+              "payload_len": 156269,
+              "source_archive": "multimd.mix",
+              "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 16800,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    6462,
+                    6557,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 42371334
+                }
+              ],
+              "resident_sprite_count": 16800,
+              "total_texel_payload_bytes": 42371334
+            }
+          }
+        },
+        "after": {
+          "status": "VALID",
+          "run": {
+            "byte_length": 8399,
+            "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-after/run.json",
+            "sha256": "95754acd10cf535605f3744949a1f7ad3f6056fbb58669790b92f5b14f80958d"
+          },
+          "inputs": {
+            "config": {
+              "byte_length": 596,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/config.toml",
+              "sha256": "2f32357402ba856642686fc1696df51cded5ca4a3bab2f04e33dc68b9de1658a"
+            },
+            "contract": {
+              "byte_length": 590,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/src/app/diagnostics/tactical_capture/contract.v2.json",
+              "sha256": "dd5f6ee15f1a393130f9658862c0680300579da3d4fc9dfd8839435ba01471d0"
+            },
+            "executable": {
+              "byte_length": 31535184,
+              "path": "/Users/halvor/Documents/vera20k/.git/owned-builds/artifacts/art-owner-main-after-20260928/1/vera20k",
+              "sha256": "9b30c3cade6e68040b7e0f8c0ace03e2782c83340bb2e3d2a77355995817d9ff"
+            },
+            "profile": {
+              "byte_length": 2338,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown.json",
+              "sha256": "3e10b5bb535355016869c719d4f32b9b862c231fdbf028b08a295aec56f119d6"
+            }
+          },
+          "input_provenance": {
+            "config": "SEALED_COPY",
+            "contract": "SEALED_COPY",
+            "executable": "EXTERNALLY_REVALIDATED",
+            "profile": "SEALED_COPY"
+          },
+          "errors": [],
+          "capture": {
+            "exact_step_count": 30,
+            "final": {
+              "binary_frame": 30,
+              "deterministic_state_hash": 16109756921626704384,
+              "simulation_tick": 30,
+              "total_simulation_ms": 660
+            },
+            "frame": {
+              "byte_length": 1920000,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-after/child-output/frame.bgra",
+              "sha256": "b086cc41187eeef34aaab41fcdc1f9e1973ad896a1ced537c2445cdc1e61df2b"
+            },
+            "initial": {
+              "binary_frame": 0,
+              "deterministic_state_hash": 13231347428571795457,
+              "simulation_tick": 0,
+              "total_simulation_ms": 0
+            },
+            "manifest": {
+              "byte_length": 12055,
+              "path": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-runtime/anytown-main-after/child-output/capture.json",
+              "sha256": "b025dca3f7d5c93fe70e3db9ec74730e1a1c4a61ff0718e22797e8ce165b3909"
+            },
+            "map_source": {
+              "entry_id": -854728974,
+              "kind": "mix",
+              "logical_name": "XMP03T4.MAP",
+              "payload_len": 156269,
+              "source_archive": "multimd.mix",
+              "source_sha256": "7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e"
+            },
+            "neutral_input": {
+              "camera_input_idle": true,
+              "static_default_cursor": true
+            },
+            "unit_atlas": {
+              "last_build_rasterized_sprite_count": 16800,
+              "pages": [
+                {
+                  "dimension": "D2",
+                  "extent": [
+                    6462,
+                    6557,
+                    1
+                  ],
+                  "format": "R8Uint",
+                  "mip_level_count": 1,
+                  "sample_count": 1,
+                  "texel_payload_bytes": 42371334
+                }
+              ],
+              "resident_sprite_count": 16800,
+              "total_texel_payload_bytes": 42371334
+            }
+          }
+        }
+      }
+    ],
+    "native_checks": [
+      {
+        "name": "rules_oracle-anim_image",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.rules_oracle.anim_image",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.132,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-rules_oracle-anim_image.log",
+        "log_sha256": "205fb751aa191aa171a04cdf4f3f2da4c106dd65ff4f4e41d8aca1326844c21a"
+      },
+      {
+        "name": "rules_oracle-bridge_anim_lists",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.rules_oracle.bridge_anim_lists",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.241,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-rules_oracle-bridge_anim_lists.log",
+        "log_sha256": "81dc8c56831e8625970a49ecb3075179241d03cd722e2d178cc0c3fc3923816f"
+      },
+      {
+        "name": "rules_oracle-bridge_child_sound",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.rules_oracle.bridge_child_sound",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.341,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-rules_oracle-bridge_child_sound.log",
+        "log_sha256": "954e6591a869acfd4861eb7f12430b6d364b063d405c1f1d5b079a725259f4ce"
+      },
+      {
+        "name": "spatial_oracle-anim_layer_rules",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.anim_layer_rules",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.131,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-anim_layer_rules.log",
+        "log_sha256": "c8a58745661b24934ba2758cfe2316dc57c4e7453ac7a6e383192427e515d9b1"
+      },
+      {
+        "name": "spatial_oracle-display_anim_owner",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.display_anim_owner",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.175,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-display_anim_owner.log",
+        "log_sha256": "05ba0cd7d383fe33696166f4ea0bca8ea67f4e29e3b09e7df4e51bf1709d7ddc"
+      },
+      {
+        "name": "rules_oracle-bridge_anim_inputs",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.rules_oracle.bridge_anim_inputs",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 1.161,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-rules_oracle-bridge_anim_inputs.log",
+        "log_sha256": "6ddd6ef50daf9bbdadba7e1738b2b92dee6840faa33cce3d53e4a46597062857"
+      },
+      {
+        "name": "spatial_oracle-anim_bouncer_launch",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.anim_bouncer_launch",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 2.541,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-anim_bouncer_launch.log",
+        "log_sha256": "12f9165a520996ee9e97ea5132c22fc993f665c3b768b321d8d0347c7cc2a921"
+      },
+      {
+        "name": "spatial_oracle-anim_middle",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.anim_middle",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 3.928,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-anim_middle.log",
+        "log_sha256": "2aeeff6ad099a329dbd9f72803603c10fc7dfbb9b2e89f2c5ff7856b7654291d"
+      },
+      {
+        "name": "anim_oracle-boundary",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.anim_oracle.boundary",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 1.534,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-anim_oracle-boundary.log",
+        "log_sha256": "3144e8467b376a6fae9cde5059d7dde4a50508a2b0d9ebfee0379a64a178c4c6"
+      },
+      {
+        "name": "spatial_oracle-terrain_recalc",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.terrain_recalc",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 0.088,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-terrain_recalc.log",
+        "log_sha256": "d8e2b90c35d9da43210237b85f06558de45ff05e9dac304ec7463b2322431c0c"
+      },
+      {
+        "name": "spatial_oracle-bridge_debris_producer",
+        "argv": [
+          "/Users/halvor/Documents/vera20k-dev/.venv/bin/python",
+          "-m",
+          "tools.spatial_oracle.bridge_debris_producer",
+          "--check"
+        ],
+        "environment_overrides": {
+          "VERA20K_BRIDGE_ANIM_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-native-assets/extract",
+          "VERA20K_BRIDGE_CHILD_SOUND_ASSETS": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/audio-owner-inputs/extract"
+        },
+        "exit_code": 0,
+        "seconds": 17.703,
+        "log": "/Users/halvor/.codex/worktrees/ownership-audit/vera20k/.local-audit/art-owner-integrated-native-spatial_oracle-bridge_debris_producer.log",
+        "log_sha256": "b4563e04aab557187f2ef5487be3da18d710e8456e057dff9ef552828830cfde"
+      }
+    ]
   }
 }

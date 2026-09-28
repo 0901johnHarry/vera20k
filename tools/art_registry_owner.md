@@ -146,3 +146,12 @@ headless comparisons and exact 30-step game captures for those maps and Anytown.
 [Map observation](map_observation.md) owns capture validation and full-frame
 comparison; no pixel masks or tolerances are used. These before/after results
 establish bounded behavior preservation, not native rendering parity.
+
+The independent critic rechecked the native corpora and retained comparisons,
+finding no blocking defect. Its unused crane ART argument was removed along with
+the adjacent unused finalizer frame flag; seven building-animation and 112 miner
+checks passed after that cleanup. Incoming AI PR #796 merged cleanly. The final
+combined candidate passed 9,612 library tests (215 ignored) and clippy, reproduced
+all eleven native checks, and matched fresh paired current-main headless runs and
+all three full-frame captures. See `latest_integrated_validation` in the receipt.
+No second critic pass or whole-codebase completion is claimed.
