@@ -16,3 +16,17 @@ extra_animations = true   # cosmetic effects: water/ore sparkles (future: laser 
 [gameplay]
 sim_tick_hz = 15
 input_delay_ticks = 2
+
+# Optional: let an external compatible API control computer houses in a
+# single-player skirmish. Enabling this sends that house's observation (visible
+# enemies only) to the configured endpoint. Put credentials in the local
+# VERA20K_AI_API_KEY environment variable, never in config.toml.
+#
+# [external_ai]
+# enabled = false
+# endpoint = "https://api.openai.com/v1/chat/completions"
+# model = "your-model-name"
+# request_interval_frames = 225
+# request_timeout_secs = 15
+# max_actions_per_response = 16
+# control_lease_frames = 450

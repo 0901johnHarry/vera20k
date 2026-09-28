@@ -33,6 +33,103 @@ pub struct GameConfig {
     /// Local player profile (name pre-filled into skirmish/multiplayer setup).
     #[serde(default)]
     pub profile: ProfileConfig,
+    /// Optional OpenAI-compatible controller for computer houses.
+    #[serde(default)]
+    pub external_ai: ExternalAiConfig,
+}
+
+/// External strategy API settings. Credentials are deliberately read by the
+/// app from the process environment and are never part of this config value.
+#[derive(Debug, Deserialize)]
+pub struct ExternalAiConfig {
+    /// Whether to send strategic observations to the configured API.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Complete Chat Completions URL, for example `/v1/chat/completions`.
+    #[serde(default)]
+    pub endpoint: String,
+    /// Provider model identifier.
+    #[serde(default)]
+    pub model: String,
+    /// Minimum native binary-frame cadence for requests per computer house.
+    #[serde(default = "default_external_ai_request_interval_frames")]
+    pub request_interval_frames: u32,
+    /// Maximum blocking HTTP request duration, in seconds.
+    #[serde(default = "default_external_ai_request_timeout_secs")]
+    pub request_timeout_secs: u32,
+    /// Maximum number of action entries accepted from one response.
+    #[serde(default = "default_external_ai_max_actions_per_response")]
+    pub max_actions_per_response: usize,
+    /// How long a valid response controls a house, in native binary frames.
+    #[serde(default = "default_external_ai_control_lease_frames")]
+    pub control_lease_frames: u32,
+}
+
+impl Default for ExternalAiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: String::new(),
+            model: String::new(),
+            request_interval_frames: default_external_ai_request_interval_frames(),
+            request_timeout_secs: default_external_ai_request_timeout_secs(),
+            max_actions_per_response: default_external_ai_max_actions_per_response(),
+            control_lease_frames: default_external_ai_control_lease_frames(),
+        }
+    }
+}
+
+impl ExternalAiConfig {
+    /// Validate settings when the app is about to enable the network worker.
+    /// Disabled config remains harmless even when no provider is configured.
+    pub fn validate(&self) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        anyhow::ensure!(
+            has_http_endpoint_authority(&self.endpoint),
+            "external AI endpoint must be a complete HTTP or HTTPS URL without embedded credentials"
+        );
+        anyhow::ensure!(
+            !self.model.trim().is_empty(),
+            "external AI model must not be blank"
+        );
+        anyhow::ensure!(
+            (1..=3600).contains(&self.request_interval_frames),
+            "external AI request_interval_frames must be between 1 and 3600"
+        );
+        anyhow::ensure!(
+            (1..=120).contains(&self.request_timeout_secs),
+            "external AI request_timeout_secs must be between 1 and 120"
+        );
+        anyhow::ensure!(
+            (1..=64).contains(&self.max_actions_per_response),
+            "external AI max_actions_per_response must be between 1 and 64"
+        );
+        anyhow::ensure!(
+            (1..=3600).contains(&self.control_lease_frames),
+            "external AI control_lease_frames must be between 1 and 3600"
+        );
+        Ok(())
+    }
+}
+
+fn has_http_endpoint_authority(endpoint: &str) -> bool {
+    if endpoint.is_empty() || endpoint.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some(authority_and_path) = endpoint
+        .strip_prefix("https://")
+        .or_else(|| endpoint.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    let authority = authority_and_path
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.contains('@')
 }
 
 /// Local player profile settings.
@@ -47,6 +144,22 @@ pub struct ProfileConfig {
     /// the setup screen's built-in default.
     #[serde(default)]
     pub name: Option<String>,
+}
+
+fn default_external_ai_request_interval_frames() -> u32 {
+    225
+}
+
+fn default_external_ai_request_timeout_secs() -> u32 {
+    15
+}
+
+fn default_external_ai_max_actions_per_response() -> usize {
+    16
+}
+
+fn default_external_ai_control_lease_frames() -> u32 {
+    450
 }
 
 impl ProfileConfig {
@@ -229,6 +342,7 @@ impl GameConfig {
             graphics: GraphicsConfig::default(),
             gameplay: GameplayConfig::default(),
             profile: ProfileConfig::default(),
+            external_ai: ExternalAiConfig::default(),
         }
     }
 }
@@ -314,7 +428,11 @@ mod tests {
         )
         .unwrap();
         let message = format!("{:#}", fixture.load().unwrap_err());
-        assert!(message.contains(fixture.0.join("launch/config.toml").to_str().unwrap()));
+        let expected_path = fixture.0.join("launch").join("config.toml");
+        assert!(
+            message.contains(expected_path.to_str().unwrap()),
+            "error context did not contain expected path {expected_path:?}: {message}"
+        );
         assert!(message.contains("Failed to parse config"));
     }
 
@@ -339,6 +457,92 @@ ra2_dir = "C:/Westwood/RA2"
         assert_eq!(config.gameplay.input_delay_ticks, 2);
         // No [profile] section -> no pre-filled player name.
         assert_eq!(config.profile.player_name(), None);
+        assert!(!config.external_ai.enabled);
+        assert_eq!(config.external_ai.request_interval_frames, 225);
+        assert_eq!(config.external_ai.request_timeout_secs, 15);
+        assert_eq!(config.external_ai.max_actions_per_response, 16);
+        assert_eq!(config.external_ai.control_lease_frames, 450);
+        assert!(config.external_ai.validate().is_ok());
+    }
+
+    #[test]
+    fn enabled_external_ai_accepts_a_complete_compatible_endpoint() {
+        let config: GameConfig = toml::from_str(
+            r#"
+[paths]
+ra2_dir = "C:/Westwood/RA2"
+
+[external_ai]
+enabled = true
+endpoint = "http://127.0.0.1:8000/v1/chat/completions"
+model = "test-model"
+request_interval_frames = 90
+request_timeout_secs = 7
+max_actions_per_response = 12
+control_lease_frames = 180
+"#,
+        )
+        .expect("valid external AI config");
+
+        config.external_ai.validate().expect("valid enabled config");
+        assert!(config.external_ai.enabled);
+        assert_eq!(
+            config.external_ai.endpoint,
+            "http://127.0.0.1:8000/v1/chat/completions"
+        );
+        assert_eq!(config.external_ai.model, "test-model");
+        assert_eq!(config.external_ai.request_interval_frames, 90);
+        assert_eq!(config.external_ai.request_timeout_secs, 7);
+        assert_eq!(config.external_ai.max_actions_per_response, 12);
+        assert_eq!(config.external_ai.control_lease_frames, 180);
+    }
+
+    #[test]
+    fn enabled_external_ai_requires_a_complete_http_endpoint_and_model() {
+        for endpoint in [
+            "",
+            "localhost:8000/chat/completions",
+            "ftp://example.test/chat",
+            "https://user:secret@example.test/v1/chat/completions",
+        ] {
+            let config: GameConfig = toml::from_str(&format!(
+                "[paths]\nra2_dir = '.'\n[external_ai]\nenabled = true\nendpoint = {endpoint:?}\nmodel = 'test-model'\n"
+            ))
+            .expect("parse endpoint fixture");
+            assert!(
+                config.external_ai.validate().is_err(),
+                "accepted {endpoint:?}"
+            );
+        }
+
+        let config: GameConfig = toml::from_str(
+            "[paths]\nra2_dir = '.'\n[external_ai]\nenabled = true\nendpoint = 'https://example.test/v1/chat/completions'\nmodel = '  '\n",
+        )
+        .expect("parse blank model fixture");
+        assert!(config.external_ai.validate().is_err());
+    }
+
+    #[test]
+    fn enabled_external_ai_rejects_out_of_range_scheduling_limits() {
+        for (field, value) in [
+            ("request_interval_frames", 0),
+            ("request_interval_frames", 3601),
+            ("request_timeout_secs", 0),
+            ("request_timeout_secs", 121),
+            ("max_actions_per_response", 0),
+            ("max_actions_per_response", 65),
+            ("control_lease_frames", 0),
+            ("control_lease_frames", 3601),
+        ] {
+            let config: GameConfig = toml::from_str(&format!(
+                "[paths]\nra2_dir = '.'\n[external_ai]\nenabled = true\nendpoint = 'https://example.test/v1/chat/completions'\nmodel = 'test-model'\n{field} = {value}\n"
+            ))
+            .expect("parse range fixture");
+            assert!(
+                config.external_ai.validate().is_err(),
+                "accepted {field}={value}"
+            );
+        }
     }
 
     #[test]
