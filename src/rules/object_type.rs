@@ -412,7 +412,8 @@ pub struct ObjectType {
     /// Inverse of Owner — if the player's country is in this list, they cannot build.
     pub forbidden_houses: Vec<String>,
     /// Signed `TechnoTypeClass+0x6D0` side filter used only by native AI base
-    /// planning selectors. The constructor seed is `-1` (all sides).
+    /// planning selectors ([`Self::planned_for_side`]). The constructor seed
+    /// is `-1` (all sides).
     pub ai_base_planning_side: i32,
     /// Native `BuildingTypeClass+0x1705` AI plan-generation eligibility bit.
     /// The BuildingType constructor clears it and `AIBuildThis=` may set it.
@@ -474,8 +475,11 @@ pub struct ObjectType {
     pub build_cat: Option<BuildCategory>,
     /// Human placement radius away from existing base-normal structures.
     pub adjacent: i32,
-    /// `ProtectWithWall=` adds one cell to the active AI site's first-phase
-    /// CheckOccupancy border. It is distinct from `Wall=` segment identity.
+    /// `ProtectWithWall=` (`BuildingTypeClass+0x1765`, ReadINI
+    /// `0x0046026B..0x0046027F`) adds one cell to the active AI site's
+    /// first-phase CheckOccupancy border, and marks a building the computer
+    /// may wall in (`sim::ai_base_building`). It is distinct from `Wall=`
+    /// segment identity.
     pub protect_with_wall: bool,
     /// `WantsExtraSpace=` adds the same one-cell first-phase AI site border.
     pub wants_extra_space: bool,
@@ -1677,6 +1681,14 @@ impl ObjectType {
         } else {
             self.flight_level
         }
+    }
+
+    /// The AI base planning side filter: `AIBasePlanningSide=` (`+0x6D0`) is
+    /// -1 or the house's side (`HouseTypeClass+0xBC`), as
+    /// `FirstBuildableFromArray @ 0x005051E0` and `AI_BuildWalls @ 0x0050C340`
+    /// test it.
+    pub fn planned_for_side(&self, side_index: u8) -> bool {
+        self.ai_base_planning_side == -1 || self.ai_base_planning_side == i32::from(side_index)
     }
 
     /// Building43BCBD..43BCD0 allocates at least one radio contact even when

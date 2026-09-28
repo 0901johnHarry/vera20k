@@ -17,18 +17,23 @@ fn flag(value: &Value) -> bool {
     value.as_bool().unwrap()
 }
 
-/// The oracle's BuildingTypes, in its array order, then the economy's lists.
+/// The oracle's BuildingTypes, in its array order, then the economy's lists
+/// and the walls' types (the oracle's 13 and 14).
 fn rules(advanced_prerequisite: &str) -> RuleSet {
     let text = format!(
         "[General]\nWallTower=WALLTOWER\nGDIPowerPlant=GPOWER\nNodRegularPower=NPOWER\n\
          NodAdvancedPower=NAPOWER\nThirdPowerPlant=TPOWER\nAIAlternateProductionCreditCutoff=2000\n\
+         AIPickWallDefensePercent=30,50,70\n\
          [AI]\nBuildConst=YARD\nBuildBarracks=BARRA,BARRB\nBuildWeapons=WEAPA,WEAPB\n\
+         ConcreteWalls=WALL\n\
          [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=GPOWER\n1=NPOWER\n2=NAPOWER\n3=TPOWER\n4=YARD\n5=DRAINER\n\
          6=WALLTOWER\n7=DOCK\n8=PLAIN\n9=BARRA\n10=BARRB\n11=WEAPA\n12=WEAPB\n\
+         13=WALL\n14=GUARDED\n\
          [GPOWER]\nPower=100\n[NPOWER]\nPower=100\n[NAPOWER]\nPower=200\n{advanced_prerequisite}\n\
          [TPOWER]\nPower=100\n[YARD]\nConstructionYard=yes\nPower=-50\n[DRAINER]\nPower=-50\n\
-         [WALLTOWER]\n[DOCK]\nNaval=yes\n[PLAIN]\n[BARRA]\n[BARRB]\n[WEAPA]\n[WEAPB]\n"
+         [WALLTOWER]\n[DOCK]\nNaval=yes\n[PLAIN]\n[BARRA]\n[BARRB]\n[WEAPA]\n[WEAPB]\n\
+         [WALL]\nWall=yes\n[GUARDED]\nStrength=500\nFoundation=2x2\nProtectWithWall=yes\n"
     );
     RuleSet::from_ini(&IniFile::from_str(&text)).unwrap()
 }
@@ -143,6 +148,26 @@ fn the_building_choice_handles_nodes_as_native() {
         };
         let rules = rules(prerequisite);
         let (mut sim, owner) = computer_house(true);
+        // `0x0042E820`'s answers: the house's buildings on those nodes.
+        let node_buildings = row["node_buildings"].as_array().unwrap();
+        if !node_buildings.is_empty() {
+            crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        }
+        for building in node_buildings {
+            let node = &row["nodes"][int(&building[0]) as usize];
+            let ty = rules.building_type_at(int(&node[0]) as i32).unwrap();
+            let (x, y) = (int(&building[1]) / 256, int(&building[2]) / 256);
+            sim.spawn_object(
+                &ty.id,
+                "AIHouse",
+                x as u16,
+                y as u16,
+                0,
+                &rules,
+                &Default::default(),
+            )
+            .unwrap();
+        }
         let house = sim.houses.get_mut(&owner).unwrap();
         house.ai_production.set_for_test(
             0,
@@ -151,6 +176,9 @@ fn the_building_choice_handles_nodes_as_native() {
         );
         house.build_const_order = (0..int(&row["yards"]) as u64).map(|id| 1000 + id).collect();
         house.side_index = int(&row["side"]) as u8;
+        house.difficulty =
+            crate::sim::house_state::HouseDifficulty::from_native(int(&row["difficulty"]) as i32)
+                .unwrap();
         house.base_plan.nodes = row["nodes"]
             .as_array()
             .unwrap()
@@ -158,7 +186,7 @@ fn the_building_choice_handles_nodes_as_native() {
             .map(|node| BasePlanNode {
                 type_or_control: int(&node[0]) as i32,
                 packed_cell: pack_base_plan_cell(int(&node[1]) as i32, int(&node[2]) as i32),
-                filled: false,
+                filled: node.get(3).is_some_and(|filled| int(filled) != 0),
                 retry_count: 0,
             })
             .collect();
@@ -219,6 +247,107 @@ fn the_building_choice_handles_nodes_as_native() {
     }
 }
 
+/// The walls of `0x0050C340` for the oracle's rows: the wall type through
+/// the production rules read, the nodes through [`wall_nodes`] answering
+/// `0x0042E820` with the row's buildings.
+#[test]
+fn the_walls_match_native() {
+    let oracle = oracle();
+    // name, AIBasePlanningSide, ProtectWithWall, foundation, bib, native
+    // width, native height.
+    let types = oracle["wall_types"].as_array().unwrap();
+    let rules_with = |walls: &[&str]| {
+        let mut text = format!(
+            "[AI]\nConcreteWalls={}\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+             [BuildingTypes]\n",
+            walls.join(",")
+        );
+        for (index, ty) in types.iter().enumerate() {
+            text += &format!("{index}={}\n", ty[0].as_str().unwrap());
+        }
+        for ty in types {
+            let foundation = crate::rules::foundation::FOUNDATION_TABLE[int(&ty[3]) as usize].name;
+            text += &format!(
+                "[{}]\nAIBasePlanningSide={}\nProtectWithWall={}\nFoundation={foundation}\n",
+                ty[0].as_str().unwrap(),
+                int(&ty[1]),
+                flag(&ty[2])
+            );
+        }
+        RuleSet::from_ini(&IniFile::from_str(&text)).unwrap()
+    };
+    // The native Width and Height tables (`0x008192B8`, `0x00819310`) that
+    // `0x0045EC90` and `0x0045ECA0(0)` read, for every foundation; the
+    // foundation rows below execute both inside `AI_BuildWalls`. VERA's size
+    // has no bib term: `Height(0)` skips the bib branch, which only the
+    // oracle's bib rows exercise.
+    let all = rules_with(&[]);
+    for ty in types {
+        let name = ty[0].as_str().unwrap();
+        assert_eq!(
+            crate::sim::ai_base_site::foundation_size(all.object(name).unwrap()),
+            (int(&ty[5]) as i32, int(&ty[6]) as i32),
+            "{name}"
+        );
+    }
+    let mut placed = 0;
+    for row in oracle["walls"].as_array().unwrap() {
+        let label = row["label"].as_str().unwrap();
+        let walls: Vec<&str> = row["walls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|index| types[int(index) as usize][0].as_str().unwrap())
+            .collect();
+        let rules = rules_with(&walls);
+        // A HouseType side of -1 matches only a -1 type, as no u8 side does.
+        let wall = wall_type(&rules, int(&row["side"]) as u8);
+
+        let node = |value: &Value| BasePlanNode {
+            type_or_control: int(&value[0]) as i32,
+            packed_cell: pack_base_plan_cell(int(&value[1]) as i32, int(&value[2]) as i32),
+            filled: false,
+            retry_count: 0,
+        };
+        let mut plan = crate::sim::base_plan::BasePlanState {
+            percent_built: 0,
+            nodes: row["nodes"].as_array().unwrap().iter().map(node).collect(),
+        };
+        let nodes = &plan.nodes;
+        let buildings = row["node_buildings"].as_array().unwrap();
+        // `0x0042E820`'s answers, the row's buildings: the node's cell always
+        // equals the building's (`0x0041BEA0`, Location / 256), so these
+        // rows' Location offsets only move where inside the cell it stands.
+        let walled = wall_nodes(nodes, int(&row["index"]) as usize, wall, |at| {
+            let building = buildings
+                .iter()
+                .find(|building| int(&building[0]) as usize == at)?;
+            let ty = rules.building_type_at(nodes[at].type_or_control)?;
+            let cell = (
+                (int(&building[1]) / 256) as i16,
+                (int(&building[2]) / 256) as i16,
+            );
+            ty.protect_with_wall
+                .then(|| (cell, crate::sim::ai_base_site::foundation_size(ty)))
+        });
+        assert_eq!(i64::from(walled.is_some()), int(&row["result"]), "{label}");
+        if let Some((at, walls)) = walled {
+            for wall in walls {
+                plan.insert_after(at, wall);
+            }
+            placed += 1;
+        }
+        let after: Vec<BasePlanNode> = row["nodes_after"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(node)
+            .collect();
+        assert_eq!(plan.nodes, after, "{label}");
+    }
+    assert!(placed >= 40, "{placed} rows walled");
+}
+
 #[test]
 fn the_placement_retry_wait_matches_native() {
     let oracle = oracle();
@@ -250,6 +379,27 @@ fn retail_building_types_set_no_cloak_generator_or_upgrade() {
             ini.section(name)
                 .is_none_or(|section| section.get("PowersUpBuilding").is_none()),
             "{name}"
+        );
+    }
+}
+
+/// The retail values that decide the walls, through the production reader:
+/// the percent by difficulty, and each playable side's wall type (the
+/// `ConcreteWalls=` value and GAFWLL's section header both carry comments).
+/// No other retail INI gamemd reads sets either key.
+#[test]
+fn retail_walls_by_difficulty_and_side() {
+    let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+        return;
+    };
+    let rules = RuleSet::from_ini(&ini).unwrap();
+    assert_eq!(rules.general.ai_pick_wall_defense_percent, [50, 25, 10]);
+    assert_eq!(rules.concrete_wall_types, ["GAWALL", "NAWALL", "GAFWLL"]);
+    for (side, name) in [(0, "GAWALL"), (1, "NAWALL"), (2, "GAFWLL")] {
+        assert_eq!(
+            wall_type(&rules, side),
+            rules.building_type_index(name).unwrap(),
+            "side {side}"
         );
     }
 }
