@@ -1,0 +1,272 @@
+//! A computer house's production at its own factory buildings:
+//! `BuildingClass::Factory_AI @ 0x004500F0`, run in the building's Update
+//! right after UpdateRepairAndPower when its type has a `Factory=`
+//! (`0x004401BB..0x004401CD`). The building's factory
+//! (`BuildingClass+0x524`) sits in the registry under
+//! [`FactoryHolder::Building`] and steps with every other factory in
+//! construction order; before each try at placing its object it waits for
+//! the building's `ai_placement_timer` (`+0x550`).
+//!
+//! Each visit, in order:
+//! - A finished object (`FactoryClass::IsComplete @ 0x004CA130`) whose wait
+//!   is over leaves through `Exit_Object` (`vt+0x100`,
+//!   [`ai_base_building::exit_building`]). Placed: `Record_Last_Built @
+//!   0x004FB6B0` and `CompletedProduction @ 0x004CA1A0`, which lets the
+//!   object go, then the factory is deleted. Try later: the wait restarts
+//!   for `[General] PlacementDelay=`. Failed: a naval building turns the
+//!   house's naval choices off, then `AbandonProduction @ 0x004C9FF0`
+//!   refunds and destroys the object and the factory is deleted.
+//! - Then, for a house whose Production latch is set (`+0x1EE`) and a
+//!   building neither building up nor selling (`Get_Mission` 0x12/0x13; a
+//!   yard whose build-up ends this frame already reads Guard, as the repair
+//!   step does, [`constructing_or_selling`]): a
+//!   factory whose wait is over with no rate or stopped is abandoned; with
+//!   no factory, a house holding more than 10 credits makes one for its
+//!   choice (`Suggest_New_Object @ 0x004FBD80`) and starts it
+//!   (`FactoryClass::StartProduction @ 0x004C9C70`, then the build start
+//!   `0x004C9EA0`); a failed start deletes it unrefunded.
+//!
+//! The same factory also goes, abandoned, with its building's
+//! `Detach_All(1)` (a kill, a sale's completion or a Limbo, [`detach_all`])
+//! and `ChangeOwner` (`0x004486DF..0x00448701`).
+//!
+//! Evidence: instruction reading of the bodies named here. The retry wait
+//! (`ftol(PlacementDelay * 900.0)`, `RuleSet::placement_delay_frames`) is
+//! executed by `tools/ai_base_building_oracle.py`.
+//!
+//! RESIDUALS:
+//! - A placed object plays the building type's `CreateUnitSound=`
+//!   (`+0xE74`, read at `0x004607C8..0x004607F8`) at the building
+//!   (`0x00450198`); among retail types only the Cloning Vats set it, which
+//!   have no `Factory=`.
+//! - The try-later branch also copies an uninitialised stack word into the
+//!   timer's middle field (`+0x554`, `0x004501F1`), which no reader uses.
+//! - The Unit, Infantry and Aircraft choices are never made
+//!   (`sim::ai_base_building`), so a computer's barracks, war factory and
+//!   airfield make no factory here, and their naval check
+//!   (`0x00450343..0x0045036A`) never runs.
+
+use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::object_type::{FactoryType, ObjectCategory};
+use crate::rules::ruleset::RuleSet;
+use crate::sim::ai_base_building::{self, BuildingExit};
+use crate::sim::intern::InternedId;
+use crate::sim::pathfinding::PathGrid;
+use crate::sim::timer::CdTimer;
+use crate::sim::world::Simulation;
+
+use super::factory::{FactoryHolder, PRODUCTION_STEPS};
+use super::factory_lifecycle::{record_last_built, settle_abandoned, start_active_production};
+use super::production_repair::constructing_or_selling;
+use super::production_tech::production_category_for_object;
+
+/// `BuildingClass::Factory_AI @ 0x004500F0` for building `building`, whose
+/// type makes `factory_type`.
+pub(crate) fn factory_ai(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+    factory_type: FactoryType,
+    path_grid: Option<&PathGrid>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) {
+    let Some(owner) = sim.substrate.entities.get(building).map(|b| b.owner()) else {
+        return;
+    };
+    exit_finished_object(sim, rules, building, owner, path_grid, overlay_registry);
+
+    // `0x00450248..0x0045028C`.
+    let Some(entity) = sim.substrate.entities.get(building) else {
+        return;
+    };
+    let production = sim
+        .houses
+        .get(&owner)
+        .is_some_and(|house| house.ai_activation.production);
+    if !production || constructing_or_selling(sim, entity) {
+        return;
+    }
+    if sim
+        .production
+        .factory_shadow
+        .building_factory(building)
+        .is_some()
+    {
+        abandon_stopped_factory(sim, rules, building, owner);
+        return;
+    }
+    start_factory(sim, rules, building, owner, factory_type);
+}
+
+/// `0x004500FA..0x00450242`: the finished object's exit once the wait is
+/// over, whatever the house.
+fn exit_finished_object(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+    owner: InternedId,
+    path_grid: Option<&PathGrid>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) {
+    let Some(object) = sim
+        .production
+        .factory_shadow
+        .building_factory(building)
+        .filter(|factory| factory.progress >= PRODUCTION_STEPS)
+        .and_then(|factory| factory.object.clone())
+    else {
+        return;
+    };
+    if !placement_wait_over(sim, building) {
+        return;
+    }
+    let Some(product) = object.entity_id else {
+        return;
+    };
+    match ai_base_building::exit_building(
+        sim,
+        rules,
+        building,
+        product,
+        path_grid,
+        overlay_registry,
+    ) {
+        BuildingExit::Placed => {
+            record_last_built(sim, rules, owner, object.type_id);
+            // CompletedProduction lets the placed object go; the delete
+            // finds none to abandon.
+            sim.production
+                .factory_shadow
+                .remove_building_factory(building);
+        }
+        BuildingExit::TryLater => {
+            let frame = sim.session.binary_frame as i32;
+            let delay = rules.general.placement_delay_frames();
+            if let Some(entity) = sim.substrate.entities.get_mut(building) {
+                entity.ai_placement_timer = CdTimer::started(frame, delay);
+            }
+        }
+        BuildingExit::Failed => {
+            // `0x004501FF..0x00450220`: the object's owner stops choosing
+            // naval buildings.
+            let naval_building = sim
+                .object_type(object.type_id, rules)
+                .is_some_and(|ty| ty.category == ObjectCategory::Building && ty.naval);
+            if naval_building && let Some(house) = sim.houses.get_mut(&owner) {
+                house.ai_production.forbid_naval();
+            }
+            abandon(sim, rules, building, owner);
+        }
+    }
+}
+
+/// `0x00450292..0x004502E7`: a factory whose wait is over with no rate or
+/// stopped (`+0x38`, `+0x70`) is abandoned.
+fn abandon_stopped_factory(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+    owner: InternedId,
+) {
+    if !placement_wait_over(sim, building) {
+        return;
+    }
+    let stopped = sim
+        .production
+        .factory_shadow
+        .building_factory(building)
+        .is_some_and(|factory| {
+            factory.step_rate_frames == 0 || factory.suspended || factory.manual
+        });
+    if stopped {
+        abandon(sim, rules, building, owner);
+    }
+}
+
+/// `0x004502F4..0x004503C5`: with more than 10 credits, a new factory for
+/// the house's choice, started at once.
+fn start_factory(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+    owner: InternedId,
+    factory_type: FactoryType,
+) {
+    if crate::sim::credit_income::available_money(sim, owner) <= 10 {
+        return;
+    }
+    let Some(object) = ai_base_building::suggest_new_object(sim, rules, owner, factory_type) else {
+        return;
+    };
+    let type_id = sim.interner.intern(&object.id);
+    let category = production_category_for_object(object);
+    let cost = sim.cost_of(owner, object, rules);
+    // The FactoryClass constructor joins the factory vector
+    // (`0x004C9974..0x004C9989`) before StartProduction constructs the object.
+    let insertion_seq = sim.production.next_enqueue_order;
+    sim.production.next_enqueue_order = insertion_seq.saturating_add(1);
+    sim.production.factory_shadow.create_building_factory(
+        building,
+        owner,
+        category,
+        type_id,
+        insertion_seq,
+        cost,
+    );
+    if start_active_production(sim, rules, FactoryHolder::Building(building), type_id).is_none() {
+        // `0x004503A7 -> 0x004502DC`: deleted, nothing held to abandon.
+        sim.production
+            .factory_shadow
+            .remove_building_factory(building);
+    }
+}
+
+/// `CDTimerClass` at `+0x550` has run out (`0x00450115..0x00450136`).
+fn placement_wait_over(sim: &Simulation, building: u64) -> bool {
+    let frame = sim.session.binary_frame as i32;
+    sim.substrate
+        .entities
+        .get(building)
+        .is_some_and(|entity| entity.ai_placement_timer.expired(frame))
+}
+
+/// AbandonProduction and the delete of building `building`'s factory, whose
+/// owner is `owner` (the factory's house, `+0x6C`).
+fn abandon(sim: &mut Simulation, rules: &RuleSet, building: u64, owner: InternedId) {
+    if let Some(abandoned) = sim
+        .production
+        .factory_shadow
+        .abandon_building_factory(building)
+    {
+        settle_abandoned(sim, rules, owner, abandoned);
+    }
+}
+
+/// `BuildingClass::Detach_All(1) @ 0x0044EBF0`'s factory arm
+/// (`0x0044EC01..0x0044EC21`) and `BuildingClass::ChangeOwner`'s
+/// (`0x004486DF..0x00448701`): the building's factory is abandoned, its
+/// object refunded and destroyed, and deleted. Without rules (fixtures) the
+/// object is destroyed unrefunded.
+pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building: u64) {
+    let Some(factory) = sim.production.factory_shadow.building_factory(building) else {
+        return;
+    };
+    let owner = factory.owner;
+    match rules {
+        Some(rules) => abandon(sim, rules, building, owner),
+        None => {
+            let object = sim
+                .production
+                .factory_shadow
+                .abandon_building_factory(building)
+                .and_then(|abandoned| abandoned.entity_id);
+            if let Some(object) = object {
+                let _ = sim.discard_constructed_limbo(object);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "factory_ai_tests.rs"]
+mod tests;

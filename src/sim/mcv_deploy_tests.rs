@@ -717,16 +717,16 @@ fn a_computer_mcv_on_guard_unloads_when_its_house_has_a_yard() {
     assert!(yard_cells(&sim).contains(&(19, 21)));
 }
 
-/// A computer house's MCV on retail Dustbowl through the production frame,
-/// set up as `ScenarioClass::Create_Houses` sets up a skirmish computer slot
-/// (`MaxIQLevels`, an AI player). HouseClass::Update's activation sets
-/// `+0x1F3`, UnitClass::AI queues Hunt for the yard-less house, and
-/// Mission_Hunt's TryToDeploy admits the spot where the MCV stands: every
-/// foundation cell is flat, empty `[Clear]` or `[Rough]` ground, both of
-/// which retail marks `Buildable=yes`. Deploy then unpacks NACNST one cell north-west of the MCV.
-#[test]
-#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
-fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
+/// Retail Dustbowl with a skirmish computer house (`Russians`) whose MCV
+/// stands on flat, empty buildable ground nearest the map centre, set up as
+/// `ScenarioClass::Create_Houses` sets up a computer slot (`MaxIQLevels`, an
+/// AI player). Returns the scenario, the house, the MCV and its cell.
+fn retail_dustbowl_computer_mcv() -> (
+    crate::headless_scenario::HeadlessScenario,
+    crate::sim::intern::InternedId,
+    u64,
+    (u16, u16),
+) {
     let dir = std::env::var("RA2_DIR")
         .ok()
         .filter(|path| !path.trim().is_empty())
@@ -767,7 +767,7 @@ fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
         .flat_map(|y| (43..103_u16).map(move |x| (x, y)))
         .collect();
     cells.sort_by_key(|&(x, y)| x.abs_diff(73).max(y.abs_diff(73)));
-    let (mcv, (x, y)) = cells
+    let (mcv, cell) = cells
         .into_iter()
         .find_map(|(x, y)| {
             let terrain = sim.resolved_terrain.as_ref()?;
@@ -796,39 +796,130 @@ fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
         })
         .expect("flat, empty buildable ground for the yard");
     sim.resolve_type_handles(rules);
+    (scenario, owner, mcv, cell)
+}
 
-    let yard_at = |scenario: &crate::headless_scenario::HeadlessScenario| {
-        let sim = scenario.sim();
-        sim.substrate
-            .entities
-            .values()
-            .find(|e| !e.dying && sim.interner.resolve(e.type_ref()) == "NACNST")
-            .map(|e| (e.position.rx, e.position.ry))
-    };
-    let frame = |scenario: &mut crate::headless_scenario::HeadlessScenario| {
-        scenario
-            .runtime
-            .advance_frame(
-                &[],
-                crate::headless_scenario::SIM_TICK_MS,
-                crate::sim::world::TickLane::Ordinary,
-            )
-            .expect("retail frame");
-    };
-    frame(&mut scenario);
+fn retail_frame(scenario: &mut crate::headless_scenario::HeadlessScenario) {
+    scenario
+        .runtime
+        .advance_frame(
+            &[],
+            crate::headless_scenario::SIM_TICK_MS,
+            crate::sim::world::TickLane::Ordinary,
+        )
+        .expect("retail frame");
+}
+
+fn retail_yard_at(scenario: &crate::headless_scenario::HeadlessScenario) -> Option<(u16, u16)> {
+    let sim = scenario.sim();
+    sim.substrate
+        .entities
+        .values()
+        .find(|e| !e.dying && sim.interner.resolve(e.type_ref()) == "NACNST")
+        .map(|e| (e.position.rx, e.position.ry))
+}
+
+/// A computer house's MCV on retail Dustbowl through the production frame.
+/// HouseClass::Update's activation sets `+0x1F3`, UnitClass::AI queues Hunt
+/// for the yard-less house, and Mission_Hunt's TryToDeploy admits the spot
+/// where the MCV stands: every foundation cell is flat, empty `[Clear]` or
+/// `[Rough]` ground, both of which retail marks `Buildable=yes`. Deploy then
+/// unpacks NACNST one cell north-west of the MCV.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
+    let (mut scenario, owner, mcv, (x, y)) = retail_dustbowl_computer_mcv();
+    retail_frame(&mut scenario);
     let sim = scenario.sim();
     assert!(sim.houses[&owner].ai_activation.auto_base_building);
     let mut frames = 1;
-    while yard_at(&scenario).is_none() && frames < 600 {
-        frame(&mut scenario);
+    while retail_yard_at(&scenario).is_none() && frames < 600 {
+        retail_frame(&mut scenario);
         frames += 1;
     }
     assert_eq!(
-        yard_at(&scenario),
+        retail_yard_at(&scenario),
         Some((x - 1, y - 1)),
         "after {frames} frames"
     );
     let sim = scenario.sim();
     assert!(sim.substrate.entities.get(mcv).is_none_or(|e| e.dying));
     assert_eq!(sim.houses[&owner].base_center, Some((x - 1, y - 1)));
+}
+
+/// The deployed yard then builds from its House's BasePlan
+/// (`sim::ai_base_building`): each building it places is of a node's type
+/// and stands on the cell that node keeps.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_the_computer_yard_places_its_planned_buildings() {
+    let (mut scenario, owner, _mcv, _cell) = retail_dustbowl_computer_mcv();
+    let mut frames = 0;
+    while retail_yard_at(&scenario).is_none() && frames < 600 {
+        retail_frame(&mut scenario);
+        frames += 1;
+    }
+    assert!(retail_yard_at(&scenario).is_some(), "the yard stands");
+    let placed =
+        |scenario: &crate::headless_scenario::HeadlessScenario| -> Vec<(u64, String, (u16, u16))> {
+            let sim = scenario.sim();
+            let mut buildings: Vec<_> = sim
+                .substrate
+                .entities
+                .values()
+                .filter(|e| {
+                    !e.dying
+                        && !e.lifecycle.in_limbo
+                        && e.owner() == owner
+                        && e.category == crate::map::entities::EntityCategory::Structure
+                        && sim.interner.resolve(e.type_ref()) != "NACNST"
+                })
+                .map(|e| {
+                    (
+                        e.stable_id(),
+                        sim.interner.resolve(e.type_ref()).to_string(),
+                        (e.position.rx, e.position.ry),
+                    )
+                })
+                .collect();
+            buildings.sort();
+            buildings
+        };
+    let start = frames;
+    let mut seen: Vec<(u64, String, (u16, u16))> = Vec::new();
+    while seen.len() < 3 && frames < start + 8000 {
+        retail_frame(&mut scenario);
+        frames += 1;
+        for building in placed(&scenario) {
+            if seen.iter().any(|known| known.0 == building.0) {
+                continue;
+            }
+            let sim = scenario.sim();
+            let rules = &scenario.runtime.resources.rules;
+            let house = &sim.houses[&owner];
+            let index = rules
+                .building_type_index(&building.1)
+                .expect("a BuildingType");
+            let node_cell = crate::sim::base_plan::pack_base_plan_cell(
+                i32::from(building.2.0),
+                i32::from(building.2.1),
+            );
+            assert!(
+                house
+                    .base_plan
+                    .nodes
+                    .iter()
+                    .any(|node| node.type_or_control == index && node.packed_cell == node_cell),
+                "frame {frames}: {building:?} stands on a node of its type"
+            );
+            eprintln!("frame {frames}: placed {} at {:?}", building.1, building.2);
+            seen.push(building);
+        }
+    }
+    assert_eq!(
+        seen.len(),
+        3,
+        "three buildings placed after {} frames",
+        frames - start
+    );
 }

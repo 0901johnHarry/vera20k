@@ -254,6 +254,17 @@ pub(crate) fn savour_delay_frames(minutes: f64) -> u64 {
     (minutes * 900.0).clamp(0.0, u64::MAX as f64).trunc() as u64
 }
 
+/// `ftol(minutes * 900.0)` under the process's 53-bit chop control word: the
+/// frames of a rules value authored in minutes (the 900.0 is the double at
+/// `0x007E27F8`).
+pub(crate) fn native_minutes_to_frames(minutes: f64) -> i32 {
+    use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
+    X87::ftol_i32_low_masked(X87::mul(
+        X87::load_f64(NativeF64Bits::from_bits(minutes.to_bits())),
+        X87::load_i32(900),
+    ))
+}
+
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
@@ -345,6 +356,20 @@ pub struct GeneralRules {
     /// override it with `3`. Building exit compares strictly after incrementing;
     /// negative mod values remain literal.
     pub maximum_building_placement_failures: i32,
+    /// `[General] PlacementDelay=` in minutes (`Rules+0x5F8`, ReadDouble at
+    /// `0x0066F208`, constructor .05 at `0x00665E8C`): how long a computer
+    /// Construction Yard waits after a blocked placement before it tries its
+    /// finished building again ([`Self::placement_delay_frames`]).
+    pub placement_delay: f64,
+    /// `[General] AIAlternateProductionCreditCutoff=` (`Rules+0x1300`,
+    /// ReadInt at `0x0066FDFB`, constructor 1000 at `0x0066703B`): the credits
+    /// below which the computer's production mode leaves its normal state.
+    pub ai_alternate_production_credit_cutoff: i32,
+    /// `[General] AIRestrictReplaceTime=` (`Rules+0xDF0`, ReadInt at
+    /// `0x00670110`, constructor 500 at `0x006668D4`; retail 400): the frames
+    /// after a building of the house is attacked during which the computer
+    /// replans a lost building only if it is armed, a wall or a power plant.
+    pub ai_restrict_replace_time: i32,
     /// `[General] BaseDefenseDelay=` in minutes. A strict responder-budget
     /// overshoot arms the attacker cooldown for `ftol(value * 900)` frames.
     pub base_defense_delay_minutes: f64,
@@ -457,9 +482,10 @@ pub struct GeneralRules {
     pub prism_type: Option<String>,
     /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
     pub prism_support: PrismSupportRules,
-    /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=` and
-    /// `WallTower=` (Rules `+0x86C..+0x87C`).
-    pub wall_gate_types: WallGateTypes,
+    /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=`,
+    /// `WallTower=` (Rules `+0x86C..+0x87C`) and the four power plants
+    /// (`+0x89C..+0x8A8`).
+    pub building_types: GeneralBuildingTypes,
     /// Whether ore cells grow denser over time (TiberiumGrows= in [General]).
     /// Default true. Can be overridden per-map in [SpecialFlags].
     pub tiberium_grows: bool,
@@ -1341,26 +1367,37 @@ fn parse_paradrop_list(
 /// double nearest .02 (`0x3F947AE147AE147B`, pushed at `0x0066D317`).
 const DIFFICULTY_REPAIR_DELAY_DEFAULT: f64 = 0.02;
 
-/// The `[General]` Prism support keys, read by `RulesClass::ReadGeneral`
-/// (`0x0066D530`) on every rules pass that has a `[General]` section, each
-/// with its current value as the default (`0x0067114F..0x006711B8`). The
-/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
-/// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
-/// reader outside the constructor and ReadGeneral.
-/// The building types `CellClass::Is_Clear_To_Build` lets stand on their own
-/// house's wall overlay (`sim::build_site`): WallTower and the two GDI gates
-/// over GASAND/GAWALL (`0x0047C8DD..0x0047C8F7`), the two Nod gates over
-/// NAWALL (`0x0047C92F..0x0047C943`). Retail names GADUMY for all five.
+/// The single BuildingTypes `RulesClass::ReadGeneral` names in `[General]`,
+/// as stored IDs (`read_building_identity`; the layered reader in
+/// `native_processing` replaces the projection).
+///
+/// The gates and WallTower (`Rules+0x86C..+0x87C`, read at
+/// `0x0066F450..0x0066F583`) are the types `CellClass::Is_Clear_To_Build` lets
+/// stand on their own house's wall overlay (`sim::build_site`): WallTower and
+/// the two GDI gates over GASAND/GAWALL (`0x0047C8DD..0x0047C8F7`), the two
+/// Nod gates over NAWALL (`0x0047C92F..0x0047C943`). Retail names GADUMY for
+/// all five. The four power plants (`Rules+0x89C..+0x8A8`, read at
+/// `0x0066F692..0x0066F781`) are the plant the computer's building choice
+/// splices into its BasePlan (`sim::ai_base_building`); retail GAPOWR, NAPOWR,
+/// NANRCT and YAPOWR.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct WallGateTypes {
+pub struct GeneralBuildingTypes {
     pub gdi_gate_one: Option<String>,
     pub gdi_gate_two: Option<String>,
     pub nod_gate_one: Option<String>,
     pub nod_gate_two: Option<String>,
     pub wall_tower: Option<String>,
+    /// `GDIPowerPlant=` (`Rules+0x89C`).
+    pub gdi_power_plant: Option<String>,
+    /// `NodRegularPower=` (`Rules+0x8A0`).
+    pub nod_regular_power: Option<String>,
+    /// `NodAdvancedPower=` (`Rules+0x8A4`).
+    pub nod_advanced_power: Option<String>,
+    /// `ThirdPowerPlant=` (`Rules+0x8A8`).
+    pub third_power_plant: Option<String>,
 }
 
-impl WallGateTypes {
+impl GeneralBuildingTypes {
     /// `type == Rules+0x87C || +0x86C || +0x870`.
     pub fn stands_on_gdi_wall(&self, type_id: &str) -> bool {
         [&self.wall_tower, &self.gdi_gate_one, &self.gdi_gate_two]
@@ -1399,6 +1436,12 @@ fn read_building_identity(
     }
 }
 
+/// The `[General]` Prism support keys, read by `RulesClass::ReadGeneral`
+/// (`0x0066D530`) on every rules pass that has a `[General]` section, each
+/// with its current value as the default (`0x0067114F..0x006711B8`). The
+/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
+/// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
+/// reader outside the constructor and ReadGeneral.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PrismSupportRules {
     /// `PrismSupportModifier=` (`Rules+0x49C`), the percent each supporter
@@ -1465,6 +1508,9 @@ impl Default for GeneralRules {
             computer_base_defense_response: 3,
             // Native Rules+0xE48 constructor default; active retail overrides to 3.
             maximum_building_placement_failures: 5,
+            placement_delay: 0.05,
+            ai_alternate_production_credit_cutoff: 1000,
+            ai_restrict_replace_time: 500,
             base_defense_delay_minutes: 0.25,
             suspend_priority: 20,
             suspend_delay_minutes: 2.0,
@@ -1497,7 +1543,7 @@ impl Default for GeneralRules {
             separate_aircraft: false,
             prism_type: None,
             prism_support: PrismSupportRules::default(),
-            wall_gate_types: WallGateTypes::default(),
+            building_types: GeneralBuildingTypes::default(),
             tiberium_grows: true,
             tiberium_spreads: true,
             growth_rate_minutes: 2.0,
@@ -1968,11 +2014,14 @@ impl GeneralRules {
     /// decimal .01 is parsed through float by ReadDouble5283D0 and converts to
     /// 8, while 1% converts to9. No clamp, round-to-nearest or u16 narrowing.
     pub fn path_delay_ticks(&self) -> i32 {
-        use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
-        X87::ftol_i32_low_masked(X87::mul(
-            X87::load_f64(NativeF64Bits::from_bits(self.path_delay.to_bits())),
-            X87::load_i32(900),
-        ))
+        native_minutes_to_frames(self.path_delay)
+    }
+
+    /// `ftol(PlacementDelay * 900.0)`, the computer Construction Yard's retry
+    /// wait (`BuildingClass::Factory_AI @ 0x004501DB..0x004501F3`). Retail .05
+    /// gives 45.
+    pub fn placement_delay_frames(&self) -> i32 {
+        native_minutes_to_frames(self.placement_delay)
     }
 
     pub fn infantry_death_anim(&self, inf_death: u8) -> Option<&str> {
@@ -2199,6 +2248,13 @@ impl GeneralRules {
             maximum_building_placement_failures: general
                 .get_i32("MaximumBuildingPlacementFailures")
                 .unwrap_or(defaults.maximum_building_placement_failures),
+            placement_delay: general.read_double("PlacementDelay", defaults.placement_delay),
+            ai_alternate_production_credit_cutoff: general.read_int(
+                "AIAlternateProductionCreditCutoff",
+                defaults.ai_alternate_production_credit_cutoff,
+            ),
+            ai_restrict_replace_time: general
+                .read_int("AIRestrictReplaceTime", defaults.ai_restrict_replace_time),
             base_defense_delay_minutes: general
                 .read_double("BaseDefenseDelay", defaults.base_defense_delay_minutes),
             suspend_priority: general
@@ -2326,12 +2382,16 @@ impl GeneralRules {
             // (`native_processing`) replaces this projection.
             prism_type: read_building_identity(general, "PrismType", defaults.prism_type),
             prism_support: defaults.prism_support.read_pass(general),
-            wall_gate_types: WallGateTypes {
+            building_types: GeneralBuildingTypes {
                 gdi_gate_one: read_building_identity(general, "GDIGateOne", None),
                 gdi_gate_two: read_building_identity(general, "GDIGateTwo", None),
                 nod_gate_one: read_building_identity(general, "NodGateOne", None),
                 nod_gate_two: read_building_identity(general, "NodGateTwo", None),
                 wall_tower: read_building_identity(general, "WallTower", None),
+                gdi_power_plant: read_building_identity(general, "GDIPowerPlant", None),
+                nod_regular_power: read_building_identity(general, "NodRegularPower", None),
+                nod_advanced_power: read_building_identity(general, "NodAdvancedPower", None),
+                third_power_plant: read_building_identity(general, "ThirdPowerPlant", None),
             },
             tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
             tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
@@ -3323,7 +3383,7 @@ impl RuleSet {
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
-        rules.general.wall_gate_types = processed.wall_gate_types().clone();
+        rules.general.building_types = processed.building_types().clone();
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
         rules.general.weather_con_bolt_explosion = weather_anim.to_owned();
@@ -4054,6 +4114,15 @@ impl RuleSet {
         self.object_category_index
             .get(&(category, id.to_ascii_uppercase()))
             .map(|handle| self.object_by_handle(*handle))
+    }
+
+    /// The BuildingType at native array index `index` (`BuildingTypes[index]`,
+    /// the index `ObjectType::base_plan_type_index` and BasePlan nodes hold).
+    /// `None` for a negative index, one past the array, or a registered name
+    /// without a section.
+    pub(crate) fn building_type_at(&self, index: i32) -> Option<&ObjectType> {
+        let id = self.building_ids.get(usize::try_from(index).ok()?)?;
+        self.object_in_category(ObjectCategory::Building, id)
     }
 
     /// Resolve one scenario BasePlan token through the native BuildingType

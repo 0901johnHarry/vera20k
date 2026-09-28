@@ -64,6 +64,15 @@ impl CellRef<'_> {
         }
     }
 
+    /// `CellClass+0x11B`, the signed level of the real cell or of the shared
+    /// dummy the stamping lookup selected.
+    pub(crate) fn signed_level(&self) -> i8 {
+        match self {
+            CellRef::Real(cell) => cell.level as i8,
+            CellRef::Dummy { cell } => cell.snapshot().level,
+        }
+    }
+
     /// Live `CellClass+0x140 & 0x1180` view for consumers that must inspect
     /// the same real-or-dummy result selected by the stamping lookup.
     pub(crate) fn bridge_flags_0x1180(&self) -> u32 {
@@ -611,38 +620,6 @@ impl CellReservationGrid {
             self.clear(terrain, x, y, reservation_arg);
             true
         });
-    }
-
-    pub(crate) fn has_reservation_inclusive(
-        &self,
-        terrain: Option<&ResolvedTerrainGrid>,
-        min_x: i32,
-        min_y: i32,
-        max_x: i32,
-        max_y: i32,
-        reservation_arg: i32,
-    ) -> bool {
-        if min_x > max_x || min_y > max_y || reservation_mask(reservation_arg) == 0 {
-            return false;
-        }
-        let mut x = min_x;
-        loop {
-            let mut y = min_y;
-            loop {
-                if self.has_reservation(terrain, x, y, reservation_arg) {
-                    return true;
-                }
-                if y == max_y {
-                    break;
-                }
-                y = y.wrapping_add(1);
-            }
-            if x == max_x {
-                break;
-            }
-            x = x.wrapping_add(1);
-        }
-        false
     }
 
     /// Same-house reservation connectivity around a center cell. Bits are
@@ -2782,7 +2759,7 @@ mod tests {
         let mut grid = CellReservationGrid::new();
         grid.reserve(Some(&terrain), 1, 0, 6);
         assert_eq!(grid.raw_mask(Some(&terrain), 2, 0), 1 << 6);
-        assert!(grid.has_reservation_inclusive(Some(&terrain), 2, 0, 2, 0, 6));
+        assert!(grid.has_reservation(Some(&terrain), 2, 0, 6));
         assert_eq!(
             grid.house_reservation_neighbor_mask(Some(&terrain), 2, 0, 6),
             0xff,

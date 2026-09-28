@@ -805,6 +805,13 @@ pub struct GameEntity {
     pub building_up: Option<BuildingUp>,
     /// Reverse build-up animation — building is undeploying into a mobile unit.
     pub building_down: Option<BuildingDown>,
+    /// `BuildingClass+0x550..+0x558`, the wait before the building's
+    /// computer factory tries its finished object again. The constructor
+    /// starts it with no duration (`0x0043B7A7`, `0x0043B7AD`); a placement
+    /// that must wait restarts it for `[General] PlacementDelay=`
+    /// (`0x004501CB..0x004501F7`); only `production::factory_ai` reads it.
+    #[serde(default)]
+    pub(crate) ai_placement_timer: crate::sim::timer::CdTimer,
     /// Retained Building+6E6 animation-transition flag (saved454469).
     /// Selfheal and arbitrary health writes do not refresh this value.
     #[serde(default)]
@@ -1610,6 +1617,7 @@ impl GameEntity {
             weapon_burst: Default::default(),
             building_up: None,
             building_down: None,
+            ai_placement_timer: crate::sim::timer::CdTimer::default(),
             building_damage_state_active: false,
             building_anim_slots: [None; 21],
             building_anim_effect_replay: [false; 21],

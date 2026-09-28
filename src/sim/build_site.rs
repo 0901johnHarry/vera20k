@@ -2,7 +2,9 @@
 //!
 //! The one owner of `CellClass::Is_Clear_To_Build @ 0x0047C620` and the
 //! foundation walk over it, `BuildingTypeClass::CanPlaceAt @ 0x00464AC0`
-//! (vtable `+0xA8`) → `TechnoTypeClass::CanPlaceAt @ 0x00716150`. Its callers
+//! (vtable `+0xA8`) → `TechnoTypeClass::CanPlaceAt @ 0x00716150`, and of the
+//! computer's clearing of a site before it places there
+//! (`BuildingTypeClass::Flush_For_Placement @ 0x0045EE70`). Its callers
 //! here: player placement (the cursor's per-cell test `0x0047EE93` and the
 //! wall fill scan `0x0058886E`), MCV Deploy (`0x007394D2`), TryToDeploy
 //! (`0x00738E08`, `0x00739333`) and the building/terrain answers of the live
@@ -170,6 +172,98 @@ pub(crate) fn is_clear_to_build(
     }
 }
 
+/// What `BuildingTypeClass::Flush_For_Placement @ 0x0045EE70` answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Flush {
+    /// 0: nothing stands in the way, or the origin is (0, 0).
+    Clear,
+    /// 1: allied units stand in the way and were told to leave, or are
+    /// leaving already.
+    Scattered,
+    /// 2: something that will not leave stands in the way.
+    Blocked,
+}
+
+/// `BuildingTypeClass::Flush_For_Placement @ 0x0045EE70` for `ty` at `origin`
+/// and the placing `house`: over the foundation cells on the map
+/// (`MapClass::In_Bounds`), an overlay blocks (a `WallTower=` type may stand
+/// on GAWALL, `0x0045EF11..0x0045EF26`), and so does the cell's first object
+/// (`+0xE4`) when it is a Terrain object, a building (whose
+/// `PowersUpBuilding=` arm `0x00452670` is dormant) or a unit whose house is
+/// not allied to `house`. Any other unit counts as told to leave; unless it
+/// is heading elsewhere already (a NavCom other than its own cell,
+/// `0x0045EF9D..0x0045EFDF`), its cell is scattered
+/// (`CellClass::Scatter_Objects @ 0x00481670` with a null source, forced, on
+/// the ground list). The scan stops at the first blocker.
+pub(crate) fn flush_for_placement(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    ty: &ObjectType,
+    origin: (i16, i16),
+    house: InternedId,
+    path_grid: Option<&crate::sim::pathfinding::PathGrid>,
+) -> Flush {
+    if origin == (0, 0) {
+        return Flush::Clear;
+    }
+    let wall_tower = rules
+        .general
+        .building_types
+        .wall_tower
+        .as_deref()
+        .is_some_and(|name| name.eq_ignore_ascii_case(&ty.id));
+    let mut scattered = false;
+    for (dx, dy) in crate::rules::foundation::foundation_cell_offsets(&ty.foundation) {
+        let cell = (origin.0.wrapping_add(dx), origin.1.wrapping_add(dy));
+        if !sim.map_cell_in_bounds(cell) {
+            continue;
+        }
+        let (Ok(rx), Ok(ry)) = (u16::try_from(cell.0), u16::try_from(cell.1)) else {
+            continue;
+        };
+        let overlay = sim
+            .overlay_grid
+            .as_ref()
+            .and_then(|grid| grid.cell(rx, ry).overlay_id);
+        if overlay.is_some_and(|overlay| !(wall_tower && overlay == OVERLAY_GAWALL)) {
+            return Flush::Blocked;
+        }
+        let Some(first) = sim.cell_objects((rx, ry), MovementLayer::Ground).next() else {
+            continue;
+        };
+        let CellObjectMember::Entity(id) = first else {
+            return Flush::Blocked;
+        };
+        let Some(object) = sim.substrate.entities.get(id) else {
+            continue;
+        };
+        let allied = crate::map::houses::is_allied_with(
+            &sim.house_alliances,
+            sim.interner.resolve(object.owner()),
+            sim.interner.resolve(house),
+        );
+        if object.category == EntityCategory::Structure || !allied {
+            return Flush::Blocked;
+        }
+        scattered = true;
+        let own_cell =
+            crate::sim::components::NavTargetRef::cell(object.position.rx, object.position.ry);
+        if object
+            .navigation
+            .nav_com
+            .is_some_and(|nav_com| nav_com != own_cell)
+        {
+            continue;
+        }
+        sim.scatter_cell_contacts(cell, false, true, rules, path_grid);
+    }
+    if scattered {
+        Flush::Scattered
+    } else {
+        Flush::Clear
+    }
+}
+
 /// The type-specific object tests before the playfield test
 /// (`0x0047C638..0x0047C866`).
 fn objects_admit(
@@ -282,7 +376,7 @@ fn overlay_admits(
                 .and_then(|name| registry?.id_for_name(name))
                 == Some(overlay_id)
     };
-    let gates = &rules.general.wall_gate_types;
+    let gates = &rules.general.building_types;
     if matches!(overlay_id, OVERLAY_GASAND | OVERLAY_GAWALL)
         && (own_damaged_wall() || gates.stands_on_gdi_wall(&ty.id))
         && wall_owner == house

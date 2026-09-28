@@ -10,7 +10,7 @@ use crate::rules::error::RulesError;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::projectile_type::ProjectileArtState;
-use crate::rules::ruleset::{PrismSupportRules, WallGateTypes};
+use crate::rules::ruleset::{GeneralBuildingTypes, PrismSupportRules};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
@@ -393,12 +393,13 @@ impl ProcessedRulesLayers {
             .as_deref()
     }
 
-    /// `[General]` gates and WallTower (Rules `+0x86C..+0x87C`), stored IDs.
-    pub(crate) fn wall_gate_types(&self) -> &WallGateTypes {
+    /// `[General]` gates, WallTower and power plants (Rules `+0x86C..+0x87C`,
+    /// `+0x89C..+0x8A8`), stored IDs.
+    pub(crate) fn building_types(&self) -> &GeneralBuildingTypes {
         &self
             .native_type_construction_trace
             .registry_state()
-            .rules_wall_gate_types
+            .rules_building_types
     }
 
     pub(crate) fn projectile_rule_controls(&self) -> (f64, i32, [u8; 3]) {
@@ -576,7 +577,7 @@ pub(crate) struct NativeRulesRegistryState {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
-    rules_wall_gate_types: WallGateTypes,
+    rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
 
@@ -592,7 +593,7 @@ impl Default for NativeRulesRegistryState {
             rules_line_trail_override: [0; 3],
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
-            rules_wall_gate_types: WallGateTypes::default(),
+            rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -805,7 +806,7 @@ struct RulesPassProcessor {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
-    rules_wall_gate_types: WallGateTypes,
+    rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
 
@@ -828,7 +829,7 @@ impl Default for RulesPassProcessor {
                 .rules_line_trail_override,
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
-            rules_wall_gate_types: WallGateTypes::default(),
+            rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
     }
@@ -845,7 +846,7 @@ impl RulesPassProcessor {
             rules_line_trail_override: registry_state.rules_line_trail_override,
             rules_prism_support: registry_state.rules_prism_support,
             rules_prism_type: registry_state.rules_prism_type,
-            rules_wall_gate_types: registry_state.rules_wall_gate_types,
+            rules_building_types: registry_state.rules_building_types,
             select_anim: registry_state.select_anim,
             ..Self::default()
         }
@@ -1190,12 +1191,17 @@ impl RulesPassProcessor {
                     | "NodGateOne"
                     | "NodGateTwo"
                     | "WallTower"
+                    | "GDIPowerPlant"
+                    | "NodRegularPower"
+                    | "NodAdvancedPower"
+                    | "ThirdPowerPlant"
             ) {
                 // General671053/66DF19/66E2AF: empty ReadString128 retains the
                 // current pointer; exact none clears it through the factory.
-                // PrismType's reader (`0x0067BCE0`, called at `0x00671144`)
-                // and the gate/WallTower reads (`0x0066F450..0x0066F583`) do
-                // the same through BuildingType's FindOrAllocate.
+                // PrismType's reader (`0x0067BCE0`, called at `0x00671144`),
+                // the gate/WallTower reads (`0x0066F450..0x0066F583`) and the
+                // power plant reads (`0x0066F692..0x0066F781`) do the same
+                // through BuildingType's FindOrAllocate.
                 let incoming = section.read_string(key, "", 0x80);
                 if !incoming.is_empty() {
                     let resolved = self
@@ -1212,13 +1218,17 @@ impl RulesPassProcessor {
                             self.rules_prism_type = Some(resolved).filter(|id| !id.is_empty());
                         }
                         _ => {
-                            let gates = &mut self.rules_wall_gate_types;
+                            let types = &mut self.rules_building_types;
                             let slot = match key {
-                                "GDIGateOne" => &mut gates.gdi_gate_one,
-                                "GDIGateTwo" => &mut gates.gdi_gate_two,
-                                "NodGateOne" => &mut gates.nod_gate_one,
-                                "NodGateTwo" => &mut gates.nod_gate_two,
-                                _ => &mut gates.wall_tower,
+                                "GDIGateOne" => &mut types.gdi_gate_one,
+                                "GDIGateTwo" => &mut types.gdi_gate_two,
+                                "NodGateOne" => &mut types.nod_gate_one,
+                                "NodGateTwo" => &mut types.nod_gate_two,
+                                "WallTower" => &mut types.wall_tower,
+                                "GDIPowerPlant" => &mut types.gdi_power_plant,
+                                "NodRegularPower" => &mut types.nod_regular_power,
+                                "NodAdvancedPower" => &mut types.nod_advanced_power,
+                                _ => &mut types.third_power_plant,
                             };
                             *slot = Some(resolved).filter(|id| !id.is_empty());
                         }
@@ -1962,7 +1972,7 @@ impl RulesPassProcessor {
                     rules_line_trail_override: self.rules_line_trail_override,
                     rules_prism_support: self.rules_prism_support,
                     rules_prism_type: self.rules_prism_type,
-                    rules_wall_gate_types: self.rules_wall_gate_types,
+                    rules_building_types: self.rules_building_types,
                     select_anim: self.select_anim,
                 },
             },
