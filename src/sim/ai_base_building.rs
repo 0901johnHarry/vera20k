@@ -12,7 +12,8 @@
 //! 0x004FBD80`), places it (`BuildingClass::Exit_Object @ 0x00443C60`'s
 //! building case, with the site search in `sim::ai_base_site` and the site
 //! clearing in `sim::build_site`) and records it (`Record_Last_Built @
-//! 0x004FB6B0`).
+//! 0x004FB6B0`, owned by `production::factory_lifecycle`, which also takes
+//! the player's placements and every delivered unit).
 //!
 //! Evidence: instruction reading of the bodies named on each function; the
 //! draws and the mode table are executed by `tools/ai_base_building_oracle.py`
@@ -35,7 +36,22 @@
 //!   `0x004FF210`) are not ported: their choices (`+0x5650/+0x5654/+0x5658`)
 //!   stay -1 and their draws are missing. `sim::ai`'s unit queue stands in.
 //!   Trigger: every computer house, every eighth frame. Effect: the chooser
-//!   block runs the building choice in modes 0, 1 and 2 and nothing else.
+//!   block runs the building choice in modes 0, 1 and 2 and nothing else. In
+//!   mode 2 (entered at a building exit below `[General]
+//!   AIAlternateProductionCreditCutoff=`) native runs those choosers first
+//!   and chooses a building only when all three choices are -1 or a chosen
+//!   type has no factory (`0x004F90F0..0x004F9247`, FindFactory `vt+0x94`), so
+//!   a native computer below the cutoff pauses its structures while unit
+//!   choices are pending; VERA's keeps choosing buildings.
+//! - The unit exits of `BuildingClass::Exit_Object` also step
+//!   `EconomyStateMachine` (an aircraft with kind 2 at `0x00443CBC`, a unit or
+//!   infantry leaving a factory that is neither `Hospital=` nor `Armory=`
+//!   with its RTTI at `0x00444102`) and clear that kind's choice; VERA's unit
+//!   deliveries (`production::production_queue`, the stand-in's path) do not
+//!   call it. Trigger: every computer unit that leaves a factory. Effect: the
+//!   mode changes only at building exits, and the state-2 draw
+//!   (`0x00509863`) is missing at unit exits. The computer's unit production
+//!   (Factory_AI's unit factories and their exits) is a later chain.
 //! - A `-1` defense node (and a WallTower node without a cell) takes the
 //!   wall/defense draw (`RandomRanged(0,99)` at `0x004FE59E`) and then the
 //!   failure return of `ChooseNextProduction @ 0x00506EF0`: the node is
@@ -49,7 +65,9 @@
 //! - Dormant in retail data: the `PowersUpBuilding=` arms of `0x0042E820` and
 //!   `AI_Choose_Building` (`0x004FE953..0x004FEA3A`); no retail type sets the
 //!   key and VERA reads no upgrade (as `production_sell` and
-//!   `building_missions` record).
+//!   `building_missions` record). The exit's `FirestormWall=` placement
+//!   after Unlimbo (`0x00445355..0x004453AE`, `0x00588570`); retail
+//!   `rulesmd.ini` sets the key on no type.
 //! - `Record_Last_Built` also stores the last built type of the object's kind
 //!   (`+0x26C` for buildings), which only the "built building type" trigger
 //!   event reads (`TriggerCondition::Evaluate`, `0x0071EFEB`; VERA's trigger
@@ -57,14 +75,14 @@
 //!   90-frame House timer nothing else reads (`0x004F8DF6..0x004F8E21`); sets
 //!   `+0x1FC`, whose revoke and grant pass on the next House update
 //!   (`0x004F92E9..0x004F9302`) VERA runs at the placement; and plays the
-//!   type's `CreateSound=` (`+0x534`, not parsed; presentation).
+//!   type's `CreateSound=` (`+0x534`) or, for a unit, infantry or aircraft,
+//!   a Rules default (`+0x178`, `+0x17C`, `+0x180`); presentation, not
+//!   parsed.
 //! - Native crash or out-of-range reads that VERA defines: a node index past
 //!   the BuildingType array or a negative control other than -1/-2/-3 reads
 //!   memory past the array (`0x004FE537`, `0x004FE6F6`); a null power plant
-//!   slot is dereferenced (`0x004FE8A9`, `0x00505368`); a `WallTower=`
-//!   building placed without a node reads through the null node
-//!   (`0x00445437`). VERA makes no choice for such a node, splices nothing
-//!   for a missing plant and carries no WallTower site.
+//!   slot is dereferenced (`0x004FE8A9`, `0x00505368`). VERA makes no choice
+//!   for such a node and splices nothing for a missing plant.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectType};
@@ -206,9 +224,10 @@ pub(crate) fn economy_state_machine(
 /// (`0x004F9038..0x004F9265`): a house no human controls, whose HouseType is
 /// not `MultiplayPassive=`, on every eighth (signed) frame. Mode 0 and a
 /// campaign run the building choice first, mode 1 runs it first and mode 2
-/// runs it after the unit choosers once they all hold no choice; other modes
-/// run none. The unit choosers are not ported (module residual), so their
-/// choices stay -1 and the building choice runs in modes 0, 1 and 2.
+/// runs it after the unit choosers when they all hold no choice or a chosen
+/// type has no factory; other modes run none. The unit choosers are not
+/// ported (module residual), so their choices stay -1 and the building
+/// choice runs in modes 0, 1 and 2.
 pub(crate) fn update_building_choice(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -398,6 +417,11 @@ pub(crate) fn exit_building(
     let Some(owner) = sim.substrate.entities.get(factory).map(|yard| yard.owner()) else {
         return BuildingExit::Failed;
     };
+    // The prelude marks the leaving object a playfield member whatever the
+    // outcome (`0x00443C81`); a placement's Unlimbo then sets it exactly.
+    if let Some(object) = sim.substrate.entities.get_mut(product) {
+        object.in_playfield = true;
+    }
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     // `0x00444F19..0x00444F2A` (`0x0050B730`).
     if sim
@@ -607,8 +631,9 @@ fn carry_wall_tower_site(
         .wall_tower
         .as_deref()
         .is_some_and(|name| name.eq_ignore_ascii_case(&ty.id));
-    // A WallTower placed without a node reads through a null node natively
-    // (module residual).
+    // Without a node the index lookup (`vt+0x14`, `0x0042F3D0`) maps the null
+    // pointer to `(0 - items) >> 4`, past the count, so no node takes the
+    // cell.
     let (true, Some(index)) = (wall_tower, node) else {
         return;
     };
@@ -643,25 +668,6 @@ pub(crate) fn suggest_new_object<'r>(
     match factory_type {
         FactoryType::BuildingType => rules.building_type_at(house.ai_production.building_choice),
         FactoryType::UnitType | FactoryType::InfantryType | FactoryType::AircraftType => None,
-    }
-}
-
-/// `HouseClass::Record_Last_Built @ 0x004FB6B0` for the object of type
-/// `type_id` house `owner`'s yard placed (`0x004501A4`): its kind's built
-/// counter (`+0x55A0` for buildings) grows unless the type is `DontScore=`
-/// (`+0xC9F`); [`MatchStatistics::built`](crate::sim::house_state::MatchStatistics)
-/// is the sum of the four. The other writes are module residuals.
-pub(crate) fn record_last_built(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: InternedId,
-    type_id: InternedId,
-) {
-    let scores = sim
-        .object_type(type_id, rules)
-        .is_some_and(|ty| !ty.dont_score);
-    if scores && let Some(house) = sim.houses.get_mut(&owner) {
-        house.stats.built = house.stats.built.saturating_add(1);
     }
 }
 

@@ -257,10 +257,9 @@ fn retail_building_types_set_no_cloak_generator_or_upgrade() {
 const EXIT_RULES: &str = "[General]\nAIAlternateProductionCreditCutoff=2000\n\
     MaximumBuildingPlacementFailures=2\n\
     [InfantryTypes]\n[AircraftTypes]\n[VehicleTypes]\n0=TANK\n\
-    [BuildingTypes]\n0=YARD\n1=PLAIN\n2=FLAG\n\
+    [BuildingTypes]\n0=YARD\n1=PLAIN\n\
     [YARD]\nStrength=1000\nConstructionYard=yes\nFoundation=2x2\n\
     [PLAIN]\nStrength=1000\nFoundation=2x2\n\
-    [FLAG]\nStrength=100\nDontScore=yes\n\
     [TANK]\nStrength=300\nSpeed=5\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
     [Clear]\nBuildable=yes\n";
 
@@ -406,37 +405,4 @@ fn a_human_yard_places_nothing() {
             .in_limbo
     );
     assert_eq!(node_state(&sim, owner), [((16, 16), 0)]);
-}
-
-#[test]
-fn record_last_built_counts_what_scores() {
-    let (mut sim, rules, owner, ..) = exit_fixture();
-    let plain = sim.interner.intern("PLAIN");
-    let flag = sim.interner.intern("FLAG");
-
-    record_last_built(&mut sim, &rules, owner, plain);
-    record_last_built(&mut sim, &rules, owner, flag);
-
-    assert_eq!(sim.houses[&owner].stats.built, 1);
-}
-
-#[test]
-fn the_yard_makes_the_building_choice_and_nothing_else() {
-    let (mut sim, rules, owner, ..) = exit_fixture();
-    let plain = rules.building_type_index("PLAIN").unwrap();
-    assert!(suggest_new_object(&sim, &rules, owner, FactoryType::BuildingType).is_none());
-    sim.houses
-        .get_mut(&owner)
-        .unwrap()
-        .ai_production
-        .set_for_test(0, plain, true);
-    let suggested = suggest_new_object(&sim, &rules, owner, FactoryType::BuildingType);
-    assert_eq!(suggested.map(|ty| ty.id.as_str()), Some("PLAIN"));
-    for other in [
-        FactoryType::UnitType,
-        FactoryType::InfantryType,
-        FactoryType::AircraftType,
-    ] {
-        assert!(suggest_new_object(&sim, &rules, owner, other).is_none());
-    }
 }

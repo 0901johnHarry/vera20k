@@ -25,7 +25,11 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).unwrap();
+    fixture_with(RULES)
+}
+
+fn fixture_with(rules: &str) -> Fixture {
+    let rules = RuleSet::from_ini(&IniFile::from_str(rules)).unwrap();
     let mut sim = Simulation::new();
     let path = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     sim.session.game_mode_nonzero = true;
@@ -111,6 +115,18 @@ fn the_yard_builds_its_choice_and_places_it_on_the_node() {
     assert_eq!(house.economy.credits, 900, "paid for");
     assert_eq!(house.stats.built, 1, "Record_Last_Built");
     assert!(f.held_object().is_none(), "the yard's factory is gone");
+}
+
+#[test]
+fn a_placed_building_that_does_not_score_is_not_counted() {
+    let mut f = fixture_with(&RULES.replace("[PLAIN]\n", "[PLAIN]\nDontScore=yes\n"));
+    let mut frames = 0;
+    while f.placed().is_none() && frames < 3000 {
+        f.tick();
+        frames += 1;
+    }
+    assert_eq!(f.placed(), Some((16, 16)), "after {frames} frames");
+    assert_eq!(f.sim.houses[&f.owner].stats.built, 0);
 }
 
 #[test]

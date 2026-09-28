@@ -5618,7 +5618,7 @@ impl Simulation {
 
     /// Spine region (LATE): AI commands, defeat detection, building animations,
     /// radar aging, and the late frame/tick commit. Accumulates
-    /// `spawned_entities` (AI and command placements). Returns false when
+    /// `spawned_entities` (command placements). Returns false when
     /// the terminating call skips frame commit and pending-delete processing.
     fn run_late_region(
         &mut self,

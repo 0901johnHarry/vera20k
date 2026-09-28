@@ -17,7 +17,9 @@
 //!   house's naval choices off, then `AbandonProduction @ 0x004C9FF0`
 //!   refunds and destroys the object and the factory is deleted.
 //! - Then, for a house whose Production latch is set (`+0x1EE`) and a
-//!   building neither building up nor selling (`Get_Mission` 0x12/0x13): a
+//!   building neither building up nor selling (`Get_Mission` 0x12/0x13; a
+//!   yard whose build-up ends this frame already reads Guard, as the repair
+//!   step does, [`constructing_or_selling`]): a
 //!   factory whose wait is over with no rate or stopped is abandoned; with
 //!   no factory, a house holding more than 10 credits makes one for its
 //!   choice (`Suggest_New_Object @ 0x004FBD80`) and starts it
@@ -54,7 +56,8 @@ use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 
 use super::factory::{FactoryHolder, PRODUCTION_STEPS};
-use super::factory_lifecycle::{settle_abandoned, start_active_production};
+use super::factory_lifecycle::{record_last_built, settle_abandoned, start_active_production};
+use super::production_repair::constructing_or_selling;
 use super::production_tech::production_category_for_object;
 
 /// `BuildingClass::Factory_AI @ 0x004500F0` for building `building`, whose
@@ -80,7 +83,7 @@ pub(crate) fn factory_ai(
         .houses
         .get(&owner)
         .is_some_and(|house| house.ai_activation.production);
-    if !production || entity.constructing_or_selling() {
+    if !production || constructing_or_selling(sim, entity) {
         return;
     }
     if sim
@@ -129,7 +132,7 @@ fn exit_finished_object(
         overlay_registry,
     ) {
         BuildingExit::Placed => {
-            ai_base_building::record_last_built(sim, rules, owner, object.type_id);
+            record_last_built(sim, rules, owner, object.type_id);
             // CompletedProduction lets the placed object go; the delete
             // finds none to abandon.
             sim.production

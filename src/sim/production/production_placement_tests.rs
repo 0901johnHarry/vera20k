@@ -681,13 +681,12 @@ fn completed_building_moves_into_ready_placement_pool() {
         vec![gacnst]
     );
     let held_id = held.object.unwrap().entity_id.unwrap();
-    let built = sim.houses[&americans].stats.built;
-    assert_eq!(built, built_before + 1);
     let rng = sim.scenario_rng.logical_state();
     for _ in 0..3 {
         assert!(!tick_production(&mut sim, &rules, &height_map, None));
     }
-    assert_eq!(sim.houses[&americans].stats.built, built);
+    // Record_Last_Built waits for the placement (`0x004FB4B7`).
+    assert_eq!(sim.houses[&americans].stats.built, built_before);
     assert_eq!(
         super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building),
         held_id
@@ -711,7 +710,10 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
 
     let americans = sim.interner.intern("Americans");
+    // The house whose Record_Last_Built counts the placement.
+    super::credits_entry_for_owner(&mut sim, "Americans");
     ready_building(&mut sim, &rules, "Americans", "GACNST");
+    let built_before = sim.houses[&americans].stats.built;
     let held_id = sim
         .production
         .factory_shadow
@@ -740,6 +742,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     ));
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
+    assert_eq!(sim.houses[&americans].stats.built, built_before + 1);
 
     let structures = sim
         .substrate

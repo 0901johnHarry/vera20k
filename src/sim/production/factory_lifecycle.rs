@@ -357,7 +357,6 @@ fn consume_ready_building(
     true
 }
 /// Publish the completion edge once, without releasing the held object.
-/// Native counts completion before delivery; refusal must not count again.
 pub(super) fn publish_completion(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -378,9 +377,6 @@ pub(super) fn publish_completion(
         .account_completed_object_once(owner, category)
     {
         return;
-    }
-    if let Some(house) = sim.houses.get_mut(&owner) {
-        house.stats.built = house.stats.built.saturating_add(1);
     }
     if rules
         .object(sim.interner.resolve(type_id))
@@ -404,7 +400,39 @@ pub(super) fn release_delivered_mobile(
     owner: InternedId,
     category: ProductionCategory,
 ) {
+    if let Some(object) = sim
+        .production
+        .factory_shadow
+        .view(owner, category)
+        .and_then(|view| view.object)
+    {
+        record_last_built(sim, rules, owner, object.type_id);
+    }
     advance_after_delivery(sim, rules, owner, category);
+}
+
+/// `HouseClass::Record_Last_Built @ 0x004FB6B0` for an object of type
+/// `type_id` that left its factory: `HouseClass::Place_Production` calls it
+/// after a successful exit (`0x004FB4B7`: a player's placed building, a
+/// delivered unit) and a computer's building factory after its placement
+/// (`BuildingClass::Factory_AI`, `0x004501A4`). The object's kind counter
+/// (`+0x55A0`, `+0x55B4`, `+0x55C8` or `+0x55DC`) grows unless its type is
+/// `DontScore=` (`+0xC9F`);
+/// [`MatchStatistics::built`](crate::sim::house_state::MatchStatistics) is
+/// the sum of the four. Its other writes are residuals of
+/// `sim::ai_base_building`.
+pub(super) fn record_last_built(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    type_id: InternedId,
+) {
+    let scores = sim
+        .object_type(type_id, rules)
+        .is_some_and(|ty| !ty.dont_score);
+    if scores && let Some(house) = sim.houses.get_mut(&owner) {
+        house.stats.built = house.stats.built.saturating_add(1);
+    }
 }
 
 /// Terminal mobile failure abandons the finished object with the AbandonProduction
@@ -444,6 +472,7 @@ impl ReadyFactoryObject {
 
     /// Building Unlimbo/build-up/superweapon effects precede factory release.
     pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
+        record_last_built(sim, rules, self.owner, self.type_id);
         consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
     }
 
@@ -451,6 +480,7 @@ impl ReadyFactoryObject {
     /// identity is consumed. Ready removal and successor construction follow.
     pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
         let _ = sim.discard_constructed_limbo(self.entity_id);
+        record_last_built(sim, rules, self.owner, self.type_id);
         consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
     }
 }

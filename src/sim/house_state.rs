@@ -739,7 +739,9 @@ pub struct MatchStatistics {
     pub units_lost: u32,
     /// Buildings of this house that were destroyed.
     pub buildings_lost: u32,
-    /// Objects this house finished producing.
+    /// Objects of this house that left their factory, `DontScore=` types
+    /// excepted: placed buildings and delivered units
+    /// (`production::factory_lifecycle::record_last_built`).
     pub built: u32,
     /// Score earned by destroying other houses' objects: the sum of each
     /// victim's point value at the moment it died.
