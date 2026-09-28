@@ -61,6 +61,8 @@ fn insert_structure(
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(stable_id + 1);
     sim.substrate.entities.insert(entity);
     sim.add_entity_occupancy(stable_id);
+    // Unlimbo's House+0x68 append, which the SpySat scan walks.
+    sim.append_house_base_building_for_test(stable_id);
 }
 
 fn insert_sight_unit(sim: &mut Simulation, stable_id: u64, owner: InternedId, rx: u16, ry: u16) {

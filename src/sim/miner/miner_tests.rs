@@ -13,6 +13,8 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{HarvestOverlay, Health, VoxelAnimation};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::InternedId;
 use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
@@ -206,9 +208,20 @@ fn spawn_refinery(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) {
     ge.lifecycle.cell_marked = true;
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 4, 3);
+    join_house_list(sim, sid, owner_id);
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
+}
+
+/// The building joins its House's building list (House+0x68) as Unlimbo
+/// makes it. A fixture without the House gets a human one, as the miner
+/// code treats a missing House.
+fn join_house_list(sim: &mut Simulation, sid: u64, owner: InternedId) {
+    sim.houses
+        .entry(owner)
+        .or_insert_with(|| HouseState::new(owner, 0, None, true, 0, 10));
+    sim.append_house_base_building_for_test(sid);
 }
 
 fn spawn_structure(sim: &mut Simulation, sid: u64, type_id: &str, rx: u16, ry: u16) {
@@ -242,6 +255,7 @@ fn spawn_structure_owned(
     ge.lifecycle.in_limbo = false;
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 1, 1);
+    join_house_list(sim, sid, owner_id);
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -2297,21 +2311,16 @@ fn scan_skips_tree_blocked_ore_cell() {
 /// the cell lists (`terrain_object_cells`) and its raw occupation, which the
 /// Unit Can_Enter_Cell of Is_Cell_Harvestable reads.
 fn plant_tree(sim: &mut Simulation, cell: (u16, u16)) {
-    use crate::sim::terrain_object::{
-        TerrainObjectState, mark_terrain_raw_occupation,
-    };
+    use crate::sim::terrain_object::{TerrainObjectState, mark_terrain_raw_occupation};
     let id = 900;
     let type_ref = sim.interner.intern("TREE01");
-    sim.production.terrain_objects.insert(
-        id,
-        {
-            let mut terrain = TerrainObjectState::for_test(id, type_ref, cell.0, cell.1);
-            terrain.health = 800;
-            terrain.max_health = 800;
-            terrain.occupation_bits = 4;
-            terrain
-        },
-    );
+    sim.production.terrain_objects.insert(id, {
+        let mut terrain = TerrainObjectState::for_test(id, type_ref, cell.0, cell.1);
+        terrain.health = 800;
+        terrain.max_health = 800;
+        terrain.occupation_bits = 4;
+        terrain
+    });
     sim.production.terrain_object_cells.insert(cell, id);
     mark_terrain_raw_occupation(&mut sim.substrate.raw_cell_occupation, cell, 4);
 }

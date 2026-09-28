@@ -1499,18 +1499,11 @@ pub(crate) fn extract_bales_max(
 
 /// One `FootClass::Find_Docking_Bay @ 0x004DF040` pass: for each `Dock=`
 /// type in list order, `FUN_004DEE80` scans the miner's OWN house's
-/// building list (`Owner @ TechnoClass+0x21C` → vector at House+0x6C, count
-/// at +0x78). Allies are never candidates, so a miner never deposits into an
-/// ally's wallet. Rust's `ids_for_owner` is ascending stable_id = creation
-/// order, which matches the native vector order for buildings that never
-/// changed hands (`DynamicVectorClass::Remove` shifts later entries down and
-/// preserves relative order). Tie-only residual: a captured building is
-/// natively removed from the old owner's list and appended to the new
-/// owner's, so it sorts LAST among that house's refineries, while Rust keeps
-/// it at its creation id. Order only decides equal-distance ties (strict `<`
-/// below), so this is visible only when a captured refinery and an original
-/// one sit at exactly the same centre distance; list-append semantics are
-/// deliberately not modelled.
+/// building list (`Owner @ TechnoClass+0x21C` → House+0x68, items `+0x6C`,
+/// count `+0x78`; VERA's `HouseBaseState::buildings`) in its order. Allies
+/// are never candidates, so a miner never deposits into an ally's wallet.
+/// Order decides equal-distance ties (strict `<` below): a captured
+/// refinery, appended to its new house's tail by ChangeOwner, loses them.
 ///
 /// Per-candidate gates in native order:
 /// - non-null and `+0x81 == 0` (`ObjectClass::InLimbo`), type == Dock type
@@ -1561,15 +1554,13 @@ fn find_docking_bay(
         .map(|loc| loc.movement_zone)
         .unwrap_or(MovementZone::Normal);
 
+    let buildings = sim.houses.get(&snap.owner)?.base_projection.buildings();
     let mut best: Option<(i64, u64)> = None;
     for dock_type in &harvester.dock {
-        for &sid in sim.substrate.entities.ids_for_owner(snap.owner) {
+        for &sid in buildings {
             let Some(entity) = sim.substrate.entities.get(sid) else {
                 continue;
             };
-            if entity.category != EntityCategory::Structure {
-                continue;
-            }
             let e_type = sim.interner.resolve(entity.type_ref());
             if !e_type.eq_ignore_ascii_case(dock_type) || entity.lifecycle.in_limbo {
                 continue;
@@ -2163,10 +2154,9 @@ mod harvest_scan_dispatch_tests {
 
     fn register_house(sim: &mut Simulation) {
         let owner = sim.interner.intern("Americans");
-        sim.houses.insert(
-            owner,
-            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
-        );
+        sim.houses.entry(owner).or_insert_with(|| {
+            crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10)
+        });
     }
 
     fn spawn_owned_refinery(sim: &mut Simulation, nw: (u16, u16)) {
@@ -2188,6 +2178,9 @@ mod harvest_scan_dispatch_tests {
         );
         ge.lifecycle.in_limbo = false;
         sim.substrate.entities.insert(ge);
+        // Unlimbo's House+0x68 append.
+        register_house(sim);
+        sim.append_house_base_building_for_test(REFINERY_ID);
         for y in nw.1..nw.1 + 3 {
             for x in nw.0..nw.0 + 4 {
                 sim.substrate.occupancy.add(
