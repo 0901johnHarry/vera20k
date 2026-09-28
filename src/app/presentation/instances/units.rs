@@ -1473,8 +1473,9 @@ mod tests {
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::sim::snapshot::GameSnapshot;
     use crate::sim::spawn_manager::{
-        SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState, SpawnTimer,
+        SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState,
     };
+    use crate::sim::timer::CdTimer;
     use crate::sim::world::Simulation;
 
     #[test]
@@ -1786,12 +1787,12 @@ mod tests {
                 .map(|(index, &state)| SpawnSlot {
                     spawn: (state != SpawnSlotState::Regenerating).then_some(index as u64 + 1),
                     state,
-                    timer: SpawnTimer::ready(),
+                    timer: CdTimer::default(),
                     is_missile_spawn: true,
                 })
                 .collect(),
-            update_timer: SpawnTimer::armed(10, 20),
-            reload_timer: SpawnTimer::ready(),
+            update_timer: CdTimer::started(10, 20),
+            reload_timer: CdTimer::default(),
             current_target: None,
             queued_target: None,
             mode: SpawnManagerMode::Idle,
@@ -1856,7 +1857,7 @@ mod tests {
     #[test]
     fn gsi_13_07_no_spawn_alt_selection_is_not_manager_timer_gated() {
         let mut manager = spawn_manager(&[SpawnSlotState::ReadyDocked]);
-        assert!(!manager.update_timer.due(10));
+        assert!(!manager.update_timer.expired(10));
         assert_eq!(no_spawn_alt_type_id("V3", true, Some(&manager)), None);
 
         manager.slots[0].state = SpawnSlotState::InFlight;

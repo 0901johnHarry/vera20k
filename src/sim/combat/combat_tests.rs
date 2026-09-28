@@ -1468,8 +1468,7 @@ fn ic_target_takes_zero_damage() {
     // Apply IronCurtain invulnerability to the target.
     if let Some(target) = store.get_mut(2) {
         target.invulnerability = Some(InvulnerabilityState {
-            start_frame: 0,
-            duration_frames: 1000,
+            timer: crate::sim::timer::CdTimer::started(0, 1000),
             kind: InvulnKind::IronCurtain,
         });
     }
@@ -2742,8 +2741,7 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
             .expect("protected victim spawns");
         let victim = sim.substrate.entities.get_mut(id).unwrap();
         victim.invulnerability = Some(InvulnerabilityState {
-            start_frame: 0,
-            duration_frames: 100,
+            timer: crate::sim::timer::CdTimer::started(0, 100),
             kind,
         });
         if warping {
@@ -2764,8 +2762,7 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
         .expect("ignore-defenses control spawns");
     for id in [healing_id, ignored_id] {
         sim.substrate.entities.get_mut(id).unwrap().invulnerability = Some(InvulnerabilityState {
-            start_frame: 0,
-            duration_frames: 100,
+            timer: crate::sim::timer::CdTimer::started(0, 100),
             kind: InvulnKind::IronCurtain,
         });
     }
@@ -3822,8 +3819,7 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
         .get_mut(edge)
         .unwrap()
         .pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-        start_frame: 0,
-        duration_frames: 40,
+        timer: crate::sim::timer::CdTimer::started(0, 40),
         source_entity_id: Some(center),
     });
     sim.overlay_grid = Some(OverlayGrid::new(20, 12));
@@ -3847,9 +3843,9 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
             .and_then(|entity| entity.pending_c4_detonation)
             .expect("qualifying fatal barrel becomes PostMortem")
     };
-    assert_eq!(pending(&sim, center).duration_frames, 5);
-    assert_eq!(pending(&sim, middle).duration_frames, 20);
-    assert_eq!(pending(&sim, edge).duration_frames, 35);
+    assert_eq!(pending(&sim, center).timer.duration(), 5);
+    assert_eq!(pending(&sim, middle).timer.duration(), 20);
+    assert_eq!(pending(&sim, edge).timer.duration(), 35);
     assert_eq!(
         pending(&sim, edge).source_entity_id,
         None,
@@ -3988,8 +3984,8 @@ fn gsi_04_07_damage_postmortem_exact_zero_callbacks_precede_restore() {
         .unwrap()
         .pending_c4_detonation
         .expect("PostMortem arms the shared timer after callbacks");
-    assert_eq!(pending.start_frame, 0);
-    assert_eq!(pending.duration_frames, 5);
+    assert_eq!(pending.timer.start_frame(), 0);
+    assert_eq!(pending.timer.duration(), 5);
     assert_eq!(pending.source_entity_id, None);
     let target = sim.substrate.entities.get(target_id).unwrap();
     assert_eq!(target.health.current, 1);
@@ -8650,8 +8646,7 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
             .get_mut(victim_id)
             .unwrap()
             .invulnerability = Some(InvulnerabilityState {
-            start_frame: 0,
-            duration_frames: 100,
+            timer: crate::sim::timer::CdTimer::started(0, 100),
             kind,
         });
 

@@ -411,8 +411,7 @@ fn survivors_of_a_c4_charged_building_attack_an_enemy_planter() {
                 .get_mut(plant)
                 .unwrap()
                 .pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-                start_frame: 0,
-                duration_frames: 100,
+                timer: crate::sim::timer::CdTimer::started(0, 100),
                 source_entity_id: Some(planter),
             });
             let before = sim.substrate.entities.keys_sorted();

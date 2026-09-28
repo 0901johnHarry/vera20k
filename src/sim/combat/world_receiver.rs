@@ -736,14 +736,13 @@ pub(crate) fn commit_entities(
             target.kill_award_points = 0;
             let replace = target
                 .pending_c4_detonation
-                .is_none_or(|pending| duration_frames < pending.remaining_at(current_frame));
+                .is_none_or(|pending| duration_frames < pending.timer.remaining(current_frame));
             if replace {
                 let retained_source = target
                     .pending_c4_detonation
                     .and_then(|pending| pending.source_entity_id);
                 target.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-                    start_frame: current_frame,
-                    duration_frames,
+                    timer: crate::sim::timer::CdTimer::started(current_frame, duration_frames),
                     source_entity_id: retained_source,
                 });
             }

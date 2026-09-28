@@ -4,6 +4,7 @@
 //! pair is the sole emptiness discriminator; accepted ghosts retain the same
 //! coordinate/timer state as visible crates.
 
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
 pub(crate) const CRATE_SLOT_CAPACITY: usize = 256;
@@ -32,6 +33,12 @@ impl Default for CrateSlot {
 impl CrateSlot {
     pub fn is_empty(self) -> bool {
         self.cell_x == 0 && self.cell_y == 0
+    }
+
+    /// The slot's timer: its start and duration words. The `aux` word between
+    /// them sits where a native timer keeps its unused pointer dword.
+    pub(crate) const fn timer(self) -> CdTimer {
+        CdTimer::from_raw(self.start_frame, self.duration)
     }
 }
 

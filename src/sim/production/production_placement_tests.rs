@@ -3397,8 +3397,7 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
         .get_mut(1)
         .unwrap()
         .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: 0,
-        duration_frames: 100,
+        timer: crate::sim::timer::CdTimer::started(0, 100),
         source_entity_id: None,
     });
     assert!(!sell_back(&mut sim, &rules, 1, SellOrder::Computer));

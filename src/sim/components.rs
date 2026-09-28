@@ -1085,36 +1085,13 @@ impl RockingState {
 /// BridgeRepairHut owns the separate consume-and-clear branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PendingC4Detonation {
-    /// Native signed Building timer start frame (`+0x528`). `-1` means the
-    /// duration is already a remaining-duration value.
-    pub start_frame: i32,
-    /// Native signed duration (`+0x530`), preserved without clamping.
-    pub duration_frames: i32,
+    /// Native Building timer (`+0x528` start, `+0x530` duration), signed and
+    /// unclamped; its remaining time drives the shorten test, the Building
+    /// Update expiry and the checksum.
+    pub timer: crate::sim::timer::CdTimer,
     /// Retained source-object identity (`+0x540`). Fresh PostMortem arms leave
     /// this null; shortening an infantry C4 timer preserves its source.
     pub source_entity_id: Option<u64>,
-}
-
-impl PendingC4Detonation {
-    /// Native signed remaining-time calculation shared by the shorten test,
-    /// Building Update expiry, and deterministic checksum.
-    #[inline]
-    pub fn remaining_at(self, current_frame: i32) -> i32 {
-        if self.start_frame == -1 {
-            return self.duration_frames;
-        }
-        let elapsed = current_frame.wrapping_sub(self.start_frame);
-        if elapsed < self.duration_frames {
-            self.duration_frames.wrapping_sub(elapsed)
-        } else {
-            0
-        }
-    }
-
-    #[inline]
-    pub fn is_expired_at(self, current_frame: i32) -> bool {
-        self.remaining_at(current_frame) == 0
-    }
 }
 
 #[cfg(test)]

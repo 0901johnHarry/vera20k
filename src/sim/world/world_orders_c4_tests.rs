@@ -12,6 +12,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::{C4PlantState, Health, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::timer::CdTimer;
 use std::collections::BTreeMap;
 
 fn c4_test_rules() -> RuleSet {
@@ -131,6 +132,18 @@ fn step(sim: &mut Simulation, rules: &RuleSet, heights: &BTreeMap<(u16, u16), u8
 
 // ---------- Test 1: happy path ----------
 
+/// `seal`'s C4 charge on `target`, planted this frame.
+fn plant_c4(sim: &mut Simulation, rules: &RuleSet, target: u64, seal: u64) {
+    sim.substrate
+        .entities
+        .get_mut(target)
+        .unwrap()
+        .pending_c4_detonation = Some(PendingC4Detonation {
+        timer: CdTimer::started(sim.session.binary_frame as i32, rules.c4_delay_ticks as i32),
+        source_entity_id: Some(seal),
+    });
+}
+
 #[test]
 fn c4_plant_happy_path_kills_building_and_seal_survives() {
     let (mut sim, rules, heights) = build_sim_with_c4_rules();
@@ -166,7 +179,7 @@ fn c4_plant_happy_path_kills_building_and_seal_survives() {
         .unwrap()
         .pending_c4_detonation
         .expect("plant must be claimed on adjacency");
-    let plant_start = pending.start_frame as u64;
+    let plant_start = pending.timer.start_frame() as u64;
 
     // Advance until detonation tick fires. Phase 2 fires when
     // `sim.session.tick - plant_start >= delay`. The current sim.session.tick is already
@@ -200,15 +213,7 @@ fn c4_expiry_ignore_defenses_bypasses_verses_and_kills_building() {
     let (mut sim, rules, heights) = build_sim_with_c4_damage_state_rules();
     let seal = spawn_infantry(&mut sim, "GHOST", "Americans", 10, 11);
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
-    sim.substrate
-        .entities
-        .get_mut(bld)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, bld, seal);
 
     let delay = rules.c4_delay_ticks as u64;
     for _ in 0..(delay + 2) {
@@ -301,15 +306,7 @@ fn c4_attacker_death_does_not_abort_detonation() {
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
     // Manually claim the plant (skip walk-up).
-    sim.substrate
-        .entities
-        .get_mut(bld)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, bld, seal);
 
     // Mid-plant: kill the SEAL outright.
     sim.substrate.entities.get_mut(seal).unwrap().health.current = 0;
@@ -347,15 +344,7 @@ fn c4_iron_curtain_application_cancels_pending_detonation() {
 
     // Claim the plant, then enter the real Building IronCurtain path. The
     // wrapper clears the shared C4/PostMortem latch before applying protection.
-    sim.substrate
-        .entities
-        .get_mut(bld)
-        .unwrap()
-        .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: sim.session.binary_frame as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
-        source_entity_id: Some(seal),
-    });
+    plant_c4(&mut sim, &rules, bld, seal);
     apply_invulnerability(
         sim.substrate.entities.get_mut(bld).unwrap(),
         sim.session.binary_frame,
@@ -430,7 +419,8 @@ fn second_c4_attacker_does_not_overwrite_plant() {
         .pending_c4_detonation
         .unwrap();
     assert_eq!(
-        pending_after.start_frame, pending.start_frame,
+        pending_after.timer.start_frame(),
+        pending.timer.start_frame(),
         "pending plant_start_tick must not be overwritten by second attacker"
     );
     assert_eq!(
@@ -505,8 +495,7 @@ fn stop_cancels_walkup_but_not_already_claimed_plant() {
         .get_mut(bld)
         .unwrap()
         .pending_c4_detonation = Some(PendingC4Detonation {
-        start_frame: plant_start as i32,
-        duration_frames: rules.c4_delay_ticks as i32,
+        timer: CdTimer::started(plant_start as i32, rules.c4_delay_ticks as i32),
         source_entity_id: Some(seal),
     });
     sim.queue_command(CommandEnvelope::new(

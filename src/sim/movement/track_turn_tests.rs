@@ -866,8 +866,7 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                         victim.lifecycle.in_limbo = false;
                         victim.lifecycle.cell_marked = true;
                         victim.invulnerability = Some(InvulnerabilityState {
-                            start_frame: frame - age,
-                            duration_frames: 30,
+                            timer: crate::sim::timer::CdTimer::started((frame - age) as i32, 30),
                             kind: shield,
                         });
                         sim.substrate.entities.insert(victim);

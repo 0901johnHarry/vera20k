@@ -30,7 +30,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::Simulation;
 
-use super::state::{CRATE_SLOT_CAPACITY, CrateSlot};
+use super::state::CRATE_SLOT_CAPACITY;
 use super::{
     CrateMarkCellRef, ForcedPostPrecheckFailure, OneCrateResult, place_one_random_crate,
     resolve_crate_mark_cell,
@@ -186,15 +186,10 @@ pub(crate) fn clear_crate_slot(
     let slot = sim.crate_authority.slot_mut(slot_index);
     slot.cell_x = 0;
     slot.cell_y = 0;
-    if slot.start_frame != -1 {
-        let elapsed = current_frame.wrapping_sub(slot.start_frame);
-        slot.duration = if elapsed < slot.duration {
-            slot.duration.wrapping_sub(elapsed)
-        } else {
-            0
-        };
-        slot.start_frame = -1;
-    }
+    let mut timer = slot.timer();
+    timer.pause(current_frame);
+    slot.start_frame = timer.start_frame();
+    slot.duration = timer.duration();
     true
 }
 
@@ -221,7 +216,9 @@ pub(crate) fn tick_crate_regeneration(
         // Reload the live slot: an earlier expiry in this same pass may have
         // reinstalled a crate at or below this index.
         let slot = sim.crate_authority.slots()[index];
-        if slot.is_empty() || !crate_slot_timer_expired(slot, current_frame) {
+        // `0x0056BC1C..0x0056BC35`: a paused slot expires once its stored
+        // time is zero, and then on every tick until a crate takes it.
+        if slot.is_empty() || !slot.timer().expired(current_frame) {
             continue;
         }
         result.expired = result.expired.wrapping_add(1);
@@ -243,30 +240,6 @@ pub(crate) fn tick_crate_regeneration(
         }
     }
     result
-}
-
-/// The expiry predicate at `0x0056BC1C..0x0056BC35`.
-///
-/// A paused slot (`start == -1`) expires only once its stored duration has
-/// already reached zero — and then it re-fires on every following tick until a
-/// replacement takes the slot. A running slot expires as soon as the signed
-/// elapsed frame count reaches its duration.
-///
-/// Native reaches the shared `TEST ECX,ECX` at `0x0056BC33` from both branches,
-/// but for a running slot it is dead: `remaining == 0` would need
-/// `duration == elapsed`, which the preceding `JGE` already took. The shared
-/// tail is reproduced as one expression because it is the paused branch's whole
-/// test, not because the running branch can reach it.
-fn crate_slot_timer_expired(slot: CrateSlot, current_frame: i32) -> bool {
-    let mut remaining = slot.duration;
-    if slot.start_frame != -1 {
-        let elapsed = current_frame.wrapping_sub(slot.start_frame);
-        if elapsed >= remaining {
-            return true;
-        }
-        remaining = remaining.wrapping_sub(elapsed);
-    }
-    remaining == 0
 }
 
 #[cfg(test)]
@@ -397,42 +370,6 @@ mod tests {
             compared += 1;
         }
         assert_eq!(compared, 24);
-    }
-
-    /// The three timer shapes the native predicate distinguishes, including the
-    /// paused-at-zero slot that re-fires every tick.
-    #[test]
-    fn crate_regen_expiry_predicate_matches_native_branches() {
-        let running = |start: i32, duration: i32| CrateSlot {
-            start_frame: start,
-            aux: 0,
-            duration,
-            cell_x: 3,
-            cell_y: 4,
-        };
-        // Running: expires exactly when elapsed reaches duration.
-        assert!(!crate_slot_timer_expired(running(100, 50), 149));
-        assert!(crate_slot_timer_expired(running(100, 50), 150));
-        assert!(crate_slot_timer_expired(running(100, 50), 151));
-        // Zero-duration running slot expires on its own placement frame.
-        assert!(crate_slot_timer_expired(running(100, 0), 100));
-        // Paused: only a zero remainder expires, and it keeps expiring.
-        assert!(!crate_slot_timer_expired(running(-1, 1), i32::MAX));
-        assert!(crate_slot_timer_expired(running(-1, 0), 0));
-        assert!(crate_slot_timer_expired(running(-1, 0), i32::MIN));
-        // Negative duration is already past due for a running slot — this is
-        // the assertion that pins the native `JGE` over an unsigned compare.
-        assert!(crate_slot_timer_expired(running(100, -5), 100));
-        // Elapsed is computed with wrapping subtraction across the signed
-        // boundary, and the comparison stays signed.
-        assert!(crate_slot_timer_expired(
-            running(i32::MAX, 4),
-            i32::MIN.wrapping_add(3)
-        ));
-        assert!(!crate_slot_timer_expired(
-            running(i32::MAX, 6),
-            i32::MIN.wrapping_add(3)
-        ));
     }
 
     /// Clear frees the coordinate, rebases a live timer, and pauses the slot.

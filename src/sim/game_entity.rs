@@ -42,6 +42,7 @@ use crate::sim::movement::tunnel_movement::TunnelState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::radio::Contacts;
 use crate::sim::superweapon::invulnerability::InvulnerabilityState;
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::NativeF64Bits;
 
 /// Frames the passive target-scan timer is armed for at object construction.
@@ -115,8 +116,10 @@ pub(crate) struct BaseDefenseResponseState {
     pub(crate) recruitable_a: bool,
     pub(crate) recruitable_b: bool,
     archive_target: Option<TargetKind>,
-    pub(crate) cooldown_start_frame: i32,
-    pub(crate) cooldown_duration_frames: i32,
+    /// `TechnoClass+0x650`/`+0x658`: the attacker's call-for-help cooldown
+    /// (`TechnoClass::RespondToBaseAttack @ 0x00708171..0x00708192`, written
+    /// at `0x0070879E..0x007087A9`); the constructor leaves it at `-1`, 0.
+    pub(crate) cooldown: CdTimer,
 }
 
 impl Default for BaseDefenseResponseState {
@@ -125,8 +128,7 @@ impl Default for BaseDefenseResponseState {
             recruitable_a: true,
             recruitable_b: true,
             archive_target: None,
-            cooldown_start_frame: -1,
-            cooldown_duration_frames: 0,
+            cooldown: CdTimer::from_raw(-1, 0),
         }
     }
 }
@@ -1186,11 +1188,14 @@ pub struct GameEntity {
     pub transport_unload_keep_count: u32,
     /// `BuildingClass+0x6D0`/`+0x6D8` ProduceCash timer (oil derricks). Seeded
     /// to the constructor's dead state (`start = construction frame`,
-    /// `duration = 0`, `BuildingClass::Constructor @ 0x0043B92B`); armed only by
-    /// a capture from a `MultiplayPassive` house. Zero-duration on every
-    /// non-derrick object. Hashed (v135) and persisted.
+    /// `duration = 0`, `BuildingClass::Constructor @ 0x0043B92B..0x0043B937`);
+    /// only a capture from a `MultiplayPassive` house (`BuildingClass::
+    /// ChangeOwner @ 0x004482DB..0x004482F9`) and the re-arm in
+    /// `BuildingClass::Update @ 0x0043FD5B..0x0043FD86` give it a duration.
+    /// `+0x6D4`, the middle dword, is scratch the fire test never reads.
+    /// Zero-duration on every non-derrick object. Hashed (v135) and persisted.
     #[serde(default)]
-    pub produce_cash_timer: crate::sim::credit_income::ProduceCashTimer,
+    pub produce_cash_timer: crate::sim::timer::CdTimer,
     /// `TechnoClass+0x1CC DrainTarget`: the building this object is draining
     /// (Floating Disc). Set by `Fire_At`'s `DrainWeapon` arm, cleared by
     /// `UnitClass::AI`'s cell recheck, the ally check in `AI_Update`, and
@@ -1722,9 +1727,7 @@ impl GameEntity {
             damage_particle_live_until: 0,
             damage_smoke_system_id: None,
             transport_unload_keep_count: 0,
-            produce_cash_timer: crate::sim::credit_income::ProduceCashTimer::constructed(
-                construction_frame,
-            ),
+            produce_cash_timer: crate::sim::timer::CdTimer::started(construction_frame as i32, 0),
             drain_target: None,
             draining_me: None,
             parasite: None,

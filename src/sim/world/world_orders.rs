@@ -689,8 +689,10 @@ impl Simulation {
             // missing. Belongs to the C4 plant mechanism.
             if let Some(b) = self.substrate.entities.get_mut(target_id) {
                 b.pending_c4_detonation = Some(PendingC4Detonation {
-                    start_frame: self.session.binary_frame as i32,
-                    duration_frames: rules.c4_delay_ticks as i32,
+                    timer: crate::sim::timer::CdTimer::started(
+                        self.session.binary_frame as i32,
+                        rules.c4_delay_ticks as i32,
+                    ),
                     source_entity_id: Some(attacker_id),
                 });
             }
@@ -745,7 +747,7 @@ impl Simulation {
                 .and_then(|e| e.pending_c4_detonation);
             let Some(pending) = pending else { continue };
 
-            if !pending.is_expired_at(self.session.binary_frame as i32) {
+            if !pending.timer.expired(self.session.binary_frame as i32) {
                 continue;
             }
 
@@ -833,7 +835,7 @@ impl Simulation {
         else {
             return;
         };
-        if !pending.is_expired_at(self.session.binary_frame as i32) || health <= 0 {
+        if !pending.timer.expired(self.session.binary_frame as i32) || health <= 0 {
             return;
         }
 

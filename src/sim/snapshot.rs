@@ -688,7 +688,10 @@ use crate::sim::world::Simulation;
 // of its forces on the map (`house_tracking`), and each Techno the value arm
 // its type takes in them.
 // 233 -> 234: each House keeps its Strategy timer (`sim::house_strategy`).
-const SNAPSHOT_VERSION: u32 = 234;
+// 234 -> 235: a House's EVA funds and repair latch timers, a spawn
+// manager's timers, and the cloak stage and disguise block timers are
+// `CdTimer`s (the last two save their words in a new order).
+const SNAPSHOT_VERSION: u32 = 235;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2638,7 +2641,7 @@ mod tests {
                 .ore_growth_state
                 .native_tiberium_state()
                 .classes[0];
-            assert_eq!(saved_class.growth_timer.start_frame, 7);
+            assert_eq!(saved_class.growth_timer.start_frame(), 7);
             assert_ne!(
                 saved_class.growth.heap_entry(0).unwrap().priority_bits,
                 0.0f32.to_bits()
@@ -2675,10 +2678,20 @@ mod tests {
                 .ore_growth_state
                 .native_tiberium_state()
                 .classes[0];
-            assert_eq!(class.growth_timer.start_frame, 91);
-            assert_eq!(class.growth_timer.interval, 0);
-            assert_eq!(class.spread_timer.start_frame, 91);
-            assert_eq!(class.spread_timer.interval, 0);
+            assert_eq!(
+                (
+                    class.growth_timer.start_frame(),
+                    class.growth_timer.duration()
+                ),
+                (91, 0)
+            );
+            assert_eq!(
+                (
+                    class.spread_timer.start_frame(),
+                    class.spread_timer.duration()
+                ),
+                (91, 0)
+            );
             assert!(
                 class
                     .growth
@@ -2845,7 +2858,10 @@ mod tests {
                 .native_tiberium_state()
                 .classes[0]
                 .growth_timer;
-            assert_eq!((timer_before.start_frame, timer_before.interval), (91, 0));
+            assert_eq!(
+                (timer_before.start_frame(), timer_before.duration()),
+                (91, 0)
+            );
             restored.advance_tick(
                 &[],
                 Some(&rules),
@@ -2861,11 +2877,17 @@ mod tests {
                 .native_tiberium_state()
                 .classes[0];
             assert_eq!(
-                (class.growth_timer.start_frame, class.growth_timer.interval),
+                (
+                    class.growth_timer.start_frame(),
+                    class.growth_timer.duration()
+                ),
                 (91, 17)
             );
             assert_eq!(
-                (class.spread_timer.start_frame, class.spread_timer.interval),
+                (
+                    class.spread_timer.start_frame(),
+                    class.spread_timer.duration()
+                ),
                 (91, 23)
             );
             assert_eq!(restored.session.binary_frame, 92);
@@ -2900,7 +2922,10 @@ mod tests {
                 .native_tiberium_state()
                 .classes[0];
             assert_eq!(
-                (class.growth_timer.start_frame, class.growth_timer.interval),
+                (
+                    class.growth_timer.start_frame(),
+                    class.growth_timer.duration()
+                ),
                 (7, 0)
             );
         }
@@ -3679,7 +3704,8 @@ mod tests {
         // 232 -> 233: house country cost factors and force values; each
         // Techno's value arm.
         // 233 -> 234: the house Strategy timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 234);
+        // 234 -> 235: house EVA, repair latch and spawn manager timers are CdTimers.
+        assert_eq!(super::SNAPSHOT_VERSION, 235);
     }
 
     #[test]
@@ -4534,8 +4560,7 @@ mod tests {
         responder.base_defense_response.recruitable_a = false;
         responder.base_defense_response.recruitable_b = true;
         responder.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(9)));
-        responder.base_defense_response.cooldown_start_frame = -11;
-        responder.base_defense_response.cooldown_duration_frames = 225;
+        responder.base_defense_response.cooldown = crate::sim::timer::CdTimer::started(-11, 225);
         sim.substrate.entities.insert(responder);
         let script_id = sim.interner.intern("BaseDefenseScript");
         let task_force_id = sim.interner.intern("BaseDefenseTaskForce");
@@ -4647,8 +4672,10 @@ mod tests {
             restored_responder.archive_target(),
             Some(crate::sim::combat::TargetKind::Entity(9))
         );
-        assert_eq!(response.cooldown_start_frame, -11);
-        assert_eq!(response.cooldown_duration_frames, 225);
+        assert_eq!(
+            response.cooldown,
+            crate::sim::timer::CdTimer::started(-11, 225)
+        );
         let team = restored.team_script_vm.team(team_id).unwrap();
         assert!(team.members().is_empty());
         assert_eq!(restored.team_script_vm.registry_counts(), (1, 1, 1, 1));
@@ -5472,10 +5499,7 @@ mod tests {
         let mut sim = Simulation::with_seed(0x57D4);
         let owner = sim.interner.intern("Americans");
         let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, true, 5_000, 10);
-        house.eva_funds_timer = crate::sim::house_state::HouseFrameTimer {
-            start_frame: 1_234,
-            duration: 2_880,
-        };
+        house.eva_funds_timer = crate::sim::timer::CdTimer::started(1_234, 2_880);
         house.eva_low_power_guard = true;
         sim.houses.insert(owner, house);
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -5491,10 +5515,7 @@ mod tests {
             .sim;
         assert_eq!(
             restored.houses[&owner].eva_funds_timer,
-            crate::sim::house_state::HouseFrameTimer {
-                start_frame: 1_234,
-                duration: 2_880,
-            }
+            crate::sim::timer::CdTimer::started(1_234, 2_880)
         );
         assert!(restored.houses[&owner].eva_low_power_guard);
         assert_eq!(restored.state_hash(), expected_hash);
@@ -5684,8 +5705,7 @@ mod tests {
             ),
         );
         aircraft.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-            start_frame: 11,
-            duration_frames: 35,
+            timer: crate::sim::timer::CdTimer::started(11, 35),
             source_entity_id: Some(3),
         });
         sim.substrate.entities.insert(aircraft);
@@ -5886,8 +5906,7 @@ mod tests {
         assert_eq!(
             entity.pending_c4_detonation,
             Some(crate::sim::components::PendingC4Detonation {
-                start_frame: 11,
-                duration_frames: 35,
+                timer: crate::sim::timer::CdTimer::started(11, 35),
                 source_entity_id: Some(3),
             })
         );
@@ -6558,8 +6577,7 @@ mod tests {
         entity.owner = owner;
         entity.type_ref = type_ref;
         entity.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-            start_frame: -1,
-            duration_frames: 0,
+            timer: crate::sim::timer::CdTimer::from_raw(-1, 0),
             source_entity_id: Some(999),
         });
         sim.substrate.entities.insert(entity);
@@ -6652,8 +6670,7 @@ mod tests {
         let entity_id = sim.allocate_stable_id();
         let mut entity = GameEntity::test_default(entity_id, "MTNK", "AMERICANS", 5, 6);
         entity.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-            start_frame: -1,
-            duration_frames: 0,
+            timer: crate::sim::timer::CdTimer::from_raw(-1, 0),
             source_entity_id: Some(999),
         });
         sim.substrate.entities.insert(entity);
@@ -6759,8 +6776,9 @@ mod tests {
         use crate::sim::game_entity::GameEntity;
         use crate::sim::projectile::ProjectileTarget;
         use crate::sim::spawn_manager::{
-            SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState, SpawnTimer,
+            SpawnManagerMode, SpawnManagerState, SpawnSlot, SpawnSlotState,
         };
+        use crate::sim::timer::CdTimer;
 
         let mut sim = Simulation::new();
         let parent = sim.allocate_stable_id();
@@ -6769,8 +6787,7 @@ mod tests {
 
         let mut parent_entity = GameEntity::test_default(parent, "CARRIER", "AMERICANS", 1, 1);
         parent_entity.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
-            start_frame: -1,
-            duration_frames: 0,
+            timer: crate::sim::timer::CdTimer::from_raw(-1, 0),
             source_entity_id: Some(9_999),
         });
         parent_entity.spawn_manager = Some(SpawnManagerState {
@@ -6783,7 +6800,7 @@ mod tests {
                 SpawnSlot {
                     spawn: Some(child),
                     state: SpawnSlotState::ReadyDocked,
-                    timer: SpawnTimer::ready(),
+                    timer: CdTimer::default(),
                     is_missile_spawn: false,
                 },
                 // A second saved pointer to the same child deliberately proves
@@ -6791,12 +6808,12 @@ mod tests {
                 SpawnSlot {
                     spawn: Some(child),
                     state: SpawnSlotState::ReadyDocked,
-                    timer: SpawnTimer::ready(),
+                    timer: CdTimer::default(),
                     is_missile_spawn: false,
                 },
             ],
-            update_timer: SpawnTimer::ready(),
-            reload_timer: SpawnTimer::ready(),
+            update_timer: CdTimer::default(),
+            reload_timer: CdTimer::default(),
             current_target: Some(TargetKind::Entity(target)),
             queued_target: Some(TargetKind::Entity(target)),
             mode: SpawnManagerMode::Launching,

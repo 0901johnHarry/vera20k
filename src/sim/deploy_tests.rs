@@ -794,8 +794,8 @@ fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
         .collect();
     assert_eq!(frames, expected);
     assert_eq!(
-        sim.houses[&owner].repair_latch_timer.start_frame,
-        i64::from(deployed_at + 5),
+        sim.houses[&owner].repair_latch_timer.start_frame(),
+        (deployed_at + 5) as i32,
         "the latch timer starts on the completion frame"
     );
 }
