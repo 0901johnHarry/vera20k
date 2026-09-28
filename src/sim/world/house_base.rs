@@ -333,8 +333,9 @@ mod tests {
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(32));
         let [allies, soviets] = ["Americans", "Russians"].map(|name| sim.interner.intern(name));
         for house in [allies, soviets] {
-            sim.houses
-                .insert(house, HouseState::new(house, 0, None, false, 0, 10));
+            let mut state = HouseState::new(house, 0, None, false, 0, 10);
+            state.project_country_cost_mults(&rules, &sim.interner);
+            sim.houses.insert(house, state);
         }
         let tank = rules.object("HTNK").unwrap();
         let costs = |sim: &Simulation| {

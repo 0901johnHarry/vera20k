@@ -3675,7 +3675,9 @@ mod tests {
         // 229 -> 230: every building's `+0x388` facing.
         // 230 -> 231: no AI `mcv_deployed` latch; no terrain `build_blocked`.
         // 231 -> 232: computer production state on houses and factory buildings.
-        assert_eq!(super::SNAPSHOT_VERSION, 232);
+        // 232 -> 233: house country cost factors and force values; each
+        // Techno's value arm.
+        assert_eq!(super::SNAPSHOT_VERSION, 233);
     }
 
     #[test]
