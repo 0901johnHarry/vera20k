@@ -8,7 +8,8 @@
 //! 0x004FE3E0`) and the exit of a produced object steps the mode
 //! (`EconomyStateMachine @ 0x00509700`). The node lookup is `BaseClass`'s
 //! (`0x0042EB50` with `0x0042E780`, `0x0042E820` and `0x0050CAD0`); a `-1`
-//! node becomes a base defense (`sim::ai_base_defense`). The yard
+//! node walls in a `ProtectWithWall=` building ([`build_walls`]) or becomes
+//! a base defense (`sim::ai_base_defense`). The yard
 //! (`production::factory_ai`) makes the choice (`Suggest_New_Object @
 //! 0x004FBD80`), places it (`BuildingClass::Exit_Object @ 0x00443C60`'s
 //! building case, with the site search in `sim::ai_base_site` and the site
@@ -17,9 +18,10 @@
 //! the player's placements and every delivered unit).
 //!
 //! Evidence: instruction reading of the bodies named on each function; the
-//! draws and the mode table are executed by `tools/ai_base_building_oracle.py`
-//! (see the tests in `ai_base_building_tests.rs`), whose chooser rows answer
-//! the walls and the defense choice with failure.
+//! draws, the mode table and the walls are executed by
+//! `tools/ai_base_building_oracle.py` (see the tests in
+//! `ai_base_building_tests.rs`), whose chooser rows run the walls and answer
+//! the defense choice with failure.
 //!
 //! RESIDUALS:
 //! - `HouseClass::AI_Building_Strategy @ 0x004FD500` is not scheduled
@@ -54,17 +56,9 @@
 //!   mode changes only at building exits, and the state-2 draw
 //!   (`0x00509863`) is missing at unit exits. The computer's unit production
 //!   (Factory_AI's unit factories and their exits) is a later chain.
-//! - A `-1` defense node (and a WallTower node without a cell) takes the wall
-//!   draw (`RandomRanged(0,99)` at `0x004FE59E`); below the difficulty's
-//!   `AIPickWallDefensePercent=` native first tries the walls of
-//!   `0x0050C340`, which are not ported: VERA takes their failure and goes on
-//!   to the defense choice (`sim::ai_base_defense`). Trigger: every skirmish
-//!   plan, which Recalc seeds with defense sentinels after its fourth node,
-//!   on a draw below the percent. Effect: the computer builds no walls.
-//!   Where native walls a `ProtectWithWall=` building instead (wall nodes
-//!   after it, the `-1` node removed, no further draw), VERA chooses a
-//!   defense and makes that choice's draws (three threat draws with an
-//!   enemy, one pick draw over several candidates).
+//! - Native reads VERA defines: the wall percent is read unchecked at the
+//!   House difficulty (VERA takes 0, no walls, past the vector's end, which
+//!   retail's three values never reach).
 //! - A `-3` node is removed without `0x005082C0`'s perimeter scan; only a map
 //!   plan can hold one.
 //! - Dormant in retail data: the `PowersUpBuilding=` arms of `0x0042E820` and
@@ -90,7 +84,7 @@
 //!   for such a node and splices nothing for a missing plant.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
-use crate::rules::object_type::{FactoryType, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_site::{SiteKey, find_base_building_site, reserved_near};
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell, unpack_base_plan_cell};
@@ -302,9 +296,24 @@ fn choose_building(
             .is_some_and(|name| name.eq_ignore_ascii_case(&ty.id))
     });
     if node.type_or_control == -1 || (wall_tower.is_some() && node.packed_cell == 0) {
-        // `0x004FE59E`: the wall draw. The walls (`0x0050C340`) are a
-        // residual whose failure leads here too.
-        let _ = sim.scenario_rng.next_range_i32_inclusive(0, 99);
+        // `0x004FE58C..0x004FE5B8`: below the difficulty's
+        // `AIPickWallDefensePercent=` the house first tries walls; when they
+        // go in, the node (found again by value) goes.
+        let draw = sim.scenario_rng.next_range_i32_inclusive(0, 99);
+        let percent = sim.houses.get(&owner).map_or(0, |house| {
+            rules
+                .general
+                .ai_pick_wall_defense_percent
+                .get(house.difficulty.table_index())
+                .copied()
+                .unwrap_or(0)
+        });
+        if draw < percent && build_walls(sim, rules, owner, index) {
+            if let Some(house) = sim.houses.get_mut(&owner) {
+                house.base_plan.remove_equal(node);
+            }
+            return;
+        }
         if !crate::sim::ai_base_defense::choose_next_production(
             sim, rules, owner, index, path_grid, registry,
         ) {
@@ -866,13 +875,103 @@ fn plan_node(sim: &Simulation, owner: InternedId, index: usize) -> BasePlanNode 
     sim.houses[&owner].base_plan.nodes[index]
 }
 
-/// The ordered shift-left removal every caller inlines (`DynamicVector`
-/// `Delete` of one 16-byte node).
-pub(crate) fn remove_node(sim: &mut Simulation, owner: InternedId, index: usize) {
-    if let Some(house) = sim.houses.get_mut(&owner)
-        && index < house.base_plan.nodes.len()
-    {
-        house.base_plan.nodes.remove(index);
+/// `HouseClass::AI_BuildWalls @ 0x0050C340` for house `owner`'s node at
+/// `index`: walls the nearest `ProtectWithWall=` building before it
+/// ([`wall_nodes`]) with the house's wall type. Whether it wrote any; it
+/// makes no draw.
+fn build_walls(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, index: usize) -> bool {
+    let Some(house) = sim.houses.get(&owner) else {
+        return false;
+    };
+    let wall = wall_type(rules, house.side_index);
+    let nodes = &house.base_plan.nodes;
+    let walls = wall_nodes(nodes, index, wall, |at| {
+        let building = sim
+            .substrate
+            .entities
+            .get(node_building(sim, owner, &nodes[at])?)?;
+        let ty = sim.object_type(building.type_ref(), rules)?;
+        ty.protect_with_wall.then(|| {
+            (
+                (building.position.rx as i16, building.position.ry as i16),
+                crate::sim::ai_base_site::foundation_size(ty),
+            )
+        })
+    });
+    let Some((at, walls)) = walls else {
+        return false;
+    };
+    if let Some(house) = sim.houses.get_mut(&owner) {
+        for node in walls {
+            house.base_plan.insert_after(at, node);
+        }
+    }
+    true
+}
+
+/// `0x0050C346..0x0050C39D`: the first `[AI] ConcreteWalls=` type planned
+/// for the side, as its array index; -1 without one, which then inserts `-1`
+/// nodes as native does.
+fn wall_type(rules: &RuleSet, side_index: u8) -> i32 {
+    rules
+        .concrete_wall_types
+        .iter()
+        .filter_map(|id| rules.object_in_category(ObjectCategory::Building, id))
+        .find(|ty| ty.planned_for_side(side_index))
+        .map_or(-1, |ty| ty.base_plan_type_index)
+}
+
+/// The nodes `0x0050C340` writes, and after which node. From the node before
+/// `index` down, the first whose building is `ProtectWithWall=` (`protected`
+/// of its index, `0x0042E820`: the building's top-left cell, `+0x9C / 256`,
+/// and its foundation) and whose next node is not already of type `wall`
+/// (`0x0050C3A1..0x0050C3EB`) gets `wall` nodes on every cell around its
+/// foundation, in the order native inserts each right after that node
+/// (`0x0050EB70` and its inlined copies), so the plan holds them reversed:
+/// per column the top then the bottom cell (`0x0050C4AA..0x0050C604`), per
+/// row the left then the right cell (`0x0050C63B..0x0050C793`), then the
+/// corners top-left, top-right, bottom-left, bottom-right
+/// (`0x0050C79D..0x0050C89A`). Cells are 16-bit words.
+fn wall_nodes(
+    nodes: &[BasePlanNode],
+    index: usize,
+    wall: i32,
+    mut protected: impl FnMut(usize) -> Option<((i16, i16), (i32, i32))>,
+) -> Option<(usize, Vec<BasePlanNode>)> {
+    let (at, (x, y), (width, height)) = (0..index.min(nodes.len().saturating_sub(1)))
+        .rev()
+        .find_map(|at| {
+            let (cell, size) = protected(at)?;
+            (nodes[at + 1].type_or_control != wall).then_some((at, cell, size))
+        })?;
+    let (x, y) = (i32::from(x), i32::from(y));
+    let (left, top, right, bottom) = (x - 1, y - 1, x + width, y + height);
+    let node = |cx: i32, cy: i32| BasePlanNode {
+        type_or_control: wall,
+        packed_cell: pack_base_plan_cell(cx, cy),
+        filled: false,
+        retry_count: 0,
+    };
+    let mut walls = Vec::new();
+    for column in 1..=width {
+        walls.push(node(left + column, top));
+        walls.push(node(left + column, bottom));
+    }
+    for row in 1..=height {
+        walls.push(node(left, top + row));
+        walls.push(node(right, top + row));
+    }
+    for (cx, cy) in [(left, top), (right, top), (left, bottom), (right, bottom)] {
+        walls.push(node(cx, cy));
+    }
+    Some((at, walls))
+}
+
+/// Removes house `owner`'s node `index`
+/// ([`crate::sim::base_plan::BasePlanState::remove`]).
+fn remove_node(sim: &mut Simulation, owner: InternedId, index: usize) {
+    if let Some(house) = sim.houses.get_mut(&owner) {
+        house.base_plan.remove(index);
     }
 }
 

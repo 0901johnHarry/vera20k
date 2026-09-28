@@ -982,3 +982,106 @@ fn retail_dustbowl_the_computer_yard_places_a_base_defense() {
         "{name} at {cell:?} stands on a node of its type"
     );
 }
+
+/// A Hard computer (`AIPickWallDefensePercent=` 50) walls its yard: at a `-1`
+/// node whose draw falls below the percent, `AI_BuildWalls` rings the
+/// `ProtectWithWall=` NACNST with the Soviet `ConcreteWalls=` type, NAWALL,
+/// in the nodes right after the yard's, and the yard then places them as
+/// wall overlays.
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_a_hard_computer_walls_its_yard() {
+    let (mut scenario, owner, _mcv, _cell) = retail_dustbowl_computer_mcv();
+    scenario
+        .runtime
+        .simulation
+        .houses
+        .get_mut(&owner)
+        .expect("the computer house")
+        .difficulty = crate::sim::house_state::HouseDifficulty::Hard;
+    let mut frames = 0;
+    while retail_yard_at(&scenario).is_none() && frames < 600 {
+        retail_frame(&mut scenario);
+        frames += 1;
+    }
+    let (x, y) = retail_yard_at(&scenario).expect("the yard stands");
+    let (yard, wall, overlay, mut ring) = {
+        let resources = &scenario.runtime.resources;
+        let rules = &resources.rules;
+        let (width, height) = crate::rules::foundation::foundation_dimensions(
+            &rules.object("NACNST").expect("retail NACNST").foundation,
+        );
+        let (x, y) = (i32::from(x), i32::from(y));
+        let (right, bottom) = (x + i32::from(width), y + i32::from(height));
+        let ring: Vec<u32> = (x - 1..=right)
+            .flat_map(|cx| (y - 1..=bottom).map(move |cy| (cx, cy)))
+            .filter(|&(cx, cy)| cx == x - 1 || cx == right || cy == y - 1 || cy == bottom)
+            .map(|(cx, cy)| crate::sim::base_plan::pack_base_plan_cell(cx, cy))
+            .collect();
+        let overlay = rules
+            .object("NAWALL")
+            .and_then(|ty| ty.to_overlay.as_deref())
+            .and_then(|name| resources.overlay_registry.id_for_name(name))
+            .expect("retail NAWALL's overlay");
+        (
+            rules.building_type_index("NACNST").expect("retail NACNST"),
+            rules.building_type_index("NAWALL").expect("retail NAWALL"),
+            overlay,
+            ring,
+        )
+    };
+    ring.sort_unstable();
+    let walls = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let nodes = &scenario.sim().houses[&owner].base_plan.nodes;
+        let first = nodes.iter().position(|node| node.type_or_control == wall)?;
+        let cells: Vec<u32> = nodes[first..]
+            .iter()
+            .take_while(|node| node.type_or_control == wall)
+            .map(|node| node.packed_cell)
+            .collect();
+        Some((nodes[first - 1], cells))
+    };
+    let start = frames;
+    let mut found = None;
+    while found.is_none() && frames < start + 20_000 {
+        retail_frame(&mut scenario);
+        frames += 1;
+        found = walls(&scenario);
+    }
+    let (before, mut cells) =
+        found.unwrap_or_else(|| panic!("no wall nodes after {} frames", frames - start));
+    eprintln!("frame {frames}: {} wall nodes", cells.len());
+    assert_eq!(
+        before.type_or_control, yard,
+        "the walls follow the yard's node"
+    );
+    assert_eq!(
+        before.packed_cell,
+        crate::sim::base_plan::pack_base_plan_cell(i32::from(x), i32::from(y))
+    );
+    cells.sort_unstable();
+    assert_eq!(cells, ring, "the walls ring the yard's foundation");
+
+    let stamped = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        let grid = scenario.sim().overlay_grid.as_ref()?;
+        ring.iter().copied().find(|&packed| {
+            let (cx, cy) = crate::sim::base_plan::unpack_base_plan_cell(packed);
+            let (Ok(cx), Ok(cy)) = (u16::try_from(cx), u16::try_from(cy)) else {
+                return false;
+            };
+            grid.cell(cx, cy).overlay_id == Some(overlay)
+        })
+    };
+    let start = frames;
+    let mut placed = None;
+    while placed.is_none() && frames < start + 8000 {
+        retail_frame(&mut scenario);
+        frames += 1;
+        placed = stamped(&scenario);
+    }
+    let placed = placed.unwrap_or_else(|| panic!("no wall placed after {} frames", frames - start));
+    eprintln!(
+        "frame {frames}: NAWALL at {:?}",
+        crate::sim::base_plan::unpack_base_plan_cell(placed)
+    );
+}

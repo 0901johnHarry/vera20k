@@ -47,9 +47,7 @@ pub(crate) fn candidate_allowed(
     {
         return false;
     }
-    if candidate.ai_base_planning_side != -1
-        && candidate.ai_base_planning_side != i32::from(side_index)
-    {
+    if !candidate.planned_for_side(side_index) {
         return false;
     }
     if super_weapons {

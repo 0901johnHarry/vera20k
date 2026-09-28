@@ -1160,6 +1160,13 @@ pub struct GeneralRules {
     /// copies the vector before the `0x00475D70` reader; the constructor
     /// (`0x00666373..0x00666388`) leaves it empty. Retail: 5,25,80.
     pub ai_force_prediction_fudge: Vec<i32>,
+    /// `[General] AIPickWallDefensePercent=`, the signed DynamicVector at
+    /// `Rules+0xDD4` (items `+0xDD8`) indexed Hard/Normal/Easy by the House
+    /// difficulty: the chance that a defense node walls a building instead
+    /// (`sim::ai_base_building`). ReadGeneral `0x006700C6..0x006700F7` copies
+    /// the vector before the `0x00475D70` reader; the constructor
+    /// (`0x0066689C..0x006668CA`) leaves it empty. Retail: 50,25,10.
+    pub ai_pick_wall_defense_percent: Vec<i32>,
 
     // -- Cell scatter eligibility (CellClass::Scatter_Objects) --
     /// `PlayerScatter=` from `[CombatDamage]` — when set, an *unforced* cell
@@ -1192,12 +1199,6 @@ pub struct GeneralRules {
     /// `[AI] CreditReserve` threshold. A latched AI building is considered
     /// for sale only while its owner's credits are strictly below this value.
     pub credit_reserve: i32,
-
-    /// Overlay type names that are opaque concrete walls (ConcreteWalls= in [General]).
-    /// Concrete walls do NOT render a ghost sprite during placement -- only the
-    /// valid/invalid cell grid is shown. Fence walls (not in this list) still
-    /// render their connectivity ghost. Stored uppercase for case-insensitive matching.
-    pub concrete_walls: Vec<String>,
 
     // -- Lightning Storm superweapon constants --
     /// Duration of active storm in game frames (LightningStormDuration= in [General]).
@@ -1743,6 +1744,7 @@ impl Default for GeneralRules {
             blockage_path_delay_ticks: 60,
             ai_auto_deploy_frame_delay: Vec::new(),
             ai_force_prediction_fudge: Vec::new(),
+            ai_pick_wall_defense_percent: Vec::new(),
             // RulesClass constructor clears PlayerScatter and stores 3 into
             // [IQ] Scatter; stock rulesmd overrides the latter with 2.
             player_scatter: false,
@@ -1753,7 +1755,6 @@ impl Default for GeneralRules {
             iq_repair_sell: 3,
             iq_sell_back: 2,
             credit_reserve: 1000,
-            concrete_walls: Vec::new(),
             cliff_back_impassability: 2,
             lightning_storm_duration: 180,
             lightning_damage: 250,
@@ -2865,6 +2866,10 @@ impl GeneralRules {
             ai_force_prediction_fudge: ai.map_or_else(Vec::new, |section| {
                 read_retained_difficulty_vector(section, "AIForcePredictionFudge")
             }),
+            ai_pick_wall_defense_percent: read_retained_difficulty_vector(
+                general,
+                "AIPickWallDefensePercent",
+            ),
             // PlayerScatter belongs to the [CombatDamage] read, IQ Scatter to
             // the [IQ] read; neither is a [General] key.
             player_scatter: combat_damage
@@ -2889,15 +2894,6 @@ impl GeneralRules {
             credit_reserve: ai
                 .and_then(|s| s.get_i32("CreditReserve"))
                 .unwrap_or(defaults.credit_reserve),
-            concrete_walls: general
-                .get_list("ConcreteWalls")
-                .map(|list| {
-                    list.into_iter()
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_ascii_uppercase())
-                        .collect()
-                })
-                .unwrap_or_default(),
             cliff_back_impassability: general.get_i32("CliffBackImpassability").unwrap_or(2) as u8,
             lightning_storm_duration: general.get_i32("LightningStormDuration").unwrap_or(180),
             lightning_damage: general.get_i32("LightningDamage").unwrap_or(250),
@@ -3120,6 +3116,12 @@ pub struct RuleSet {
     pub allied_base_defense_types: Vec<String>,
     pub soviet_base_defense_types: Vec<String>,
     pub third_base_defense_types: Vec<String>,
+    /// Source-ordered resolved `[AI] ConcreteWalls=` BuildingType identities
+    /// (the TypeList at `Rules+0xA50`, items `+0xA54`, count `+0xA60`, read
+    /// like the lists above at `0x0067375B..0x00673824`; the constructor
+    /// leaves it empty, `0x0066641B..0x00666430`): the computer's wall types
+    /// (`sim::ai_base_building`).
+    pub concrete_wall_types: Vec<String>,
     /// Source-ordered resolved `[General] HarvesterUnit=` UnitType identities.
     pub harvester_unit_types: Vec<String>,
     /// Signed Hard/Normal/Easy vectors consumed directly by BasePlan Recalc.
@@ -3553,6 +3555,7 @@ impl RuleSet {
         let allied_base_defense_source_tokens = parse_planning_list("AI", "AlliedBaseDefenses");
         let soviet_base_defense_source_tokens = parse_planning_list("AI", "SovietBaseDefenses");
         let third_base_defense_source_tokens = parse_planning_list("AI", "ThirdBaseDefenses");
+        let concrete_wall_source_tokens = parse_planning_list("AI", "ConcreteWalls");
         let harvester_unit_source_tokens = parse_planning_list("General", "HarvesterUnit");
         let parse_difficulty_vector = |key: &str| {
             ini.section("General")
@@ -3707,6 +3710,8 @@ impl RuleSet {
             resolve_registered(soviet_base_defense_source_tokens, ObjectCategory::Building);
         let third_base_defense_types =
             resolve_registered(third_base_defense_source_tokens, ObjectCategory::Building);
+        let concrete_wall_types =
+            resolve_registered(concrete_wall_source_tokens, ObjectCategory::Building);
         let harvester_unit_types =
             resolve_registered(harvester_unit_source_tokens, ObjectCategory::Vehicle);
         for type_id in &build_const_types {
@@ -4051,6 +4056,7 @@ impl RuleSet {
             allied_base_defense_types,
             soviet_base_defense_types,
             third_base_defense_types,
+            concrete_wall_types,
             harvester_unit_types,
             ai_slave_miner_number,
             ai_extra_refineries,
