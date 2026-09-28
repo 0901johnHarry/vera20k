@@ -73,9 +73,18 @@ pub(crate) struct ExternalAiCoordinator {
 }
 
 impl ExternalAiCoordinator {
-    pub(in crate::app::match_runtime) fn new(config: &ExternalAiConfig) -> Self {
+    pub(in crate::app::match_runtime) fn new(
+        config: &ExternalAiConfig,
+        runtime: &SimRuntime,
+    ) -> Self {
         let worker = if config.enabled {
-            match ExternalAiWorker::start(config) {
+            let owners = runtime
+                .simulation
+                .ai_players
+                .iter()
+                .map(|ai| ai.owner)
+                .collect::<Vec<_>>();
+            match ExternalAiWorker::start(config, &owners) {
                 Ok(worker) => Some(worker),
                 Err(error) => {
                     log::warn!("External AI worker is unavailable: {error}");

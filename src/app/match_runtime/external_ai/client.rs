@@ -82,13 +82,18 @@ impl ExternalAiClient {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::mpsc::{self, Receiver};
     use std::thread::{self, JoinHandle};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use serde_json::json;
+
+    use crate::app::match_runtime::external_ai::worker::{ExternalAiWorker, RequestTag};
+    use crate::sim::intern::InternedId;
+    use crate::util::config::ExternalAiConfig;
 
     use super::ExternalAiClient;
 
@@ -96,6 +101,96 @@ mod tests {
         endpoint: String,
         request: Receiver<Vec<u8>>,
         thread: JoinHandle<()>,
+    }
+
+    struct ConcurrentMockServer {
+        endpoint: String,
+        both_arrived_before_response: Receiver<bool>,
+        thread: JoinHandle<()>,
+    }
+
+    impl ConcurrentMockServer {
+        fn new() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind concurrent mock API");
+            let address = listener.local_addr().unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let (arrivals_tx, both_arrived_before_response) = mpsc::channel();
+            let thread = thread::spawn(move || {
+                let mut streams = Vec::with_capacity(2);
+                let accept_deadline = Instant::now() + Duration::from_secs(3);
+                while streams.is_empty() && Instant::now() < accept_deadline {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            stream
+                                .set_read_timeout(Some(Duration::from_secs(3)))
+                                .unwrap();
+                            let _ = read_http_request(&mut stream);
+                            streams.push(stream);
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("accept first worker request: {error}"),
+                    }
+                }
+
+                let concurrency_deadline = Instant::now() + Duration::from_secs(1);
+                while streams.len() < 2 && Instant::now() < concurrency_deadline {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            stream
+                                .set_read_timeout(Some(Duration::from_secs(3)))
+                                .unwrap();
+                            let _ = read_http_request(&mut stream);
+                            streams.push(stream);
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("accept concurrent worker request: {error}"),
+                    }
+                }
+                arrivals_tx.send(streams.len() == 2).unwrap();
+
+                for stream in &mut streams {
+                    write_valid_response(stream);
+                }
+
+                if streams.len() == 1 {
+                    let late_deadline = Instant::now() + Duration::from_secs(3);
+                    while Instant::now() < late_deadline {
+                        match listener.accept() {
+                            Ok((mut stream, _)) => {
+                                stream
+                                    .set_read_timeout(Some(Duration::from_secs(3)))
+                                    .unwrap();
+                                let _ = read_http_request(&mut stream);
+                                write_valid_response(&mut stream);
+                                break;
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                                thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(error) => panic!("accept queued worker request: {error}"),
+                        }
+                    }
+                }
+            });
+            Self {
+                endpoint: format!("http://{address}/v1/chat/completions"),
+                both_arrived_before_response,
+                thread,
+            }
+        }
+
+        fn join(self) -> bool {
+            let both_arrived = self
+                .both_arrived_before_response
+                .recv_timeout(Duration::from_secs(4))
+                .expect("mock server reports request concurrency");
+            self.thread.join().expect("concurrent mock API thread");
+            both_arrived
+        }
     }
 
     impl MockServer {
@@ -163,6 +258,67 @@ mod tests {
 
     fn valid_response() -> Vec<u8> {
         br#"{"choices":[{"message":{"role":"assistant","content":"{\"actions\":[]}"}}]}"#.to_vec()
+    }
+
+    fn write_valid_response(stream: &mut TcpStream) {
+        let body = valid_response();
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(header.as_bytes());
+        let _ = stream.write_all(&body);
+        let _ = stream.flush();
+    }
+
+    #[test]
+    fn separate_ai_houses_do_not_wait_for_each_others_http_responses() {
+        let server = ConcurrentMockServer::new();
+        let config = ExternalAiConfig {
+            enabled: true,
+            endpoint: server.endpoint.clone(),
+            model: "fixture-model".into(),
+            request_timeout_secs: 3,
+            ..ExternalAiConfig::default()
+        };
+        let owners = [InternedId::from_index(1), InternedId::from_index(2)];
+        let worker = ExternalAiWorker::start(&config, &owners).expect("start external AI worker");
+        for owner in owners {
+            worker
+                .try_submit(
+                    RequestTag {
+                        match_generation: 1,
+                        owner,
+                        source_frame: 225,
+                    },
+                    json!({"owner": owner.index()}),
+                    16,
+                )
+                .expect("enqueue request");
+        }
+
+        let both_arrived_before_response = server.join();
+        let mut results = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while results.len() < 2 && Instant::now() < deadline {
+            match worker.try_receive().expect("worker result channel") {
+                Some(result) => results.push(result),
+                None => thread::sleep(Duration::from_millis(5)),
+            }
+        }
+
+        assert!(
+            both_arrived_before_response,
+            "each house request should reach the provider before either response is released"
+        );
+        assert!(results.iter().all(|result| result.result.is_ok()));
+        assert_eq!(
+            results
+                .iter()
+                .map(|result| result.tag.owner)
+                .collect::<HashSet<_>>(),
+            owners.into_iter().collect()
+        );
     }
 
     #[test]

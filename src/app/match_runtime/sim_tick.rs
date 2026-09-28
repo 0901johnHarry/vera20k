@@ -859,7 +859,7 @@ fn enqueue_external_ai_decisions(state: &mut AppState, tick_lane: TickLane) {
         );
         let runtime = runtime_slot.as_ref().expect("runtime was checked above");
         let coordinator = coordinator_slot.get_or_insert_with(|| {
-            super::external_ai::coordinator::ExternalAiCoordinator::new(config)
+            super::external_ai::coordinator::ExternalAiCoordinator::new(config, runtime)
         });
         coordinator.advance(runtime, admission)
     };

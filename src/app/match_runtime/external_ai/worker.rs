@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
@@ -11,8 +12,7 @@ use super::client::ExternalAiClient;
 use super::protocol::{ExternalAiDecision, ExternalAiError};
 
 const API_KEY_ENV: &str = "VERA20K_AI_API_KEY";
-/// The game supports at most 30 players, so one queued/in-flight job per house
-/// fits without allowing the app to accumulate an unbounded network backlog.
+/// Bound owner-specific workers and completed responses to the game's 30-player ceiling.
 const WORKER_QUEUE_CAPACITY: usize = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ struct WorkerJob {
 }
 
 pub(super) struct ExternalAiWorker {
-    jobs: SyncSender<WorkerJob>,
+    jobs: HashMap<InternedId, SyncSender<WorkerJob>>,
     results: Receiver<WorkerResult>,
     cancelled: Arc<AtomicBool>,
 }
@@ -42,7 +42,10 @@ pub(super) struct ExternalAiWorker {
 impl ExternalAiWorker {
     /// Start the app-owned worker. The environment credential and HTTP client
     /// are moved directly to the thread and never enter simulation state.
-    pub(super) fn start(config: &ExternalAiConfig) -> Result<Self, ExternalAiError> {
+    pub(super) fn start(
+        config: &ExternalAiConfig,
+        owners: &[InternedId],
+    ) -> Result<Self, ExternalAiError> {
         if !config.enabled {
             return Err(ExternalAiError::InvalidConfiguration);
         }
@@ -56,18 +59,43 @@ impl ExternalAiWorker {
         let api_key = std::env::var(API_KEY_ENV)
             .ok()
             .filter(|key| !key.trim().is_empty());
-        let (jobs, job_receiver) = mpsc::sync_channel(WORKER_QUEUE_CAPACITY);
         let (result_sender, results) = mpsc::sync_channel(WORKER_QUEUE_CAPACITY);
         let cancelled = Arc::new(AtomicBool::new(false));
-        let worker_cancelled = Arc::clone(&cancelled);
+        let client = Arc::new(ExternalAiClient::new(
+            &endpoint,
+            &model,
+            timeout,
+            api_key.as_deref(),
+        ));
+        let mut worker_owners = Vec::with_capacity(owners.len());
+        let mut seen = HashSet::with_capacity(owners.len());
+        for owner in owners.iter().copied() {
+            if seen.insert(owner) {
+                worker_owners.push(owner);
+            }
+        }
+        if worker_owners.len() > WORKER_QUEUE_CAPACITY {
+            return Err(ExternalAiError::WorkerStart);
+        }
 
-        thread::Builder::new()
-            .name("external-ai-api".to_string())
-            .spawn(move || {
-                let client = ExternalAiClient::new(&endpoint, &model, timeout, api_key.as_deref());
-                run_worker(job_receiver, result_sender, worker_cancelled, client);
-            })
-            .map_err(|_| ExternalAiError::WorkerStart)?;
+        let mut jobs = HashMap::with_capacity(worker_owners.len());
+        for owner in worker_owners {
+            let (job_sender, job_receiver) = mpsc::sync_channel(1);
+            let result_sender = result_sender.clone();
+            let worker_cancelled = Arc::clone(&cancelled);
+            let worker_client = Arc::clone(&client);
+            if thread::Builder::new()
+                .name(format!("external-ai-api-{}", owner.index()))
+                .spawn(move || {
+                    run_worker(job_receiver, result_sender, worker_cancelled, worker_client);
+                })
+                .is_err()
+            {
+                cancelled.store(true, Ordering::Release);
+                return Err(ExternalAiError::WorkerStart);
+            }
+            jobs.insert(owner, job_sender);
+        }
 
         Ok(Self {
             jobs,
@@ -86,7 +114,10 @@ impl ExternalAiWorker {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(ExternalAiError::WorkerStopped);
         }
-        match self.jobs.try_send(WorkerJob {
+        let Some(jobs) = self.jobs.get(&tag.owner) else {
+            return Err(ExternalAiError::WorkerStopped);
+        };
+        match jobs.try_send(WorkerJob {
             tag,
             observation,
             max_actions,
@@ -120,7 +151,7 @@ fn run_worker(
     jobs: Receiver<WorkerJob>,
     results: SyncSender<WorkerResult>,
     cancelled: Arc<AtomicBool>,
-    client: ExternalAiClient,
+    client: Arc<ExternalAiClient>,
 ) {
     while let Ok(job) = jobs.recv() {
         if cancelled.load(Ordering::Acquire) {
