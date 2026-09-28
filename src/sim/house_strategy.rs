@@ -51,6 +51,10 @@
 //!   residual) and its team removal (`0x006EA870`; VERA has no teams) never
 //!   apply; an occupied building's release with Hunt (`0x00457DE0(1, 0)`) is
 //!   not ported: no VERA computer house garrisons a building without teams.
+//! - All_To_Hunt queues Hunt on the house's aircraft as native does, but VERA
+//!   has no aircraft Hunt mission (`sim::aircraft::idle_mode`). Trigger: a
+//!   computer house that sells off and hunts while it owns aircraft. Effect:
+//!   its aircraft do not go looking for targets.
 //! - State four's writers (TriggerAction::Execute `0x006DEAFF`, a team
 //!   script at `0x006E99E5`) have no VERA producer, and the All-To-Hunt
 //!   latch's reader (`TechnoClass::Evaluate_Candidate @ 0x006F8765`, the
@@ -139,7 +143,7 @@ fn building_strategy(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -
 
 /// IHouse Fire_Sale (vt+0x34) then All_To_Hunt (vt+0x38).
 fn sell_off_and_hunt(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, why: &str) {
-    log::info!(
+    log::debug!(
         "{} sells off and hunts ({why})",
         sim.interner.resolve(owner)
     );
@@ -266,30 +270,29 @@ pub(crate) fn fire_sale(sim: &mut Simulation, rules: &RuleSet, owner: InternedId
 /// latch (`+0x249`) is set. The Dominator, team and garrison arms are
 /// residuals (module doc).
 pub(crate) fn all_to_hunt(sim: &mut Simulation, owner: InternedId) {
-    let mut technos: Vec<u64> = sim
+    // Queueing a mission changes no other object, so every test can be read
+    // before the first queue.
+    let hunters: Vec<u64> = sim
         .substrate
         .entities
         .values()
-        .map(|entity| entity.stable_id())
-        .collect();
-    technos.sort_unstable();
-    let hunt = MissionId::from_known(MissionType::Hunt);
-    for id in technos.into_iter().rev() {
-        let hunts = sim.substrate.entities.get(id).is_some_and(|techno| {
+        .filter(|techno| {
             techno.owner() == owner
                 && techno.lifecycle.cell_marked
                 && !techno.lifecycle.in_limbo
                 && techno.category != EntityCategory::Structure
-        });
-        if hunts {
-            let _ = sim.mission_queue_exact(
-                id,
-                hunt,
-                0,
-                sim.session.binary_frame,
-                &EntityReadyInputProvider,
-            );
-        }
+        })
+        .map(|techno| techno.stable_id())
+        .collect();
+    let hunt = MissionId::from_known(MissionType::Hunt);
+    for id in hunters.into_iter().rev() {
+        let _ = sim.mission_queue_exact(
+            id,
+            hunt,
+            0,
+            sim.session.binary_frame,
+            &EntityReadyInputProvider,
+        );
     }
     if let Some(house) = sim.houses.get_mut(&owner) {
         house.strategy_emergency.set_all_to_hunt_bias();

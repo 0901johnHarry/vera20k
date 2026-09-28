@@ -35,11 +35,19 @@
 //!
 //! RESIDUALS:
 //! - VERA runs the gate in its own house pass after the anger rung, followed
-//!   in each house by its building choice, but before every house's
-//!   `sim::ai` stand-in (ledger T2-28). Trigger: every defeat. Effect:
-//!   natively the houses before the defeated one in HouseClass::Array ran
-//!   their unit choice and teams before its sweep, so they saw its objects
-//!   alive; in VERA the stand-in sees them dead.
+//!   in each house by its strategy tick (`sim::house_strategy`) and building
+//!   choice, but before every house's `sim::ai` stand-in (ledger T2-28).
+//!   Trigger: every defeat. Effect: natively the houses before the defeated
+//!   one in HouseClass::Array ran their unit choice and teams before its
+//!   sweep, so they saw its objects alive; in VERA the stand-in sees them
+//!   dead.
+//! - Between the gate and the strategy tick, every eighth frame, native
+//!   springs event 8 ("any event") on each of the house's tags, last to
+//!   first (`0x004F8F87..0x004F8FBC`: the list at House+0x3C, its count at
+//!   +0x48, `0x006E53A0`); VERA's trigger runtime keeps no tags on houses.
+//!   Trigger: a map trigger attached to a house, mostly in campaigns.
+//!   Effect: that trigger's "any event" never springs. Later owner: the
+//!   trigger subsystem.
 //! - TechnoClass::Array order stands on stable-id order (construction order),
 //!   which matches for every source VERA constructs in native order.
 //! - Slave release: a Slave Miner killed with no attacker hands its slaves on

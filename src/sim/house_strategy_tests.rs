@@ -42,13 +42,13 @@ fn events<'a>(row: &'a Value, kind: &str) -> Vec<&'a Value> {
         .collect()
 }
 
-/// A factory (`Factory=`), a plain building and an infantry; both buildings
-/// sell (a Buildup control).
+/// A factory (`Factory=`), a plain building and one Foot type of each kind;
+/// both buildings sell (a Buildup control).
 fn rules() -> RuleSet {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=FOOT\n[VehicleTypes]\n[AircraftTypes]\n\
+        "[InfantryTypes]\n0=FOOT\n[VehicleTypes]\n0=WHEELS\n[AircraftTypes]\n0=WINGS\n\
          [BuildingTypes]\n0=FACTORY\n1=PLAIN\n\
-         [FACTORY]\nFactory=UnitType\n[PLAIN]\n[FOOT]\n",
+         [FACTORY]\nFactory=UnitType\n[PLAIN]\n[FOOT]\n[WHEELS]\n[WINGS]\n",
     ))
     .unwrap();
     for building in ["FACTORY", "PLAIN"] {
@@ -354,23 +354,15 @@ fn all_to_hunt_matches_native() {
                 continue;
             }
             let techno_owner = if flag(&techno["owner"]) { owner } else { other };
-            let id = if foot {
-                spawn(
-                    &mut sim,
-                    techno_owner,
-                    "FOOT",
-                    EntityCategory::Infantry,
-                    125,
-                )
-            } else {
-                spawn(
-                    &mut sim,
-                    techno_owner,
-                    "PLAIN",
-                    EntityCategory::Structure,
-                    1000,
-                )
+            // Native tests the Foot flag, not the kind: each Foot kind takes
+            // its turn.
+            let (type_id, category) = match (foot, slot % 3) {
+                (false, _) => ("PLAIN", EntityCategory::Structure),
+                (true, 0) => ("FOOT", EntityCategory::Infantry),
+                (true, 1) => ("WHEELS", EntityCategory::Unit),
+                (true, _) => ("WINGS", EntityCategory::Aircraft),
             };
+            let id = spawn(&mut sim, techno_owner, type_id, category, 125);
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.lifecycle.cell_marked = flag(&techno["down"]);
             entity.lifecycle.in_limbo = flag(&techno["limbo"]);
@@ -681,10 +673,9 @@ fn non_bincode_missing_house_field_uses_native_constructor_defaults() {
     let owner = InternedId::from_index(1);
     let house = HouseState::new(owner, 0, None, false, 0, 10);
     let mut value = serde_json::to_value(house).expect("HouseState serializes to JSON");
-    value
-        .as_object_mut()
-        .expect("HouseState JSON is an object")
-        .remove("strategy_emergency");
+    let object = value.as_object_mut().expect("HouseState JSON is an object");
+    object.remove("strategy_emergency");
+    object.remove("strategy_timer");
 
     let restored: HouseState =
         serde_json::from_value(value).expect("serde default fills the absent field");
@@ -695,4 +686,8 @@ fn non_bincode_missing_house_field_uses_native_constructor_defaults() {
     assert_eq!(restored.strategy_emergency.mode(), 0);
     assert!(!restored.strategy_emergency.all_to_hunt_bias());
     assert_eq!(restored.strategy_emergency.last_building_attack_frame(), 0);
+    assert_eq!(
+        restored.strategy_timer,
+        crate::sim::house_state::strategy_timer_at_construction()
+    );
 }

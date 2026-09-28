@@ -4526,6 +4526,7 @@ mod tests {
         house.strategy_emergency.set_all_to_hunt_bias();
         house.strategy_emergency.note_building_attack(-17);
         house.strategy_emergency.note_building_attacker(3);
+        house.strategy_timer.start(12, 106);
         sim.houses.insert(owner, house);
         sim.session.house_order.push(owner);
         let mut responder =
@@ -4634,6 +4635,10 @@ mod tests {
         assert!(emergency.all_to_hunt_bias());
         assert_eq!(emergency.last_building_attack_frame(), -17);
         assert_eq!(emergency.last_attacker_house_index(), 3);
+        assert_eq!(
+            restored.houses[&owner].strategy_timer,
+            crate::sim::timer::CdTimer::started(12, 106)
+        );
         let restored_responder = restored.substrate.entities.get(1).unwrap();
         let response = restored_responder.base_defense_response;
         assert!(!response.recruitable_a);

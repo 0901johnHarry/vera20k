@@ -5658,13 +5658,14 @@ impl Simulation {
         // defeat processing and strategic AI command generation. Native anger
         // decay is unconditional; only the activation substep needs RuleSet.
         self.update_houses_anger_and_activation(rules);
-        // --- Phase 8: Defeat detection and building choice (runs BEFORE AI) ---
+        // --- Phase 8: Defeat detection, strategy and building choice (runs BEFORE AI) ---
         // gamemd evaluates each house's defeat before its AI manage/produce step,
         // so a defeated house issues no AI command this tick; tick_ai skips any
         // house flagged defeated via its is_defeated gate. The gate reads the
         // house's tracking counts (`house_defeat.rs`), which construction and
         // the frame-end pending-delete drain move: a death reaches the gate on
-        // the next frame. Each house's building choice follows its own gate.
+        // the next frame. Each house's strategy tick (`house_strategy.rs`) and
+        // building choice follow its own gate.
         self.house_rung(rules, path_grid, overlay_registry, self.session.tick > 0);
         #[cfg(test)]
         if self.session.tick > 0 {

@@ -4033,6 +4033,19 @@ mod state_hash_field_tests {
             attacker_index.state_hash(),
             "last attacker House index is hashed"
         );
+
+        let (mut timer, owner) = fixture();
+        timer
+            .houses
+            .get_mut(&owner)
+            .unwrap()
+            .strategy_timer
+            .start(12, 106);
+        assert_ne!(
+            baseline_hash,
+            timer.state_hash(),
+            "Strategy timer is hashed"
+        );
     }
 
     #[test]
