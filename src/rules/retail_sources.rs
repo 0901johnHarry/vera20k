@@ -3,10 +3,13 @@
 //! Selection transfers parsed snapshots to NativeRulesProcessOwner. It does not
 //! own registry transitions or implement another layer/parser. Source identities
 //! describe exactly the consumed buffer, including loose-file winners.
+use std::sync::Arc;
+
 use crate::assets::asset_manager::AssetManager;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::process_owner::NativeRulesProcessOwner;
 use crate::rules::ruleset::RuleSet;
+use crate::rules::sound_ini::SoundRegistry;
 use crate::util::sha256::sha256_hex;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -47,13 +50,13 @@ pub(crate) fn select_ini(assets: &AssetManager, name: &str) -> Result<SelectedIn
 }
 
 /// Transient selected inputs, consumed when the process authority is constructed.
-/// Optional LANGRULE/SOUND retain the existing production missing/parse-failure
-/// policy. ART is fixed and never enters the scenario layer stack.
+/// Optional LANGRULE retains the existing production missing/parse-failure
+/// policy. ART is fixed and never enters the scenario layer stack. Audio
+/// definitions are separately selected and injected before Rules construction.
 pub(crate) struct RetailRulesSources {
     pub(crate) rulesmd: SelectedIni,
     pub(crate) langrule: Option<SelectedIni>,
     pub(crate) artmd: SelectedIni,
-    pub(crate) soundmd: Option<SelectedIni>,
 }
 
 impl RetailRulesSources {
@@ -61,27 +64,24 @@ impl RetailRulesSources {
         let rulesmd = select_ini(assets, "rulesmd.ini")?;
         let langrule = select_ini(assets, "langrule.ini").ok();
         let artmd = select_ini(assets, "artmd.ini")?;
-        let soundmd = select_ini(assets, "soundmd.ini").ok();
         Ok(Self {
             rulesmd,
             langrule,
             artmd,
-            soundmd,
         })
     }
 
-    pub(crate) fn into_startup(self) -> Result<StartupRulesLoad, String> {
-        let mut native_owner = NativeRulesProcessOwner::from_cold_start_sources(
+    pub(crate) fn into_startup(
+        self,
+        sounds: Arc<SoundRegistry>,
+    ) -> Result<StartupRulesLoad, String> {
+        let native_owner = NativeRulesProcessOwner::from_cold_start_sources(
             self.rulesmd.ini,
             self.langrule.map(|source| source.ini),
             self.artmd.ini,
+            sounds,
         )
         .map_err(|error| format!("Native rules cold startup failed: {error}"))?;
-        // Init_Game52C763..52C796 selects this once, separately from Rules passes.
-        if let Some(sound) = self.soundmd {
-            native_owner
-                .select_fixed_sounds(crate::rules::sound_ini::SoundRegistry::from_ini(&sound.ini));
-        }
         let (compatibility_rules, compatibility_projection) =
             match native_owner.startup_compatibility_projection() {
                 Ok(processed) => {
@@ -131,9 +131,12 @@ impl StartupRulesLoad {
 
 /// Production cold-start selection. Failed compatibility projection does not
 /// discard the native registry owner; only selection/cold construction can fail.
-pub(crate) fn load_startup_rules(assets: &AssetManager) -> Option<StartupRulesLoad> {
+pub(crate) fn load_startup_rules(
+    assets: &AssetManager,
+    sounds: Arc<SoundRegistry>,
+) -> Option<StartupRulesLoad> {
     RetailRulesSources::select(assets)
-        .and_then(RetailRulesSources::into_startup)
+        .and_then(|sources| sources.into_startup(sounds))
         .map_err(|error| log::warn!("{error}"))
         .ok()
 }
@@ -154,10 +157,12 @@ mod tests {
         assert_eq!(selected.rulesmd.source.source_sha256, sha256_hex(root));
         assert_eq!(selected.rulesmd.source.payload_len, root.len());
         assert!(selected.langrule.is_none());
-        assert!(selected.soundmd.is_none());
         directory.write("rulesmd.ini", b"[General]\nBuildSpeed=9\n");
         directory.write("artmd.ini", b"[TECH]\nFoundation=8x8\n");
-        let (_, _, mut owner) = selected.into_startup().expect("cold startup").into_parts();
+        let (_, _, mut owner) = selected
+            .into_startup(Arc::default())
+            .expect("cold startup")
+            .into_parts();
         let (rules, projection, art, _) = owner
             .load_noncampaign_scenario(None, &IniFile::empty())
             .expect("scenario from retained startup")
@@ -188,6 +193,7 @@ mod tests {
             IniFile::from_str("[General]\nBuildSpeed=.7\nFlightLevel=1500\n"),
             Some(IniFile::from_str("[General]\nBuildSpeed=.58\n")),
             IniFile::empty(),
+            Arc::default(),
         )
         .expect("cold startup");
         let processed = owner
@@ -216,7 +222,9 @@ mod tests {
         directory.write("langrule.ini", b"[AI]\nNeutralTechBuildings=TECH2\n");
         directory.write("artmd.ini", b"[TECH2]\nFoundation=2x3\n");
         let assets = AssetManager::from_loose_root_for_test(directory.path());
-        let (_, _, owner) = load_startup_rules(&assets).expect("startup").into_parts();
+        let (_, _, owner) = load_startup_rules(&assets, Arc::default())
+            .expect("startup")
+            .into_parts();
         directory.write("langrule.ini", b"[AI]\nNeutralTechBuildings=WRONG\n");
         directory.write("artmd.ini", b"[TECH2]\nFoundation=1x1\n");
         let projected = owner

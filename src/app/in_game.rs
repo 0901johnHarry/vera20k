@@ -204,7 +204,8 @@ impl App {
         state.match_state.match_presentation.abort_buttons = Default::default();
         state.match_state.match_presentation.sound_dialog = None;
         if next == InGameMenuState::Menu {
-            state.match_state.match_presentation.pause_menu_has_saves = !state.persistence.repository.browser_entries().is_empty();
+            state.match_state.match_presentation.pause_menu_has_saves =
+                !state.persistence.repository.browser_entries().is_empty();
         }
 
         // Leaving Options: drop the cached `0xBBB` hit-test anchor so the
@@ -213,7 +214,11 @@ impl App {
             state.match_state.match_presentation.in_game_options_anchor = None;
         }
         if next == InGameMenuState::Options {
-            state.match_state.match_presentation.in_game_options.sound_enabled=state.audio.launcher_audio_available;
+            state
+                .match_state
+                .match_presentation
+                .in_game_options
+                .sound_enabled = state.audio.launcher_audio_available;
             // Reset the transient interaction flags so the drag-gated
             // value-label quirk resets on every open.
             state
@@ -273,14 +278,20 @@ impl App {
             }
             // Options is the native `0xBBB` overlay, drawn earlier in the frame;
             // its Back control returns to the menu through the owner.
-            InGameMenuState::Options | InGameMenuState::Sound | InGameMenuState::Keyboard | InGameMenuState::SavedGame(_) => ModalOutcome::Stay,
+            InGameMenuState::Options
+            | InGameMenuState::Sound
+            | InGameMenuState::Keyboard
+            | InGameMenuState::SavedGame(_) => ModalOutcome::Stay,
         };
 
         Self::apply_in_game_modal_outcome(state, outcome);
     }
 
     /// Every physical or fallback modal commits through the same state/exit owner.
-    pub(crate) fn apply_in_game_modal_outcome(state: &mut AppState, outcome: crate::ui::pause_menu::ModalOutcome) {
+    pub(crate) fn apply_in_game_modal_outcome(
+        state: &mut AppState,
+        outcome: crate::ui::pause_menu::ModalOutcome,
+    ) {
         use crate::ui::pause_menu::ModalOutcome;
         match outcome {
             ModalOutcome::Stay => {}
@@ -646,12 +657,14 @@ impl App {
             .as_ref()
             .is_some_and(|exit| exit.needs_voice_poll(wall_ms));
         let voices_active = poll_voices
-            && match (&mut state.audio.sfx_player, state.process_assets.manager()) {
-                (Some(sfx), Some(assets)) => sfx.pump_and_check_voices(
-                    &state.audio.sound_registry,
-                    assets,
-                    &state.audio.audio_indices,
-                ),
+            && match (
+                &mut state.audio.sfx_player,
+                state.process_assets.manager(),
+                state.process_assets.audio_catalog(),
+            ) {
+                (Some(sfx), Some(assets), Some(catalog)) => {
+                    sfx.pump_and_check_voices(catalog.sounds(), assets, catalog.index())
+                }
                 _ => false,
             };
         let tick = state
@@ -721,15 +734,15 @@ impl App {
                 // `VoxClass::PlayEVA("EVA_BattleControlTerminated", 2)` — the
                 // INTERRUPT override; the entry itself is STANDARD CRITICAL.
                 let eva_side = crate::app::presentation::building_anim::local_eva_side(state);
-                if let (Some(sfx), Some(assets)) = (&mut state.audio.sfx_player, state.process_assets.manager()) {
+                if let (Some(sfx), Some(assets), Some(catalog)) = (&mut state.audio.sfx_player, state.process_assets.manager(), state.process_assets.audio_catalog()) {
                     let _ = sfx.play_eva(
                         "EVA_BattleControlTerminated",
                         Some(crate::rules::sound_ini::EvaType::Interrupt),
-                        &state.audio.eva_registry,
+                        catalog.eva(),
                         eva_side,
-                        &state.audio.sound_registry,
+                        catalog.sounds(),
                         assets,
-                        &state.audio.audio_indices,
+                        catalog.index(),
                     );
                 }
             }

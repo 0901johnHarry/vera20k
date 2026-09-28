@@ -2,8 +2,8 @@
 //!
 //! RA2 stores most sound effects (unit voices, EVA announcements, weapon sounds)
 //! in `audio.bag` — a flat concatenation of raw audio data — indexed by `audio.idx`.
-//! YR adds `audiomd.idx` / `audiomd.bag` with additional sounds.
-//! Both files live inside `AUDIO.MIX` or `AUDIOMD.MIX` (nested MIX archives).
+//! Both RA2 `AUDIO.MIX` and YR `AUDIOMD.MIX` contain `audio.idx` / `audio.bag`.
+//! Startup selects sources through AssetManager; this module only parses bytes.
 //!
 //! ## Format (version 1)
 //!
@@ -292,11 +292,11 @@ fn read_u32_le(data: &[u8], offset: usize) -> u32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Build a minimal valid idx with the given entries.
-    fn build_idx(entries: &[(&str, u32, u32, u32, u32)]) -> Vec<u8> {
+    pub(crate) fn build_idx(entries: &[(&str, u32, u32, u32, u32)]) -> Vec<u8> {
         let mut idx = Vec::new();
         // Header: magic(0) + version(1) + count
         idx.extend_from_slice(&0u32.to_le_bytes()); // magic

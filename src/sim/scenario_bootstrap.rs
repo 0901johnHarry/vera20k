@@ -2819,6 +2819,7 @@ mod tests {
                         rules_ini.clone(),
                         None,
                         IniFile::from_str(""),
+                        std::sync::Arc::default(),
                     )
                     .expect("cold process Rules authority");
                 let (rules, _, _, rules_receipt) = rules_owner
@@ -3527,6 +3528,7 @@ mod tests {
                 IniFile::from_bytes(b"").unwrap(),
                 None,
                 IniFile::from_bytes(b"").unwrap(),
+                std::sync::Arc::default(),
             )
             .unwrap();
         let native_load = native_rules

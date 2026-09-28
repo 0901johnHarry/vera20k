@@ -10,9 +10,15 @@
 #[path = "sinking_sound_tests.rs"]
 mod sinking_sound_tests;
 
+use std::sync::Arc;
+
 use crate::rules::error::RulesError;
-use crate::rules::ini_parser::{IniFile};
-use crate::rules::native_processing::{NativeRulesRegistryState, NativeTypeConstructionEvent, NativeTypeConstructionTrace, ProcessedRulesLayers, RulesLayerKind, RulesLayerStack, process_native_noncampaign_rules_prepass, process_native_rules_cold_start};
+use crate::rules::ini_parser::IniFile;
+use crate::rules::native_processing::{
+    NativeRulesRegistryState, NativeTypeConstructionEvent, NativeTypeConstructionTrace,
+    ProcessedRulesLayers, RulesLayerKind, RulesLayerStack,
+    process_native_noncampaign_rules_prepass, process_native_rules_cold_start,
+};
 use crate::rules::ruleset::RuleSet;
 use crate::rules::sound_ini::SoundRegistry;
 
@@ -28,7 +34,7 @@ struct NativeRulesSourceSnapshot {
     fixed_art: IniFile,
     /// Immutable Voc catalog selected once by Init_Game52C763..52C796.
     /// It is not a Rules layer and survives scenario Rules reconstruction.
-    fixed_sounds: SoundRegistry,
+    fixed_sounds: Arc<SoundRegistry>,
 }
 
 #[derive(Debug)]
@@ -112,14 +118,7 @@ pub(crate) struct NativeScenarioRulesLoad {
 }
 
 impl NativeScenarioRulesLoad {
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        RuleSet,
-        IniFile,
-        IniFile,
-        NativeScenarioRulesReceipt,
-    ) {
+    pub(crate) fn into_parts(self) -> (RuleSet, IniFile, IniFile, NativeScenarioRulesReceipt) {
         (
             self.rules,
             self.processed_ini,
@@ -138,6 +137,7 @@ impl NativeRulesProcessOwner {
         selected_rules_root: IniFile,
         langrule: Option<IniFile>,
         fixed_art: IniFile,
+        fixed_sounds: Arc<SoundRegistry>,
     ) -> Result<Self, RulesError> {
         let cold_trace = process_native_rules_cold_start(
             NativeRulesRegistryState::default(),
@@ -150,16 +150,17 @@ impl NativeRulesProcessOwner {
                 selected_rules_root,
                 langrule,
                 fixed_art,
-                fixed_sounds: SoundRegistry::default(),
+                fixed_sounds,
             },
             registry: Some(NativeRulesRegistryOwner::ColdStartup(cold_trace)),
         })
     }
 
-    /// Select the process's fixed SOUNDMD catalog before producing gameplay
-    /// Rules. Fixture-only cold sources leave the native empty catalog.
-    pub(crate) fn select_fixed_sounds(&mut self, sounds: SoundRegistry) {
-        self.sources.fixed_sounds = sounds;
+    /// The same immutable catalog used by process playback; never replaced by
+    /// Rules reconstruction or asset-manager recovery.
+    #[cfg(test)]
+    pub(crate) fn fixed_sounds(&self) -> &Arc<SoundRegistry> {
+        &self.sources.fixed_sounds
     }
 
     pub(crate) fn bind_sinking_sounds(
@@ -236,8 +237,7 @@ impl NativeRulesProcessOwner {
         let mut rules = match RuleSet::from_processed_rules(&processed) {
             Ok(rules) => rules,
             Err(error) => {
-                let (_, post_reset_trace) =
-                    processed.into_ini_and_native_type_construction_trace();
+                let (_, post_reset_trace) = processed.into_ini_and_native_type_construction_trace();
                 let (_, _, post_reset_state) = post_reset_trace.into_parts();
                 self.registry = Some(NativeRulesRegistryOwner::Live(post_reset_state));
                 return Err(error);
@@ -301,8 +301,8 @@ impl NativeRulesProcessOwner {
 #[cfg(test)]
 mod tests {
     use super::NativeRulesProcessOwner;
-    use crate::rules::ini_parser::{IniFile};
-use crate::rules::native_processing::{NativeTypeConstructorFamily};
+    use crate::rules::ini_parser::IniFile;
+    use crate::rules::native_processing::NativeTypeConstructorFamily;
 
     fn ini(text: &str) -> IniFile {
         IniFile::from_bytes(text.as_bytes()).expect("valid synthetic INI")
@@ -310,18 +310,21 @@ use crate::rules::native_processing::{NativeTypeConstructorFamily};
 
     #[test]
     fn second_noncampaign_scenario_continues_live_registry_then_resets_it() {
-        let root = ini(
-            "[Animations]\n0=ROOTANIM\n\
+        let root = ini("[Animations]\n0=ROOTANIM\n\
              [BuildingTypes]\n0=ROOTBLDG\n\
              [Countries]\n0=ROOTCOUNTRY\n\
              [General]\nParaDrop.Types=ROOTUNIT\n\
-             [ROOTCOUNTRY]\nVeteranUnits=ROOTINF\n",
-        );
+             [ROOTCOUNTRY]\nVeteranUnits=ROOTINF\n");
         let art = ini("[ROOTANIM]\nImage=ROOTANIM\n[ROOTBLDG]\nImage=ROOTBLDG\n");
         let first_map = ini("[BuildingTypes]\n1=MAPONLY\n[MAPONLY]\nImage=MAPONLY\n");
         let second_map = ini("");
-        let mut owner =
-            NativeRulesProcessOwner::from_cold_start_sources(root, None, art).unwrap();
+        let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+            root,
+            None,
+            art,
+            std::sync::Arc::default(),
+        )
+        .unwrap();
 
         let first = owner
             .load_noncampaign_scenario(None, &first_map)
@@ -358,17 +361,18 @@ use crate::rules::native_processing::{NativeTypeConstructorFamily};
     #[test]
     fn failed_post_reset_process_keeps_its_partial_live_registry() {
         let root = ini("[BuildingTypes]\n0=ROOTBLDG\n");
-        let failing_map = ini(
-            "[BuildingTypes]\n1=PARTIAL\n\
-             [Tiberiums]\n-1=INVALID\n",
-        );
-        let mut owner =
-            NativeRulesProcessOwner::from_cold_start_sources(root, None, ini("")).unwrap();
+        let failing_map = ini("[BuildingTypes]\n1=PARTIAL\n\
+             [Tiberiums]\n-1=INVALID\n");
+        let mut owner = NativeRulesProcessOwner::from_cold_start_sources(
+            root,
+            None,
+            ini(""),
+            std::sync::Arc::default(),
+        )
+        .unwrap();
 
         assert!(
-            owner
-                .load_noncampaign_scenario(None, &failing_map)
-                .is_err(),
+            owner.load_noncampaign_scenario(None, &failing_map).is_err(),
             "negative Tiberium slot fails after explicit families"
         );
         assert_eq!(

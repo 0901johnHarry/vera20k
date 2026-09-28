@@ -138,6 +138,7 @@ pub(crate) mod retail_sources;
 pub mod ruleset;
 pub mod shp_vehicle_sequence;
 pub mod smudge_type;
+pub(crate) mod audio_sources;
 pub mod sound_ini;
 pub mod superweapon_type;
 pub mod team_ai_ini;

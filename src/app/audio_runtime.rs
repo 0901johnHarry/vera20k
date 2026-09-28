@@ -1,11 +1,6 @@
-//! Process-wide audio runtime (F12 `AppAudioRuntime`): output players and
-//! sound/EVA registries that live for the whole process.
-//!
-//! The per-match event queue lives in
-//! `app::match_audio::MatchAudioState`; gameplay EVA latches live in sim.
-//! This process audio owner survives matches. The registries are reloaded on
-//! each map load today (redundant but harmless —
-//! they consume no map-specific input); that behavior is unchanged here.
+//! Process-wide audio output and Theme runtime. Immutable SFX/EVA definitions
+//! and the selected sample index belong to `ProcessAssets`; match event queues
+//! belong to `MatchAudioState`. Output state survives scenario transitions.
 
 use crate::assets::asset_manager::AssetManager;
 use crate::audio::music::MusicPlayer;
@@ -17,7 +12,6 @@ use crate::audio::theme::{
 /// `AudioSystem__Pump @ 0x00406F70` runs its services only when more than
 /// 0x21 ms elapsed since the previous pass.
 const THEME_POLL_GATE_MS: u64 = 0x21;
-use crate::rules::sound_ini::{EvaRegistry, SoundRegistry};
 
 pub(crate) const fn derive_launcher_audio_available(
     audio_requested: bool,
@@ -80,22 +74,12 @@ pub(crate) struct AppAudioRuntime {
     pub(crate) music_player: Option<MusicPlayer>,
     /// Sound effect player (rodio) — one-shot SFX (weapons, voices, UI).
     pub(crate) sfx_player: Option<SfxPlayer>,
-    /// sound.ini / soundmd.ini registry mapping IDs to .wav filenames.
-    pub(crate) sound_registry: SoundRegistry,
-    /// audio.idx/bag indices for bag-based sound lookup (voices, EVA).
-    /// Searched in order (YR audiomd first, then base audio).
-    pub(crate) audio_indices: Vec<crate::assets::audio_bag::AudioIndex>,
-    /// The process-start audio decision persisted for later scenario reloads.
-    pub(crate) audio_indices_enabled: bool,
     /// Rust-native substitute for native's one shared DirectSound-device gate.
     /// Frozen after both process-start output constructor attempts.
     pub(crate) launcher_audio_available: bool,
     /// Native has a startup-suppression gate. Current Rust has no non-default
     /// route, so production initializes this false and keeps one explicit seam.
     pub(crate) theme_startup_suppressed: bool,
-    /// EVA announcement registry from eva.ini / evamd.ini.
-    /// Maps EVA event names to per-faction audio.bag sound IDs.
-    pub(crate) eva_registry: EvaRegistry,
 }
 
 /// gamemd-derived: Theme admission and logical/physical command ordering come
@@ -345,12 +329,8 @@ mod tests {
             last_theme_poll_ms: None,
             music_player: None,
             sfx_player: None,
-            sound_registry: SoundRegistry::default(),
-            audio_indices: Vec::new(),
-            audio_indices_enabled: false,
             launcher_audio_available: true,
             theme_startup_suppressed: false,
-            eva_registry: EvaRegistry::default(),
         };
         runtime.update_theme(&assets, 100);
         assert_eq!(runtime.last_theme_poll_ms, Some(100));

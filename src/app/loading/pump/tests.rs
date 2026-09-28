@@ -146,12 +146,8 @@ fn test_audio() -> crate::app::audio_runtime::AppAudioRuntime {
         last_theme_poll_ms: None,
         music_player: None,
         sfx_player: None,
-        sound_registry: Default::default(),
-        audio_indices: Vec::new(),
-        audio_indices_enabled: false,
         launcher_audio_available: true,
         theme_startup_suppressed: false,
-        eva_registry: Default::default(),
     }
 }
 
@@ -171,12 +167,11 @@ fn begin_loading_plays_loading_theme_and_polls_theme_through_the_lease() {
           [LOADING]\nName=Loading\nSound=loading\nRepeat=yes\n",
     )
     .expect("write thememd.ini");
-    let mut process_assets = crate::app::process_assets::ProcessAssets::from_startup(
+    let mut process_assets = crate::app::process_assets::ProcessAssets::new(
         crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
-        Some(AssetManager::from_loose_root_for_test(&dir)),
-        None,
-        None,
+        false,
     );
+    process_assets.return_from_loading(AssetManager::from_loose_root_for_test(&dir));
     let mut audio = test_audio();
     let session = LoadingSession::from_request(LoadingRequest::unverified_legacy_skirmish(
         test_launch_session(LaunchCountry::America),
@@ -227,12 +222,11 @@ fn loading_replacement_and_terminal_retirement_preserve_cache_and_admission_orde
     let dir = std::env::temp_dir().join(format!("vera20k-loading-owner-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("sentinel.bin"), b"first winner").unwrap();
-    let mut assets = crate::app::process_assets::ProcessAssets::from_startup(
+    let mut assets = crate::app::process_assets::ProcessAssets::new(
         crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
-        Some(AssetManager::from_loose_root_for_test(&dir)),
-        None,
-        None,
+        false,
     );
+    assets.return_from_loading(AssetManager::from_loose_root_for_test(&dir));
     let original = assets
         .manager()
         .unwrap()
@@ -372,21 +366,28 @@ fn loading_preparation_consumes_real_source_and_returns_lease_on_initial_and_adm
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let map_path = dir.join("mp01t4.map");
-    let map_bytes = AssetManager::new(
+    let retail_assets = AssetManager::new(
         &ra2_dir,
         crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
     )
-    .unwrap()
-    .get("Fight.MAP")
-    .expect("retail Fight.MAP fixture");
+    .unwrap();
+    for name in ["rulesmd.ini", "artmd.ini", "soundmd.ini", "evamd.ini"] {
+        std::fs::write(
+            dir.join(name),
+            retail_assets.get_ref(name).expect("retail INI"),
+        )
+        .unwrap();
+    }
+    let map_bytes = retail_assets
+        .get("Fight.MAP")
+        .expect("retail Fight.MAP fixture");
     std::fs::write(&map_path, map_bytes).unwrap();
     std::fs::write(dir.join("sentinel.bin"), b"keep this cache").unwrap();
-    let mut assets = crate::app::process_assets::ProcessAssets::from_startup(
+    let mut assets = crate::app::process_assets::ProcessAssets::new(
         crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
-        Some(AssetManager::from_loose_root_for_test(&dir)),
-        None,
-        None,
+        false,
     );
+    assets.return_from_loading(AssetManager::from_loose_root_for_test(&dir));
     let original = assets
         .manager()
         .unwrap()
@@ -1646,12 +1647,25 @@ fn absent_and_lost_loading_managers_preserve_media_policy() {
         "mapsmd01.mix",
         &make_new_format_mix_bytes(&[("wildcard.bin", b"wildcard")]),
     );
-    for mode in [
-        MediaArchiveMode::STOCK_DIGITAL,
-        MediaArchiveMode::CdWildcard,
+    dir.write("rulesmd.ini", b"[General]\nBuildSpeed=.7\n");
+    dir.write("artmd.ini", b"[Test]\n");
+    dir.write(
+        "soundmd.ini",
+        b"[SoundList]\n0=StartupCue\n[StartupCue]\nSounds=cue\n",
+    );
+    dir.write(
+        "evamd.ini",
+        b"[DialogList]\n0=EVA_Test\n[EVA_Test]\nAllied=cue\n",
+    );
+    // Valid empty v1 index is enough to distinguish disabled from selected.
+    dir.write("audio.idx", &[0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+    dir.write("audio.bag", b"retained bag");
+    for (mode, audio_enabled) in [
+        (MediaArchiveMode::STOCK_DIGITAL, false),
+        (MediaArchiveMode::CdWildcard, true),
     ] {
-        let mut owner =
-            crate::app::process_assets::ProcessAssets::from_startup(mode, None, None, None);
+        let mut owner = crate::app::process_assets::ProcessAssets::new(mode, audio_enabled);
+        let mut original_sounds = None;
         let mut session = LoadingSession::from_request(LoadingRequest::unverified_legacy_skirmish(
             test_launch_session(LaunchCountry::America),
             unverified_seed(1),
@@ -1669,6 +1683,31 @@ fn absent_and_lost_loading_managers_preserve_media_policy() {
             }
             ensure_session_job_asset_manager(&mut owner, &mut session, Some(dir.path().to_owned()))
                 .expect("production archive reconstruction");
+            let sounds = owner
+                .native_rules()
+                .expect("recovery creates Rules before preparation")
+                .fixed_sounds();
+            if let Some(original) = &original_sounds {
+                assert!(
+                    std::sync::Arc::ptr_eq(original, sounds),
+                    "lost manager must not replace catalog or Rules"
+                );
+            } else {
+                original_sounds = Some(std::sync::Arc::clone(sounds));
+            }
+            let catalog = owner.audio_catalog().unwrap();
+            assert!(
+                std::ptr::eq(catalog.sounds(), sounds.as_ref()),
+                "playback and Rules share the allocation"
+            );
+            assert!(catalog.sounds().get("StartupCue").is_some());
+            assert_eq!(catalog.index().is_some(), audio_enabled);
+            assert_eq!(
+                catalog
+                    .eva()
+                    .get("EVA_Test", crate::rules::sound_ini::EvaSide::Allied),
+                Some("cue")
+            );
             let manager = session.job.asset_manager.as_ref().unwrap();
             assert_eq!(manager.get_ref("stock.bin"), Some(b"stock".as_slice()));
             assert_eq!(

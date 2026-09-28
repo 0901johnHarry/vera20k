@@ -95,12 +95,15 @@ impl AudioVolumeOperations for AppState {
         let Some(sfx) = self.audio.sfx_player.as_mut() else {
             return;
         };
+        let Some(catalog) = self.process_assets.audio_catalog() else {
+            return;
+        };
         sfx.play_sound_with_volume(
             &sound,
             local_multiplier,
-            &self.audio.sound_registry,
+            catalog.sounds(),
             assets,
-            &self.audio.audio_indices,
+            catalog.index(),
         );
     }
 }

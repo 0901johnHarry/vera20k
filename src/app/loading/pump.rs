@@ -30,9 +30,8 @@ use crate::render::batch::BatchRenderer;
 use crate::render::bit_font::BitFont;
 use crate::render::gpu::GpuContext;
 use crate::render::loading_screen_chrome::{
-    LoadingArtVariant, LoadingScreenAtlas, LoadingScreenCompositionAtlasInput,
-    LoadingScreenWidth, MmpbMarkerRemap, PreparedLoadingPreviewRgba,
-    build_loading_screen_atlas_with_composition,
+    LoadingArtVariant, LoadingScreenAtlas, LoadingScreenCompositionAtlasInput, LoadingScreenWidth,
+    MmpbMarkerRemap, PreparedLoadingPreviewRgba, build_loading_screen_atlas_with_composition,
 };
 use crate::render::shell_surface_present::ShellSurfacePresenter;
 use crate::rules::color_scheme::{
@@ -975,6 +974,17 @@ fn ensure_session_job_asset_manager(
         };
         session.job.asset_manager = Some(asset_manager);
     }
+    // The job owns the manager before this fallible step so retirement returns
+    // it on failure. A recovered process must have Rules before request.prepare.
+    process_assets
+        .initialize_sources_if_needed(
+            session
+                .job
+                .asset_manager
+                .as_ref()
+                .expect("asset setup stores manager"),
+        )
+        .map_err(anyhow::Error::msg)?;
     Ok(())
 }
 

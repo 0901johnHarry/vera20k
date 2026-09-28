@@ -8,6 +8,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Job | Owner / entry point |
 | --- | --- |
 | Run all Python tool and source-skill tests | `python -m tools.run_tests` (below) |
+| Inspect process audio definitions, sample sources and retention evidence | [Process audio catalog owner](audio_catalog_owner.md), `asset sound` |
 | Wait for builds; test, check, lint or build the current checkout; preserve A/B binaries | `python -m tools.cargo_run` (below) |
 | Find a built or preserved host executable for shell use | `python -m tools.cargo_run --resolve asset --profile release` (below) |
 | Run retail corpus checks or export a decoder-baseline candidate | [retail corpus](retail_corpus.md) |

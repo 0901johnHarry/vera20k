@@ -289,7 +289,13 @@ pub(crate) fn load_rules_with_merged_ini(
     IniFile,
     crate::rules::process_owner::NativeScenarioRulesReceipt,
 )> {
-    let (_, _, mut native_owner) = load_startup_rules(asset_manager)?.into_parts();
+    let (_, _, mut native_owner) = load_startup_rules(
+        asset_manager,
+        std::sync::Arc::clone(
+            crate::rules::audio_sources::AudioDefinitions::select(asset_manager).sounds(),
+        ),
+    )?
+    .into_parts();
     let no_map = IniFile::from_str("");
     let (rules, processed_ini, fixed_art_ini, receipt) = native_owner
         .load_noncampaign_scenario(mode_rules_override, map_rules_overrides.unwrap_or(&no_map))
@@ -1036,6 +1042,7 @@ mod tests {
             rulesmd,
             Some(langrule),
             IniFile::from_str(""),
+            Default::default(),
         )
         .expect("cold startup");
         let (rules, processed_ini, fixed_art, _receipt) = owner
