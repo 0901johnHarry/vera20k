@@ -472,6 +472,13 @@ pub(crate) fn exit_building(
                 return BuildingExit::Failed;
             }
             carry_wall_tower_site(sim, rules, owner, ty, node, site);
+            log::info!(
+                "{} placed {} at ({}, {})",
+                sim.interner.resolve(owner),
+                ty.id,
+                site.0,
+                site.1
+            );
             BuildingExit::Placed
         }
     }
