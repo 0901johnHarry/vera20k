@@ -383,6 +383,7 @@ impl App {
         // victory/defeat HouseClass SavourDelay or its outcome-voice wait.
         state.match_state.scenario_outcome = None;
         let _ = state.match_state.scenario_elapsed_clock.stop(wall_ms);
+        crate::app::match_runtime::sim_tick::stop_external_ai(state);
         // gamemd provenance: battle abort teardown; verified
         // GameExit__BattleControlTerminated @ 0x00686570 starts Theme's fade
         // (`ThemeClass::Stop(1)` @ 0x006865FA), then fades the independent

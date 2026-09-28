@@ -1,5 +1,6 @@
 mod actions;
 mod client;
+pub(super) mod coordinator;
 mod observation;
 mod protocol;
 mod worker;

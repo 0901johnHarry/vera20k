@@ -21,6 +21,9 @@ pub(crate) struct MatchState {
     /// App-owned diagnostic recording (F10) — never inside the simulation, so
     /// no load/install path can silently drop an unflushed segment.
     pub(crate) match_diagnostics: crate::app::match_diagnostics::MatchDiagnosticsState,
+    /// Match-scoped external strategic controller. Dropping this owner cancels
+    /// queued work and detaches its bounded in-flight HTTP request.
+    pub(crate) external_ai: Option<super::external_ai::coordinator::ExternalAiCoordinator>,
     pub(crate) map_basic: BasicSection,
     /// Exact source whose bytes produced the active parsed map.
     pub(crate) loaded_map_source: Option<crate::map::source::LoadedMapSource>,

@@ -41,6 +41,7 @@ const REPLAYS_DIR: &str = "replays";
 /// failure restores it for a later retry. Writes
 /// `replays/replay_tick{tick}_{unix_secs}.json`.
 pub(crate) fn flush_replay_log(state: &mut AppState) {
+    stop_external_ai(state);
     let (session_tick, now) = replay_flush_facts(state);
     match state
         .match_state
@@ -61,6 +62,7 @@ pub(crate) fn flush_replay_log(state: &mut AppState) {
 /// failure discards the segment instead of retaining it, so the next
 /// timeline can never append under the previous timeline's header.
 pub(crate) fn close_replay_segment_for_new_timeline(state: &mut AppState) {
+    stop_external_ai(state);
     let (session_tick, now) = replay_flush_facts(state);
     match state
         .match_state
@@ -77,6 +79,11 @@ pub(crate) fn close_replay_segment_for_new_timeline(state: &mut AppState) {
             log::error!("Diagnostic-log close failed at timeline boundary; segment discarded: {e}")
         }
     }
+}
+
+/// End the match-scoped API worker without waiting for its current request.
+pub(crate) fn stop_external_ai(state: &mut AppState) {
+    state.match_state.external_ai = None;
 }
 
 fn replay_flush_facts(state: &AppState) -> (u64, u64) {
@@ -159,6 +166,7 @@ pub(crate) fn drive_local_player_outcome_voice_wait(state: &mut AppState, wall_m
     state.frontend.finished_game_count = state.frontend.finished_game_count.saturating_add(1);
     let elapsed_seconds = state.match_state.scenario_elapsed_clock.stop(wall_ms);
     let model = build_score_screen_model(state, elapsed_seconds);
+    stop_external_ai(state);
     // The outcome handlers at 0x00685670 / 0x00685DC0 begin only after the
     // HouseClass timer and 0x78-bucket Vox wait. From here the existing cascade
     // performs their master fade, 300-bucket tail, hard stop, and SCORE handoff.
@@ -801,6 +809,67 @@ fn should_record_replay_tick(
     tick_result.frame_committed || !due_commands.is_empty() || tick_result.terminal_score_finalized
 }
 
+/// Poll and schedule app-owned external decisions before the existing due
+/// command drain. Accepted envelopes therefore share normal ingress and are
+/// recorded by the existing replay owner with their resulting hash.
+fn enqueue_external_ai_decisions(state: &mut AppState, tick_lane: TickLane) {
+    let enabled = state
+        .platform
+        .game_config
+        .as_ref()
+        .is_some_and(|config| config.external_ai.enabled);
+    if cfg!(test) || !enabled {
+        state.match_state.external_ai = None;
+        return;
+    }
+    let Some(runtime) = state.match_state.sim_runtime.as_ref() else {
+        state.match_state.external_ai = None;
+        return;
+    };
+
+    let mode = current_session_mode(state);
+    // App replay playback is not wired into MatchState; deterministic replay
+    // runs through sim::ReplayRunner and never enters this live app path.
+    let replaying = false;
+    let admission = super::external_ai::coordinator::CoordinatorAdmission {
+        mode,
+        game_mode_nonzero: runtime.simulation.session.game_mode_nonzero,
+        replaying,
+        ordinary_lane: tick_lane == TickLane::Ordinary,
+    };
+    if admission.mode != SessionMode::Skirmish
+        || !admission.game_mode_nonzero
+        || admission.replaying
+        || !admission.ordinary_lane
+    {
+        state.match_state.external_ai = None;
+        return;
+    }
+
+    let config = &state
+        .platform
+        .game_config
+        .as_ref()
+        .expect("enabled config was checked above")
+        .external_ai;
+    let commands = {
+        let (coordinator_slot, runtime_slot) = (
+            &mut state.match_state.external_ai,
+            &state.match_state.sim_runtime,
+        );
+        let runtime = runtime_slot.as_ref().expect("runtime was checked above");
+        let coordinator = coordinator_slot.get_or_insert_with(|| {
+            super::external_ai::coordinator::ExternalAiCoordinator::new(config)
+        });
+        coordinator.advance(runtime, admission)
+    };
+    if !commands.is_empty()
+        && let Some(runtime) = state.match_state.sim_runtime.as_mut()
+    {
+        runtime.simulation.queue_commands(commands);
+    }
+}
+
 fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bool {
     let mut refresh_atlases_after_tick = false;
     // Trigger definitions are runtime-bound (F07), so a live runtime is the
@@ -842,6 +911,7 @@ fn advance_one_simulation_frame(state: &mut AppState, tick_lane: TickLane) -> bo
         let mut trigger_effects: Vec<TriggerEffect> = Vec::new();
         // Carried out of the sim borrow so the census can read `state` freely below.
         let mut census_tick: Option<u64> = None;
+        enqueue_external_ai_decisions(state, tick_lane);
         if let Some(rt) = state.match_state.sim_runtime.as_mut() {
             let sim = &mut rt.simulation;
             // Delay-zero AnimClass construction can emit StartSound during the

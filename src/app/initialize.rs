@@ -581,6 +581,7 @@ impl App {
                 },
                 match_audio: Default::default(),
                 match_diagnostics: Default::default(),
+                external_ai: None,
                 map_basic: BasicSection::default(),
                 loaded_map_source: None,
                 loaded_map_hash: None,
