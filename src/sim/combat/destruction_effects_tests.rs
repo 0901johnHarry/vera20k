@@ -687,8 +687,8 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
 /// no mark lands; on the clean ground at (73, 116) the placer picks among the
 /// 1x1, 2x1 and 1x2 types (no 2x2 fits: (74, 117) is not Morphable), and at
 /// (81, 123) among the preferred 2x2 types; the mark's type, cells and
-/// SmudgeData are compared. An art-less `gtpowexp`
-/// pick constructs nothing (a residual). At the fixture's plant an MCV then
+/// SmudgeData are compared. An art-less `gtpowexp` pick constructs an End=0
+/// anim as native does. At the fixture's plant an MCV then
 /// plays one of its own `Explosion=` anims and throws `MetallicDebris=`
 /// chunks, all with `0x600`/0. Ignored: needs the retail install (`RA2_DIR`
 /// or `config.toml`).
@@ -1015,7 +1015,6 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
             .iter()
             .filter(|event| event["call"] == "anim_ctor")
             .skip(native_debris.len())
-            .filter(|event| event["type"] != "gtpowexp")
             .map(|event| {
                 (
                     event["type"].as_str().unwrap().to_string(),
