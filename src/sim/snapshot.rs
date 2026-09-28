@@ -692,7 +692,8 @@ use crate::sim::world::Simulation;
 // manager's timers, and the cloak stage and disguise block timers are
 // `CdTimer`s (the last two save their words in a new order).
 // 235 -> 236: a harvester's overlay no longer saves its unread frame count.
-const SNAPSHOT_VERSION: u32 = 236;
+// 236 -> 237: AI owner state gains an external-control lease deadline.
+const SNAPSHOT_VERSION: u32 = 237;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3349,6 +3350,51 @@ mod tests {
     }
 
     #[test]
+    fn previous_snapshot_version_is_rejected_before_ai_state_decode() {
+        let bytes = bincode::serialize(&GameSnapshotHeader {
+            product_magic: SNAPSHOT_PRODUCT_MAGIC,
+            envelope_version: SNAPSHOT_ENVELOPE_VERSION,
+            version: 236,
+            description: "pre-external-ai lease".into(),
+            map_hash: 0,
+            rules_hash: 0,
+            tick: 0,
+            save_timestamp: 0,
+            map_name: "lease.map".into(),
+        })
+        .unwrap();
+
+        assert!(matches!(
+            GameSnapshot::load(&bytes),
+            Err(SnapshotError::VersionMismatch {
+                expected: SNAPSHOT_VERSION,
+                found: 236,
+            })
+        ));
+    }
+
+    #[test]
+    fn external_ai_lease_and_attack_frame_roundtrip_in_snapshot() {
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        let mut ai = crate::sim::ai::AiPlayerState::new(owner);
+        ai.last_attack_frame = 456;
+        ai.external_control_until_frame = Some(789);
+        sim.ai_players.push(ai);
+
+        let bytes = GameSnapshot::save(&sim, 0, 0, "lease.map", 0);
+        let restored = GameSnapshot::load(&bytes).expect("current snapshot").sim;
+
+        assert_eq!(restored.ai_players.len(), 1);
+        assert_eq!(restored.ai_players[0].owner, owner);
+        assert_eq!(restored.ai_players[0].last_attack_frame, 456);
+        assert_eq!(
+            restored.ai_players[0].external_control_until_frame,
+            Some(789)
+        );
+    }
+
+    #[test]
     fn free_radar_rejects_v138_before_decoding_the_changed_session() {
         let bytes = bincode::serialize(&GameSnapshotHeader {
             product_magic: SNAPSHOT_PRODUCT_MAGIC,
@@ -3708,7 +3754,8 @@ mod tests {
         // 234 -> 235: house, spawn manager, cloak and disguise timers are
         // `CdTimer`s.
         // 235 -> 236: the harvest overlay drops its unread frame count.
-        assert_eq!(super::SNAPSHOT_VERSION, 236);
+        // 236 -> 237: AI owner state gains its external-control deadline.
+        assert_eq!(super::SNAPSHOT_VERSION, 237);
     }
 
     #[test]

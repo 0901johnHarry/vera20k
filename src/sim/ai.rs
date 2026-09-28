@@ -42,6 +42,8 @@ pub struct AiPlayerState {
     pub owner: InternedId,
     /// Native frame when the last attack wave was sent.
     pub last_attack_frame: u32,
+    /// Exclusive native-frame deadline through which external control suppresses this AI.
+    pub external_control_until_frame: Option<u32>,
 }
 
 impl AiPlayerState {
@@ -49,7 +51,17 @@ impl AiPlayerState {
         Self {
             owner,
             last_attack_frame: 0,
+            external_control_until_frame: None,
         }
+    }
+
+    /// Whether the placeholder AI remains suppressed at `current_frame`.
+    ///
+    /// The configured lease is bounded well below half the u32 frame range,
+    /// so serial-number arithmetic stays unambiguous across frame wrap.
+    pub fn external_control_active_at(&self, current_frame: u32) -> bool {
+        self.external_control_until_frame
+            .is_some_and(|until| current_frame.wrapping_sub(until) >= (1 << 31))
     }
 }
 
@@ -72,6 +84,12 @@ pub fn tick_ai(
         if crate::sim::house_state::house_state_for_owner_id(&sim.houses, ai.owner)
             .is_some_and(|h| h.is_defeated)
         {
+            continue;
+        }
+
+        // A valid lease suppresses only this owner's placeholder production
+        // and attack choices. Defeat remains the stronger gate above it.
+        if ai.external_control_active_at(current_frame) {
             continue;
         }
 
@@ -422,6 +440,93 @@ mod tests {
         let state = AiPlayerState::new(owner_id);
         assert_eq!(state.owner, owner_id);
         assert_eq!(state.last_attack_frame, 0);
+        assert_eq!(state.external_control_until_frame, None);
+    }
+
+    #[test]
+    fn external_control_deadline_uses_wrapping_binary_frames() {
+        let mut interner = crate::sim::intern::StringInterner::new();
+        let owner = interner.intern("Americans");
+        let mut ai = AiPlayerState::new(owner);
+        ai.external_control_until_frame = Some(4);
+
+        assert!(ai.external_control_active_at(u32::MAX - 2));
+        assert!(ai.external_control_active_at(3));
+        assert!(!ai.external_control_active_at(4));
+        assert!(!ai.external_control_active_at(5));
+    }
+
+    #[test]
+    fn external_control_lease_suppresses_only_its_owner_and_expires_on_deadline() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n\
+             [AircraftTypes]\n\
+             [VehicleTypes]\n\
+             0=TSTTNK\n\
+             [BuildingTypes]\n\
+             0=TSTCYRD\n\
+             [TSTTNK]\n\
+             Speed=6\n\
+             Strength=400\n\
+             TechLevel=1\n\
+             Owner=Americans,Soviets\n\
+             [TSTCYRD]\n\
+             Name=Test ConYard\n\
+             Foundation=2x2\n\
+             UndeploysInto=TSTMCV\n\
+             Strength=1000\n\
+             TechLevel=1\n\
+             Owner=Americans,Soviets\n",
+        ))
+        .expect("rules parse");
+
+        let mut sim = Simulation::new();
+        sim.session.binary_frame = 232;
+        spawn_structure(&mut sim, 2, "Americans", "TSTCYRD", 8, 8);
+        spawn_structure(&mut sim, 3, "Soviets", "TSTCYRD", 30, 30);
+        for (sid, owner) in [(1, "Americans"), (4, "Soviets")] {
+            let owner_id = sim.interner.intern(owner);
+            let tank_type = sim.interner.intern("TSTTNK");
+            let mut ge = crate::sim::game_entity::GameEntity::new_at_frame_zero_for_test(
+                sid,
+                5 + sid as u16,
+                5,
+                0,
+                0,
+                owner_id,
+                Health { current: 400 },
+                tank_type,
+                EntityCategory::Unit,
+                0,
+                5,
+                false,
+            );
+            ge.lifecycle.in_limbo = false;
+            sim.substrate.entities.insert(ge);
+        }
+        let americans = sim.interner.intern("Americans");
+        let soviets = sim.interner.intern("Soviets");
+        let mut ai = vec![AiPlayerState::new(americans), AiPlayerState::new(soviets)];
+        ai[0].external_control_until_frame = Some(240);
+
+        let while_leased = tick_ai(&sim, &mut ai, &rules);
+        assert!(
+            while_leased
+                .iter()
+                .all(|command| command.owner != americans),
+            "only the leased house's placeholder decisions must be suppressed"
+        );
+        assert!(
+            while_leased.iter().any(|command| command.owner == soviets),
+            "a different computer house must continue using its local AI"
+        );
+
+        sim.session.binary_frame = 240;
+        let at_deadline = tick_ai(&sim, &mut ai, &rules);
+        assert!(
+            at_deadline.iter().any(|command| command.owner == americans),
+            "the local AI must resume when the exclusive lease deadline is reached"
+        );
     }
 
     #[test]

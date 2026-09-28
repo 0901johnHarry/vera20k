@@ -213,6 +213,8 @@ pub(super) enum HashFeature {
     /// constructor value, so a state without it hashes as earlier schemas,
     /// which fold none.
     AiStrategy = 234,
+    /// The per-AI-owner attack decision frame and external-control lease.
+    AiOpponent = 235,
 }
 
 impl HashSchema {
@@ -262,6 +264,7 @@ impl HashSchema {
                     | HashFeature::AiBaseBuilding
                     | HashFeature::AiBaseDefense
                     | HashFeature::AiStrategy
+                    | HashFeature::AiOpponent
             ),
             #[cfg(test)]
             Self::Before(version) => (_feature as u16) < version,

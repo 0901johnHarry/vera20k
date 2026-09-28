@@ -616,6 +616,9 @@ pub enum Command {
     /// frame. The dialog emits only the stored range 0..=6; live network opcode
     /// 0x0D keeps its separate EventClass-tail timing when networking is added.
     SetGameSpeed { speed: u8 },
+    /// Renew the existing simulation-owned AI placeholder suppression lease.
+    /// This internal command is replayed like any other authoritative input.
+    RenewExternalAiLease { until_frame: u32 },
 }
 
 /// Command with deterministic execution metadata.

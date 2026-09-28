@@ -1491,6 +1491,66 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_replay_reapplies_ai_lease_and_action_without_worker() {
+        let make_sim = || {
+            let mut sim = Simulation::with_seed(7);
+            let owner = sim.interner.intern("Americans");
+            sim.houses.insert(
+                owner,
+                crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
+            );
+            sim.session.house_order.push(owner);
+            sim.ai_players
+                .push(crate::sim::ai::AiPlayerState::new(owner));
+            let mut unit =
+                crate::sim::game_entity::GameEntity::test_default(1, "MTNK", "Americans", 4, 4);
+            unit.lifecycle.in_limbo = false;
+            sim.substrate.entities.insert(unit);
+            (sim, owner)
+        };
+        let (mut recorded, owner) = make_sim();
+        let commands = vec![
+            CommandEnvelope::new(owner, 1, Command::RenewExternalAiLease { until_frame: 120 }),
+            CommandEnvelope::new(
+                owner,
+                1,
+                Command::Guard {
+                    entity_id: 1,
+                    target_id: None,
+                },
+            ),
+        ];
+        let tick = recorded.advance_tick(&commands, None, &BTreeMap::new(), None, None, 33);
+
+        let mut log = ReplayLog::new(ReplayHeader {
+            pixel_conversion_bounds: Default::default(),
+            version: 1,
+            tick_hz: 30,
+            seed: 7,
+            map_name: "external-ai.map".into(),
+            rules_hash: 0,
+        });
+        log.record_tick(tick.tick, commands, tick.state_hash);
+        let encoded = serde_json::to_string(&log).expect("serialize replay");
+        let decoded: ReplayLog = serde_json::from_str(&encoded).expect("decode replay");
+
+        let (mut replayed, _) = make_sim();
+        let hashes =
+            ReplayRunner::run_fixture(&mut replayed, &decoded, None, &BTreeMap::new(), None, 33);
+
+        assert_eq!(hashes, vec![tick.state_hash]);
+        assert_eq!(replayed.state_hash(), recorded.state_hash());
+        assert_eq!(
+            replayed.ai_players[0].external_control_until_frame,
+            Some(120)
+        );
+        assert!(matches!(
+            replayed.substrate.entities.get(1).unwrap().order_intent,
+            Some(crate::sim::components::OrderIntent::Guard { .. })
+        ));
+    }
+
+    #[test]
     fn diagnostic_replay_discards_a_malformed_future_entry() {
         let mut sim = Simulation::with_seed(7);
         let owner = sim.interner.intern("Local");

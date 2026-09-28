@@ -743,6 +743,7 @@ impl Simulation {
 
         self.session.fold_game_options(&mut hasher);
         self.hash_houses(&mut hasher, schema);
+        self.hash_ai_players(&mut hasher, schema);
         if schema.includes(HashFeature::TerminalScore) {
             self.hash_terminal_score_snapshot(&mut hasher);
         }
@@ -1212,6 +1213,21 @@ impl Simulation {
                 b"house-strategy-timer-v1".hash(hasher);
                 house.strategy_timer.hash(hasher);
             }
+        }
+    }
+
+    /// Hash the retained per-computer-house decision state.
+    fn hash_ai_players(&self, hasher: &mut impl Hasher, schema: HashSchema) {
+        if !schema.includes(HashFeature::AiOpponent) || self.ai_players.is_empty() {
+            return;
+        }
+
+        b"ai-player-state-v1".hash(hasher);
+        self.ai_players.len().hash(hasher);
+        for ai in &self.ai_players {
+            ai.owner.hash(hasher);
+            ai.last_attack_frame.hash(hasher);
+            ai.external_control_until_frame.hash(hasher);
         }
     }
 
@@ -5093,6 +5109,43 @@ mod c4_hash_tests {
         assert_ne!(
             h_with_plant, h_with_pending,
             "pending_c4_detonation must affect state hash"
+        );
+    }
+}
+
+#[cfg(test)]
+mod ai_player_hash_tests {
+    use super::Simulation;
+    use crate::sim::ai::AiPlayerState;
+    use crate::sim::world::hash_schema::HashSchema;
+
+    fn sim_with_ai(last_attack_frame: u32, external_until: Option<u32>) -> Simulation {
+        let mut sim = Simulation::new();
+        let owner = sim.interner.intern("Americans");
+        let mut ai = AiPlayerState::new(owner);
+        ai.last_attack_frame = last_attack_frame;
+        ai.external_control_until_frame = external_until;
+        sim.ai_players.push(ai);
+        sim
+    }
+
+    #[test]
+    fn ai_decision_and_external_lease_state_change_current_hash() {
+        let baseline = sim_with_ai(0, None);
+        assert_ne!(baseline.state_hash(), sim_with_ai(8, None).state_hash());
+        assert_ne!(
+            baseline.state_hash(),
+            sim_with_ai(0, Some(120)).state_hash()
+        );
+    }
+
+    #[test]
+    fn old_hash_schema_omits_external_ai_state() {
+        let baseline = sim_with_ai(0, None);
+        let changed = sim_with_ai(8, Some(120));
+        assert_eq!(
+            baseline.state_hash_with_schema(HashSchema::Before(235)),
+            changed.state_hash_with_schema(HashSchema::Before(235))
         );
     }
 }

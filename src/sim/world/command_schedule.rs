@@ -510,13 +510,16 @@ impl Simulation {
     }
 
     fn command_uses_frame_ingress(command: &Command) -> bool {
-        matches!(command, Command::SetGameSpeed { .. })
+        matches!(
+            command,
+            Command::SetGameSpeed { .. } | Command::RenewExternalAiLease { .. }
+        )
     }
 
-    /// Apply offline session transitions before triggers and the live-object
-    /// walk. Native offline Options stores GameSpeed before the next Main_Tick;
-    /// VERA transports the transition as a replayable command, then admits it
-    /// at this dedicated ingress instead of the ordinary EventClass tail.
+    /// Apply frame-boundary commands before triggers and the live-object walk.
+    /// Offline Options stores GameSpeed before the next Main_Tick; external AI
+    /// leases must suppress Phase 8 decisions on that same frame. Both travel
+    /// through replayable commands and use this dedicated ingress.
     pub(super) fn apply_due_frame_ingress_commands(
         &mut self,
         commands: &[CommandEnvelope],
@@ -529,11 +532,22 @@ impl Simulation {
                     && command.owner == owner
                     && Self::command_uses_frame_ingress(&command.payload)
             }) {
-                let Command::SetGameSpeed { speed } = &command.payload else {
-                    unreachable!("frame-ingress predicate admitted a non-session command");
-                };
                 if self.houses.contains_key(&owner) {
-                    let _ = self.session.game_options.apply_in_game_speed(*speed);
+                    match &command.payload {
+                        Command::SetGameSpeed { speed } => {
+                            let _ = self.session.game_options.apply_in_game_speed(*speed);
+                        }
+                        Command::RenewExternalAiLease { until_frame } => {
+                            if let Some(ai) =
+                                self.ai_players.iter_mut().find(|ai| ai.owner == owner)
+                            {
+                                ai.external_control_until_frame = Some(*until_frame);
+                            }
+                        }
+                        _ => unreachable!(
+                            "frame-ingress predicate admitted an ordinary gameplay command"
+                        ),
+                    }
                 }
                 // Preserve the established dispatcher convention: every due
                 // envelope is consumed/counts even when validation rejects it.
