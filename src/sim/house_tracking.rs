@@ -310,6 +310,11 @@ impl HouseTracking {
         self.buildings > 0 || base > 0
     }
 
+    /// `+0x2F0`, the tracked buildings.
+    pub(crate) fn buildings(&self) -> i32 {
+        self.buildings
+    }
+
     /// The normal game's test (`0x004F8F21..0x004F8F77`): alive while
     /// `+0x2F0` plus the on-map totals and the on-map count of `[AI]
     /// BuildRefinery=`'s third type is not zero.
@@ -331,11 +336,6 @@ impl HouseTracking {
 
 #[cfg(test)]
 impl HouseTracking {
-    /// `+0x2F0`.
-    pub(crate) fn buildings_for_test(&self) -> i32 {
-        self.buildings
-    }
-
     /// Stand in for tracked buildings a fixture places without the lifecycle.
     pub(crate) fn set_buildings_for_test(&mut self, buildings: i32) {
         self.buildings = buildings;

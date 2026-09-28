@@ -1252,6 +1252,12 @@ impl Simulation {
                 b"house-force-values-v1".hash(hasher);
                 forces.hash(hasher);
             }
+            if schema.includes(HashFeature::AiStrategy)
+                && house.strategy_timer != crate::sim::house_state::strategy_timer_at_construction()
+            {
+                b"house-strategy-timer-v1".hash(hasher);
+                house.strategy_timer.hash(hasher);
+            }
         }
     }
 
@@ -4026,6 +4032,19 @@ mod state_hash_field_tests {
             baseline_hash,
             attacker_index.state_hash(),
             "last attacker House index is hashed"
+        );
+
+        let (mut timer, owner) = fixture();
+        timer
+            .houses
+            .get_mut(&owner)
+            .unwrap()
+            .strategy_timer
+            .start(12, 106);
+        assert_ne!(
+            baseline_hash,
+            timer.state_hash(),
+            "Strategy timer is hashed"
         );
     }
 

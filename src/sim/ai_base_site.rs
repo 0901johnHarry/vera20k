@@ -123,9 +123,10 @@ impl SiteKey<'_> {
 pub(crate) struct SiteSearch<'a> {
     /// `HouseClass+0x5750`, the plan centre.
     pub center: (i16, i16),
-    /// `HouseClass+0x5494` and `+0x5490`, the answer without a plan centre.
-    pub alternate: (i16, i16),
-    pub base: (i16, i16),
+    /// The answer without a plan centre: the base centre
+    /// ([`HouseState::base_origin`](crate::sim::house_state::HouseState::base_origin),
+    /// `+0x5494` unless `(0, 0)`, else `+0x5490`).
+    pub origin: (i16, i16),
     /// `HouseClass+0x5724`, the base perimeter.
     pub perimeter: &'a [(i16, i16)],
     /// `[AI] AIBaseSpacing=` (`RulesClass+0x1460`).
@@ -172,8 +173,7 @@ pub(crate) fn find_base_building_site(
         &mut world,
         &SiteSearch {
             center: signed(house.base_plan_center),
-            alternate: signed(house.alternate_base_center),
-            base: house.base_center.map_or((0, 0), signed),
+            origin: signed(house.base_origin()),
             perimeter: &perimeter,
             spacing: rules.ai_base_spacing,
             width,
@@ -207,11 +207,7 @@ pub(crate) fn reserved_near(
 /// `world`.
 pub(crate) fn ordinary_site(world: &mut impl SiteWorld, search: &SiteSearch) -> (i16, i16) {
     if search.center == (0, 0) {
-        return if search.alternate != (0, 0) {
-            search.alternate
-        } else {
-            search.base
-        };
+        return search.origin;
     }
     let mut cells: Vec<(i32, (i16, i16))> = search
         .perimeter

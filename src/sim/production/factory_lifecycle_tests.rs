@@ -622,7 +622,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     );
     assert!(!tick_production(&mut sim, &rules, &BTreeMap::new(), None));
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
-    let tracked = sim.houses[&owner].tracking.buildings_for_test();
+    let tracked = sim.houses[&owner].tracking.buildings();
     let credits = sim.houses[&owner].economy.credits;
 
     // With a Construction Yard standing, the ready building waits.
@@ -632,10 +632,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     sim.substrate.entities.remove(3);
     super::revalidate_and_step_factories(&mut sim, &rules);
     assert!(!sim.substrate.entities.contains(held));
-    assert_eq!(
-        sim.houses[&owner].tracking.buildings_for_test(),
-        tracked - 1
-    );
+    assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
     assert_eq!(sim.houses[&owner].economy.credits, credits + 800);
     assert!(
         sim.production

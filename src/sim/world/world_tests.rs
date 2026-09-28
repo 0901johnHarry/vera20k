@@ -2226,7 +2226,7 @@ fn gsi_05_16_change_owner_moves_live_category_counts_once_and_noops() {
     insert_test_entity_for_owner(&mut sim, 2, old_owner, "MTNK", EntityCategory::Unit);
     let counts = |sim: &Simulation, owner| {
         let tracking = &sim.houses[&owner].tracking;
-        (tracking.buildings_for_test(), tracking.units_for_test())
+        (tracking.buildings(), tracking.units_for_test())
     };
     assert_eq!(counts(&sim, old_owner), (1, 1));
 
@@ -3877,7 +3877,7 @@ fn gsi_05_16_a_captured_insignificant_garrison_does_not_keep_its_house_alive() {
     sim.change_owner(1, player);
     check_defeat_now(&mut sim, Some(&rules));
 
-    assert_eq!(sim.houses[&player].tracking.buildings_for_test(), 0);
+    assert_eq!(sim.houses[&player].tracking.buildings(), 0);
     assert!(sim.houses[&player].is_defeated);
     assert!(sim.houses[&enemy].has_won);
     assert_eq!(sim.entities().get(1).unwrap().health.current, 0);

@@ -149,7 +149,7 @@ fn native_tracking_corpus() {
             .insert(house, HouseState::new(house, 0, None, true, 0, 10));
         let counts = |sim: &Simulation| {
             let tracking = &sim.houses[&house].tracking;
-            (tracking.buildings_for_test(), tracking.units_for_test())
+            (tracking.buildings(), tracking.units_for_test())
         };
         let before = counts(&sim);
         let id = sim
@@ -261,18 +261,12 @@ fn discarding_a_constructed_object_releases_its_tracking() {
         .spawn_object_limbo_at_height("TANK", "Americans", 14, 10, 0, 0, &rules)
         .unwrap();
     let tracking = &sim.houses[&house].tracking;
-    assert_eq!(
-        (tracking.buildings_for_test(), tracking.units_for_test()),
-        (1, 1)
-    );
+    assert_eq!((tracking.buildings(), tracking.units_for_test()), (1, 1));
 
     assert!(sim.discard_constructed_limbo(building));
     assert!(sim.discard_constructed_limbo(unit));
     let tracking = &sim.houses[&house].tracking;
-    assert_eq!(
-        (tracking.buildings_for_test(), tracking.units_for_test()),
-        (0, 0)
-    );
+    assert_eq!((tracking.buildings(), tracking.units_for_test()), (0, 0));
     assert_eq!(tracking.active_for_test(), (0, 0, 0));
 }
 

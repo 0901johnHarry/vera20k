@@ -24,14 +24,14 @@
 //! the defense choice with failure.
 //!
 //! RESIDUALS:
-//! - `HouseClass::AI_Building_Strategy @ 0x004FD500` is not scheduled
-//!   (`house_strategy`'s module doc). Its `AI_Manage_Build_Queue @ 0x004FDD10`
-//!   also writes the mode (2 at `0x004FE109`, 1 at `0x004FE3AB`), clears the
-//!   four choices, abandons every factory of the house when its planned
-//!   buildings cost more than its budget, splices refinery and war factory
-//!   nodes and calls `AI_Choose_Building` directly; the strategy reschedules
-//!   itself with `RandomRanged(1,7) + 105` (`0x004FD91C..0x004FD928`).
-//!   Trigger: every computer house, every 106..112 frames. Effect: the mode
+//! - `AI_Manage_Build_Queue @ 0x004FDD10`, which the strategy tick
+//!   (`sim::house_strategy`) calls when `Check_Build_Need @ 0x004FD9A0` asks
+//!   for it, is not ported. It writes the mode (2 at `0x004FE109`, 1 at
+//!   `0x004FE3AB`), clears the four choices, abandons every factory of the
+//!   house when its planned buildings cost more than its budget, splices
+//!   refinery and war factory nodes and calls `AI_Choose_Building` directly.
+//!   Trigger: a strategy tick of a skirmish computer house whose refinery or
+//!   harvesters are gone (the economy check `0x004F6540`). Effect: the mode
 //!   changes only at exits, a computer short of money never cancels its
 //!   production, it rebuilds a lost refinery or war factory only when its
 //!   original node is replanned, and those draws are missing from the

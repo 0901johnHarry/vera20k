@@ -35,11 +35,19 @@
 //!
 //! RESIDUALS:
 //! - VERA runs the gate in its own house pass after the anger rung, followed
-//!   in each house by its building choice, but before every house's
-//!   `sim::ai` stand-in (ledger T2-28). Trigger: every defeat. Effect:
-//!   natively the houses before the defeated one in HouseClass::Array ran
-//!   their unit choice and teams before its sweep, so they saw its objects
-//!   alive; in VERA the stand-in sees them dead.
+//!   in each house by its strategy tick (`sim::house_strategy`) and building
+//!   choice, but before every house's `sim::ai` stand-in (ledger T2-28).
+//!   Trigger: every defeat. Effect: natively the houses before the defeated
+//!   one in HouseClass::Array ran their unit choice and teams before its
+//!   sweep, so they saw its objects alive; in VERA the stand-in sees them
+//!   dead.
+//! - Between the gate and the strategy tick, every eighth frame, native
+//!   springs event 8 ("any event") on each of the house's tags, last to
+//!   first (`0x004F8F87..0x004F8FBC`: the list at House+0x3C, its count at
+//!   +0x48, `0x006E53A0`); VERA's trigger runtime keeps no tags on houses.
+//!   Trigger: a map trigger attached to a house, mostly in campaigns.
+//!   Effect: that trigger's "any event" never springs. Later owner: the
+//!   trigger subsystem.
 //! - TechnoClass::Array order stands on stable-id order (construction order),
 //!   which matches for every source VERA constructs in native order.
 //! - Slave release: a Slave Miner killed with no attacker hands its slaves on
@@ -84,10 +92,11 @@ impl Simulation {
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
-    /// house's defeat gate (see the module doc), then its building choice
+    /// house's defeat gate (see the module doc), then its strategy tick
+    /// (`0x004F8FBE..0x004F9032`, `sim::house_strategy`) and building choice
     /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
     /// scan and the result timers. Without `defeat_pass` (VERA's first tick)
-    /// only the building choices run.
+    /// only the strategy ticks and building choices run.
     pub(super) fn house_rung(
         &mut self,
         rules: Option<&RuleSet>,
@@ -128,6 +137,7 @@ impl Simulation {
                 self.mplayer_defeated(owner, outcome_tick, savour_frames);
             }
             if let Some(rules) = rules {
+                crate::sim::house_strategy::update_strategy(self, rules, owner);
                 crate::sim::ai_base_building::update_building_choice(
                     self, rules, owner, path_grid, registry,
                 );
