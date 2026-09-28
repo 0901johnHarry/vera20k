@@ -681,14 +681,8 @@ impl App {
             process_assets,
             audio: startup_audio_runtime,
             persistence: crate::app::persistence::PersistenceState::new(options_profile),
-            diag: crate::app::diagnostics::state::DiagnosticsState {
-                debug_frame_step_requested: false,
-                debug_show_pathgrid: false,
-                debug_terrain_cost_speed_type: None,
-                debug_show_cell_grid: false,
-                debug_show_heightmap: false,
-                debug_unit_inspector: false,
-                parity_digest_sink: match crate::sim::parity_digest::ParityDigestSink::from_env() {
+            diag: crate::app::diagnostics::state::DiagnosticsState::new(
+                match crate::sim::parity_digest::ParityDigestSink::from_env() {
                     Ok(sink) => {
                         if let Some(sink) = sink.as_ref() {
                             log::info!("parity digest capture -> {}", sink.path().display());
@@ -700,9 +694,7 @@ impl App {
                         None
                     }
                 },
-                dev_overlay_save_name: String::new(),
-                frame_timer: crate::app::diagnostics::dev_overlay::FrameTimer::new(),
-            },
+            ),
         };
 
         // Project all three retained profile gains before any player can start

@@ -460,6 +460,11 @@ mod tests {
     fn render_counts_are_taken_from_the_production_output() {
         let output = GameRenderOutput {
             sidebar_view: None,
+            times: crate::app::presentation::render::GameRenderTimes {
+                radar_ms: 0,
+                tooltip_ms: 0,
+                message_ms: None,
+            },
             instance_counts: GameRenderInstanceCounts {
                 minimap: 1,
                 viewport_rect: 4,

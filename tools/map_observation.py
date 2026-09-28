@@ -15,15 +15,19 @@ from tools.cargo_run import resolve_binary, resolve_labeled_binary
 from tools.child_process import run_child
 from tools.tactical_certification.core import (
     FileSnapshot, ValidationError, assert_snapshot_unchanged,
-    create_directory_exclusive, load_json_file, require_array, require_directory, require_int,
+    create_directory_exclusive, load_json_file, require_array, require_directory, require_exact_keys, require_int,
     require_object, require_regular_file, require_sha256, require_string,
     require_value, sha256_bytes, utc_now, write_bytes_exclusive, write_json_exclusive,
 )
 from tools.tactical_certification.profile import load_contract, reject_denied_environment
 
 ROOT = Path(__file__).resolve().parents[1]
-RUN_SCHEMA = 'vera20k.map-observation-run.v2'
+RUN_SCHEMA = 'vera20k.map-observation-run.v3'
+LEGACY_CLOCK_RUN_SCHEMA = 'vera20k.map-observation-run.v2'
 LEGACY_RUN_SCHEMA = 'vera20k.map-observation-run.v1'
+CHILD_SCHEMA = 'vera20k.map-observation.v3'
+LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
+CLOCK_POLICY = 'map-exact-step-presentation-v1'
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -33,6 +37,7 @@ class _Capture:
     manifest: FileSnapshot
     frame: FileSnapshot
     frame_format: str
+    clock: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -137,8 +142,33 @@ def _unit_atlas(value: Any) -> dict[str, Any]:
     return dict(atlas)
 
 
+def _presentation_clock(value: Any, ticks: int) -> dict[str, Any]:
+    """Validate the versioned diagnostic transcript, not native wall cadence."""
+    label = 'render.presentation_clock'
+    clock = require_object(value, label)
+    require_exact_keys(clock, ('policy', 'origin_ms', 'interval_ms', 'draws'), label)
+    for key, expected in (('policy', CLOCK_POLICY), ('origin_ms', 0), ('interval_ms', 22)):
+        require_value(clock.get(key), expected, f'{label}.{key}')
+    if not 0 <= ticks <= 100_000:
+        raise ValidationError('presentation clock tick budget must be in 0..100000')
+    draws = require_array(clock.get('draws'), f'{label}.draws')
+    if len(draws) != max(ticks, 1):
+        raise ValidationError(f'{label}.draws must contain exactly {max(ticks, 1)} rows')
+    for index, value in enumerate(draws):
+        row_label = f'{label}.draws[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('completed_steps', 'radar_ms', 'tooltip_ms', 'message_ms'),
+                           row_label)
+        step = index + 1 if ticks else 0
+        require_value(row.get('completed_steps'), step, f'{row_label}.completed_steps')
+        for key in ('radar_ms', 'tooltip_ms', 'message_ms'):
+            require_value(row.get(key), step * 22, f'{row_label}.{key}')
+    return dict(clock)
+
+
 def validate_capture(directory: Path, profile: Mapping[str, Any],
-                     identities: Mapping[str, Mapping[str, Any]]) -> _Capture:
+                     identities: Mapping[str, Mapping[str, Any]], *,
+                     legacy_clock: bool = False) -> _Capture:
     """Check child semantics/bytes against independently checked input identities.
 
     Identities describe original runtime paths. Retained copies have their own real
@@ -146,7 +176,8 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     """
     require_directory(directory, 'child output')
     manifest_snapshot, manifest = load_json_file(directory / 'capture.json', 'capture manifest')
-    require_value(manifest.get('schema_version'), 'vera20k.map-observation.v2', 'schema_version')
+    require_value(manifest.get('schema_version'),
+                  LEGACY_CHILD_SCHEMA if legacy_clock else CHILD_SCHEMA, 'schema_version')
     if manifest.get('status') != 'COMPLETE':
         raise ValidationError(f'child did not complete: {manifest.get("failure", manifest.get("status"))}')
     if {path.name for path in directory.iterdir()} != {'capture.json', 'frame.bgra'}:
@@ -211,6 +242,17 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
                           ('focus_violations', 0), ('input_violations', 0)):
         require_value(lifecycle.get(key), expected, f'lifecycle.{key}')
     render = require_object(manifest.get('render'), 'render')
+    if legacy_clock:
+        if 'presentation_clock' in render or 'neutral_input' in render:
+            raise ValidationError('legacy child v2 cannot declare presentation_clock or neutral_input')
+        clock = {'policy': 'legacy-wall-clock'}
+    else:
+        clock = _presentation_clock(render.get('presentation_clock'), ticks)
+        neutral = require_object(render.get('neutral_input'), 'render.neutral_input')
+        require_exact_keys(neutral, ('static_default_cursor', 'camera_input_idle'),
+                           'render.neutral_input')
+        for key in neutral:
+            require_value(neutral[key], True, f'render.neutral_input.{key}')
     for key in ('ready', 'sidebar_view_present'):
         require_value(render.get(key), True, f'render.{key}')
     width, height = _integer(profile, 'width', 1), _integer(profile, 'height', 1)
@@ -232,7 +274,10 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
                 'frame': frame_snapshot.public_identity(), 'map_source': dict(source),
                 'initial': dict(initial), 'final': dict(final), 'exact_step_count': ticks,
                 'unit_atlas': unit_atlas}
-    return _Capture(evidence, manifest_snapshot, frame_snapshot, frame['surface_format'])
+    if not legacy_clock:
+        evidence['presentation_clock'] = clock
+        evidence['neutral_input'] = dict(neutral)
+    return _Capture(evidence, manifest_snapshot, frame_snapshot, frame['surface_format'], clock)
 
 
 def capture(*, profile_path: Path, contract_path: Path, output: Path,
@@ -315,16 +360,21 @@ def capture(*, profile_path: Path, contract_path: Path, output: Path,
     return report
 
 
-def _load_run(directory: Path, allow_legacy_inputs: bool) -> _CheckedRun:
+def _load_run(directory: Path, allow_legacy_inputs: bool,
+              allow_legacy_clock: bool = False) -> _CheckedRun:
     directory = require_directory(directory, 'observation run')
     run_snapshot, report = load_json_file(directory / 'run.json', 'observation run receipt')
     schema = report.get('schema_version')
     legacy = schema == LEGACY_RUN_SCHEMA
-    if schema not in (RUN_SCHEMA, LEGACY_RUN_SCHEMA):
+    if schema not in (RUN_SCHEMA, LEGACY_CLOCK_RUN_SCHEMA, LEGACY_RUN_SCHEMA):
         raise ValidationError(f'unsupported observation wrapper schema: {schema!r}')
     if legacy and not allow_legacy_inputs:
         raise ValidationError('legacy run v1 has no sealed config/contract copies; '
                               'use --allow-legacy-inputs to revalidate the original files')
+    legacy_clock = schema != RUN_SCHEMA
+    if legacy_clock and not allow_legacy_clock:
+        raise ValidationError('legacy wall-clock evidence requires --allow-legacy-clock; '
+                              'it has no deterministic presentation schedule')
     copies = {'profile': 'profile.json'} if legacy else COPIES
     expected_files = {*copies.values(), 'run.json', 'stdout.log', 'stderr.log', 'child-output'}
     if {path.name for path in directory.iterdir()} != expected_files:
@@ -372,7 +422,8 @@ def _load_run(directory: Path, allow_legacy_inputs: bool) -> _CheckedRun:
                         '--contract', identities['contract']['path'],
                         '--output', str(directory / 'child-output')]
     _require_equal(report.get('command'), expected_command, 'run.command')
-    checked = validate_capture(directory / 'child-output', profile, identities)
+    checked = validate_capture(directory / 'child-output', profile, identities,
+                               legacy_clock=legacy_clock)
     _require_equal(report.get('capture'), checked.evidence, 'run.capture')
     logs = require_object(report.get('logs'), 'run.logs')
     snapshots = [run_snapshot, *inputs.values(), contract.snapshot, profile_snapshot,
@@ -384,7 +435,8 @@ def _load_run(directory: Path, allow_legacy_inputs: bool) -> _CheckedRun:
         snapshots.append(snapshot)
     validation = _report('validation', 'VALID')
     validation.update(run=run_snapshot.public_identity(), inputs=dict(identities),
-                      input_provenance=provenance, capture=checked.evidence)
+                      input_provenance=provenance, capture=checked.evidence,
+                      presentation_clock=checked.clock)
     result = _CheckedRun(validation, checked, inputs, tuple(snapshots))
     result.check_unchanged()
     return result
@@ -396,10 +448,11 @@ def _report(kind: str, status: str) -> dict[str, Any]:
             'native_comparator': 'NONE', 'parity_certification': 'NONE'}
 
 
-def validate_run(directory: Path, *, allow_legacy_inputs: bool = False) -> dict[str, Any]:
+def validate_run(directory: Path, *, allow_legacy_inputs: bool = False,
+                 allow_legacy_clock: bool = False) -> dict[str, Any]:
     """Recheck retained bytes and the original executable, never trust a VALID label."""
     try:
-        return _load_run(directory, allow_legacy_inputs).report
+        return _load_run(directory, allow_legacy_inputs, allow_legacy_clock).report
     except (OSError, ValueError) as exc:
         report = _report('validation', 'INVALID')
         report.update(run_path=str(directory), errors=[str(exc)])
@@ -407,7 +460,8 @@ def validate_run(directory: Path, *, allow_legacy_inputs: bool = False) -> dict[
 
 
 def compare_runs(before: Path, after: Path, *,
-                 allow_legacy_inputs: bool = False) -> dict[str, Any]:
+                 allow_legacy_inputs: bool = False,
+                 allow_legacy_clock: bool = False) -> dict[str, Any]:
     """Compare two checked production observations; MATCH is not native parity."""
     report = _report('comparison', 'INVALID')
     report.update(before_path=str(before), after_path=str(after), differences=[])
@@ -416,14 +470,17 @@ def compare_runs(before: Path, after: Path, *,
         right_dir = require_directory(after, 'after run')
         if left_dir.samefile(right_dir):
             raise ValidationError('before and after must be distinct observation directories')
-        left = _load_run(left_dir, allow_legacy_inputs)
-        right = _load_run(right_dir, allow_legacy_inputs)
+        left = _load_run(left_dir, allow_legacy_inputs, allow_legacy_clock)
+        right = _load_run(right_dir, allow_legacy_inputs, allow_legacy_clock)
         report.update(before=left.report, after=right.report)
         # Compare actual inputs, not just their declared digest strings. Different
         # binaries are intentional; their original bytes were checked above.
         for name in COPIES:
             if left.inputs[name].raw != right.inputs[name].raw:
                 raise ValidationError(f'{name} input bytes differ; observations are not comparable')
+        require_value(right.capture.clock['policy'], left.capture.clock['policy'],
+                      'presentation_clock.policy')
+        _require_equal(right.capture.clock, left.capture.clock, 'presentation_clock')
         compared_fields = ('initial', 'final', 'map_source', 'exact_step_count', 'unit_atlas')
         differences = [difference for name in compared_fields
                        for difference in _differences(left.capture.evidence[name],
@@ -466,6 +523,8 @@ def main(argv: list[str] | None = None) -> int:
         binary.add_argument('--build-label')
     else:
         parser.add_argument('--allow-legacy-inputs', action='store_true')
+        parser.add_argument('--allow-legacy-clock', action='store_true',
+                            help='Allow offline wall-clock v2 children; not comparable with v3')
         if operation == 'validate':
             parser.add_argument('--run', type=Path, required=True)
         else:
@@ -483,10 +542,12 @@ def main(argv: list[str] | None = None) -> int:
             directories = [args.run] if operation == 'validate' else [args.before, args.after]
             _check_output_outside_runs(args.output, directories)
             if operation == 'validate':
-                report = validate_run(args.run, allow_legacy_inputs=args.allow_legacy_inputs)
+                report = validate_run(args.run, allow_legacy_inputs=args.allow_legacy_inputs,
+                                      allow_legacy_clock=args.allow_legacy_clock)
             else:
                 report = compare_runs(args.before, args.after,
-                                      allow_legacy_inputs=args.allow_legacy_inputs)
+                                      allow_legacy_inputs=args.allow_legacy_inputs,
+                                      allow_legacy_clock=args.allow_legacy_clock)
             result_path = write_json_exclusive(args.output, report)
             status = {'VALID': 0, 'MATCH': 0, 'MISMATCH': 1, 'INVALID': 2}[report['status']]
     except (OSError, ValueError) as exc:
