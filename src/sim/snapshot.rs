@@ -684,7 +684,10 @@ use crate::sim::world::Simulation;
 // 231 -> 232: a computer house's building choice, production mode and naval
 // latch (`HouseAiProduction`), and its factory buildings' own factories and
 // placement timers (`production::factory_ai`).
-const SNAPSHOT_VERSION: u32 = 232;
+// 232 -> 233: each House keeps its type's `Cost*Mult=` and the value totals
+// of its forces on the map (`house_tracking`), and each Techno the value arm
+// its type takes in them.
+const SNAPSHOT_VERSION: u32 = 233;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;

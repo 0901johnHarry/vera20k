@@ -144,13 +144,9 @@ fn multiply_factor(lhs: NativeF32Bits, rhs: NativeF32Bits) -> NativeF32Bits {
 impl crate::sim::house_state::HouseState {
     /// The House factors TechnoType `Cost_Of` (`0x00711F00`) reads: its
     /// country's `Cost*Mult=` and its FactoryPlant products.
-    pub(crate) fn cost_factors(
-        &self,
-        rules: &RuleSet,
-        interner: &StringInterner,
-    ) -> HouseCostFactors {
+    pub(crate) fn cost_factors(&self) -> HouseCostFactors {
         HouseCostFactors {
-            country: rules.country_cost_mults(interner.resolve(self.house_type_id())),
+            country: self.country_cost_mults.0,
             factory_plant: self.base_projection.factory_plant_factors(),
         }
     }
@@ -159,18 +155,13 @@ impl crate::sim::house_state::HouseState {
 impl Simulation {
     /// [`HouseState::cost_factors`] for `owner`. `None` without a House, which
     /// takes Cost_Of's null-House arm (`0x00711F4E`, the raw cost).
-    pub(crate) fn house_cost_factors(
-        &self,
-        owner: InternedId,
-        rules: &RuleSet,
-    ) -> Option<HouseCostFactors> {
-        let house = self.houses.get(&owner)?;
-        Some(house.cost_factors(rules, &self.interner))
+    pub(crate) fn house_cost_factors(&self, owner: InternedId) -> Option<HouseCostFactors> {
+        Some(self.houses.get(&owner)?.cost_factors())
     }
 
     /// TechnoType virtual `+0x84` for `owner`'s House ([`RuleSet::cost_of`]).
     pub(crate) fn cost_of(&self, owner: InternedId, object: &ObjectType, rules: &RuleSet) -> i32 {
-        rules.cost_of(object, self.house_cost_factors(owner, rules).as_ref())
+        rules.cost_of(object, self.house_cost_factors(owner).as_ref())
     }
 
     pub(super) fn register_house_base_building(&mut self, id: u64, rules: &RuleSet) {
