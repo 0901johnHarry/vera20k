@@ -115,7 +115,7 @@ class IdentityAndReferenceTests(unittest.TestCase):
     def finish(self, data, *args, **kwargs):
         with redirect_stdout(io.StringIO()):
             oracle.finish_vectors(data, self.target, provenance=kwargs.get("provenance", self.metadata),
-                                  argv=list(args))
+                                  argv=list(args), source_paths=kwargs.get("source_paths"))
 
     def test_wrong_executable_is_rejected_explicitly(self):
         self.target.write_bytes(b"not the original executable")
@@ -155,6 +155,26 @@ class IdentityAndReferenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.finish({"value": 43}, "--write", provenance={"bad": float("nan")})
         self.assertEqual(self.target.read_bytes(), before)
+
+    def test_source_identity_is_normalized_and_metadata_cannot_drift_it(self):
+        source = self.target.parent / 'producer.py'
+        source.write_bytes(b'# fixture\r\n')
+        sources = {'producer.py': source}
+        self.finish({'value': 42}, '--write', source_paths=sources)
+        sidecar = self.target.with_suffix('.meta.json')
+        before = self.target.read_bytes(), sidecar.read_bytes()
+        source.write_bytes(b'# fixture\n')
+        self.finish({'value': 42}, source_paths=sources)
+        self.assertEqual(before, (self.target.read_bytes(), sidecar.read_bytes()))
+
+        def changing_metadata():
+            source.write_text('# changed during metadata\n', encoding='utf-8')
+            return self.metadata
+
+        with self.assertRaisesRegex(oracle.OracleError, 'Source changed during native generation'):
+            self.finish({'value': 43}, '--write', provenance=changing_metadata,
+                        source_paths=sources)
+        self.assertEqual(before, (self.target.read_bytes(), sidecar.read_bytes()))
 
     def test_help_does_not_evaluate_native_callables(self):
         def forbidden():

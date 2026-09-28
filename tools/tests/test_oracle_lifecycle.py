@@ -12,7 +12,8 @@ PRODUCERS = tuple('tools.projectile_oracle.' + name for name in (
     'arc_second_probe', 'fireat_runtime', 'load_timers', 'ordinary_collision',
     'shared_collision', 'homing_impact', 'arc_domain',
 )) + ('tools.anim_oracle.boundary', 'tools.palette_oracle.oracle',
-     'tools.ramp_height_oracle', 'tools.ai_base_building_oracle')
+     'tools.ramp_height_oracle', 'tools.render_depth_oracle',
+     'tools.ai_base_building_oracle')
 HELPERS = ('tools.native_slope', 'tools.projectile_oracle.collision_fixture',
            'tools.palette_oracle.check')
 
