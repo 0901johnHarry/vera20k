@@ -15,7 +15,7 @@ use crate::sim::overlay_grid::{
 use crate::sim::world::{Simulation, SimulationWallRuntimeHost};
 
 /// Native regular-wall visit order: north, east, south, west.
-pub(super) const CARDINAL_DIRECTIONS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+const CARDINAL_DIRECTIONS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
 /// Resolve a BuildingType through its merged ART `ToOverlay=` identity.
 pub(super) fn linked_overlay_id(
@@ -39,7 +39,7 @@ pub(super) fn linked_overlay_id(
 /// integer conversion is the equivalent of native's signed fixed-point shift
 /// by 8.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn scan_autofill_direction(
+fn scan_autofill_direction(
     sim: &Simulation,
     rules: &RuleSet,
     registry: &OverlayTypeRegistry,
@@ -118,6 +118,45 @@ pub(super) fn autofill_cells(
         ));
     }
     cells
+}
+
+/// A wall BuildingType placed at `origin` for `owner`: `BuildingClass::Unlimbo`
+/// stamps its `ToOverlay=` wall (`0x00440774..0x00440865`), then the placer
+/// fills towards the owner's walls in reach (`0x00588750`), for the PLACE
+/// event (`HouseClass::Place_Production`) and the computer's building exit
+/// (`0x00445408`) alike. The caller has admitted the site and deletes the
+/// constructed object after.
+pub(crate) fn stamp_wall_with_autofill(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: &OverlayTypeRegistry,
+    object_type: &ObjectType,
+    origin: (u16, u16),
+    owner: InternedId,
+) -> bool {
+    let Some(overlay_id) = linked_overlay_id(object_type, registry) else {
+        return false;
+    };
+    if !stamp_wall(sim, registry, origin.0, origin.1, overlay_id, owner) {
+        return false;
+    }
+    for direction in CARDINAL_DIRECTIONS {
+        let gap = scan_autofill_direction(
+            sim,
+            rules,
+            registry,
+            object_type,
+            origin,
+            owner,
+            overlay_id,
+            direction,
+        );
+        for (rx, ry) in gap {
+            let stamped = stamp_wall(sim, registry, rx, ry, overlay_id, owner);
+            debug_assert!(stamped, "scanned wall filler must remain stampable");
+        }
+    }
+    true
 }
 
 /// Stamp one wall cell and synchronously publish its passability projection.

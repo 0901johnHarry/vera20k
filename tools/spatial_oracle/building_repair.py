@@ -495,8 +495,9 @@ def build(case):
         u.mem_write(building + 0x6DD, bytes([1]))
     frames = []
     completed = None
-    # A deployed building's first Update is in its creation frame.
-    k = 0 if route == 'deploy' else 1
+    # A deployed or computer-placed building's first Update is in its
+    # creation frame (building_construction's route rows).
+    k = 0 if route in ('deploy', 'computer') else 1
     while completed is None or k <= completed + 2:
         assert k <= case['frames'], case['name']
         u.mem_write(FRAME, dwords(start + k))
@@ -524,7 +525,7 @@ def build_cases():
         # here 196, a repair-step frame (196 % 14 == 0).
         dict(name='b_deploy_3x2', route='deploy', control=[0, 3, 2], frame=191, frames=12),
         dict(name='b_deploy_1x0', route='deploy', control=[0, 1, 0], frame=191, frames=12),
-        # A computer house's factory placement: complete at N + 1 +
+        # A computer house's factory placement: complete at N +
         # (count - 1) * rate, off the step period.
         dict(name='b_computer_3x2', route='computer', control=[0, 3, 2], frame=190, frames=12),
         dict(name='b_computer_4x1', route='computer', control=[0, 4, 1], frame=190, frames=12),

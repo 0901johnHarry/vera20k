@@ -8,7 +8,9 @@
 //! call settlement only after their successful world effects have committed.
 
 use super::CancelOutcome;
-use super::factory::{AbandonedObject, EnqueueOutcome, time_to_build, time_to_build_inputs};
+use super::factory::{
+    AbandonedObject, EnqueueOutcome, FactoryHolder, time_to_build, time_to_build_inputs,
+};
 use super::production_tech::{
     build_option_for_owner, production_category_for_object, supports_live_production,
 };
@@ -98,8 +100,13 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     }
     sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
     if outcome == EnqueueOutcome::Started {
-        start_active_production(sim, rules, owner_id, category, type_interned)
-            .expect("validated StartProduction type must construct one Techno");
+        start_active_production(
+            sim,
+            rules,
+            FactoryHolder::House(owner_id, category),
+            type_interned,
+        )
+        .expect("validated StartProduction type must construct one Techno");
     }
     true
 }
@@ -131,13 +138,24 @@ pub fn suspend_production(sim: &mut Simulation, owner: &str, category: Productio
 /// create path, `0x004C9D72`) or resumed a suspended one (`0x004FA5A8..0x004FA5C6`).
 /// A queue append (`0x004C9D22..0x004C9D2E`) returns at `0x004FA612` first, and
 /// a promotion's StartProduction never appends (`0x004C9CC9..0x004C9CCF`).
-fn start_active_production(
+///
+/// A computer's building factory runs the same StartProduction and build
+/// start (`BuildingClass::Factory_AI`, `0x0045039A` and `0x004503C5`).
+/// StartProduction also marks a computer house's building
+/// (`+0x6CA = 1`, `0x004C9DC5`), the `[Structures]` AI Rebuildable byte
+/// (`0x0044FB61`), which only the map writer and the building's CRC read;
+/// VERA does not keep it.
+pub(super) fn start_active_production(
     sim: &mut Simulation,
     rules: &RuleSet,
-    owner_id: InternedId,
-    category: ProductionCategory,
+    holder: FactoryHolder,
     type_id: InternedId,
 ) -> Option<u64> {
+    let (owner_id, category) = sim
+        .production
+        .factory_shadow
+        .factory(holder)
+        .map(|factory| (factory.owner, factory.category))?;
     let obj = sim.object_type(type_id, rules)?;
     let owner = sim.interner.resolve(owner_id).to_string();
     let type_name = sim.interner.resolve(type_id).to_string();
@@ -148,7 +166,7 @@ fn start_active_production(
     let linked = sim
         .production
         .factory_shadow
-        .link_active_entity(owner_id, category, stable_id);
+        .link_active_entity(holder, stable_id);
     if linked != Some(stable_id) {
         let _ = sim.discard_constructed_limbo(stable_id);
         return None;
@@ -157,19 +175,31 @@ fn start_active_production(
     let frame = sim.session.binary_frame;
     sim.production
         .factory_shadow
-        .start_rate(owner_id, category, time_to_build, frame);
+        .start_rate(holder, time_to_build, frame);
     Some(stable_id)
 }
 /// Finish `FactoryClass::AbandonProduction @ 0x004C9FF0` for an object the registry
-/// let go: refund it ([`refund_abandoned`]), then destroy the held limbo object
-/// without rewinding RNG (`0x004CA0E0`).
-fn settle_abandoned(
+/// let go: refund it ([`refund_abandoned`]); a house no human controls then
+/// forgets its choice of that kind (`0x004CA082..0x004CA0DD`), of which VERA
+/// keeps the building choice (`sim::ai_base_building`); then the held limbo
+/// object is destroyed without rewinding RNG (`0x004CA0E0`).
+pub(super) fn settle_abandoned(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner_id: InternedId,
     abandoned: AbandonedObject,
 ) {
     refund_abandoned(sim, rules, owner_id, abandoned.type_id, abandoned.balance);
+    let game_mode_nonzero = sim.session.game_mode_nonzero;
+    let building = sim
+        .object_type(abandoned.type_id, rules)
+        .is_some_and(|object| object.category == ObjectCategory::Building);
+    if building
+        && let Some(house) = sim.houses.get_mut(&owner_id)
+        && !house.is_controlled_by_human(game_mode_nonzero)
+    {
+        house.ai_production.clear_building_choice();
+    }
     if let Some(entity_id) = abandoned.entity_id {
         let discarded = sim.discard_constructed_limbo(entity_id);
         debug_assert!(
@@ -280,8 +310,13 @@ fn advance_after_delivery(
         .factory_shadow
         .clear_active_and_advance(owner_id, category, next_cost);
     if let Some(type_id) = promoted {
-        start_active_production(sim, rules, owner_id, category, type_id)
-            .expect("validated promoted production type must construct one Techno");
+        start_active_production(
+            sim,
+            rules,
+            FactoryHolder::House(owner_id, category),
+            type_id,
+        )
+        .expect("validated promoted production type must construct one Techno");
     }
 }
 pub(super) fn active_entity_id(
@@ -454,7 +489,7 @@ pub(in crate::sim) fn construct_active_factory_fixture(
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<u64> {
-    start_active_production(sim, rules, owner, category, type_id)
+    start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
 }
 
 /// Revalidate before the charge sweep at its existing frame phase. Dispose all
@@ -476,7 +511,7 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
     }
     sim.production.factory_shadow = registry;
     for (owner, category, type_id) in lifecycle.promoted {
-        start_active_production(sim, rules, owner, category, type_id)
+        start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
             .expect("validated revalidation promotion must construct one Techno");
     }
     let mut registry = std::mem::take(&mut sim.production.factory_shadow);
@@ -544,9 +579,37 @@ pub(crate) fn validate_restored_factory_state(
     }
 
     let mut roots = BTreeSet::new();
-    for (&(owner, category), factory) in sim.production.factory_shadow.keyed_factories() {
-        if factory.owner != owner || factory.category != category {
-            return Err(fail(owner, "registry key disagrees with factory identity"));
+    for (&holder, factory) in sim.production.factory_shadow.keyed_factories() {
+        let (owner, category) = (factory.owner, factory.category);
+        match holder {
+            FactoryHolder::House(key_owner, key_category) => {
+                if owner != key_owner || category != key_category {
+                    return Err(fail(owner, "registry key disagrees with factory identity"));
+                }
+            }
+            // `BuildingClass::Factory_AI` makes one for its building's owner,
+            // holding one object and no queue, and counts no completion.
+            FactoryHolder::Building(building) => {
+                let held_by_owner = sim.substrate.entities.get(building).is_some_and(|entity| {
+                    entity.category == EntityCategory::Structure && entity.owner() == owner
+                });
+                if !held_by_owner {
+                    return Err(fail(
+                        owner,
+                        "factory's building is absent or another house's",
+                    ));
+                }
+                if factory.object.is_none() || !factory.queue.is_empty() {
+                    return Err(fail(owner, "building factory holds no single object"));
+                }
+                if factory
+                    .object
+                    .as_ref()
+                    .is_some_and(|object| object.completion_accounted)
+                {
+                    return Err(fail(owner, "building factory accounted a completion"));
+                }
+            }
         }
         if sim.interner.try_resolve(owner).is_none() {
             return Err(fail(owner, "factory owner is absent from the interner"));
@@ -636,7 +699,8 @@ pub(crate) fn validate_restored_factory_state(
 
     // Restrict only factory roots: native manager pointers elsewhere can alias
     // without implying reciprocal ownership, and ordinary limbo is not a root.
-    for (&(owner, _), factory) in sim.production.factory_shadow.keyed_factories() {
+    for (_, factory) in sim.production.factory_shadow.keyed_factories() {
+        let owner = factory.owner;
         let Some(parent) = factory.object.as_ref().and_then(|object| object.entity_id) else {
             continue;
         };

@@ -2547,6 +2547,16 @@ impl Simulation {
                 resolvable: self.substrate.entities.contains(stable_id),
             });
         }
+        // The Building prelude of this Detach_All(1) abandons the building's
+        // own factory (`0x0044EC01..0x0044EC21`).
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category == EntityCategory::Structure)
+        {
+            crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
+        }
         // RESIDUAL: this Detach_All(1) (`0x005F4D61`) also visits the concealed
         // object itself, so native runs the SpawnManager owner arm on a live
         // spawner's Limbo: docked children UnInit with a zero regen timer, and
@@ -2890,6 +2900,9 @@ impl Simulation {
         };
         match category {
             EntityCategory::Structure => {
+                // The Building prelude opens with the building's own factory
+                // (`0x0044EC01..0x0044EC21`).
+                crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
                 // The pre-hit contact copy the NowDead loop walks.
                 let contacts: Vec<u64> = self
                     .substrate

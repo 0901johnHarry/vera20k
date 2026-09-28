@@ -1210,7 +1210,9 @@ impl Simulation {
         self.scatter_cell_contacts(cell, deck, true, rules, fallback);
     }
 
-    pub(super) fn scatter_cell_contacts(
+    /// `CellClass::Scatter_Objects(null, 1, forced, deck)` on `cell`; also the
+    /// computer's site clearing (`sim::build_site::flush_for_placement`).
+    pub(crate) fn scatter_cell_contacts(
         &mut self,
         cell: (i16, i16),
         deck: bool,

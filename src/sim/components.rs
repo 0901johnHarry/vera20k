@@ -210,8 +210,9 @@ pub struct BuildingUp {
     pub mission: ConstructionMission,
     /// `+0x6DD`, the animation-complete (ready-to-commence) byte.
     pub done: bool,
-    /// The first frame with an Update: the frame after a placement (placed
-    /// after that frame's Logic pass), a deployed building's creation frame.
+    /// The first frame with an Update: the frame after a human player's
+    /// placement, the placement frame of a computer house's, a deployed
+    /// building's creation frame.
     pub first_frame: i32,
 }
 

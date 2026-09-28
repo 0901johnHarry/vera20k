@@ -859,9 +859,11 @@ pub struct ObjectType {
     /// `InfantryTypeClass::ReadINI` ReadInt at `0x0052452B`; the constructor
     /// writes 1 (`0x00523778`).
     pub harvest_rate: i32,
-    /// AI flag: this unit earns money (ResourceGatherer=yes in rules.ini). Default false.
+    /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadBool at `0x007143DF`,
+    /// default false): the house counts it on the map (House `+0x158`).
     pub resource_gatherer: bool,
-    /// AI flag: this is a resource delivery point (ResourceDestination=yes in rules.ini). Default false.
+    /// `TechnoType+0x5ED`, `ResourceDestination=` (ReadBool at
+    /// `0x007143F9`, default false).
     pub resource_destination: bool,
     /// Whether this building is an Ore Purifier (OrePurifier=yes in rules.ini).
     /// Owning one grants a PurifierBonus to all harvested ore.
@@ -2181,8 +2183,8 @@ impl ObjectType {
             veteran_fearless: veteran_abilities.has(Ability::Fearless),
             elite_fearless: elite_abilities.has(Ability::Fearless),
             harvest_rate: section.read_int("HarvestRate", 1),
-            resource_gatherer: section.get_bool("ResourceGatherer").unwrap_or(false),
-            resource_destination: section.get_bool("ResourceDestination").unwrap_or(false),
+            resource_gatherer: section.read_bool("ResourceGatherer", false),
+            resource_destination: section.read_bool("ResourceDestination", false),
             ore_purifier: section.get_bool("OrePurifier").unwrap_or(false),
 
             // Locomotor / movement fields

@@ -119,7 +119,7 @@ fn move_order_speed(sim: &mut Simulation, rules: &RuleSet, id: u64) -> SimFixed 
     };
     let issued = sim.apply_command(
         "Soviet",
-        &crate::sim::world::Command::Move {
+        &crate::sim::command::Command::Move {
             entity_id: id,
             target_rx: rx + 6,
             target_ry: ry + 6,

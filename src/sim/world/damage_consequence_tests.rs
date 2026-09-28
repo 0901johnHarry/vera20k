@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::rules::{art_data::ArtRegistry, ini_parser::IniFile};
+use crate::sim::command::Command;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::projectile::{ProjectileCoord, ProjectilePayload, ProjectileTarget};
 

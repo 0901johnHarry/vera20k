@@ -4,6 +4,7 @@
 //! - `production_types`: shared types, constants, state containers
 //! - `factory`: queue and per-step charging kernels
 //! - `factory_lifecycle`: held-object birth, completion, cancellation and release
+//! - `factory_ai`: a computer house's production at its own factory buildings
 //! - `production_queue`: queue views and completed mobile delivery
 //! - `production_economy`: resource harvesting and credit delivery
 //! - `production_placement`: building placement
@@ -12,6 +13,7 @@
 //! - `production_tech`: tech tree, build options, factory matching, spawn cells
 
 mod factory;
+mod factory_ai;
 mod factory_lifecycle;
 mod production_economy;
 mod production_placement;
@@ -27,9 +29,9 @@ mod war_factory_exit;
 
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
-    BuildEligibility, CancelOutcome, Factory, FactoryRegistry, FactoryView, PRODUCTION_STEPS,
-    PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome, TimeToBuildInputs,
-    category_for_object, time_to_build,
+    BuildEligibility, CancelOutcome, Factory, FactoryHolder, FactoryRegistry, FactoryView,
+    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome,
+    TimeToBuildInputs, category_for_object, time_to_build,
 };
 pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, suspend_production};
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
@@ -68,6 +70,8 @@ pub use self::war_factory_exit::tick_war_factory_exit_contacts;
 
 // Re-exports for external consumers (files outside production/ that previously
 // imported private submodules directly).
+pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
+pub(crate) use self::wall_placement::stamp_wall_with_autofill;
 pub(in crate::sim) use self::factory_lifecycle::revalidate_and_step_factories;
 #[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;

@@ -198,6 +198,13 @@ pub(super) enum HashFeature {
     /// turreted building, so this reproduces their old hashes, not an
     /// arbitrary pre-230 stream.
     BuildingFacing = 230,
+    /// The computer's base building: each House's production mode, building
+    /// choice and naval latch (`HouseClass+0x1E4`, `+0x564C`, `+0x1F0`) and
+    /// its on-map gatherer count (`+0x158`); each Construction Yard's own
+    /// factory and placement-retry timer (`BuildingClass+0x524`, `+0x550`).
+    /// Each folds, tagged, only off its constructor value, so a state without
+    /// them hashes as earlier schemas, which fold none of them.
+    AiBaseBuilding = 232,
 }
 
 impl HashSchema {
@@ -244,6 +251,7 @@ impl HashSchema {
                     | HashFeature::ShipSinking
                     | HashFeature::FactoryPlants
                     | HashFeature::BuildingFacing
+                    | HashFeature::AiBaseBuilding
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

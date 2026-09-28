@@ -852,17 +852,17 @@ fn placed_gapowr_completion(human: bool) -> (u32, Option<u32>) {
 }
 
 /// A building placed in frame P (the command tail) completes its build-up at
-/// P + 2 + (count - 1) * rate for a human player (the PLACE route: an idle
-/// frame, then the mission) and P + 1 + (count - 1) * rate for a computer
-/// house (ExitObject commences at once), from its type's Buildup control
-/// (`sim::building_construction`); the tactical capture ledger pins the
-/// human route.
+/// P + 2 + (count - 1) * rate from its type's Buildup control
+/// (`sim::building_construction`): the PLACE route, an idle frame, then the
+/// mission, whichever house sent the event. A computer yard places without
+/// one (`sim::ai_base_building::exit_building`). The tactical capture ledger
+/// pins the route.
 #[test]
 fn a_placed_building_completes_its_buildup_after_the_command_frame() {
-    let (placed, completed) = placed_gapowr_completion(true);
-    assert_eq!(completed, Some(placed + 2 + 25 * 2));
-    let (placed, completed) = placed_gapowr_completion(false);
-    assert_eq!(completed, Some(placed + 1 + 25 * 2));
+    for human in [true, false] {
+        let (placed, completed) = placed_gapowr_completion(human);
+        assert_eq!(completed, Some(placed + 2 + 25 * 2), "human {human}");
+    }
 }
 
 #[test]

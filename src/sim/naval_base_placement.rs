@@ -1,8 +1,9 @@
 //! Native naval branch of HouseClass AI base-placement selection.
 //!
-//! This module owns only the stock-active `Naval=yes` fast path. Ordinary
-//! BasePlan/perimeter placement remains in `ai`; sharing either path would add
-//! gates and ordering that `HouseClass__AI_FindBasePlacement` does not execute.
+//! This module owns only the stock-active `Naval=yes` fast path. The ordinary
+//! perimeter search is `sim::ai_base_site`, which dispatches here; sharing
+//! either path would add gates and ordering that
+//! `HouseClass__AI_FindBasePlacement` does not execute.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
@@ -217,9 +218,7 @@ mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
-    use crate::sim::ai::{AiPlayerState, tick_ai};
     use crate::sim::cell_rect::PlayfieldBounds;
-    use crate::sim::command::Command;
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
 
@@ -743,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn naval_ai_uses_house_origin_without_ordinary_center_and_retains_failed_ready_item() {
+    fn a_naval_building_site_comes_from_the_naval_branch_and_the_house_origin() {
         let rules = naval_integration_rules();
         let mut sim = Simulation::new();
         sim.session.binary_frame = 1;
@@ -762,23 +761,27 @@ mod tests {
         house.base_center = Some((12, 12));
         house.alternate_base_center = (15, 15);
         sim.houses.insert(owner, house);
-        let naval = sim.interner.intern("NAVAL");
-        let land = sim.interner.intern("LAND");
-        sim.production
-            .ready_by_owner
-            .entry(owner)
-            .or_default()
-            .extend([naval, land]);
-        let mut ai = [AiPlayerState::new(owner)];
-        let commands = tick_ai(&sim, &mut ai, &rules, Some(&path), None);
+        let naval = rules.object("NAVAL").unwrap();
+        let land = rules.object("LAND").unwrap();
+        let site = |sim: &Simulation, ty, path| {
+            crate::sim::ai_base_site::find_base_building_site(
+                sim,
+                &rules,
+                owner,
+                ty,
+                Some(path),
+                None,
+            )
+        };
+
+        let naval_site = find_naval_base_placement(&sim, &rules, owner, Some(&path))
+            .expect("open water around the house origin");
         assert_eq!(
-            commands.len(),
-            1,
-            "only naval placement bypasses the missing live-structure average"
+            site(&sim, naval, &path),
+            (naval_site.0 as i16, naval_site.1 as i16)
         );
-        assert!(
-            matches!(commands[0].payload, Command::PlaceReadyBuilding { type_id, .. } if type_id == naval)
-        );
+        // Without a plan centre an ordinary type takes the alternate origin.
+        assert_eq!(site(&sim, land, &path), (15, 15));
 
         let mut blocked = sim;
         for cell in &mut blocked.resolved_terrain.as_mut().unwrap().cells {
@@ -786,12 +789,6 @@ mod tests {
         }
         let blocked_path =
             PathGrid::from_resolved_terrain(blocked.resolved_terrain.as_ref().unwrap());
-        let mut ai = [AiPlayerState::new(owner)];
-        let commands = tick_ai(&blocked, &mut ai, &rules, Some(&blocked_path), None);
-        assert!(commands.is_empty());
-        assert_eq!(
-            blocked.production.ready_by_owner[&owner].front(),
-            Some(&naval)
-        );
+        assert_eq!(site(&blocked, naval, &blocked_path), (0, 0));
     }
 }

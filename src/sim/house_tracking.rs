@@ -21,6 +21,12 @@
 //!   an infantry survivor flagged `+0x6D9` is not added (`0x00502C3C`) but is
 //!   removed.
 //!
+//! Added_To_Game and Removed_From_Game also count, before their per-class
+//! arms and with no DontScore test, the house's objects whose type is a
+//! `ResourceGatherer=` (`+0x158`, `0x00502A95..0x00502A9F` and
+//! `0x00502606..0x00502610`). The computer reads it when it decides whether
+//! a lost refinery node may be rebuilt (`sim::ai_base_building`).
+//!
 //! The gate (`HouseClass::Update @ 0x004F8E86..0x004F8F82`) reads only these:
 //! a short game keeps a house alive while `+0x2F0 > 0` or its tracked
 //! `BaseUnit=` types sum above zero; a normal game while `+0x2F0` plus the
@@ -66,10 +72,13 @@ pub struct TrackingFacts {
     /// A building tracked with the units: a 1x1 undeployer, or one that
     /// undeploys into a `ResourceGatherer=` (a deployed Slave Miner).
     pub unit_like_building: bool,
+    /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadINI `0x007143DF`).
+    pub resource_gatherer: bool,
 }
 
-/// The counters the defeat gate reads (see the module doc).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// The counters the defeat gate reads, and the on-map gatherer count (see
+/// the module doc).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HouseTracking {
     /// `HouseClass+0x2F0`.
     buildings: i32,
@@ -83,6 +92,10 @@ pub struct HouseTracking {
     active_aircraft: i32,
     /// `HouseClass+0x5550`, the on-map count of each BuildingType.
     active_building_types: BTreeMap<InternedId, i32>,
+    /// `HouseClass+0x158`, the on-map objects whose type is a
+    /// `ResourceGatherer=`.
+    #[serde(default)]
+    resource_gatherers: i32,
 }
 
 impl HouseTracking {
@@ -113,8 +126,36 @@ impl HouseTracking {
         }
     }
 
+    /// Fold the defeat counters as the derived hash of this struct did before
+    /// the gatherer count joined it (schema `HouseDefeatTracking`).
+    pub(crate) fn hash_defeat_counters(&self, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        self.buildings.hash(hasher);
+        self.unit_types.hash(hasher);
+        self.active_units.hash(hasher);
+        self.active_infantry.hash(hasher);
+        self.active_aircraft.hash(hasher);
+        self.active_building_types.hash(hasher);
+    }
+
+    /// `HouseClass+0x158`.
+    pub(crate) const fn resource_gatherers(&self) -> i32 {
+        self.resource_gatherers
+    }
+
+    /// `HouseClass+0x5550`'s count for one BuildingType (`0x0049FAE0`).
+    pub(crate) fn active_building_count(&self, building: InternedId) -> i32 {
+        self.active_building_types
+            .get(&building)
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// `HouseClass::Added_To_Game @ 0x00502A80`.
     pub(crate) fn added_to_game(&mut self, entity: &GameEntity) {
+        if entity.tracking_facts.resource_gatherer {
+            self.resource_gatherers = self.resource_gatherers.wrapping_add(1);
+        }
         let dont_score = entity.dont_score;
         match entity.category {
             // The Unit case (increment at `0x00502CF9`) has no DontScore test.
@@ -138,6 +179,9 @@ impl HouseTracking {
 
     /// `HouseClass::Removed_From_Game @ 0x005025F0`.
     pub(crate) fn removed_from_game(&mut self, entity: &GameEntity) {
+        if entity.tracking_facts.resource_gatherer {
+            self.resource_gatherers = self.resource_gatherers.wrapping_sub(1);
+        }
         if entity.dont_score {
             return;
         }
@@ -218,14 +262,6 @@ impl HouseTracking {
             self.active_infantry,
             self.active_aircraft,
         )
-    }
-
-    /// The on-map count of one building type.
-    pub(crate) fn active_building_count_for_test(&self, building: InternedId) -> i32 {
-        self.active_building_types
-            .get(&building)
-            .copied()
-            .unwrap_or(0)
     }
 
     /// Set every counter the gate reads.

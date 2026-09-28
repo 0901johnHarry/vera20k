@@ -375,13 +375,7 @@ pub fn sample_promotion(entity: &mut GameEntity, elite_flash_timer: i32) -> Opti
 /// (`FUN_0070BE80` at `0x0070BEFE..0x0070BF0A`; the 900.0 constant lives at
 /// `0x007E27F8`).
 pub fn self_heal_interval_frames(repair_rate_minutes: f64) -> i32 {
-    {
-        use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits};
-        X87::ftol_i32_low_masked(X87::mul(
-            X87::load_f64(NativeF64Bits::from_bits(repair_rate_minutes.to_bits())),
-            X87::load_i32(900),
-        ))
-    }
+    crate::rules::ruleset::native_minutes_to_frames(repair_rate_minutes)
 }
 
 /// The self-heal eligibility virtual, `TechnoClass` vtable slot `0x294` →

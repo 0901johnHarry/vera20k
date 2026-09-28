@@ -232,29 +232,9 @@ pub fn place_ready_building_with_overlays(
         let Some(registry) = overlay_registry else {
             return false;
         };
-        let Some(overlay_id) = wall_placement::linked_overlay_id(obj, registry) else {
+        if !wall_placement::stamp_wall_with_autofill(sim, rules, registry, obj, (rx, ry), owner_id)
+        {
             return false;
-        };
-        if !wall_placement::stamp_wall(sim, registry, rx, ry, overlay_id, owner_id) {
-            return false;
-        }
-        for direction in wall_placement::CARDINAL_DIRECTIONS {
-            let gap = wall_placement::scan_autofill_direction(
-                sim,
-                rules,
-                registry,
-                obj,
-                (rx, ry),
-                owner_id,
-                overlay_id,
-                direction,
-            );
-            for (fill_rx, fill_ry) in gap {
-                let stamped = wall_placement::stamp_wall(
-                    sim, registry, fill_rx, fill_ry, overlay_id, owner_id,
-                );
-                debug_assert!(stamped, "scanned wall filler must remain stampable");
-            }
         }
         // Wall placement consumes the factory-created BuildingClass into
         // overlay state; the constructor identity is destroyed, never
@@ -318,22 +298,13 @@ pub fn place_ready_building_with_overlays(
             ry + fh - 1,
         );
     }
-    // The placed building builds up (`sim::building_construction`): a human
-    // player's through the PLACE event (HouseClass::Place_Production), a
-    // computer house's through its factory's ExitObject, which places nothing
-    // for a house IsControlledByHuman (0x00444F1F).
+    // The placed building builds up (`sim::building_construction`) through
+    // the PLACE event (`HouseClass::Place_Production`); a computer house's
+    // yard places its own through `sim::ai_base_building::exit_building`.
     let control = rules.buildup_control(type_id);
     let now = sim.session.binary_frame as i32;
-    let human = sim
-        .houses
-        .get(&owner_id)
-        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
     if let Some(ge) = sim.substrate.entities.get_mut(new_sid) {
-        ge.building_up = Some(if human {
-            BuildingUp::placed_by_player(control, now)
-        } else {
-            BuildingUp::placed_by_computer(control, now)
-        });
+        ge.building_up = Some(BuildingUp::placed_by_player(control, now));
     }
     // Refresh superweapon grants — newly placed building may provide a SW.
     if sim.session.game_options.super_weapons {
