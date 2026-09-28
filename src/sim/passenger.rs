@@ -1585,8 +1585,8 @@ ConditionYellow=50%
         assert!(reconcile_civilian_garrison_owner_for_building(
             &mut sim, &rules, bldg
         ));
-        assert_eq!(sim.houses[&neutral].tracking.buildings_for_test(), 0);
-        assert_eq!(sim.houses[&americans].tracking.buildings_for_test(), 1);
+        assert_eq!(sim.houses[&neutral].tracking.buildings(), 0);
+        assert_eq!(sim.houses[&americans].tracking.buildings(), 1);
 
         assert!(
             sim.substrate
@@ -1599,8 +1599,8 @@ ConditionYellow=50%
         assert!(reconcile_civilian_garrison_owner_for_building(
             &mut sim, &rules, bldg
         ));
-        assert_eq!(sim.houses[&neutral].tracking.buildings_for_test(), 1);
-        assert_eq!(sim.houses[&americans].tracking.buildings_for_test(), 0);
+        assert_eq!(sim.houses[&neutral].tracking.buildings(), 1);
+        assert_eq!(sim.houses[&americans].tracking.buildings(), 0);
     }
 
     #[test]

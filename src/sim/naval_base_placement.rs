@@ -38,14 +38,9 @@ pub(crate) fn find_naval_base_placement(
     let height_type = first_buildable_shipyard(rules, sim, house)?;
     let height = crate::rules::foundation::foundation_dimensions(&height_type.foundation).1;
 
-    let origin = if house.alternate_base_center != (0, 0) {
-        house.alternate_base_center
-    } else {
-        // Rust's older Option projects the packed native default; the native
-        // fallback itself is still literal `(0,0)` and reaches normal FNPC/
-        // MapClass admission rather than becoming an early Rust-side failure.
-        house.base_center.unwrap_or((0, 0))
-    };
+    // The native fallback is literal `(0,0)` and reaches normal FNPC/MapClass
+    // admission rather than becoming an early Rust-side failure.
+    let origin = house.base_origin();
 
     // This is an active MapClass query. Missing PathGrid, real CellClass
     // terrain, diamond bounds, or Size-height authority cannot be replaced by

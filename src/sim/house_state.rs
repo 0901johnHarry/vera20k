@@ -13,6 +13,7 @@ use crate::map::playfield::local_to_packed_cell;
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
+use crate::sim::timer::CdTimer;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
 
 /// Native per-house AI difficulty index stored by `HouseClass`.
@@ -155,9 +156,8 @@ pub struct HouseOutcomeState {
 /// - `House+0x249`: persistent All-To-Hunt candidate-bias latch;
 /// - `House+0x54D8`: signed frame of the last Building damage admission.
 ///
-/// The live Strategy scheduler and its independent timers do not belong in
-/// this value. This is only the state consumed by the post-superweapon
-/// emergency block at `HouseClass__AI_Building_Strategy @ 0x004FD7A0`.
+/// The emergency block of `HouseClass::AI_Building_Strategy @ 0x004FD7A0`
+/// (`sim::house_strategy`) steps the mode; All_To_Hunt sets the latch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct HouseStrategyEmergencyState {
     pub(crate) mode: i32,
@@ -169,6 +169,12 @@ pub struct HouseStrategyEmergencyState {
 
 const fn last_attacker_house_index_default() -> i32 {
     -1
+}
+
+/// [`HouseState::strategy_timer`]'s constructor value: started at frame 0
+/// with no delay, so expired.
+pub(crate) const fn strategy_timer_at_construction() -> CdTimer {
+    CdTimer::started(0, 0)
 }
 
 impl Default for HouseStrategyEmergencyState {
@@ -210,7 +216,6 @@ impl HouseStrategyEmergencyState {
     }
 
     /// Called only after the exact All-To-Hunt reverse scan completes.
-    #[cfg(test)]
     pub(crate) fn set_all_to_hunt_bias(&mut self) {
         self.all_to_hunt_bias = true;
     }
@@ -478,6 +483,12 @@ pub struct HouseState {
     /// Snapshot/hash authority for the Strategy emergency-state block.
     #[serde(default)]
     pub strategy_emergency: HouseStrategyEmergencyState,
+    /// `HouseClass+0x5634`/`+0x563C`, the timer that runs Strategy
+    /// (`sim::house_strategy::update_strategy`). The constructor starts it at
+    /// the construction frame, which is frame 0, with no delay
+    /// (`0x004F5B9D..0x004F5BA8`). Persisted and hashed (schema v234).
+    #[serde(default = "strategy_timer_at_construction")]
+    pub(crate) strategy_timer: CdTimer,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
     /// persist, while Production, AutocreateAllowed, and AITriggersActive
     /// directly enter House CRC.
@@ -607,6 +618,18 @@ impl HouseState {
     /// `HouseClass__Update @ 0x004F8440` inlines the same branch shape.
     pub(crate) const fn is_controlled_by_human(&self, game_mode_nonzero: bool) -> bool {
         self.is_human || (!game_mode_nonzero && self.player_control)
+    }
+
+    /// The cell the house bases itself around: the alternate base centre
+    /// (`+0x5494`) unless it is the empty cell `(0, 0)` (`0xA8EF98`, zeroed
+    /// by its static initializer `0x004F50A0`), else the primary (`+0x5490`,
+    /// `(0, 0)` while unset); `(0, 0)` is none.
+    pub(crate) fn base_origin(&self) -> (u16, u16) {
+        if self.alternate_base_center != (0, 0) {
+            self.alternate_base_center
+        } else {
+            self.base_center.unwrap_or((0, 0))
+        }
     }
 
     /// `HouseClass::Update 0x004F9302..0x004F9338`: the auto-repair latch
@@ -741,6 +764,7 @@ impl HouseState {
                 ..Economy::default()
             },
             strategy_emergency: HouseStrategyEmergencyState::default(),
+            strategy_timer: strategy_timer_at_construction(),
             ai_activation: HouseAiActivationLatches::default(),
             ai_production: Default::default(),
             harvester_no_ore: false,

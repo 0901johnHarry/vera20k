@@ -638,8 +638,18 @@ fn a_crazy_ivan_bombs_a_tank() {
         "the shot deals nothing"
     );
 
+    // The idle Ivan may bomb the survivor again in the very frame the first
+    // bomb goes off, so the blast, not the bomb's absence, marks it.
     let went_off = run_until(&mut sim, &rules, &grid, 600, |sim| {
-        bomb(sim, tank).is_none()
+        let off = entity(sim, tank).health.current < 1000;
+        if !off {
+            assert_eq!(
+                bomb(sim, tank).map(|bomb| bomb.start_frame),
+                Some(planted.start_frame),
+                "an Ivan cannot bomb a bombed target"
+            );
+        }
+        off
     })
     .expect("the bomb goes off");
     assert_eq!(went_off, planted.start_frame + 451, "IvanTimedDelay + 1");
@@ -648,8 +658,9 @@ fn a_crazy_ivan_bombs_a_tank() {
         sim.substrate
             .entities
             .values()
+            .filter(|entity| entity.stable_id() != tank)
             .all(|entity| entity.bomb.is_none()),
-        "an Ivan cannot bomb a bombed target, and fires no second bomb"
+        "the Ivan fires no bomb elsewhere"
     );
 }
 

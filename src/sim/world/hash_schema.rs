@@ -210,6 +210,11 @@ pub(super) enum HashFeature {
     /// when one is not zero, so a state without them hashes as earlier
     /// schemas, which fold none.
     AiBaseDefense = 233,
+    /// The computer's strategy tick: each House's Strategy timer
+    /// (`HouseClass+0x5634`/`+0x563C`), folded, tagged, only off its
+    /// constructor value, so a state without it hashes as earlier schemas,
+    /// which fold none.
+    AiStrategy = 234,
 }
 
 impl HashSchema {
@@ -258,6 +263,7 @@ impl HashSchema {
                     | HashFeature::BuildingFacing
                     | HashFeature::AiBaseBuilding
                     | HashFeature::AiBaseDefense
+                    | HashFeature::AiStrategy
             ),
             #[cfg(test)]
             Self::Before(version) | Self::BeforeWithoutRawInfantryOwners(version) => {

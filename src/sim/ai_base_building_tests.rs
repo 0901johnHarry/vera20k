@@ -50,19 +50,11 @@ fn computer_house(game_mode_nonzero: bool) -> (Simulation, InternedId) {
     (sim, owner)
 }
 
-/// A scenario stream whose first `RandomRanged(low, high)` answers `value`.
-fn stream_answering(low: i32, high: i32, value: i64) -> SimRng {
-    (0..)
-        .map(SimRng::new)
-        .find(|rng| i64::from(rng.clone().next_range_i32_inclusive(low, high)) == value)
-        .unwrap()
-}
-
 /// Checks the native draws (stream `Scenario+0x218`, the range) and returns
 /// the stream the port must leave: `sim`'s, advanced by those draws.
 fn expect_draws(sim: &mut Simulation, draws: &[&Value], low: i32, high: i32) -> SimRng {
     if let Some(first) = draws.first() {
-        sim.scenario_rng = stream_answering(low, high, int(&first[4]));
+        sim.scenario_rng = SimRng::answering(low, high, int(&first[4]) as i32);
     }
     let mut expected = sim.scenario_rng.clone();
     for draw in draws {

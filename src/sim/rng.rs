@@ -161,6 +161,16 @@ impl SimRng {
         }
     }
 
+    /// The first seeded stream whose next `RandomRanged(low, high)` answers
+    /// `value`: how oracle replays make the Rust draw the native answer.
+    #[cfg(test)]
+    pub(crate) fn answering(low: i32, high: i32, value: i32) -> Self {
+        (0..)
+            .map(Self::new)
+            .find(|rng| rng.clone().next_range_i32_inclusive(low, high) == value)
+            .expect("some seed answers every in-range value")
+    }
+
     /// Test/debug accessor for the secondary lag index. Used by the two-stream
     /// routing tests to assert both streams seed to the gamemd `index_b = 0x67`
     /// start. Not part of the gameplay API.

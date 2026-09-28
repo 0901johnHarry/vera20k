@@ -84,10 +84,11 @@ impl Simulation {
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
-    /// house's defeat gate (see the module doc), then its building choice
+    /// house's defeat gate (see the module doc), then its strategy tick
+    /// (`0x004F8FBE..0x004F9032`, `sim::house_strategy`) and building choice
     /// (`0x004F9038..0x004F9265`, `sim::ai_base_building`); then the game-over
     /// scan and the result timers. Without `defeat_pass` (VERA's first tick)
-    /// only the building choices run.
+    /// only the strategy ticks and building choices run.
     pub(super) fn house_rung(
         &mut self,
         rules: Option<&RuleSet>,
@@ -128,6 +129,7 @@ impl Simulation {
                 self.mplayer_defeated(owner, outcome_tick, savour_frames);
             }
             if let Some(rules) = rules {
+                crate::sim::house_strategy::update_strategy(self, rules, owner);
                 crate::sim::ai_base_building::update_building_choice(
                     self, rules, owner, path_grid, registry,
                 );

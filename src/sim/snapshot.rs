@@ -687,7 +687,8 @@ use crate::sim::world::Simulation;
 // 232 -> 233: each House keeps its type's `Cost*Mult=` and the value totals
 // of its forces on the map (`house_tracking`), and each Techno the value arm
 // its type takes in them.
-const SNAPSHOT_VERSION: u32 = 233;
+// 233 -> 234: each House keeps its Strategy timer (`sim::house_strategy`).
+const SNAPSHOT_VERSION: u32 = 234;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3677,7 +3678,8 @@ mod tests {
         // 231 -> 232: computer production state on houses and factory buildings.
         // 232 -> 233: house country cost factors and force values; each
         // Techno's value arm.
-        assert_eq!(super::SNAPSHOT_VERSION, 233);
+        // 233 -> 234: the house Strategy timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 234);
     }
 
     #[test]

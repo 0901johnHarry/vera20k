@@ -1085,3 +1085,152 @@ fn retail_dustbowl_a_hard_computer_walls_its_yard() {
         crate::sim::base_plan::unpack_base_plan_cell(placed)
     );
 }
+
+/// Strategy (`sim::house_strategy`) on the same house: it runs every 106 to
+/// 112 frames, and a house left without a live `Factory=` building, here by
+/// the loss of its yard, sells every building it has left and sends its
+/// units hunting at its next tick once past its first 900 frames (its last
+/// building attack starts at frame zero, `0x004F5A59`).
+#[test]
+#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
+    let (mut scenario, owner, _mcv, (x, y)) = retail_dustbowl_computer_mcv();
+    let tank = {
+        let crate::sim::runtime::SimRuntime {
+            simulation: sim,
+            resources,
+        } = &mut scenario.runtime;
+        let tank = sim
+            .spawn_object(
+                "HTNK",
+                "Russians",
+                x + 4,
+                y + 4,
+                0,
+                &resources.rules,
+                &resources.height_map,
+            )
+            .expect("a tank beside the MCV");
+        sim.resolve_type_handles(&resources.rules);
+        tank
+    };
+    let timer = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        scenario.sim().houses[&owner].strategy_timer
+    };
+    let mut ticks = Vec::new();
+    let mut frames = 0;
+    let mut step = |scenario: &mut crate::headless_scenario::HeadlessScenario| {
+        let frame = scenario.sim().session.binary_frame as i32;
+        let before = timer(scenario);
+        retail_frame(scenario);
+        let after = timer(scenario);
+        if after != before {
+            assert_eq!(after.start_frame(), frame, "the timer restarts at its tick");
+            assert!((106..=112).contains(&after.duration()), "{after:?}");
+            ticks.push(frame);
+        }
+    };
+    // The yard stands and builds on.
+    let owned_buildings = |scenario: &crate::headless_scenario::HeadlessScenario| {
+        scenario.sim().houses[&owner]
+            .base_projection
+            .buildings()
+            .len()
+    };
+    while owned_buildings(&scenario) < 2 && frames < 3000 {
+        step(&mut scenario);
+        frames += 1;
+    }
+    assert!(
+        owned_buildings(&scenario) >= 2,
+        "no building after {frames} frames"
+    );
+    let sim = scenario.sim();
+    assert!(!sim.houses[&owner].strategy_emergency.all_to_hunt_bias);
+    let yard = sim
+        .substrate
+        .entities
+        .values()
+        .find(|e| !e.dying && e.owner() == owner && sim.interner.resolve(e.type_ref()) == "NACNST")
+        .map(|e| (e.stable_id(), e.health.current))
+        .expect("the yard");
+
+    // The yard goes, with no attacker (so no building attack is noted).
+    {
+        let crate::sim::runtime::SimRuntime {
+            simulation: sim,
+            resources,
+        } = &mut scenario.runtime;
+        let warhead = sim
+            .interner
+            .intern(&resources.rules.bridge_warheads.c4_name);
+        let hit = crate::sim::combat::EntityDamageEvent::direct_receiver(
+            yard.0,
+            yard.1,
+            0,
+            crate::sim::combat::RAD_NO_ATTACKER,
+            None,
+            warhead,
+            crate::sim::combat::ReceiverCallFlags {
+                ignore_defenses: true,
+                arg6: true,
+            },
+        );
+        sim.commit_direct_damage_receiver(&resources.rules, None, hit);
+    }
+    let lost = scenario.sim().session.binary_frame as i32;
+    let start = frames;
+    while !scenario.sim().houses[&owner]
+        .strategy_emergency
+        .all_to_hunt_bias
+        && frames < start + 2000
+    {
+        step(&mut scenario);
+        frames += 1;
+    }
+    let sim = scenario.sim();
+    assert!(
+        sim.houses[&owner].strategy_emergency.all_to_hunt_bias,
+        "no sell-off {} frames after the yard's loss at frame {lost}",
+        frames - start
+    );
+    let sold_at = *ticks.last().unwrap();
+    assert!(sold_at > 900 && sold_at >= lost, "sold at frame {sold_at}");
+    let left: Vec<u64> = sim.houses[&owner]
+        .base_projection
+        .buildings()
+        .iter()
+        .copied()
+        .filter(|&id| {
+            sim.substrate
+                .entities
+                .get(id)
+                .is_some_and(|b| b.is_ai_alive() && !b.lifecycle.in_limbo)
+        })
+        .collect();
+    assert!(!left.is_empty(), "something to sell");
+    for id in left {
+        assert!(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .building_down
+                .is_some(),
+            "building {id} sells"
+        );
+    }
+    let mission = &sim.substrate.entities.get(tank).expect("the tank").mission;
+    assert!(
+        [mission.current(), mission.queued()]
+            .iter()
+            .any(|m| m.known() == Some(MissionType::Hunt)),
+        "the tank hunts"
+    );
+    assert!(
+        ticks
+            .windows(2)
+            .all(|pair| (106..=112).contains(&(pair[1] - pair[0])))
+    );
+    eprintln!("Strategy ticks {ticks:?}; the yard lost at {lost}, sold off at {sold_at}");
+}

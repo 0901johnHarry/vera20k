@@ -1047,7 +1047,7 @@ mod tests {
             .interner
             .get("Player")
             .expect("pre-created player house");
-        assert_eq!(sim.houses[&player].tracking.buildings_for_test(), 1);
+        assert_eq!(sim.houses[&player].tracking.buildings(), 1);
         assert_eq!(
             sim.substrate.base_reservations.raw_mask(None, 28, 38),
             1,
