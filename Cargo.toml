@@ -45,10 +45,6 @@ name = "bik-survey"
 path = "src/bin/bik-survey.rs"
 
 [[bin]]
-name = "measure-atlas"
-path = "src/bin/measure-atlas.rs"
-
-[[bin]]
 name = "extract-bridge-frames"
 path = "src/bin/extract-bridge-frames.rs"
 
@@ -63,10 +59,6 @@ path = "src/bin/inspect-pcx-palette.rs"
 [[bin]]
 name = "inspect-yro-render"
 path = "src/bin/inspect-yro-render.rs"
-
-[[bin]]
-name = "bridge-oracle-compare"
-path = "src/bin/bridge-oracle-compare.rs"
 
 [dependencies]
 # --- GPU rendering ---

@@ -14,7 +14,7 @@ from tools.cargo_run import resolve_binary
 from tools.child_process import run_child
 from tools.tactical_certification.core import (
     FileSnapshot, ValidationError, assert_snapshot_unchanged,
-    create_directory_exclusive, load_json_file, require_directory, require_int,
+    create_directory_exclusive, load_json_file, require_array, require_directory, require_int,
     require_object, require_regular_file, require_sha256, require_string,
     require_value, sha256_bytes, utc_now, write_bytes_exclusive, write_json_exclusive,
 )
@@ -36,12 +36,41 @@ def _identity(value: Any, snapshot: FileSnapshot, label: str) -> None:
         require_value(document.get(key), expected, f'{label}.{key}')
 
 
+def _unit_atlas(value: Any) -> dict[str, Any]:
+    """Check the renderer's allocation receipt without reconstructing packing."""
+    atlas = require_object(value, 'render.unit_atlas')
+    for key in ('resident_sprite_count', 'last_build_rasterized_sprite_count',
+                'total_texel_payload_bytes'):
+        _integer(atlas, key)
+    pages = require_array(atlas.get('pages'), 'render.unit_atlas.pages')
+    total = 0
+    for index, value in enumerate(pages):
+        label = f'render.unit_atlas.pages[{index}]'
+        page = require_object(value, label)
+        extent = require_array(page.get('extent'), f'{label}.extent')
+        if len(extent) != 3:
+            raise ValidationError(f'{label}.extent must have width, height and layers')
+        width, height = (require_int(extent[axis], f'{label}.extent[{axis}]')
+                         for axis in (0, 1))
+        if width <= 0 or height <= 0:
+            raise ValidationError(f'{label}.extent width and height must be positive')
+        require_value(extent[2], 1, f'{label}.extent[2]')
+        for key, expected in (('format', 'R8Uint'), ('dimension', 'D2'),
+                              ('mip_level_count', 1), ('sample_count', 1),
+                              ('texel_payload_bytes', width * height)):
+            require_value(page.get(key), expected, f'{label}.{key}')
+        total += width * height
+    require_value(atlas.get('total_texel_payload_bytes'), total,
+                  'render.unit_atlas.total_texel_payload_bytes')
+    return dict(atlas)
+
+
 def validate_capture(directory: Path, profile: Mapping[str, Any],
                      snapshots: Mapping[str, FileSnapshot]) -> dict[str, Any]:
     """Check the completed child transaction against this invocation's inputs."""
     require_directory(directory, 'child output')
     manifest_snapshot, manifest = load_json_file(directory / 'capture.json', 'capture manifest')
-    require_value(manifest.get('schema_version'), 'vera20k.map-observation.v1', 'schema_version')
+    require_value(manifest.get('schema_version'), 'vera20k.map-observation.v2', 'schema_version')
     if manifest.get('status') != 'COMPLETE':
         raise ValidationError(f'child did not complete: {manifest.get("failure", manifest.get("status"))}')
     if {path.name for path in directory.iterdir()} != {'capture.json', 'frame.bgra'}:
@@ -111,6 +140,7 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     width, height = _integer(profile, 'width', 1), _integer(profile, 'height', 1)
     for key in ('internal_extent', 'surface_extent'):
         require_value(render.get(key), [width, height], f'render.{key}')
+    unit_atlas = _unit_atlas(render.get('unit_atlas'))
     frame = require_object(manifest.get('frame'), 'frame')
     frame_snapshot = require_regular_file(directory / 'frame.bgra', 'frame',
                                           exact_length=width * height * 4)
@@ -124,7 +154,8 @@ def validate_capture(directory: Path, profile: Mapping[str, Any],
     assert_snapshot_unchanged(frame_snapshot, 'frame')
     return {'manifest': manifest_snapshot.public_identity(),
             'frame': frame_snapshot.public_identity(), 'map_source': dict(source),
-            'initial': dict(initial), 'final': dict(final), 'exact_step_count': ticks}
+            'initial': dict(initial), 'final': dict(final), 'exact_step_count': ticks,
+            'unit_atlas': unit_atlas}
 
 
 def capture(*, profile_path: Path, contract_path: Path, output: Path,
