@@ -161,6 +161,13 @@ impl Simulation {
 
     /// TechnoType virtual `+0x84` for `owner`'s House ([`RuleSet::cost_of`]).
     pub(crate) fn cost_of(&self, owner: InternedId, object: &ObjectType, rules: &RuleSet) -> i32 {
+        debug_assert!(
+            self.houses.get(&owner).is_none_or(|house| {
+                house.country_cost_mults.0
+                    == rules.country_cost_mults(self.interner.resolve(house.house_type_id()))
+            }),
+            "a House's `Cost*Mult=` copy differs from its type's: project it at creation"
+        );
         rules.cost_of(object, self.house_cost_factors(owner).as_ref())
     }
 

@@ -70,6 +70,7 @@ impl Default for HouseRofBias {
 /// House keeps the rules' values from its creation
 /// ([`HouseState::project_country_cost_mults`]) and prices objects without a
 /// rules lookup, as the lifecycle's value totals must (`house_tracking`).
+/// `Simulation::cost_of` checks the copy against the rules in debug builds.
 /// The HouseType constructor stores 1.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CountryCostMults(pub [NativeF32Bits; 5]);

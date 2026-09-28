@@ -4240,13 +4240,14 @@ impl RuleSet {
     /// TechnoType virtual `+0x84`, the cost a House pays for `object`.
     ///
     /// `TechnoTypeClass::Cost_Of @ 0x00711F00` (Infantry, Unit and Aircraft
-    /// types) returns the raw `+0xAC` cost for a null House; otherwise it
-    /// stores the country factor (`0x0050BDF0`) and the FactoryPlant factor
-    /// (`0x0050BEB0`) as floats and returns `ftol(cost * plant * country)`
-    /// (`0x00711F35..0x00711F41`). The BuildingType override `0x0045EDD0`
-    /// adjusts its actual cost (`+0xAC` = `0x0045ED50`) the same way, adds the
-    /// halved sum of both PadAircraft costs when it bundles them, and adds its
-    /// FreeUnit's cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
+    /// types) returns the type's virtual `+0xAC` cost ([`Self::type_cost`])
+    /// for a null House; otherwise it stores the country factor
+    /// (`0x0050BDF0`) and the FactoryPlant factor (`0x0050BEB0`) as floats
+    /// and returns `ftol(cost * plant * country)` (`0x00711F35..0x00711F41`).
+    /// The BuildingType override `0x0045EDD0` adjusts its actual cost
+    /// (virtual `+0xAC` = `0x0045ED50`) the same way, adds the halved sum of
+    /// both PadAircraft costs when it bundles them, and adds its FreeUnit's
+    /// cost, clamping only that arm at zero (`0x0045EE47..0x0045EE50`).
     /// Native comparison: `tools/spatial_oracle/cost_of`.
     pub fn cost_of(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
         let cost = self.adjusted_cost(object, house);
@@ -4270,7 +4271,7 @@ impl RuleSet {
         }
     }
 
-    /// `0x00711F00` over the type's `+0xAC` cost.
+    /// `0x00711F00` over the type's virtual `+0xAC` cost ([`Self::type_cost`]).
     fn adjusted_cost(&self, object: &ObjectType, house: Option<&HouseCostFactors>) -> i32 {
         let cost = self.type_cost(object);
         house.map_or(cost, |house| house.adjust(cost, object.factor_slot()))

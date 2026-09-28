@@ -60,8 +60,11 @@
 //!   `0x0050C340`, which are not ported: VERA takes their failure and goes on
 //!   to the defense choice (`sim::ai_base_defense`). Trigger: every skirmish
 //!   plan, which Recalc seeds with defense sentinels after its fourth node,
-//!   on a draw below the percent. Effect: the computer builds no walls, and
-//!   chooses a defense where native may wall its base instead.
+//!   on a draw below the percent. Effect: the computer builds no walls.
+//!   Where native walls a `ProtectWithWall=` building instead (wall nodes
+//!   after it, the `-1` node removed, no further draw), VERA chooses a
+//!   defense and makes that choice's draws (three threat draws with an
+//!   enemy, one pick draw over several candidates).
 //! - A `-3` node is removed without `0x005082C0`'s perimeter scan; only a map
 //!   plan can hold one.
 //! - Dormant in retail data: the `PowersUpBuilding=` arms of `0x0042E820` and

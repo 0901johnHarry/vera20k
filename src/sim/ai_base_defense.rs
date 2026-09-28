@@ -49,11 +49,17 @@
 //!   Effect: its defenses are keyed by the whole perimeter rather than the
 //!   weakest quadrant's cells.
 //! - The enemy is `+0x5600`, which VERA sets only through the anger writer
-//!   (`house_strategy`). Native Strategy (`0x004FD538..0x004FD772`, not
-//!   scheduled: `sim::ai_base_building`'s residual) also picks one when there
-//!   is none. Trigger: every choice before the house is attacked. Effect:
-//!   VERA takes a third for each threat share where native weighs the
-//!   strategy's enemy.
+//!   (`house_strategy`). Native Strategy (not scheduled:
+//!   `sim::ai_base_building`'s residual) also picks the nearest house that is
+//!   neither passive nor defeated when there is none
+//!   (`0x004FD538..0x004FD71E`), and takes back a defeated enemy's anger and
+//!   clears it (`0x004FD723..0x004FD772`). Trigger: every choice before the
+//!   house is attacked or after its enemy is defeated. Effect: without an
+//!   enemy VERA takes a third for each threat share and makes none of the
+//!   three threat draws native makes; with no defense built yet all three
+//!   gaps are then equal, so its first defense always comes from the
+//!   infantry list, where native weighs its enemy's forces. After that
+//!   enemy's defeat VERA keeps drawing against its values.
 //! - Native reads VERA defines, none reachable with retail rules: a quadrant
 //!   total of 999999 or more in all four quadrants leaves the weakest at -1,
 //!   whose sums are read from the stack (VERA reads 0); the fudge vector is

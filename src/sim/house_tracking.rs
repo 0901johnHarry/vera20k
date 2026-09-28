@@ -108,7 +108,8 @@ pub enum ForceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ForceValueFacts {
     pub kind: ForceKind,
-    /// `TechnoType+0xAC`, the `Cost=` that `Cost_Of` scales.
+    /// `TechnoType+0x610`, the `Cost=` that `Cost_Of` scales (read through
+    /// virtual `+0xAC`, `0x00711EB0`).
     pub cost: i32,
     /// [`ObjectType::factor_slot`].
     pub factor_slot: u8,
